@@ -1,13 +1,21 @@
 """Fake Coinbase transport for tests.
 
-The fake records every GET and POST. Tests pass a list of `responses` for
-POSTs and a list of `get_responses` for GETs (matched positionally, consumed
-in order). The `key_permissions` controls what `check_key` sees.
+Records every GET and POST. `product` is the public product payload. `orders`
+is the list-orders payload. `key_permissions` is what `check_key` sees.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+_DEFAULT_PRODUCT = {
+    "product_id": "BTC-USD",
+    "base_increment": "0.00000001",
+    "quote_increment": "0.01",
+    "base_min_size": "0.00000001",
+    "quote_min_size": "1",
+    "price": "100000",
+}
 
 
 @dataclass
@@ -21,11 +29,7 @@ class RecordedCall:
 
 
 class FakeCoinbaseTransport:
-    """Returns the next response per method.
-
-    `key_permissions` is the body that `GET /api/v3/brokerage/key_permissions`
-    returns; if it's None the fake raises so tests catch an accidental hit.
-    """
+    """Returns the next response per method."""
 
     def __init__(
         self,
@@ -33,10 +37,14 @@ class FakeCoinbaseTransport:
         get_responses: list[dict] | None = None,
         *,
         key_permissions: dict | list | None = None,
+        product: dict | None = None,
+        orders: dict | None = None,
     ) -> None:
         self._post_responses = list(post_responses or [])
         self._get_responses = list(get_responses or [])
         self._key_permissions = key_permissions
+        self._product = product
+        self._orders = orders
         self.calls: list[RecordedCall] = []
 
     def post(self, url: str, body: dict, headers: dict[str, str]) -> dict:
@@ -51,6 +59,14 @@ class FakeCoinbaseTransport:
             if self._key_permissions is None:
                 return {"scopes": []}
             return self._key_permissions
+        if "market/products" in url:
+            return self._product or dict(_DEFAULT_PRODUCT)
+        if "orders/historical/batch" in url:
+            if self._orders is not None:
+                return self._orders
+            if self._get_responses:
+                return self._get_responses.pop(0)
+            return {"orders": [], "has_next": False}
         if not self._get_responses:
             return {}
         return self._get_responses.pop(0)

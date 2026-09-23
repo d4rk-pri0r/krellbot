@@ -61,6 +61,8 @@ class Transport(Protocol):
 
     def post(self, url: str, form: dict[str, str], headers: dict[str, str]) -> dict: ...
 
+    def get(self, url: str, headers: dict[str, str] | None = None) -> dict: ...
+
 
 class HttpTransport:
     """Real urllib transport. Tests must not call this directly."""
@@ -75,6 +77,13 @@ class HttpTransport:
             headers={**headers, "content-type": "application/x-www-form-urlencoded"},
             method="POST",
         )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def get(self, url: str, headers: dict[str, str] | None = None) -> dict:
+        import urllib.request
+
+        req = urllib.request.Request(url, headers=headers or {}, method="GET")
         with urllib.request.urlopen(req, timeout=20) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
@@ -127,8 +136,9 @@ class _NonceStore:
     home: Path
 
     def _path(self) -> Path:
-        paths.ensure_layout()
-        return paths.home() / "run" / NONCE_FILENAME
+        run = self.home / "run"
+        run.mkdir(parents=True, exist_ok=True)
+        return run / NONCE_FILENAME
 
     def _read_last(self) -> int:
         p = self._path()
@@ -167,6 +177,8 @@ class KrakenVenue:
         now_ms: Callable[[], int] | None = None,
         min_interval_ms: int = 1000,
         home: Path | None = None,
+        *,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         sanitize.register_secret(api_key, secret_b64)
         self._api_key = api_key
@@ -177,19 +189,23 @@ class KrakenVenue:
         self._nonce = _NonceStore(home if home is not None else paths.home())
         self._last_call_ms: int = 0
         self._rate_failures: int = 0
+        self._sleep = sleep or time.sleep
 
     # ---- public protocol surface ----------------------------------------
 
     def rules(self, pair: str) -> PairRules:
-        # No public TradeVolume/AssetPairs call here; the engine wires this
-        # through paper before live. Defaults match a typical spot pair; tests
-        # override per pair.
-        del pair
+        if not pair:
+            raise ValueError("kraken rules require a pair")
+        payload = self._public("AssetPairs", {"pair": pair})
+        result = _result(payload)
+        row = result.get(pair)
+        if not isinstance(row, dict):
+            raise TypeError("kraken AssetPairs did not return the pair")
         return PairRules(
-            ordermin=Decimal("0.0001"),
-            costmin=Decimal(1),
-            lot_decimals=DEFAULT_LOT_DECIMALS,
-            price_decimals=DEFAULT_PRICE_DECIMALS,
+            ordermin=_required_decimal(row, "ordermin"),
+            costmin=_required_decimal(row, "costmin"),
+            lot_decimals=int(row["lot_decimals"]),
+            price_decimals=int(row["pair_decimals"]),
         )
 
     def snapshot(self) -> Truth:
@@ -207,9 +223,13 @@ class KrakenVenue:
     def place_entry_with_stop(self, coid: str, qty: Decimal, stop: Decimal, *, pair: str) -> OrderRef:
         if not pair:
             raise ValueError("kraken entry requires a pair")
+        existing = self._existing(coid)
+        if existing is not None:
+            return existing
         rules = self.rules(pair)
         lot = _quantize_qty(qty, rules.lot_decimals)
         price = _quantize_price(stop, rules.price_decimals)
+        _reject_size(lot, rules, self._last_price(pair))
         form = {
             "pair": pair,
             "ordertype": "market",
@@ -225,8 +245,12 @@ class KrakenVenue:
     def place_exit(self, coid: str, qty: Decimal, *, pair: str) -> OrderRef:
         if not pair:
             raise ValueError("kraken exit requires a pair")
+        existing = self._existing(coid)
+        if existing is not None:
+            return existing
         rules = self.rules(pair)
         lot = _quantize_qty(qty, rules.lot_decimals)
+        _reject_size(lot, rules, self._last_price(pair))
         form = {
             "pair": pair,
             "ordertype": "market",
@@ -313,154 +337,219 @@ class KrakenVenue:
             pair=pair,
             side=side,
             qty=qty,
-            filled_qty=qty,
+            filled_qty=Decimal(0),
             stop_price=stop,
         )
 
+    def _existing(self, coid: str) -> OrderRef | None:
+        userref = coid_userref(coid)
+        for endpoint, bucket in (("OpenOrders", "open"), ("ClosedOrders", "closed")):
+            payload = self._private(endpoint, {"userref": str(userref)})
+            found = _match_userref(payload, bucket, coid, userref)
+            if found is not None:
+                return found
+        return None
+
+    def _last_price(self, pair: str) -> Decimal:
+        payload = self._public("Ticker", {"pair": pair})
+        result = _result(payload)
+        row = result.get(pair)
+        if not isinstance(row, dict):
+            raise TypeError("kraken Ticker did not return the pair")
+        last = row.get("c")
+        if not isinstance(last, list) or not last:
+            raise RuntimeError("kraken Ticker last price missing")
+        return Decimal(str(last[0]))
+
+    def _public(self, endpoint: str, query: dict[str, str]) -> Any:
+        url = f"{BASE_URL}{PUBLIC_PATH}/{endpoint}?{urllib.parse.urlencode(query)}"
+        return self._transport.get(url, {})
+
     def _private(self, endpoint: str, form: dict[str, str]) -> Any:
+        for _attempt in range(3):
+            payload = self._send_once(endpoint, form)
+            err = payload.get("error") if isinstance(payload, dict) else None
+            if isinstance(err, list) and err:
+                if any(RATE_LIMIT_MARKER in str(item) for item in err):
+                    self._note_rate_limit()
+                    continue
+                if any("Permission" in str(item) or "Invalid key" in str(item) for item in err):
+                    raise _PermissionDenied("kraken permission denied")
+                raise RuntimeError(f"kraken {endpoint} rejected the request")
+            self._rate_failures = 0
+            return payload
+        self._journal_rate_limit()
+        raise RateLimitStop("kraken rate limit: stopped after 3 failures")
+
+    def _send_once(self, endpoint: str, form: dict[str, str]) -> Any:
         nonce_str = str(self._nonce.next(int(self._now_ms())))
         body = dict(form)
         body["nonce"] = nonce_str
         path = f"{PRIVATE_PATH}/{endpoint}"
         postdata = urllib.parse.urlencode(body)
         signature = sign(self._secret, path, nonce_str, postdata)
-        headers = {
-            "API-Key": self._api_key,
-            "API-Sign": signature,
-        }
-        url = f"{BASE_URL}{path}"
-
-        # Tests inject a transport that returns a synthetic body. The default
-        # HttpTransport is what a live call would go through, but the brief
-        # forbids making that call from tests.
-        payload = self._dispatch(url, body, headers)
-
-        if isinstance(payload, dict):
-            err = payload.get("error")
-            if isinstance(err, list) and err:
-                marker_hit = any(RATE_LIMIT_MARKER in str(e) for e in err)
-                if marker_hit:
-                    self._handle_rate_limit(endpoint, err)
-                # Some endpoints return a permission error string in this list.
-                if any("Permission" in str(e) or "Invalid key" in str(e) for e in err):
-                    raise _PermissionDenied(err)
-                raise RuntimeError(f"kraken {endpoint} error: {err}")
-        return payload
+        headers = {"API-Key": self._api_key, "API-Sign": signature}
+        return self._dispatch(f"{BASE_URL}{path}", body, headers)
 
     def _dispatch(self, url: str, body: dict[str, str], headers: dict[str, str]) -> Any:
-        # Rate budget: at most one private call per `min_interval_ms`. Tests
-        # inject zero so they can fire many; the live code path stalls here.
         now_ms = int(self._now_ms())
         delta = now_ms - self._last_call_ms
         if self._last_call_ms and delta < self._min_interval_ms:
-            wait_ms = self._min_interval_ms - delta
-            time.sleep(wait_ms / 1000)
+            self._sleep((self._min_interval_ms - delta) / 1000)
             now_ms = int(self._now_ms())
         self._last_call_ms = now_ms
         return self._transport.post(url, body, headers)
 
-    def _handle_rate_limit(self, endpoint: str, errors: list[Any]) -> None:
-        del endpoint
+    def _note_rate_limit(self) -> None:
         self._rate_failures += 1
-        if self._rate_failures < 3:
-            # 300s on the first retry, 600s on the second. Tests inject
-            # a no-op sleeper so they never wait for real.
-            wait_ms = 300_000 if self._rate_failures == 1 else 600_000
-            time.sleep(wait_ms / 1000)
-            return
-        # Third failure: stop retrying, write the journal.
-        sanitized = [sanitize.redact(e) for e in errors]
+        if self._rate_failures >= 3:
+            self._journal_rate_limit()
+            raise RateLimitStop("kraken rate limit: stopped after 3 failures")
+        self._sleep(300.0 if self._rate_failures == 1 else 600.0)
+
+    def _journal_rate_limit(self) -> None:
         journal.append(
             {
-                "ts": int(self._now_ms() // TIME_MS) * TIME_MS,
+                "ts": int(self._now_ms()) // 1_000_000,
                 "kind": "rate_limit",
                 "venue": "kraken",
                 "pack": "",
                 "bar_ts": 0,
                 "detail": "rate limit",
-                "errors": sanitized,
             }
         )
-        raise RateLimitStop("kraken rate limit: stopped after 3 failures")
 
 
 class _PermissionDenied(RuntimeError):
     """Internal marker: the venue rejected a private call as not authorized."""
 
 
-def _parse_balances(payload: Any) -> list[Balance]:
+def _result(payload: Any) -> dict:
     if not isinstance(payload, dict):
-        return []
+        return {}
+    result = payload.get("result")
+    return result if isinstance(result, dict) else {}
+
+
+def _required_decimal(row: dict, key: str) -> Decimal:
+    if key not in row:
+        raise RuntimeError("kraken pair rules missing a required field")
+    return Decimal(str(row[key]))
+
+
+def _optional_decimal(raw: Any) -> Decimal | None:
+    if raw in (None, ""):
+        return None
+    try:
+        return Decimal(str(raw))
+    except (ValueError, ArithmeticError, TypeError):
+        return None
+
+
+def _reject_size(qty: Decimal, rules: PairRules, price: Decimal | None) -> None:
+    if qty < rules.ordermin:
+        raise ValueError("qty below ordermin")
+    if price is not None and qty * price < rules.costmin:
+        raise ValueError("notional below costmin")
+
+
+def _parse_balances(payload: Any) -> list[Balance]:
     out: list[Balance] = []
-    for asset, raw in payload.items():
-        if not isinstance(raw, dict):
+    for asset, raw in _result(payload).items():
+        free = _optional_decimal(raw)
+        if free is None:
             continue
-        try:
-            free = Decimal(str(raw.get("free", "0")))
-        except Exception:  # noqa: BLE001, S112 - raw venue strings, skip malformed row
-            continue
-        out.append(Balance(asset=asset, free=free))
+        out.append(Balance(asset=str(asset), free=free))
     return out
 
 
 def _parse_open_orders(payload: Any) -> list[OpenOrder]:
-    if not isinstance(payload, dict):
+    book = _result(payload).get("open")
+    if not isinstance(book, dict):
         return []
     out: list[OpenOrder] = []
-    for order_id, raw in payload.items():
-        if not isinstance(raw, dict):
-            continue
-        descr = raw.get("descr") if isinstance(raw.get("descr"), dict) else {}
-        coid = str(raw.get("cl_ord_id") or raw.get("userref") or "")
-        try:
-            qty = Decimal(str(raw.get("vol", "0")))
-        except Exception:  # noqa: BLE001, S112
-            continue
-        ordertype = str(descr.get("ordertype", ""))
-        stop: Decimal | None = None
-        if ordertype == "stop-loss" or "stop" in ordertype:
-            try:
-                stop = Decimal(str(descr.get("price", "0")))
-            except Exception:  # noqa: BLE001
-                stop = None
-        out.append(
-            OpenOrder(
-                id=order_id,
-                coid=coid,
-                pair=str(descr.get("pair", "")),
-                side=str(descr.get("type", "")),
-                qty=qty,
-                stop_price=stop,
-            )
-        )
+    for order_id, raw in book.items():
+        order = _open_order(str(order_id), raw)
+        if order is not None:
+            out.append(order)
     return out
 
 
+def _open_order(order_id: str, raw: Any) -> OpenOrder | None:
+    if not isinstance(raw, dict):
+        return None
+    descr_raw = raw.get("descr")
+    descr = descr_raw if isinstance(descr_raw, dict) else {}
+    qty = _optional_decimal(raw.get("vol"))
+    if qty is None:
+        return None
+    ordertype = str(descr.get("ordertype", ""))
+    stop = _optional_decimal(raw.get("stopprice"))
+    if "stop" not in ordertype and (stop is None or stop <= 0):
+        stop = None
+    elif stop is None or stop <= 0:
+        stop = _optional_decimal(descr.get("price"))
+    return OpenOrder(
+        id=order_id,
+        coid=str(raw.get("cl_ord_id") or ""),
+        pair=str(descr.get("pair", "")),
+        side=str(descr.get("type", "")),
+        qty=qty,
+        stop_price=stop,
+    )
+
+
+def _match_userref(payload: Any, bucket: str, coid: str, userref: int) -> OrderRef | None:
+    book = _result(payload).get(bucket)
+    if not isinstance(book, dict):
+        return None
+    for order_id, raw in book.items():
+        if not isinstance(raw, dict):
+            continue
+        stored = str(raw.get("cl_ord_id") or "")
+        try:
+            stored_ref = int(raw.get("userref") or 0)
+        except (TypeError, ValueError):
+            stored_ref = 0
+        if stored != coid and stored_ref != userref:
+            continue
+        order = _open_order(str(order_id), raw)
+        if order is None:
+            continue
+        return OrderRef(
+            id=order.id,
+            coid=coid,
+            pair=order.pair,
+            side=order.side,
+            qty=order.qty,
+            filled_qty=order.qty,
+            stop_price=order.stop_price,
+        )
+    return None
+
+
 def _parse_recent_trades(payload: Any) -> list[Fill]:
-    if not isinstance(payload, dict):
-        return []
-    trades = payload.get("trades")
+    trades = _result(payload).get("trades")
     if not isinstance(trades, dict):
         return []
     out: list[Fill] = []
     for trade_id, raw in trades.items():
         if not isinstance(raw, dict):
             continue
-        try:
-            qty = Decimal(str(raw.get("vol", "0")))
-            price = Decimal(str(raw.get("price", "0")))
-            ts_ms = int(float(raw.get("time", 0)) * 1000)
-        except Exception:  # noqa: BLE001, S112
+        qty = _optional_decimal(raw.get("vol"))
+        price = _optional_decimal(raw.get("price"))
+        stamp = _optional_decimal(raw.get("time"))
+        if qty is None or price is None or stamp is None:
             continue
         out.append(
             Fill(
-                id=trade_id,
+                id=str(trade_id),
                 coid=str(raw.get("ordertxid", "")),
                 pair=str(raw.get("pair", "")),
                 side=str(raw.get("type", "")),
                 qty=qty,
                 price=price,
-                ts_ms=ts_ms,
+                ts_ms=int(stamp * 1000),
             )
         )
     return out

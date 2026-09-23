@@ -282,3 +282,105 @@ def test_build_jwt_es256_signs_and_verifies():
     header_b64, claims_b64 = token.split(".")[:2]
     pub = priv.public_key()
     pub.verify(sig, f"{header_b64}.{claims_b64}".encode("ascii"), ec.ECDSA(hashes.SHA256()))
+
+
+def test_coinbase_rules_reads_product_minimums():
+    secret, _priv = _make_ed25519_test_key()
+    transport = FakeCoinbaseTransport(
+        product={
+            "product_id": "SUI-USD",
+            "base_increment": "0.1",
+            "quote_increment": "0.0001",
+            "base_min_size": "5",
+            "quote_min_size": "0.5",
+            "price": "1",
+        }
+    )
+    venue = CoinbaseVenue("orgs/abc/keys/xyz", secret, transport)
+    rules = venue.rules("SUI-USD")
+    assert rules.ordermin == Decimal(5)
+    assert rules.costmin == Decimal("0.5")
+    assert rules.lot_decimals == 1
+    assert rules.price_decimals == 4
+
+
+def test_coinbase_snapshot_sees_open_stop_and_cancel_is_pair_scoped():
+    secret, _priv = _make_ed25519_test_key()
+    transport = FakeCoinbaseTransport(
+        orders={
+            "orders": [
+                {
+                    "order_id": "STOP-BTC",
+                    "product_id": "BTC-USD",
+                    "side": "SELL",
+                    "client_order_id": "c1_stop",
+                    "status": "OPEN",
+                    "order_configuration": {
+                        "stop_limit_stop_limit_gtc": {
+                            "base_size": "0.1",
+                            "limit_price": "29000",
+                            "stop_price": "30000",
+                            "stop_direction": "STOP_DIRECTION_STOP_DOWN",
+                        }
+                    },
+                },
+                {
+                    "order_id": "STOP-ETH",
+                    "product_id": "ETH-USD",
+                    "side": "SELL",
+                    "client_order_id": "c2_stop",
+                    "status": "OPEN",
+                    "order_configuration": {
+                        "stop_limit_stop_limit_gtc": {
+                            "base_size": "1",
+                            "limit_price": "2000",
+                            "stop_price": "2100",
+                            "stop_direction": "STOP_DIRECTION_STOP_DOWN",
+                        }
+                    },
+                },
+            ],
+            "has_next": False,
+        }
+    )
+    venue = CoinbaseVenue("orgs/abc/keys/xyz", secret, transport)
+    truth = venue.snapshot()
+    assert {o.id for o in truth.open_orders} == {"STOP-BTC", "STOP-ETH"}
+    venue.cancel_stops("BTC-USD")
+    cancels = [c for c in transport.calls if c.method == "POST" and c.url.endswith("/cancel")]
+    assert len(cancels) == 1
+    assert cancels[0].body["order_ids"] == ["STOP-BTC"]
+
+
+def test_coinbase_duplicate_coid_survives_a_new_instance():
+    secret, _priv = _make_ed25519_test_key()
+    transport = FakeCoinbaseTransport(
+        orders={
+            "orders": [
+                {
+                    "order_id": "ENT-OLD",
+                    "product_id": "BTC-USD",
+                    "side": "BUY",
+                    "client_order_id": "coid-OLD",
+                    "status": "FILLED",
+                    "filled_size": "0.1",
+                }
+            ],
+            "has_next": False,
+        }
+    )
+    venue = CoinbaseVenue("orgs/abc/keys/xyz", secret, transport, product_id="BTC-USD")
+    ref = venue.place_entry_with_stop("coid-OLD", Decimal("0.1"), Decimal(100), pair="BTC-USD")
+    assert ref.id == "ENT-OLD"
+    assert not any(c.method == "POST" for c in transport.calls)
+
+
+def test_coinbase_view_only_key_is_not_trade():
+    secret, _priv = _make_ed25519_test_key()
+    transport = FakeCoinbaseTransport(
+        key_permissions=[{"scope": "view", "can_view": True, "can_trade": False, "can_transfer": False}]
+    )
+    venue = CoinbaseVenue("orgs/abc/keys/xyz", secret, transport)
+    perms = venue.check_key()
+    assert perms.can_trade is False
+    assert perms.can_withdraw is False

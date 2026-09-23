@@ -208,25 +208,32 @@ class CoinbaseVenue:
         self._now_fn = now_fn or _default_now
         self._nonce_fn = nonce_fn or _default_nonce
         self._recent: dict[str, OrderRef] = {}
+        self._prices: dict[str, Decimal] = {}
 
     # ---- public protocol surface ----------------------------------------
 
     def rules(self, pair: str) -> PairRules:
-        del pair
+        if not pair:
+            raise ValueError("coinbase rules require a pair")
+        payload = self._public_get(f"/api/v3/brokerage/market/products/{pair}")
+        if not isinstance(payload, dict):
+            raise TypeError("coinbase product rules missing")
+        self._prices[pair] = Decimal(str(payload["price"]))
         return PairRules(
-            ordermin=Decimal("0.0001"),
-            costmin=Decimal(1),
-            lot_decimals=DEFAULT_LOT_DECIMALS,
-            price_decimals=DEFAULT_PRICE_DECIMALS,
+            ordermin=Decimal(str(payload["base_min_size"])),
+            costmin=Decimal(str(payload["quote_min_size"])),
+            lot_decimals=_decimals(str(payload["base_increment"])),
+            price_decimals=_decimals(str(payload["quote_increment"])),
         )
 
     def snapshot(self) -> Truth:
         accounts = self._get("/api/v3/brokerage/accounts")
-        orders = self._get("/api/v3/brokerage/orders/historical/fills?limit=50")
+        orders = self._get("/api/v3/brokerage/orders/historical/batch?order_status=OPEN")
+        fills = self._get("/api/v3/brokerage/orders/historical/fills?limit=50")
         return Truth(
             balances=_parse_coinbase_balances(accounts),
-            open_orders=[],
-            recent_fills=_parse_coinbase_fills(orders),
+            open_orders=_parse_coinbase_orders(orders),
+            recent_fills=_parse_coinbase_fills(fills),
         )
 
     def place_entry_with_stop(self, coid: str, qty: Decimal, stop: Decimal, *, pair: str) -> OrderRef:
@@ -235,9 +242,14 @@ class CoinbaseVenue:
         product = pair or self._product_id
         if not product:
             raise ValueError("coinbase entry requires a pair")
+        found = self._find_order(coid, product)
+        if found is not None:
+            self._recent[coid] = found
+            return found
         rules = self.rules(product)
         lot = _quantize_qty(qty, rules.lot_decimals)
         price_stop = _quantize_price(stop, rules.price_decimals)
+        _reject_size(lot, rules, self._prices.get(product))
         limit_price = _quantize_price(
             price_stop * (Decimal(1) - STOP_BUFFER),
             rules.price_decimals,
@@ -289,8 +301,9 @@ class CoinbaseVenue:
         product = pair or self._product_id
         if not product:
             raise ValueError("coinbase exit requires a pair")
-        rules = self.rules("")
+        rules = self.rules(product)
         lot = _quantize_qty(qty, rules.lot_decimals)
+        _reject_size(lot, rules, self._prices.get(product))
         resp = self._post(
             "/api/v3/brokerage/orders",
             {
@@ -315,10 +328,9 @@ class CoinbaseVenue:
         )
 
     def cancel_stops(self, pair: str) -> None:
-        del pair
         snapshot = self.snapshot()
         for order in snapshot.open_orders:
-            if order.stop_price is not None:
+            if order.pair == pair and order.stop_price is not None:
                 self._post(
                     "/api/v3/brokerage/orders/cancel",
                     {"order_ids": [order.id]},
@@ -329,7 +341,7 @@ class CoinbaseVenue:
         rules = self.rules(pair)
         price = _quantize_price(new_stop, rules.price_decimals)
         for order in snapshot.open_orders:
-            if order.stop_price is not None:
+            if order.pair == pair and order.stop_price is not None:
                 self._post(
                     "/api/v3/brokerage/orders/edit",
                     {"order_id": order.id, "stop_price": format(price, "f")},
@@ -353,14 +365,16 @@ class CoinbaseVenue:
         # Coinbase returns one object per scope (view, trade, transfer). If
         # transfer/can_transfer is true the key can withdraw assets; the
         # engine refuses that. trade-only is the only key we accept.
-        if isinstance(perms, list):
-            for entry in perms:
-                if isinstance(entry, dict) and entry.get("can_transfer") is True:
-                    raise WithdrawCapableError("coinbase key can transfer; trade-only keys refused")
-            return KeyPerms(can_trade=True, can_withdraw=False)
-        if isinstance(perms, dict) and perms.get("can_transfer") is True:
-            raise WithdrawCapableError("coinbase key can transfer; trade-only keys refused")
-        return KeyPerms(can_trade=True, can_withdraw=False)
+        entries = perms if isinstance(perms, list) else [perms]
+        can_trade = False
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("can_transfer") is True:
+                raise WithdrawCapableError("coinbase key can transfer; trade-only keys refused")
+            if entry.get("can_trade") is True:
+                can_trade = True
+        return KeyPerms(can_trade=can_trade, can_withdraw=False)
 
     # ---- internals ------------------------------------------------------
 
@@ -389,6 +403,115 @@ class CoinbaseVenue:
         url = f"{BASE_URL}{path}"
         return self._transport.post(url, body, headers)
 
+    def _public_get(self, path: str) -> Any:
+        return self._transport.get(f"{BASE_URL}{path}", {})
+
+    def _find_order(self, coid: str, pair: str) -> OrderRef | None:
+        cursor = ""
+        for _page in range(5):
+            path = f"/api/v3/brokerage/orders/historical/batch?product_ids={pair}"
+            if cursor:
+                path = f"{path}&cursor={cursor}"
+            payload = self._get(path)
+            if not isinstance(payload, dict):
+                return None
+            orders = payload.get("orders")
+            if isinstance(orders, list):
+                for raw in orders:
+                    if isinstance(raw, dict) and str(raw.get("client_order_id") or "") == coid:
+                        return _ref_from_coinbase(raw, coid)
+            if payload.get("has_next") is not True:
+                return None
+            cursor = str(payload.get("cursor") or "")
+            if not cursor:
+                return None
+        return None
+
+
+def _decimals(increment: str) -> int:
+    exp = Decimal(increment).as_tuple().exponent
+    if not isinstance(exp, int) or exp >= 0:
+        return 0
+    return -exp
+
+
+def _reject_size(qty: Decimal, rules: PairRules, price: Decimal | None) -> None:
+    if qty < rules.ordermin:
+        raise ValueError("qty below ordermin")
+    if price is not None and qty * price < rules.costmin:
+        raise ValueError("notional below costmin")
+
+
+def _parse_coinbase_orders(payload: Any) -> list[OpenOrder]:
+    orders = payload.get("orders") if isinstance(payload, dict) else None
+    if not isinstance(orders, list):
+        return []
+    out: list[OpenOrder] = []
+    for raw in orders:
+        if not isinstance(raw, dict) or str(raw.get("status", "")).upper() != "OPEN":
+            continue
+        order = _open_from_coinbase(raw)
+        if order is not None:
+            out.append(order)
+    return out
+
+
+def _open_from_coinbase(raw: dict) -> OpenOrder | None:
+    qty = _optional_decimal(_coinbase_size(raw))
+    if qty is None:
+        return None
+    return OpenOrder(
+        id=str(raw.get("order_id", "")),
+        coid=str(raw.get("client_order_id", "")),
+        pair=str(raw.get("product_id", "")),
+        side=str(raw.get("side", "")).lower(),
+        qty=qty,
+        stop_price=_coinbase_stop(raw),
+    )
+
+
+def _ref_from_coinbase(raw: dict, coid: str) -> OrderRef:
+    order = _open_from_coinbase(raw)
+    qty = order.qty if order is not None else Decimal(0)
+    filled = _optional_decimal(raw.get("filled_size")) or qty
+    return OrderRef(
+        id=str(raw.get("order_id", "")),
+        coid=coid,
+        pair=str(raw.get("product_id", "")),
+        side=str(raw.get("side", "")).lower(),
+        qty=qty,
+        filled_qty=filled,
+        stop_price=order.stop_price if order is not None else None,
+    )
+
+
+def _coinbase_size(raw: dict) -> Any:
+    config = raw.get("order_configuration")
+    if isinstance(config, dict):
+        for box in config.values():
+            if isinstance(box, dict) and "base_size" in box:
+                return box["base_size"]
+    return raw.get("filled_size")
+
+
+def _coinbase_stop(raw: dict) -> Decimal | None:
+    config = raw.get("order_configuration")
+    if not isinstance(config, dict):
+        return None
+    box = config.get("stop_limit_stop_limit_gtc")
+    if not isinstance(box, dict):
+        return None
+    return _optional_decimal(box.get("stop_price"))
+
+
+def _optional_decimal(raw: Any) -> Decimal | None:
+    if raw in (None, ""):
+        return None
+    try:
+        return Decimal(str(raw))
+    except (ValueError, ArithmeticError, TypeError):
+        return None
+
 
 def _entry_filled(resp: Any) -> bool:
     """True only when the create-order body says the IOC actually filled."""
@@ -413,8 +536,6 @@ def _order_ok(resp: Any) -> bool:
         success = resp.get("success")
         if success is True:
             return True
-        if "success" not in resp:
-            return True
     return False
 
 
@@ -438,9 +559,9 @@ def _parse_coinbase_balances(payload: Any) -> list[Balance]:
     for raw in accounts:
         if not isinstance(raw, dict):
             continue
-        try:
-            free = Decimal(str(raw.get("available_balance", {}).get("value", "0")))
-        except Exception:  # noqa: BLE001, S112
+        balance = raw.get("available_balance")
+        free = _optional_decimal(balance.get("value") if isinstance(balance, dict) else None)
+        if free is None:
             continue
         out.append(Balance(asset=str(raw.get("currency", "")), free=free))
     return out
@@ -454,12 +575,9 @@ def _parse_coinbase_fills(payload: Any) -> list[Fill]:
     for raw in fills:
         if not isinstance(raw, dict):
             continue
-        try:
-            qty = Decimal(str(raw.get("size", "0")))
-            price = Decimal(str(raw.get("price", "0")))
-            ts_str = raw.get("trade_time")
-            ts_ms = int(float(ts_str) * 1000) if ts_str else 0
-        except Exception:  # noqa: BLE001, S112
+        qty = _optional_decimal(raw.get("size"))
+        price = _optional_decimal(raw.get("price"))
+        if qty is None or price is None:
             continue
         out.append(
             Fill(
@@ -469,7 +587,14 @@ def _parse_coinbase_fills(payload: Any) -> list[Fill]:
                 side=str(raw.get("side", "")),
                 qty=qty,
                 price=price,
-                ts_ms=ts_ms,
+                ts_ms=_fill_ts(raw.get("trade_time")),
             )
         )
     return out
+
+
+def _fill_ts(raw: Any) -> int:
+    stamp = _optional_decimal(raw)
+    if stamp is None:
+        return 0
+    return int(stamp * 1000)

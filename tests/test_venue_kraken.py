@@ -71,7 +71,7 @@ def test_kraken_entry_attaches_conditional_stop(home):
     assert ref.id == "AAABBBCCC"
     assert ref.side == "buy"
     assert transport.calls, "transport must record the post"
-    call = transport.calls[0]
+    call = next(c for c in transport.calls if c.url.endswith("/AddOrder"))
     assert call.url.endswith("/0/private/AddOrder")
     assert call.form["pair"] == "XBTUSD"
     assert call.form["ordertype"] == "market"
@@ -120,8 +120,9 @@ def test_kraken_nonce_monotonic_across_restarts(home):
 
     second_call_nonce = int(second_transport.calls[0].form["nonce"])
     assert second_call_nonce > first_nonce_written
-    on_disk = int(nonce_path.read_text(encoding="utf-8").strip())
-    assert on_disk == second_call_nonce
+    nonces = [int(call.form["nonce"]) for call in second_transport.calls]
+    assert nonces == sorted(set(nonces))
+    assert int(nonce_path.read_text(encoding="utf-8").strip()) == nonces[-1]
 
 
 def test_kraken_withdraw_capable_key_refused(home):
@@ -153,6 +154,162 @@ def test_kraken_signature_header_uses_postdata_body(home):
     venue = _build_venue(transport, home, now_ms=clock, min_interval_ms=0)
     venue.place_entry_with_stop("coid-X", Decimal("0.10"), Decimal(100), pair="XBTUSD")
     venue.place_entry_with_stop("coid-Y", Decimal("0.10"), Decimal(100), pair="XBTUSD")
-    s1 = transport.calls[0].headers["API-Sign"]
-    s2 = transport.calls[1].headers["API-Sign"]
-    assert s1 != s2
+    adds = [c for c in transport.calls if c.url.endswith("/AddOrder")]
+    assert adds[0].headers["API-Sign"] != adds[1].headers["API-Sign"]
+
+
+def test_kraken_rules_reads_asset_pairs(home):
+    """SUIUSD minimums come from AssetPairs, not a hardcoded 0.0001."""
+    transport = FakeKrakenTransport(
+        asset_pairs={
+            "SUIUSD": {
+                "ordermin": "5",
+                "costmin": "0.5",
+                "lot_decimals": 5,
+                "pair_decimals": 4,
+            }
+        }
+    )
+    venue = _build_venue(transport, home)
+    rules = venue.rules("SUIUSD")
+    assert rules.ordermin == Decimal(5)
+    assert rules.costmin == Decimal("0.5")
+    assert rules.lot_decimals == 5
+    assert rules.price_decimals == 4
+
+
+def test_kraken_rejects_qty_below_ordermin(home):
+    transport = FakeKrakenTransport(
+        asset_pairs={
+            "SUIUSD": {
+                "ordermin": "5",
+                "costmin": "0.5",
+                "lot_decimals": 5,
+                "pair_decimals": 4,
+            }
+        },
+        ticker_last="1",
+    )
+    venue = _build_venue(transport, home)
+    with pytest.raises(ValueError, match="ordermin"):
+        venue.place_entry_with_stop("coid-small", Decimal(1), Decimal(1), pair="SUIUSD")
+    assert not any(c.url.endswith("/AddOrder") for c in transport.calls)
+
+
+def test_kraken_rejects_notional_below_costmin(home):
+    transport = FakeKrakenTransport(
+        asset_pairs={
+            "SUIUSD": {
+                "ordermin": "1",
+                "costmin": "10",
+                "lot_decimals": 5,
+                "pair_decimals": 4,
+            }
+        },
+        ticker_last="1",
+    )
+    venue = _build_venue(transport, home)
+    with pytest.raises(ValueError, match="costmin"):
+        venue.place_entry_with_stop("coid-dust", Decimal(2), Decimal(1), pair="SUIUSD")
+    assert not any(c.url.endswith("/AddOrder") for c in transport.calls)
+
+
+def test_kraken_snapshot_parses_documented_envelope(home):
+    open_book = {
+        "O-STOP": {
+            "userref": 1,
+            "cl_ord_id": "stop-1",
+            "vol": "1.25",
+            "stopprice": "30000.0",
+            "descr": {
+                "pair": "XBTUSD",
+                "type": "sell",
+                "ordertype": "stop-loss",
+                "price": "30000.0",
+            },
+        },
+        "O-LIMIT": {
+            "userref": 2,
+            "vol": "0.1",
+            "stopprice": "0.00000",
+            "descr": {
+                "pair": "XBTUSD",
+                "type": "buy",
+                "ordertype": "limit",
+                "price": "10.0",
+            },
+        },
+    }
+    transport = FakeKrakenTransport(
+        responses=[
+            {"error": [], "result": {"XXBT": "1.5", "ZUSD": "20"}},
+            {"error": [], "result": {"trades": {}}},
+        ],
+        open_orders={"error": [], "result": {"open": open_book}},
+    )
+    venue = _build_venue(transport, home)
+    truth = venue.snapshot()
+    assert {b.asset: b.free for b in truth.balances} == {
+        "XXBT": Decimal("1.5"),
+        "ZUSD": Decimal(20),
+    }
+    stops = [o for o in truth.open_orders if o.stop_price is not None]
+    assert len(stops) == 1
+    assert stops[0].id == "O-STOP"
+    assert stops[0].pair == "XBTUSD"
+    assert stops[0].stop_price == Decimal("30000.0")
+
+
+def test_kraken_duplicate_userref_is_not_resent(home):
+    userref = coid_userref("coid-again")
+    transport = FakeKrakenTransport(
+        open_orders={
+            "error": [],
+            "result": {
+                "open": {
+                    "O-EXISTING": {
+                        "userref": userref,
+                        "cl_ord_id": "coid-again",
+                        "vol": "1.25",
+                        "stopprice": "37500.0",
+                        "descr": {
+                            "pair": "XBTUSD",
+                            "type": "buy",
+                            "ordertype": "market",
+                            "price": "0",
+                        },
+                    }
+                }
+            },
+        }
+    )
+    venue = _build_venue(transport, home)
+    ref = venue.place_entry_with_stop("coid-again", Decimal("1.25"), Decimal(37500), pair="XBTUSD")
+    assert ref.id == "O-EXISTING"
+    assert not any(c.url.endswith("/AddOrder") for c in transport.calls)
+
+
+def test_kraken_rate_limit_retries_then_journals(home):
+    waits: list[float] = []
+    transport = FakeKrakenTransport(rate_limit_first_n=3)
+    venue = KrakenVenue(
+        api_key=KRAKEN_TEST_KEY,
+        secret_b64=KRAKEN_TEST_SECRET,
+        transport=transport,
+        now_ms=lambda: 1_700_000_000_000_000,
+        min_interval_ms=0,
+        home=home,
+        sleep=waits.append,
+    )
+    with pytest.raises(Exception, match="rate limit") as ei:
+        venue.place_entry_with_stop("coid-rl", Decimal("1.25"), Decimal(100), pair="XBTUSD")
+    assert KRAKEN_TEST_SECRET not in str(ei.value)
+    assert waits == [300.0, 600.0]
+    add_orders = [c for c in transport.calls if c.url.endswith("/AddOrder")]
+    assert len(add_orders) == 3
+    journal = home / "journal" / "2023-11.jsonl"
+    text = journal.read_text(encoding="utf-8")
+    assert '"kind":"rate_limit"' in text
+    assert '"detail":"rate limit"' in text
+    assert KRAKEN_TEST_SECRET not in text
+    assert KRAKEN_TEST_KEY not in text
