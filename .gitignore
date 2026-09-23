@@ -1,0 +1,17 @@
+__pycache__/
+.pytest_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+.ruff_cache/
+
+# Local agent state
+.hermes/
+.omo/
+
+# Secrets never belong here
+.env
+.env.*
+*.secret
+key.txt

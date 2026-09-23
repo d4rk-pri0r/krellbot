@@ -1,0 +1,40 @@
+[project]
+name = "krellbot"
+version = "0.1.0.dev0"
+description = "Open crypto automation. A local engine that runs strategy packs on your own exchange account."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "d4rk-pri0r" }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://krellbot.dev"
+Documentation = "https://krellbot.dev/docs/"
+Source = "https://github.com/d4rk-pri0r/krellbot"
+
+[project.scripts]
+krellbot = "krellbot.cli:entry"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/krellbot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint.per-file-ignores]
+# Legacy single-file client, moved unchanged in Phase 0. Phases 1-5 replace these
+# handlers; remove this block when cli.py no longer catches bare Exception.
+"src/krellbot/cli.py" = ["BLE001", "S112"]

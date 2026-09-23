@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Krellbot local app. History is local. Orders go only to the Kraken demo host."""
 
 import json
@@ -231,10 +230,7 @@ def cmd_search(query):
         print(DEAD)
         return 2
     q = query.lower()
-    hits = [
-        p for p in data["packs"]
-        if q in (p.get("public_label", "") + " " + p.get("rule", "")).lower()
-    ]
+    hits = [p for p in data["packs"] if q in (p.get("public_label", "") + " " + p.get("rule", "")).lower()]
     if not hits:
         print("No packs match.")
         return 1
@@ -246,6 +242,7 @@ def cmd_search(query):
 
 def download_catalog(key):
     import urllib.parse
+
     quoted = urllib.parse.quote(key, safe="")
     for base in api_bases():
         req = urllib.request.Request(
@@ -289,7 +286,8 @@ def cmd_setup(license_key):
 def cmd_setup_kraken(path):
     gate(allow_missing=False)
     lines = [
-        line.strip() for line in Path(path).read_text().splitlines()
+        line.strip()
+        for line in Path(path).read_text().splitlines()
         if line.strip() and not line.strip().startswith("#")
     ]
     if len(lines) < 2:
@@ -373,6 +371,10 @@ def main(argv):
     if cmd == "run" and len(argv) == 3:
         return cmd_run(argv[2])
     return usage()
+
+
+def entry():
+    raise SystemExit(main(sys.argv))
 
 
 if __name__ == "__main__":

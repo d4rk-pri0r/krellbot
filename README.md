@@ -13,3 +13,12 @@ Strategy packs are a separate download. The pack format is open, so you can writ
 Site: https://krellbot.dev
 Docs: https://krellbot.dev/docs/
 Security: [SECURITY.md](SECURITY.md)
+
+## Working on the engine
+
+```
+git clone https://github.com/d4rk-pri0r/krellbot
+cd krellbot
+uv run pytest -q
+uv run krellbot list
+```
