@@ -8,6 +8,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "d4rk-pri0r" }]
 dependencies = [
+    "cryptography==50.0.1",
     "jsonschema==4.26.0",
     "keyring==25.7.0",
 ]

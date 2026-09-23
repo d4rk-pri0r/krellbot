@@ -1,0 +1,5 @@
+[
+  {"scope": "view", "can_view": true, "can_transfer": false},
+  {"scope": "trade", "can_trade": true, "can_transfer": false},
+  {"scope": "transfer", "can_transfer": true}
+]

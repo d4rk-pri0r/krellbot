@@ -725,6 +725,10 @@ def main(argv):
         return cmd_run(argv[2])
     if cmd == "lint" and len(argv) == 3:
         return cmd_lint(argv[2])
+    if cmd == "keys" and len(argv) >= 4 and argv[2] == "check":
+        from krellbot.cli_keys import cmd_keys_check
+
+        return cmd_keys_check(argv[3:])
     if cmd == "keys" and len(argv) >= 4 and argv[2] == "add":
         return cmd_keys_add(argv[3:])
     if cmd == "backtest" and len(argv) >= 3:

@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "success_response": {
+    "order_id": "ENT-EXAMPLE-1",
+    "product_id": "BTC-USD",
+    "side": "BUY"
+  }
+}
