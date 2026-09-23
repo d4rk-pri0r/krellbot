@@ -80,18 +80,6 @@ def test_list_skips_invalid_pack_files(home):
     assert "Okay" in r.stdout
 
 
-def test_setup_kraken_requires_license_today(home, tmp_path):
-    # Legacy behavior that Phase 1 reverses (D4: storing a key must not need a license).
-    keyfile = tmp_path / "key.txt"
-    keyfile.write_text("FAKEKEY\nFAKESECRET\n", encoding="utf-8")
-    r = run_cli(home, "setup-kraken", str(keyfile))
-    assert r.returncode == 2
-    assert "krellbot setup <key>" in r.stderr
-    assert not (home / ".krellbot" / "state.json").exists() or "kraken_key" not in (
-        home / ".krellbot" / "state.json"
-    ).read_text(encoding="utf-8")
-
-
 def test_version_importable():
     import krellbot
 

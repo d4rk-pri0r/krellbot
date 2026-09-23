@@ -7,6 +7,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from krellbot import paths as kb_paths
+from krellbot import secrets as kb_secrets
+
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path.home() / ".krellbot" / "state.json"
 API_FILE = Path.home() / ".krellbot" / "api-base"
@@ -283,24 +286,83 @@ def cmd_setup(license_key):
     return 0
 
 
-def cmd_setup_kraken(path):
-    gate(allow_missing=False)
-    lines = [
-        line.strip()
-        for line in Path(path).read_text().splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    ]
+def cmd_keys_add(args):
+    """Store exchange API key+secret in the OS keyring. No network. No license."""
+    venue = args[0]
+    file_path = None
+    delete_file = False
+    i_understand = False
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a == "--file" and i + 1 < len(args):
+            file_path = args[i + 1]
+            i += 2
+            continue
+        if a == "--delete-file":
+            delete_file = True
+            i += 1
+            continue
+        if a == "--i-understand-plaintext":
+            i_understand = True
+            i += 1
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+    if venue not in kb_secrets.VENUES:
+        print(f"Unknown venue: {venue}", file=sys.stderr)
+        return 2
+    if file_path is None:
+        print("--file is required", file=sys.stderr)
+        return 2
+
+    kb_paths.ensure_layout()
+
+    if i_understand:
+        ack = kb_paths.ensure_layout() / "run" / "plaintext-ack"
+        existing = ack.read_text(encoding="utf-8") if ack.exists() else ""
+        if venue not in existing.split():
+            payload = (existing + venue + "\n").encode("utf-8")
+            kb_paths.atomic_write(ack, payload, mode=0o600)
+
+    lines: list[str] = []
+    raw = Path(file_path).read_text(encoding="utf-8")
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        lines.append(stripped)
     if len(lines) < 2:
         print("Key file needs two lines: API key, then secret.", file=sys.stderr)
         return 2
-    state = load_state()
-    state["kraken_key"] = lines[0]
-    state["kraken_secret"] = lines[1]
-    save_state(state)
-    print("Kraken key stored on this machine. It was not sent to krellbot.dev.")
-    print("The key must be allowed to trade and must not be allowed to withdraw.")
-    print("Coinbase is not ready.")
+
+    key, secret = lines[0], lines[1]
+    try:
+        backend_name = kb_secrets.store(venue, key, secret)
+    except RuntimeError as exc:
+        print(f"Could not store credentials in the OS keychain ({type(exc).__name__}).", file=sys.stderr)
+        return 1
+
+    if delete_file:
+        try:
+            length = Path(file_path).stat().st_size
+            fd = os.open(file_path, os.O_WRONLY | os.O_TRUNC)
+            try:
+                os.write(fd, b"\x00" * length)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            Path(file_path).unlink()
+        except FileNotFoundError:
+            pass
+
+    print(f"Stored in {backend_name}. Not sent to krellbot.dev.")
     return 0
+
+
+def cmd_setup_kraken(path):
+    """Alias for `keys add kraken --file <path>`. License-free path."""
+    return cmd_keys_add(["kraken", "--file", path])
 
 
 def demo_open():
@@ -348,7 +410,7 @@ def cmd_run(key):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | run <plan>",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan>",
         file=sys.stderr,
     )
     return 2
@@ -357,6 +419,11 @@ def usage():
 def main(argv):
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         return usage()
+    try:
+        kb_secrets.migrate_legacy()
+    except (ValueError, RuntimeError, FileNotFoundError) as exc:
+        print(f"Could not migrate legacy state: {type(exc).__name__}.", file=sys.stderr)
+        return 1
     cmd = argv[1]
     if cmd in {"list", "ls"} and len(argv) == 2:
         return cmd_list()
@@ -370,6 +437,8 @@ def main(argv):
         return cmd_setup_kraken(argv[2])
     if cmd == "run" and len(argv) == 3:
         return cmd_run(argv[2])
+    if cmd == "keys" and len(argv) >= 4 and argv[2] == "add":
+        return cmd_keys_add(argv[3:])
     return usage()
 
 
