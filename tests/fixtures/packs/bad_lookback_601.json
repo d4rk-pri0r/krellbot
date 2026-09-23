@@ -1,27 +1,26 @@
 {
   "schema_version": 1,
-  "id": "trend-follow",
+  "id": "lookback-601",
   "version": "1.0.0",
-  "label": "Trend follow",
-  "author": "krellbot",
-  "origin": "Written on this machine.",
+  "label": "Lookback 601",
+  "author": "krellbot tests",
   "timeframe": "1h",
   "indicators": {
-    "sma20": {
+    "huge": {
       "fn": "sma",
       "src": "close",
-      "len": 20
+      "len": 601
     }
   },
   "entry": [
     "close",
     ">",
-    "sma20"
+    "huge"
   ],
   "exit": [
     "close",
     "<",
-    "sma20"
+    "huge"
   ],
   "risk": {
     "max_account_pct": 25,

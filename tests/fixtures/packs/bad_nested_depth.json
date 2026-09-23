@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "deep-4",
+  "version": "1.0.0",
+  "label": "Deep 4",
+  "author": "krellbot tests",
+  "timeframe": "1h",
+  "indicators": {
+    "a": {
+      "fn": "sma",
+      "src": "close",
+      "len": 5
+    },
+    "b": {
+      "fn": "sma",
+      "src": "close",
+      "len": 5
+    }
+  },
+  "entry": {
+    "all": [
+      {
+        "all": [
+          {
+            "all": [
+              {
+                "all": [
+                  [
+                    "close",
+                    ">",
+                    "a"
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "exit": [
+    "close",
+    "<",
+    "b"
+  ],
+  "risk": {
+    "max_account_pct": 25,
+    "stop": {
+      "type": "pct",
+      "pct": 5
+    }
+  },
+  "markets": [
+    {
+      "venue": "kraken",
+      "pair": "SUIUSD"
+    }
+  ]
+}

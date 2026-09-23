@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "id": "trend-follow",
+  "id": "bad-short",
   "version": "1.0.0",
-  "label": "Trend follow",
-  "author": "krellbot",
-  "origin": "Written on this machine.",
+  "label": "Short side",
+  "author": "krellbot tests",
   "timeframe": "1h",
+  "short": true,
   "indicators": {
     "sma20": {
       "fn": "sma",

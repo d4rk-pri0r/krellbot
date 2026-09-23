@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://krellbot.dev/schemas/pack-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "label",
+    "author",
+    "timeframe",
+    "indicators",
+    "entry",
+    "exit",
+    "risk",
+    "markets"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "label": { "type": "string", "maxLength": 120, "minLength": 1 },
+    "author": { "type": "string", "maxLength": 120, "minLength": 1 },
+    "origin": { "type": "string", "maxLength": 120 },
+    "timeframe": { "enum": ["1h", "4h", "1d"] },
+    "indicators": { "$ref": "#/$defs/indicators" },
+    "entry": { "$ref": "#/$defs/condition" },
+    "exit": { "$ref": "#/$defs/condition" },
+    "risk": { "$ref": "#/$defs/risk" },
+    "markets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/market" }
+    }
+  },
+  "$defs": {
+    "indicators": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "$ref": "#/$defs/indicator" }
+      }
+    },
+    "indicator": {
+      "oneOf": [
+        { "$ref": "#/$defs/ind_src_len" },
+        { "$ref": "#/$defs/ind_atr" },
+        { "$ref": "#/$defs/ind_highest" },
+        { "$ref": "#/$defs/ind_lowest" },
+        { "$ref": "#/$defs/ind_power_mean" },
+        { "$ref": "#/$defs/ind_roofing" }
+      ]
+    },
+    "ind_src_len": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fn", "src", "len"],
+      "properties": {
+        "fn": {
+          "enum": ["sma", "ema", "wma", "vwma", "stdev", "roc", "efficiency_ratio", "hma"]
+        },
+        "src": { "enum": ["open", "high", "low", "close", "volume"] },
+        "len": { "type": "integer", "minimum": 2, "maximum": 600 }
+      }
+    },
+    "ind_atr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fn", "len"],
+      "properties": {
+        "fn": { "const": "atr" },
+        "len": { "type": "integer", "minimum": 2, "maximum": 600 }
+      }
+    },
+    "ind_highest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fn", "len"],
+      "properties": {
+        "fn": { "const": "highest" },
+        "src": { "enum": ["open", "high", "low", "close", "volume"] },
+        "len": { "type": "integer", "minimum": 2, "maximum": 600 }
+      }
+    },
+    "ind_lowest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fn", "len"],
+      "properties": {
+        "fn": { "const": "lowest" },
+        "src": { "enum": ["open", "high", "low", "close", "volume"] },
+        "len": { "type": "integer", "minimum": 2, "maximum": 600 }
+      }
+    },
+    "ind_power_mean": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fn", "src", "len", "p"],
+      "properties": {
+        "fn": { "const": "power_mean" },
+        "src": { "enum": ["open", "high", "low", "close", "volume"] },
+        "len": { "type": "integer", "minimum": 2, "maximum": 600 },
+        "p": { "type": "number" }
+      }
+    },
+    "ind_roofing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fn", "src", "len"],
+      "properties": {
+        "fn": { "const": "roofing_filter" },
+        "src": { "enum": ["open", "high", "low", "close", "volume"] },
+        "len": { "type": "integer", "minimum": 2, "maximum": 600 },
+        "smooth": { "type": "integer", "minimum": 2, "maximum": 600 }
+      }
+    },
+    "condition": {
+      "oneOf": [
+        { "$ref": "#/$defs/all_any" },
+        { "$ref": "#/$defs/leaf" }
+      ]
+    },
+    "all_any": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "all": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/condition" }
+        },
+        "any": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/condition" }
+        }
+      }
+    },
+    "leaf": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        { "$ref": "#/$defs/operand" },
+        { "enum": [">", "<", ">=", "<=", "crosses_above", "crosses_below"] },
+        { "$ref": "#/$defs/operand" }
+      ],
+      "items": false
+    },
+    "operand": {
+      "oneOf": [
+        { "enum": ["open", "high", "low", "close", "volume"] },
+        { "type": "number" },
+        {
+          "type": "string",
+          "minLength": 1,
+          "not": { "enum": ["open", "high", "low", "close", "volume"] }
+        }
+      ]
+    },
+    "market": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["venue", "pair"],
+      "properties": {
+        "venue": { "enum": ["kraken", "coinbase"] },
+        "pair": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]{2,16}(-[A-Z0-9]{2,16})?$"
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_account_pct", "stop"],
+      "properties": {
+        "max_account_pct": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "stop": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "pct"],
+              "properties": {
+                "type": { "const": "pct" },
+                "pct": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "len", "mult"],
+              "properties": {
+                "type": { "const": "atr" },
+                "len": { "type": "integer", "minimum": 2, "maximum": 600 },
+                "mult": { "type": "number", "exclusiveMinimum": 0, "maximum": 20 }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,9 @@ import urllib.request
 from pathlib import Path
 
 from krellbot import paths as kb_paths
+from krellbot import sanitize as kb_sanitize
 from krellbot import secrets as kb_secrets
+from krellbot.pack import lint as kb_pack_lint
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path.home() / ".krellbot" / "state.json"
@@ -39,7 +41,7 @@ def load_catalog():
 
 
 def packs_dir():
-    return Path.home() / ".krellbot" / "packs"
+    return kb_paths.home() / "packs"
 
 
 def load_user_packs():
@@ -178,17 +180,55 @@ def print_pack(pack, paid):
         print(f"  {pack['origin']}")
 
 
+def _print_dsl_pack(pack):
+    """Print a DSL pack summary for `list`/`show`. Label is sanitize.text'd."""
+    label = kb_sanitize.text(pack.get("label") or pack.get("id") or "pack")
+    print(label)
+    timeframe = pack.get("timeframe") or "?"
+    author = kb_sanitize.text(pack.get("author") or "")
+    markets = pack.get("markets") or []
+    pairs = ", ".join(m.get("pair", "?") for m in markets)
+    venues = ", ".join(sorted({m.get("venue", "?") for m in markets}))
+    print(f"  v{pack.get('version', '?')}  {timeframe}  {venues}  {pairs}")
+    if author:
+        print(f"  by {author}")
+    if pack.get("origin"):
+        print(f"  {kb_sanitize.text(pack['origin'])}")
+
+
+def _print_legacy_pack(pack, paid):
+    """Print a legacy pack: same shape as before, plus the runnable marker."""
+    print_pack(pack, paid)
+    print("  legacy: not runnable")
+
+
+def _list_user_packs():
+    """Yield (kind, data) for every pack file under ~/.krellbot/packs.
+
+    `kind` is 'dsl' (new Pack DSL schema_version=1) or 'legacy' (id+public_label
+    with no schema_version). Skips files that fail IO or JSON parsing, and
+    skips non-dict roots.
+    """
+    from krellbot.pack import discover
+
+    return [(kind, data) for _path, kind, data in discover(kb_paths.home())]
+
+
 def cmd_list():
-    user = load_user_packs()
+    user = _list_user_packs()
     data = load_catalog()
     if not user and not data:
         return no_packs()
     if user:
         print("Your packs. The format is open.")
         print()
-        for pack in user:
-            print_pack(pack, True)
-            print()
+        for kind, pack in user:
+            if kind == "dsl":
+                _print_dsl_pack(pack)
+                print()
+            else:
+                _print_legacy_pack(pack, True)
+                print()
     if not data:
         return 0
     _, result = gate(allow_missing=True)
@@ -204,11 +244,26 @@ def cmd_list():
 
 
 def cmd_show(key):
-    user = find_pack(load_user_packs(), key)
-    if user:
-        print_pack(user, True)
-        print()
-        print("No order sent. This pack was written on this machine.")
+    from krellbot.pack import discover
+
+    found = None
+    found_kind = None
+    for path, kind, data in discover(kb_paths.home()):
+        ident = data.get("id") or data.get("label") or ""
+        if ident.lower() == key.lower():
+            found = (path, data)
+            found_kind = kind
+            break
+    if found:
+        _path, pack = found
+        if found_kind == "dsl":
+            _print_dsl_pack(pack)
+            print()
+            print("No order sent. A pack file is not an order.")
+        else:
+            _print_legacy_pack(pack, True)
+            print()
+            print("No order sent. This pack was written on this machine.")
         return 0
     data = load_catalog()
     if not data:
@@ -221,6 +276,32 @@ def cmd_show(key):
     print_pack(pack, result.get("status") in {"paid", "grace"})
     print()
     print("No order sent. This is the plan history.")
+    return 0
+
+
+def cmd_lint(path_arg):
+    """Validate a pack JSON file. Exit 0 on a valid DSL pack or a legacy pack."""
+    path = Path(path_arg)
+    if not path.exists():
+        print(f"No such file: {path_arg}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"invalid JSON: {exc}", file=sys.stderr)
+        return 1
+    if not isinstance(data, dict):
+        print("pack must be a JSON object", file=sys.stderr)
+        return 1
+    if kb_pack_lint.is_legacy(data):
+        print("legacy: not runnable")
+        return 0
+    errors = kb_pack_lint.check(data)
+    if errors:
+        for err in errors:
+            print(f"{err['field']}: {err['message']}", file=sys.stderr)
+        return 1
+    print("ok")
     return 0
 
 
@@ -410,7 +491,7 @@ def cmd_run(key):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan>",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json>",
         file=sys.stderr,
     )
     return 2
@@ -437,6 +518,8 @@ def main(argv):
         return cmd_setup_kraken(argv[2])
     if cmd == "run" and len(argv) == 3:
         return cmd_run(argv[2])
+    if cmd == "lint" and len(argv) == 3:
+        return cmd_lint(argv[2])
     if cmd == "keys" and len(argv) >= 4 and argv[2] == "add":
         return cmd_keys_add(argv[3:])
     return usage()

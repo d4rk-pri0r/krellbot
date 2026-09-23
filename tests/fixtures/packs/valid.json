@@ -3,9 +3,9 @@
   "id": "trend-follow",
   "version": "1.0.0",
   "label": "Trend follow",
-  "author": "krellbot",
-  "origin": "Written on this machine.",
+  "author": "krellbot tests",
   "timeframe": "1h",
+  "origin": "Test fixture.",
   "indicators": {
     "sma20": {
       "fn": "sma",

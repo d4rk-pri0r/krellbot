@@ -1,27 +1,27 @@
 {
   "schema_version": 1,
-  "id": "trend-follow",
+  "id": "power-mean-zero",
   "version": "1.0.0",
-  "label": "Trend follow",
-  "author": "krellbot",
-  "origin": "Written on this machine.",
+  "label": "Power mean zero",
+  "author": "krellbot tests",
   "timeframe": "1h",
   "indicators": {
-    "sma20": {
-      "fn": "sma",
+    "pm": {
+      "fn": "power_mean",
       "src": "close",
-      "len": 20
+      "len": 5,
+      "p": 0
     }
   },
   "entry": [
     "close",
     ">",
-    "sma20"
+    "pm"
   ],
   "exit": [
     "close",
     "<",
-    "sma20"
+    "pm"
   ],
   "risk": {
     "max_account_pct": 25,

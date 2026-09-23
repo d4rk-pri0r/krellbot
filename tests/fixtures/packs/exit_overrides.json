@@ -1,27 +1,29 @@
 {
   "schema_version": 1,
-  "id": "trend-follow",
+  "id": "exit-overrides",
   "version": "1.0.0",
-  "label": "Trend follow",
-  "author": "krellbot",
-  "origin": "Written on this machine.",
+  "label": "Exit overrides",
+  "author": "krellbot tests",
   "timeframe": "1h",
   "indicators": {
-    "sma20": {
-      "fn": "sma",
-      "src": "close",
-      "len": 20
+    "lowest10": {
+      "fn": "lowest",
+      "len": 5
+    },
+    "highest10": {
+      "fn": "highest",
+      "len": 5
     }
   },
   "entry": [
     "close",
     ">",
-    "sma20"
+    "lowest10"
   ],
   "exit": [
-    "close",
+    "lowest10",
     "<",
-    "sma20"
+    "highest10"
   ],
   "risk": {
     "max_account_pct": 25,

@@ -1,10 +1,9 @@
 {
   "schema_version": 1,
-  "id": "trend-follow",
+  "id": "atr-stop",
   "version": "1.0.0",
-  "label": "Trend follow",
-  "author": "krellbot",
-  "origin": "Written on this machine.",
+  "label": "ATR stop",
+  "author": "krellbot tests",
   "timeframe": "1h",
   "indicators": {
     "sma20": {
@@ -26,8 +25,9 @@
   "risk": {
     "max_account_pct": 25,
     "stop": {
-      "type": "pct",
-      "pct": 5
+      "type": "atr",
+      "len": 14,
+      "mult": 2
     }
   },
   "markets": [

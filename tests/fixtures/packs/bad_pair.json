@@ -1,10 +1,9 @@
 {
   "schema_version": 1,
-  "id": "trend-follow",
+  "id": "bad-pair",
   "version": "1.0.0",
-  "label": "Trend follow",
-  "author": "krellbot",
-  "origin": "Written on this machine.",
+  "label": "Bad pair",
+  "author": "krellbot tests",
   "timeframe": "1h",
   "indicators": {
     "sma20": {
@@ -33,7 +32,7 @@
   "markets": [
     {
       "venue": "kraken",
-      "pair": "SUIUSD"
+      "pair": "suiusd"
     }
   ]
 }
