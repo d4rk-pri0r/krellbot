@@ -489,9 +489,214 @@ def cmd_run(key):
     return 0
 
 
+def cmd_data_import_kraken_ohlcvt(args):
+    """Import a Kraken OHLCVT zip into the local CSV cache."""
+    if len(args) < 1:
+        print("usage: krellbot data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF", file=sys.stderr)
+        return 2
+    zip_path = Path(args[0])
+    if not zip_path.exists():
+        print(f"No such file: {zip_path}", file=sys.stderr)
+        return 1
+    pair = None
+    tf = None
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a == "--pair" and i + 1 < len(args):
+            pair = args[i + 1]
+            i += 2
+            continue
+        if a == "--timeframe" and i + 1 < len(args):
+            tf = args[i + 1]
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+    if pair is None or tf is None:
+        print("--pair and --timeframe are required", file=sys.stderr)
+        return 2
+    from krellbot.data import TF_MS, import_kraken_ohlcvt_zip, write_cache
+
+    if tf not in TF_MS:
+        print(f"Unsupported timeframe: {tf}", file=sys.stderr)
+        return 1
+    candles = import_kraken_ohlcvt_zip(zip_path, pair=pair, tf=tf)
+    kb_paths.ensure_layout()
+    csv_path, digest = write_cache(kb_paths.home(), "kraken", pair, tf, candles)
+    print(f"wrote {csv_path}  rows={len(candles)}  sha256={digest[:12]}...")
+    return 0
+
+
+def cmd_backtest(args):
+    """Run a backtest over a CSV (or fetched) candle series and print a receipt."""
+    from krellbot.backtest import Backtester
+    from krellbot.backtest.receipt import build_receipt
+    from krellbot.data import TF_MS, GapError, check_gaps
+
+    pack_path = Path(args[0])
+    if not pack_path.exists():
+        print(f"No such file: {pack_path}", file=sys.stderr)
+        return 1
+    try:
+        pack = json.loads(pack_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"invalid JSON: {exc}", file=sys.stderr)
+        return 1
+    if not isinstance(pack, dict) or "schema_version" not in pack:
+        print("pack must be a DSL pack JSON", file=sys.stderr)
+        return 1
+
+    venue = None
+    data_csv = None
+    slippage_mult = None
+    fee_bps = None
+    slippage_bps = None
+    from_date = None
+    to_date = None
+    allow_gaps = False
+    as_json = False
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a == "--venue" and i + 1 < len(args):
+            venue = args[i + 1]
+            i += 2
+            continue
+        if a == "--data" and i + 1 < len(args):
+            data_csv = args[i + 1]
+            i += 2
+            continue
+        if a == "--slippage-mult" and i + 1 < len(args):
+            try:
+                slippage_mult = float(args[i + 1])
+            except ValueError:
+                print(f"invalid --slippage-mult: {args[i + 1]}", file=sys.stderr)
+                return 1
+            i += 2
+            continue
+        if a == "--fee-bps" and i + 1 < len(args):
+            try:
+                fee_bps = int(args[i + 1])
+            except ValueError:
+                print(f"invalid --fee-bps: {args[i + 1]}", file=sys.stderr)
+                return 1
+            i += 2
+            continue
+        if a == "--slippage-bps" and i + 1 < len(args):
+            try:
+                slippage_bps = int(args[i + 1])
+            except ValueError:
+                print(f"invalid --slippage-bps: {args[i + 1]}", file=sys.stderr)
+                return 1
+            i += 2
+            continue
+        if a == "--from" and i + 1 < len(args):
+            from_date = args[i + 1]
+            i += 2
+            continue
+        if a == "--to" and i + 1 < len(args):
+            to_date = args[i + 1]
+            i += 2
+            continue
+        if a == "--allow-gaps":
+            allow_gaps = True
+            i += 1
+            continue
+        if a == "--json":
+            as_json = True
+            i += 1
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+
+    if venue not in {"kraken", "coinbase"}:
+        print("--venue must be kraken or coinbase", file=sys.stderr)
+        return 1
+    tf = pack.get("timeframe")
+    if tf not in TF_MS:
+        print(f"pack timeframe unsupported: {tf}", file=sys.stderr)
+        return 1
+    match = next((m for m in pack.get("markets") or [] if m.get("venue") == venue), None)
+    pair = match.get("pair") if match else None
+    if pair is None:
+        print("pack has no markets", file=sys.stderr)
+        return 1
+
+    if fee_bps is None:
+        fee_bps = 40 if venue == "kraken" else 120
+    if slippage_bps is None:
+        slippage_bps = 5
+    if slippage_mult is None:
+        slippage_mult = 1.0
+
+    if data_csv is None:
+        print("--data <csv> is required", file=sys.stderr)
+        return 1
+    csv_path = Path(data_csv)
+    if not csv_path.exists():
+        print(f"No such file: {csv_path}", file=sys.stderr)
+        return 1
+
+    from krellbot.data.cache import _parse_csv, sha256_bytes
+
+    body = csv_path.read_bytes()
+    candles = _parse_csv(body)
+    digest = sha256_bytes(body)
+
+    try:
+        check_gaps(candles, tf, pair=pair, allow_gaps=allow_gaps)
+    except GapError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    if from_date or to_date:
+        from datetime import datetime, timezone
+
+        if from_date:
+            fts = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+            candles = [c for c in candles if c.ts_ms >= fts]
+        if to_date:
+            tts = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+            candles = [c for c in candles if c.ts_ms <= tts]
+
+    if not candles:
+        print(f"No candles after filtering (pair={pair})", file=sys.stderr)
+        return 1
+
+    bt = Backtester(pack, candles, fee_bps=fee_bps, slippage_bps=slippage_bps, slippage_mult=slippage_mult)
+    records = bt.run()
+    receipt = build_receipt(
+        pack=pack,
+        records=records,
+        trade_count=bt.trade_count,
+        data_manifest_sha256=digest,
+        venue=venue,
+        pair=pair,
+        tf=tf,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+        slippage_mult=slippage_mult,
+    )
+    if as_json:
+        print(json.dumps(receipt))
+    else:
+        m = receipt["metrics"]
+        print(f"{receipt['from']} -> {receipt['to']}  {receipt['venue']} {receipt['pair']} {receipt['tf']}")
+        print(f"  total_return_pct: {m['total_return_pct']:.4f}")
+        print(f"  cagr_pct:         {m['cagr_pct']}")
+        print(f"  max_drawdown_pct: {m['max_drawdown_pct']:.4f}")
+        print(f"  return_to_dd:     {m['return_to_dd']}")
+        print(f"  trade_count:      {m['trade_count']}")
+        print(f"  exposure_pct:     {m['exposure_pct']:.4f}")
+        bh = m["buy_and_hold"]
+        print(f"  buy_and_hold total_return_pct: {bh['total_return_pct']:.4f}")
+    return 0
+
+
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json>",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF",
         file=sys.stderr,
     )
     return 2
@@ -522,6 +727,10 @@ def main(argv):
         return cmd_lint(argv[2])
     if cmd == "keys" and len(argv) >= 4 and argv[2] == "add":
         return cmd_keys_add(argv[3:])
+    if cmd == "backtest" and len(argv) >= 3:
+        return cmd_backtest(argv[2:])
+    if cmd == "data" and len(argv) >= 4 and argv[2] == "import" and argv[3] == "kraken-ohlcvt":
+        return cmd_data_import_kraken_ohlcvt(argv[4:])
     return usage()
 
 

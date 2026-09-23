@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "sma-cross",
+  "version": "1.0.0",
+  "label": "SMA cross",
+  "author": "krellbot tests",
+  "timeframe": "1h",
+  "origin": "Backtest fixture.",
+  "indicators": {
+    "sma2": {
+      "fn": "sma",
+      "src": "close",
+      "len": 2
+    }
+  },
+  "entry": [
+    "close",
+    "crosses_above",
+    "sma2"
+  ],
+  "exit": [
+    "close",
+    "crosses_below",
+    "sma2"
+  ],
+  "risk": {
+    "max_account_pct": 100,
+    "stop": {
+      "type": "pct",
+      "pct": 50
+    }
+  },
+  "markets": [
+    {
+      "venue": "kraken",
+      "pair": "SUIUSD"
+    }
+  ]
+}
