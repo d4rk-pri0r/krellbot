@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>krellbot dashboard</title>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <header>
+    <h1>krellbot dashboard</h1>
+    <p class="muted">loopback only. no call leaves this machine.</p>
+  </header>
+
+  <main>
+    <section id="armed-section">
+      <h2>Armed packs</h2>
+      <div id="armed-empty" class="muted" hidden>No armed packs.</div>
+      <table id="armed-table" hidden>
+        <thead>
+          <tr>
+            <th>Pack</th>
+            <th>Version</th>
+            <th>Pending</th>
+            <th>Venue</th>
+            <th>Pair</th>
+            <th>Mode</th>
+            <th>Cap</th>
+            <th>Stop</th>
+            <th>Owned</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="armed-body"></tbody>
+      </table>
+    </section>
+
+    <section id="paper-section">
+      <h2>Paper state</h2>
+      <div id="paper-empty" class="muted" hidden>No paper venue state on disk.</div>
+      <div id="paper-blocks"></div>
+    </section>
+
+    <section id="journal-section">
+      <h2>Journal tail</h2>
+      <div id="journal-empty" class="muted" hidden>No journal records.</div>
+      <pre id="journal-pre" hidden></pre>
+    </section>
+
+    <section id="license-section">
+      <h2>License cache</h2>
+      <pre id="license-pre">missing</pre>
+    </section>
+
+    <section id="receipts-section">
+      <h2>Receipts</h2>
+      <div id="receipts-empty" class="muted" hidden>No receipts.</div>
+      <ul id="receipts-list"></ul>
+    </section>
+
+    <section id="actions-section">
+      <h2>Actions</h2>
+
+      <form id="form-arm" action="arm" method="POST" class="card">
+        <h3>Arm paper pack</h3>
+        <p class="muted">Live arm from the page is refused. Use the CLI.</p>
+        <label>Pack file path
+          <input type="text" name="pack_path" placeholder="$KRELLBOT_HOME/packs/your-pack.json" required>
+        </label>
+        <label>Venue
+          <select name="venue">
+            <option value="kraken">kraken</option>
+            <option value="coinbase">coinbase</option>
+          </select>
+        </label>
+        <label>Paper balance (USD)
+          <input type="number" name="paper_balance" step="any" min="1" value="1000" required>
+        </label>
+        <input type="hidden" name="mode" value="paper">
+        <input type="hidden" name="csrf">
+        <button type="submit">Arm paper</button>
+      </form>
+
+      <form id="form-disarm" action="disarm" method="POST" class="card">
+        <h3>Disarm one pack</h3>
+        <label>Venue <input type="text" name="venue" required></label>
+        <label>Pair <input type="text" name="pair" required></label>
+        <input type="hidden" name="csrf">
+        <button type="submit">Disarm</button>
+      </form>
+
+      <form id="form-stop-all" action="stop_all" method="POST" class="card danger">
+        <h3>Stop all</h3>
+        <p class="muted">Disarm every armed pack and flatten paper positions.</p>
+        <input type="hidden" name="csrf">
+        <button type="submit">Stop all</button>
+      </form>
+
+      <form id="form-adopt" action="adopt" method="POST" class="card">
+        <h3>Adopt pending version</h3>
+        <p class="muted">Refused while the pack still owns quantity.</p>
+        <label>Pack id <input type="text" name="pack_id" required></label>
+        <input type="hidden" name="csrf">
+        <button type="submit">Adopt</button>
+      </form>
+    </section>
+
+    <section id="flash-section">
+      <h2>Result</h2>
+      <pre id="flash-pre"></pre>
+    </section>
+  </main>
+
+  <footer>
+    <p class="muted">Static assets are local. No CDN, no Google font, no external script.</p>
+  </footer>
+
+  <script>window.__KB_VIEW__ = __VIEW_JSON__;</script>
+  <script src="static/app.js"></script>
+</body>
+</html>
