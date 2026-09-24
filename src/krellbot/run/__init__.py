@@ -276,12 +276,15 @@ def tick(
     journal_sink: Callable[[dict], Path] | None = None,
     clock: Callable[[], float] | None = None,
     home: Path | None = None,
+    transport: Any | None = None,
 ) -> int:
     """Run one tick. Returns 0 on success, 1 on refusal.
 
     `venue_obj` is duck-typed: it must satisfy the Venue protocol surface.
     `journal_sink` defaults to `journal.append` (which requires the required
-    keys). Tests inject a recording sink.
+    keys). Tests inject a recording sink. `transport` defaults to a no-op
+    so the CLI does not need to wire one; tests inject a spy to assert that
+    telemetry calls happen (or do not happen) when expected.
     """
     home = Path(home) if home is not None else kb_paths.home()
     journal = journal_sink if journal_sink is not None else kb_journal.append
@@ -305,6 +308,8 @@ def tick(
         snap = venue_obj.snapshot()
         snap_balances = _snapshot_balances(snap)
         snap_orders = _snapshot_orders(snap)
+        fills_before = {f.coid for f in (snap.recent_fills or [])}
+        fill_context: dict[str, dict] = {}
         warned = False
 
         for armed in armed_for_venue:
@@ -349,6 +354,14 @@ def tick(
                 try:
                     venue_obj.place_stop(stop_coid, owned, repair, pair=armed.pair)
                     ensure_stop_entry = stop_coid
+                    fill_context[stop_coid] = {
+                        "pack_id": armed.pack_id,
+                        "pack_version": armed.pack_version,
+                        "bar_ts": bar_ts,
+                        "modeled_px": str(repair),
+                        "fee_bps": _fee_bps_for_venue(venue),
+                        "kind": "stop",
+                    }
                 except (AttributeError, RuntimeError, ValueError):
                     ensure_stop_failed = True
                     print("ensure_stop failed: stop", flush=True)
@@ -362,6 +375,14 @@ def tick(
                     )
                     try:
                         venue_obj.place_exit(exit_coid, owned, pair=armed.pair)
+                        fill_context[exit_coid] = {
+                            "pack_id": armed.pack_id,
+                            "pack_version": armed.pack_version,
+                            "bar_ts": bar_ts,
+                            "modeled_px": str(Decimal(str(latest.close))),
+                            "fee_bps": _fee_bps_for_venue(venue),
+                            "kind": "exit",
+                        }
                     except (AttributeError, RuntimeError, ValueError):
                         pass
                     owned = Decimal(0)
@@ -409,6 +430,14 @@ def tick(
                                 )
                                 entry_qty = qty
                                 owned = qty
+                                fill_context[entry_coid_for_signal] = {
+                                    "pack_id": armed.pack_id,
+                                    "pack_version": armed.pack_version,
+                                    "bar_ts": bar_ts,
+                                    "modeled_px": str(close_price),
+                                    "fee_bps": _fee_bps_for_venue(venue),
+                                    "kind": "entry",
+                                }
                             except (RuntimeError, ValueError):
                                 entry_qty = Decimal(0)
             elif target.reason == "exit" and owned > Decimal(0):
@@ -424,10 +453,19 @@ def tick(
                     bar_ts=bar_ts,
                     intent="exit",
                 )
+                close_price = Decimal(str(candles[-1].close))
                 try:
                     venue_obj.place_exit(exit_coid, owned, pair=armed.pair)
                     exit_qty = owned
                     owned = Decimal(0)
+                    fill_context[exit_coid] = {
+                        "pack_id": armed.pack_id,
+                        "pack_version": armed.pack_version,
+                        "bar_ts": bar_ts,
+                        "modeled_px": str(close_price),
+                        "fee_bps": _fee_bps_for_venue(venue),
+                        "kind": "exit",
+                    }
                 except (RuntimeError, ValueError):
                     pass
             elif target.long and owned > Decimal(0) and target.stop_price is not None:
@@ -470,6 +508,15 @@ def tick(
                 armed.pack_version = armed.pending_version
                 armed.pending_version = None
         kb_config.save_config(home, config)
+
+        _emit_telemetry(
+            venue=venue,
+            venue_obj=venue_obj,
+            fills_before=fills_before,
+            fill_context=fill_context,
+            home=home,
+            transport=transport,
+        )
 
         return 0
     finally:
@@ -564,6 +611,63 @@ def _stop_price(pack: dict, last_close: Decimal) -> Decimal:
     if last_close > 0:
         return last_close / Decimal(2)
     return Decimal(0)
+
+
+def _fee_bps_for_venue(venue: str) -> int:
+    """Taker fee in bps per venue. Matches PaperVenue constants."""
+    if venue == "kraken":
+        return 40
+    if venue == "coinbase":
+        return 120
+    return 0
+
+
+def _emit_telemetry(
+    *,
+    venue: str,
+    venue_obj: Any,
+    fills_before: set[str],
+    fill_context: dict[str, dict],
+    home: Path,
+    transport: Any | None,
+) -> None:
+    """Send telemetry for paper fills that happened during this tick.
+
+    A disabled install returns from `maybe_send` without touching the
+    transport, so the test for the off-by-default path needs no extra
+    guard. `transport` defaults to a no-op; tests inject a spy. When the
+    caller passes None (the CLI default), no POST is made.
+    """
+    from krellbot import telemetry as kb_telemetry
+
+    transport = kb_telemetry.resolve_transport(home, transport)
+    if transport is None:
+        return
+    snap_after = venue_obj.snapshot()
+    fills_after = list(getattr(snap_after, "recent_fills", []) or [])
+    for fill in fills_after:
+        coid = getattr(fill, "coid", None)
+        if not coid or coid in fills_before:
+            continue
+        ctx = fill_context.get(coid)
+        if ctx is None:
+            continue
+        qty = Decimal(str(getattr(fill, "qty", "0")))
+        price = Decimal(str(getattr(fill, "price", "0")))
+        notional = qty * price
+        payload = {
+            "pack_id": str(ctx["pack_id"]),
+            "pack_version": str(ctx["pack_version"]),
+            "venue": venue,
+            "pair": str(getattr(fill, "pair", "")),
+            "side": str(getattr(fill, "side", "")),
+            "bar_ts": int(ctx["bar_ts"]),
+            "modeled_px": str(ctx["modeled_px"]),
+            "fill_px": str(price),
+            "qty_bucket": kb_telemetry.qty_bucket(notional),
+            "fee_bps": int(ctx["fee_bps"]),
+        }
+        kb_telemetry.maybe_send(home, payload, transport=transport)
 
 
 def _now_seconds() -> float:

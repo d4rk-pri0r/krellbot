@@ -199,6 +199,19 @@ def _print_dsl_pack(pack):
         print(f"  {kb_sanitize.text(pack['origin'])}")
 
 
+COMMUNITY_BANNER = "Community pack. Unverified. No guarantee."
+
+
+def _is_community_path(path) -> bool:
+    """True if `path` lives under `<kb_home>/packs/community/`."""
+    from krellbot import catalog as kb_catalog
+
+    try:
+        return kb_catalog.is_community(Path(path), kb_paths.home())
+    except (OSError, ValueError):
+        return False
+
+
 def _print_legacy_pack(pack, paid):
     """Print a legacy pack: same shape as before, plus the runnable marker."""
     print_pack(pack, paid)
@@ -206,7 +219,8 @@ def _print_legacy_pack(pack, paid):
 
 
 def _list_user_packs():
-    """Yield (kind, data) for every pack file under ~/.krellbot/packs.
+    """Yield (path, kind, data) for every pack file under ~/.krellbot/packs
+    and ~/.krellbot/packs/community/.
 
     `kind` is 'dsl' (new Pack DSL schema_version=1) or 'legacy' (id+public_label
     with no schema_version). Skips files that fail IO or JSON parsing, and
@@ -214,7 +228,7 @@ def _list_user_packs():
     """
     from krellbot.pack import discover
 
-    return [(kind, data) for _path, kind, data in discover(kb_paths.home())]
+    return list(discover(kb_paths.home()))
 
 
 def cmd_list():
@@ -225,9 +239,11 @@ def cmd_list():
     if user:
         print("Your packs. The format is open.")
         print()
-        for kind, pack in user:
+        for path, kind, pack in user:
             if kind == "dsl":
                 _print_dsl_pack(pack)
+                if _is_community_path(path):
+                    print(f"  {COMMUNITY_BANNER}")
                 print()
             else:
                 _print_legacy_pack(pack, True)
@@ -251,16 +267,20 @@ def cmd_show(key):
 
     found = None
     found_kind = None
+    found_path = None
     for path, kind, data in discover(kb_paths.home()):
         ident = data.get("id") or data.get("label") or ""
         if ident.lower() == key.lower():
             found = (path, data)
             found_kind = kind
+            found_path = path
             break
     if found:
         _path, pack = found
         if found_kind == "dsl":
             _print_dsl_pack(pack)
+            if _is_community_path(found_path):
+                print(f"  {COMMUNITY_BANNER}")
             print()
             print("No order sent. A pack file is not an order.")
         else:
@@ -699,7 +719,7 @@ def cmd_backtest(args):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall [--dry-run] [--root PATH] | doctor [--json] | ui [--port N]",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall [--dry-run] [--root PATH] | doctor [--json] | ui [--port N] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
         file=sys.stderr,
     )
     return 2
@@ -757,7 +777,7 @@ def cmd_arm(args):
                 return None
             return _probe(venue_arg, api_key, api_secret)
 
-    return arm_pack(
+    rc = arm_pack(
         Path(pack_arg),
         venue=venue,
         mode=mode,
@@ -765,6 +785,9 @@ def cmd_arm(args):
         confirm_fn=None,
         key_check=key_check,
     )
+    if rc == 0 and _is_community_path(Path(pack_arg).resolve()):
+        print(COMMUNITY_BANNER, flush=True)
+    return rc
 
 
 def cmd_disarm(args):
@@ -1122,6 +1145,102 @@ def cmd_ui(args):
     return 0
 
 
+# ---- community -------------------------------------------------------------
+
+
+class _UrllibGetTransport:
+    """Default transport for `community install`. Tests inject their own."""
+
+    def __init__(self, *, timeout: float = 20.0) -> None:
+        self._timeout = timeout
+
+    def get(self, url: str) -> bytes:
+        req = urllib.request.Request(url, headers={"user-agent": "krellbot/0.1"})
+        with urllib.request.urlopen(req, timeout=self._timeout) as res:
+            return res.read()
+
+
+def cmd_community(args):
+    """`krellbot community list | install <id>`."""
+    from krellbot import community as kb_community
+
+    if not args:
+        print("usage: krellbot community list | install <id>", file=sys.stderr)
+        return 2
+    sub = args[0]
+    if sub == "list":
+        return _cmd_community_list(kb_community.list_installed(kb_paths.home()))
+    if sub == "install" and len(args) == 2:
+        return _cmd_community_install(args[1], transport=_UrllibGetTransport())
+    print("usage: krellbot community list | install <id>", file=sys.stderr)
+    return 2
+
+
+def _cmd_community_list(items):
+    if not items:
+        print("No community packs installed.")
+        print("Install with: krellbot community install <id>")
+        return 0
+    print("Community packs installed.")
+    print()
+    for _path, data in items:
+        _print_dsl_pack(data)
+        print(f"  {COMMUNITY_BANNER}")
+        print()
+    return 0
+
+
+def _cmd_community_install(pack_id, *, transport):
+    from krellbot import community as kb_community
+
+    try:
+        path = kb_community.install(pack_id, transport=transport, home=kb_paths.home())
+    except kb_community.ForeignUrlError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except kb_community.IndexError_ as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except (OSError, urllib.error.URLError) as exc:
+        print(f"install failed: {type(exc).__name__}", file=sys.stderr)
+        return 1
+    print(f"installed {pack_id} to {path}")
+    return 0
+
+
+# ---- telemetry -------------------------------------------------------------
+
+
+def cmd_telemetry(args):
+    """`krellbot telemetry enable | disable | show`.
+
+    `enable` prints one example payload and only persists the install when
+    the operator types `y` on stdin. `disable` flips it off. `show` prints
+    the stored record without sending.
+    """
+    from krellbot import telemetry as kb_telemetry
+
+    if not args:
+        print("usage: krellbot telemetry enable | disable | show", file=sys.stderr)
+        return 2
+    sub = args[0]
+    if sub == "enable":
+        if kb_telemetry.enable(kb_paths.home()):
+            print("telemetry enabled")
+            return 0
+        print("telemetry not enabled")
+        return 0
+    if sub == "disable":
+        kb_telemetry.disable(kb_paths.home())
+        print("telemetry disabled")
+        return 0
+    if sub == "show":
+        kb_telemetry.show(kb_paths.home())
+        return 0
+    print("usage: krellbot telemetry enable | disable | show", file=sys.stderr)
+    return 2
+
+
 def main(argv):
     if len(argv) >= 2 and argv[1] == "--version":
         from krellbot import __version__
@@ -1178,6 +1297,10 @@ def main(argv):
         return cmd_doctor(argv[2:])
     if cmd == "ui" and len(argv) >= 2:
         return cmd_ui(argv[2:])
+    if cmd == "community" and len(argv) >= 2:
+        return cmd_community(argv[2:])
+    if cmd == "telemetry" and len(argv) >= 2:
+        return cmd_telemetry(argv[2:])
     return usage()
 
 

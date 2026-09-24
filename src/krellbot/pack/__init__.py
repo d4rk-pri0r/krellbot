@@ -50,28 +50,32 @@ def load_pack(path: Path) -> tuple[str, dict]:
 
 
 def discover(home) -> list[tuple[Path, str, dict]]:
-    """Return all (path, kind, data) tuples found in <home>/packs/.
+    """Return all (path, kind, data) tuples found in <home>/packs/ and
+    <home>/packs/community/.
 
     `home` is the krellbot root (`paths.home()`), not the OS user home.
     Skips files that fail IO or JSON parsing. Skips non-dict roots. Does not
-    validate DSL packs here - that is the lint command's job.
+    validate DSL packs here - that is the lint command's job. Whether a pack
+    is "community" is determined by its parent directory; callers check
+    `krellbot.catalog.is_community(path, home)` to decide what to print.
     """
-    packs_dir = Path(home) / "packs"
-    if not packs_dir.is_dir():
-        return []
     out: list[tuple[Path, str, dict]] = []
-    for path in sorted(packs_dir.glob("*.json")):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+    for sub in ("packs", "packs/community"):
+        packs_dir = Path(home) / sub
+        if not packs_dir.is_dir():
             continue
-        if not isinstance(data, dict):
-            continue
-        if is_legacy(data):
-            kind = "legacy"
-        elif "schema_version" in data:
-            kind = "dsl"
-        else:
-            continue
-        out.append((path, kind, data))
+        for path in sorted(packs_dir.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            if is_legacy(data):
+                kind = "legacy"
+            elif "schema_version" in data:
+                kind = "dsl"
+            else:
+                continue
+            out.append((path, kind, data))
     return out
