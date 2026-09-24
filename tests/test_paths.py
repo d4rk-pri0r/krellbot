@@ -61,17 +61,21 @@ def test_atomic_write_opens_in_binary_mode(tmp_path, monkeypatch):
     """
     from krellbot import paths as kb_paths
 
-    fake_binary = 0x40000000
-    monkeypatch.setattr(os, "O_BINARY", fake_binary, raising=False)
+    # Real flag on Windows; a fake bit elsewhere (stripped before the real open).
+    binary = getattr(os, "O_BINARY", 0)
+    strip = 0
+    if not binary:
+        binary = strip = 0x40000000
+        monkeypatch.setattr(os, "O_BINARY", binary, raising=False)
     real_open = os.open
     seen: list[int] = []
 
     def spy_open(path, flags, *args, **kwargs):
         seen.append(flags)
-        return real_open(path, flags & ~fake_binary, *args, **kwargs)
+        return real_open(path, flags & ~strip, *args, **kwargs)
 
     monkeypatch.setattr(os, "open", spy_open)
     target = tmp_path / "out.csv"
     kb_paths.atomic_write(target, b"a\nb\n")
-    assert seen and seen[0] & fake_binary, "atomic_write must request O_BINARY"
+    assert seen and seen[0] & binary, "atomic_write must request O_BINARY"
     assert target.read_bytes() == b"a\nb\n"
