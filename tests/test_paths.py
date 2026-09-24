@@ -50,3 +50,28 @@ def test_home_dir_mode_0700(tmp_path, monkeypatch):
             assert child.stat().st_mode & 0o777 == 0o700, child
     # The home dir itself too.
     assert home.stat().st_mode & 0o777 == 0o700
+
+
+def test_atomic_write_opens_in_binary_mode(tmp_path, monkeypatch):
+    """On Windows os.open defaults to text mode and os.write turns \\n into \\r\\n.
+
+    atomic_write must pass os.O_BINARY when the platform defines it, so the bytes
+    on disk are exactly the bytes the caller hashed (cache manifests, key files).
+    Simulated here: pretend O_BINARY exists and check it reaches os.open.
+    """
+    from krellbot import paths as kb_paths
+
+    fake_binary = 0x40000000
+    monkeypatch.setattr(os, "O_BINARY", fake_binary, raising=False)
+    real_open = os.open
+    seen: list[int] = []
+
+    def spy_open(path, flags, *args, **kwargs):
+        seen.append(flags)
+        return real_open(path, flags & ~fake_binary, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", spy_open)
+    target = tmp_path / "out.csv"
+    kb_paths.atomic_write(target, b"a\nb\n")
+    assert seen and seen[0] & fake_binary, "atomic_write must request O_BINARY"
+    assert target.read_bytes() == b"a\nb\n"

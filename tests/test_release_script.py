@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "release.py"
 
 # 64 lowercase hex chars. Anchored, not partial.
@@ -301,6 +303,7 @@ def test_secret_passed_but_minisign_missing_exits_2(tmp_path):
         assert not minisig.exists()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="fake minisign is a POSIX shell script")
 def test_signature_is_written_to_the_requested_path(tmp_path):
     """minisign must be given absolute -m and -x, even when those dirs differ."""
     import os

@@ -48,7 +48,10 @@ def atomic_write(path: Path, data: bytes, mode: int = 0o600) -> None:
     .tmp sibling is removed before the exception propagates.
     """
     tmp = path.with_name(path.name + ".tmp")
-    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # O_BINARY: without it, Windows opens in text mode and os.write turns every
+    # "\n" into "\r\n", so the bytes on disk stop matching what the caller hashed.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
+    fd = os.open(str(tmp), flags, 0o600)
     try:
         os.write(fd, data)
         os.fsync(fd)
