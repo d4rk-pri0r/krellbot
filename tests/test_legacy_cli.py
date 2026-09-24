@@ -84,3 +84,9 @@ def test_version_importable():
     import krellbot
 
     assert krellbot.__version__ == "0.1.0.dev0"
+
+
+def test_version_flag_prints_package_version(home):
+    result = run_cli(home, "--version")
+    assert result.returncode == 0
+    assert result.stdout.strip() == "0.1.0.dev0"

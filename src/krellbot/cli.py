@@ -1123,6 +1123,11 @@ def cmd_ui(args):
 
 
 def main(argv):
+    if len(argv) >= 2 and argv[1] == "--version":
+        from krellbot import __version__
+
+        print(__version__)
+        return 0
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         return usage()
     try:
