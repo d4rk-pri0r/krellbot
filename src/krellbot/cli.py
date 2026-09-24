@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from krellbot import paths as kb_paths
 from krellbot import sanitize as kb_sanitize
@@ -697,7 +698,7 @@ def cmd_backtest(args):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall [--dry-run] [--root PATH] | doctor [--json]",
         file=sys.stderr,
     )
     return 2
@@ -955,6 +956,120 @@ def cmd_journal(args):
     return journal_tail(n=tail)
 
 
+def _resolve_executable() -> str:
+    """Resolve the absolute path of the running krellbot executable."""
+    import os
+
+    candidate = os.path.abspath(sys.argv[0] or sys.executable)
+    return candidate
+
+
+def cmd_service(args):
+    """`krellbot service install|uninstall [--dry-run] [--root PATH]`."""
+    from krellbot import service as kb_service
+
+    if not args:
+        print(
+            "usage: krellbot service install|uninstall [--dry-run] [--root PATH]",
+            file=sys.stderr,
+        )
+        return 2
+    sub = args[0]
+    dry_run = False
+    write_root: Path | None = None
+    executable: str | None = None
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a == "--dry-run":
+            dry_run = True
+            i += 1
+            continue
+        if a == "--root" and i + 1 < len(args):
+            write_root = Path(args[i + 1])
+            i += 2
+            continue
+        if a == "--executable" and i + 1 < len(args):
+            executable = args[i + 1]
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+
+    if sub == "install":
+        if write_root is None and not dry_run:
+            write_root = Path.home()
+        return kb_service.install(
+            executable=executable or _resolve_executable(),
+            home=kb_paths.home(),
+            write_root=write_root,
+            dry_run=dry_run,
+        )
+    if sub == "uninstall":
+        if write_root is None:
+            write_root = Path.home()
+        return kb_service.uninstall(home=kb_paths.home(), write_root=write_root)
+    print(f"unknown service subcommand: {sub}", file=sys.stderr)
+    return 2
+
+
+def _kraken_time_source() -> int:
+    """Read the public Kraken Time endpoint. Returns unixtime seconds.
+
+    Raises on any network or parse failure. Caller (`cmd_doctor`) catches the
+    error so doctor reports `clock not checked` instead of crashing.
+    """
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(
+        "https://api.kraken.com/0/public/Time",
+        headers={"user-agent": "krellbot/0.1"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as res:
+        body = res.read().decode("utf-8")
+    payload = json.loads(body)
+    return int(payload["result"]["unixtime"])
+
+
+def cmd_doctor(args):
+    """`krellbot doctor [--json]`.
+
+    Wires the Kraken public Time endpoint as the clock source. Tests bypass
+    this command and call `krellbot.doctor.run` directly with a fake source
+    to prove zero socket calls.
+    """
+    from krellbot import doctor as kb_doctor
+
+    as_json = False
+    skip_clock = False
+    for a in args:
+        if a == "--json":
+            as_json = True
+            continue
+        if a == "--skip-clock":
+            skip_clock = True
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+
+    if skip_clock:
+        time_source: Any = None
+    else:
+
+        def time_source() -> int:
+            return _kraken_time_source()
+
+    rc, body = kb_doctor.run(
+        home=kb_paths.home(),
+        write_root=Path.home(),
+        time_source=time_source,
+        as_json=as_json,
+    )
+    print(body)
+    return rc
+
+
 def main(argv):
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         return usage()
@@ -1000,6 +1115,10 @@ def main(argv):
         return cmd_status(argv[2:])
     if cmd == "journal" and len(argv) >= 2:
         return cmd_journal(argv[2:])
+    if cmd == "service" and len(argv) >= 3:
+        return cmd_service(argv[2:])
+    if cmd == "doctor" and len(argv) >= 2:
+        return cmd_doctor(argv[2:])
     return usage()
 
 
