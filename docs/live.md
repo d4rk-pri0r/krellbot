@@ -30,7 +30,7 @@ saved `live_first_armed=true` flag.
 
 ## Tick
 
-A live-armed pack does not tick in this build. `krellbot tick` exits 1 and sends nothing, including when `KRELLBOT_ENABLE_LIVE=1`. Paper ticks are the only ticks that fill. The live order path stays in the venue adapters until a later phase wires it.
+A live tick sends only when `KRELLBOT_ENABLE_LIVE=1` and the stored key is trade-only. The typed `LIVE` confirmation is required when you arm, not again on every tick. A withdraw-capable key is refused with that reason. It is not reported as the env gate. Paper ticks stay on this machine. If a Kraken key is stored, a paper entry also posts `validate=true` and does not record that post as a fill.
 
 ## Live-only invariants
 

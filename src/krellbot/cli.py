@@ -849,11 +849,263 @@ def cmd_stop(args):
     return set_stop(venue=venue, pair=pair, new_stop=price)
 
 
-def cmd_tick(args):
-    """`krellbot tick --venue V [--offline-candles CSV]`."""
-    from krellbot.config import find_armed, load_config
+class CandleFetchError(RuntimeError):
+    """Raised when the public candle fetch fails during tick.
+
+    The wrapped type name is the only thing the engine surfaces to the
+    operator — the original exception's message and any secret it carried
+    are not echoed. Tests inject `fetch` so the real HTTP functions are
+    never called.
+    """
+
+    def __init__(self, exc_type_name: str):
+        self.exc_type_name = exc_type_name
+        super().__init__(exc_type_name)
+
+
+LIVE_TICK_REFUSED = "live is off; set KRELLBOT_ENABLE_LIVE=1 to tick a live pack"
+
+
+def _default_fetch(venue: str, pair: str, tf: str, transport):
+    """Dispatch to the real public fetch for `venue`.
+
+    `transport` is unused for Kraken (its public fetch talks urllib directly);
+    it is required for Coinbase. Tests inject their own `fetch` so the real
+    HTTP functions are never called from the test suite.
+    """
+    from krellbot.data import fetch_coinbase_candles, fetch_kraken_ohlc
+
+    if venue == "kraken":
+        return fetch_kraken_ohlc(pair, tf)
+    if venue == "coinbase":
+        return fetch_coinbase_candles(pair, tf, transport)
+    raise ValueError(f"unsupported venue for fetch: {venue!r}")
+
+
+def _default_transport():
+    """Build the default Kraken-shaped transport (urllib-backed).
+
+    Tests inject a fake. CoinbaseVenue expects the same shape (post/get).
+    """
+    from krellbot.venues.kraken import HttpTransport
+
+    return HttpTransport()
+
+
+def _as_validate_transport(transport):
+    """Adapt a venue transport to the paper venue's validate POST protocol."""
+
+    class _Adapter:
+        def post(self, url: str, body: dict, headers: dict) -> dict:
+            return transport.post(url, body, headers)
+
+    return _Adapter()
+
+
+def _key_present(venue: str) -> bool:
+    """True when a key is stored. The key itself is never returned to the caller."""
+    try:
+        kb_secrets.get(venue)
+    except (FileNotFoundError, ValueError, PermissionError):
+        return False
+    return True
+
+
+def _build_fetch_reader(armed_list, *, fetch, transport):
+    """Load the pack whose pair is being read, then call `fetch`.
+
+    The exception type name is the only text that escapes. The exception
+    message is not surfaced.
+    """
+    by_pair = {a.pair: a for a in armed_list}
+
+    def reader(venue: str, pair: str):
+        armed = by_pair.get(pair)
+        if armed is None:
+            raise CandleFetchError("ValueError")
+        try:
+            raw = Path(armed.pack_path).read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise CandleFetchError(type(exc).__name__) from exc
+        if not isinstance(data, dict) or not data.get("timeframe"):
+            raise CandleFetchError("ValueError")
+        try:
+            candles = fetch(venue, pair, data["timeframe"], transport)
+            return list(candles or [])
+        except CandleFetchError:
+            raise
+        except Exception as exc:
+            raise CandleFetchError(type(exc).__name__) from exc
+
+    return reader
+
+
+def _build_offline_reader(offline: Path):
+    """Build the `--offline-candles` reader from a CSV file."""
+
+    def reader(venue: str, pair: str):
+        from krellbot.pack.model import Candle
+
+        text = offline.read_text(encoding="utf-8")
+        candles = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("ts_ms,"):
+                continue
+            parts = line.split(",")
+            if len(parts) != 6:
+                continue
+            try:
+                candles.append(
+                    Candle(
+                        ts_ms=int(parts[0]),
+                        open=Decimal(parts[1]),
+                        high=Decimal(parts[2]),
+                        low=Decimal(parts[3]),
+                        close=Decimal(parts[4]),
+                        volume=Decimal(parts[5]),
+                    )
+                )
+            except (ValueError, ArithmeticError):
+                continue
+        return candles
+
+    return reader
+
+
+def venue_for_tick(home, armed_list, *, transport, fetch):
+    """Build the venue object and reader for one venue's armed packs.
+
+    Returns `(venue_obj, reader)` or a refusal string. A string is printed
+    and the tick exits 1. The string never contains a key.
+    """
+    from krellbot.venues.base import WithdrawCapableError
+    from krellbot.venues.coinbase import CoinbaseVenue
+    from krellbot.venues.kraken import KrakenVenue
+    from krellbot.venues.paper import PaperVenue, default_rules
+
+    armed = armed_list[0]
+    reader = _build_fetch_reader(armed_list, fetch=fetch, transport=transport)
+    modes = {a.mode for a in armed_list}
+    if modes != {"paper"} and modes != {"live"}:
+        return "mixed paper and live arms; tick refused"
+
+    if armed.mode == "paper":
+        has_key = _key_present(armed.venue)
+        venue_obj = PaperVenue(
+            armed.venue,
+            rules_provider=lambda _p: default_rules(_p),
+            candle_reader=reader,
+            home=home,
+            starting_cash=armed.starting_cash,
+            has_stored_key=has_key,
+            validate_transport=_as_validate_transport(transport) if has_key and armed.venue == "kraken" else None,
+        )
+        return (venue_obj, reader)
+
+    if os.environ.get("KRELLBOT_ENABLE_LIVE") != "1":
+        return LIVE_TICK_REFUSED
+    try:
+        api_key, api_secret = kb_secrets.get(armed.venue)
+    except (FileNotFoundError, ValueError, PermissionError):
+        return f"no key stored for {armed.venue}"
+    try:
+        if armed.venue == "kraken":
+            venue_obj = KrakenVenue(api_key, api_secret, transport)
+        elif armed.venue == "coinbase":
+            venue_obj = CoinbaseVenue(api_key, api_secret, transport, product_id=armed.pair)
+        else:
+            return f"unsupported live venue {armed.venue}"
+        perms = venue_obj.check_key()
+    except WithdrawCapableError:
+        return f"{armed.venue}: key can withdraw; trade-only keys refused"
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError):
+        return "live tick refused"
+    if perms is None or not perms.can_trade or perms.can_withdraw:
+        return f"{armed.venue}: key can withdraw; trade-only keys refused"
+    return (venue_obj, reader)
+
+
+def _build_live_venue_for_offline(armed, *, transport):
+    """Same venue contract as `venue_for_tick` for live, but no fetch reader.
+
+    Used when `--offline-candles` is set on a live arm. Does not call fetch;
+    the caller wires the offline reader into `run.tick`.
+    """
+    from krellbot.venues.base import WithdrawCapableError
+    from krellbot.venues.coinbase import CoinbaseVenue
+    from krellbot.venues.kraken import KrakenVenue
+
+    if os.environ.get("KRELLBOT_ENABLE_LIVE") != "1":
+        return LIVE_TICK_REFUSED
+    try:
+        api_key, api_secret = kb_secrets.get(armed.venue)
+    except (FileNotFoundError, ValueError, PermissionError):
+        return f"no key stored for {armed.venue}"
+    try:
+        if armed.venue == "kraken":
+            venue_obj = KrakenVenue(api_key, api_secret, transport)
+        elif armed.venue == "coinbase":
+            venue_obj = CoinbaseVenue(api_key, api_secret, transport, product_id=armed.pair)
+        else:
+            return f"unsupported live venue {armed.venue}"
+        perms = venue_obj.check_key()
+    except WithdrawCapableError:
+        return f"{armed.venue}: key can withdraw; trade-only keys refused"
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError):
+        return "live tick refused"
+    if perms is None or not perms.can_trade or perms.can_withdraw:
+        return f"{armed.venue}: key can withdraw; trade-only keys refused"
+    return venue_obj
+
+
+def _record_fetch_error(*, venue: str, armed, exc_type_name: str) -> None:
+    """Append a `reason: fetch_error` tick record before exit 1."""
+    from krellbot import journal as kb_journal
+
+    try:
+        kb_journal.append(
+            {
+                "ts": int(_now_seconds_tick()),
+                "kind": "tick",
+                "venue": venue,
+                "pack": armed.pack_id,
+                "bar_ts": 0,
+                "detail": {
+                    "reason": "fetch_error",
+                    "exception": exc_type_name,
+                    "pair": armed.pair,
+                },
+            }
+        )
+    except (OSError, ValueError):
+        # Tests inject journal sinks that may not validate; never let the
+        # error path itself crash the CLI.
+        pass
+
+
+def _now_seconds_tick() -> float:
+    import time
+
+    return time.time()
+
+
+def cmd_tick(args, *, fetch=None, transport=None):
+    """`krellbot tick --venue V [--offline-candles CSV]`.
+
+    `fetch` and `transport` are injected for tests. The defaults talk to the
+    real public fetch and urllib. A fetch error is printed as the exception
+    type name only, journaled, and the tick exits 1.
+    """
+    from krellbot.config import load_config
     from krellbot.run import tick as run_tick
-    from krellbot.venues.paper import PaperVenue
+    from krellbot.venues.paper import PaperVenue, default_rules
+
+    if fetch is None:
+        fetch = _default_fetch
+    if transport is None:
+        transport = _default_transport()
 
     venue = None
     offline = None
@@ -873,73 +1125,50 @@ def cmd_tick(args):
     if venue is None:
         print("--venue is required", file=sys.stderr)
         return 2
-    config = load_config(kb_paths.home())
-    armed = find_armed(config, venue, config.armed[0].pair if config.armed else "SUIUSD")
-    if armed is None and config.armed:
-        armed = next((a for a in config.armed if a.venue == venue), None)
-    if armed is None:
+
+    home = kb_paths.home()
+    config = load_config(home)
+    armed_list = [a for a in config.armed if a.venue == venue]
+    if not armed_list:
         print(f"no armed packs for {venue}", flush=True)
         return 0
-
-    if any(a.mode == "live" for a in config.armed if a.venue == venue):
-        print("live tick is not enabled in this build", flush=True)
+    modes = {a.mode for a in armed_list}
+    if modes != {"paper"} and modes != {"live"}:
+        print("mixed paper and live arms; tick refused", flush=True)
         return 1
-
-    def rules_provider(pair):
-        from krellbot.venues.paper import default_rules
-
-        return default_rules(pair)
+    armed = armed_list[0]
 
     if offline is not None:
+        reader = _build_offline_reader(offline)
+        if armed.mode == "paper":
+            has_key = _key_present(armed.venue)
+            venue_obj = PaperVenue(
+                armed.venue,
+                rules_provider=lambda _p: default_rules(_p),
+                candle_reader=reader,
+                home=home,
+                starting_cash=armed.starting_cash,
+                has_stored_key=has_key,
+                validate_transport=_as_validate_transport(transport) if has_key and armed.venue == "kraken" else None,
+            )
+            return run_tick(venue=venue, venue_obj=venue_obj, reader=reader)
+        venue_obj = _build_live_venue_for_offline(armed, transport=transport)
+        if isinstance(venue_obj, str):
+            print(venue_obj, flush=True)
+            return 1
+        return run_tick(venue=venue, venue_obj=venue_obj, reader=reader)
 
-        def reader(v, p):
-            from krellbot.pack.model import Candle
-
-            text = offline.read_text(encoding="utf-8")
-            candles = []
-            for line in text.splitlines():
-                line = line.strip()
-                if not line or line.startswith("ts_ms,"):
-                    continue
-                parts = line.split(",")
-                if len(parts) != 6:
-                    continue
-                try:
-                    candles.append(
-                        Candle(
-                            ts_ms=int(parts[0]),
-                            open=Decimal(parts[1]),
-                            high=Decimal(parts[2]),
-                            low=Decimal(parts[3]),
-                            close=Decimal(parts[4]),
-                            volume=Decimal(parts[5]),
-                        )
-                    )
-                except (ValueError, ArithmeticError):
-                    continue
-            return candles
-    else:
-
-        def reader(v, p):
-            return []
-
-    has_key = False
-    if armed.mode == "live":
-        try:
-            kb_secrets.get(venue)
-            has_key = True
-        except (FileNotFoundError, ValueError, PermissionError):
-            has_key = False
-
-    paper = PaperVenue(
-        venue,
-        rules_provider=rules_provider,
-        candle_reader=reader,
-        home=kb_paths.home(),
-        starting_cash=armed.starting_cash,
-        has_stored_key=has_key,
-    )
-    return run_tick(venue=venue, venue_obj=paper, reader=reader)
+    result = venue_for_tick(home=home, armed_list=armed_list, transport=transport, fetch=fetch)
+    if isinstance(result, str):
+        print(result, flush=True)
+        return 1
+    venue_obj, reader = result
+    try:
+        return run_tick(venue=venue, venue_obj=venue_obj, reader=reader)
+    except CandleFetchError as exc:
+        print(exc.exc_type_name, flush=True)
+        _record_fetch_error(venue=venue, armed=armed, exc_type_name=exc.exc_type_name)
+        return 1
 
 
 def cmd_status(args):
@@ -959,11 +1188,59 @@ def cmd_status(args):
     return run_status(venue=venue)
 
 
-def cmd_journal(args):
-    """`krellbot journal --tail N`."""
-    from krellbot.run import journal_tail
+_JOURNAL_WINDOW_SECONDS = {"24h": 24 * 3600, "14d": 14 * 86400}
+_JOURNAL_SECRET_FIELDS = ("key", "secret", "license", "balance")
+
+
+def _drop_secret_fields(record: Any) -> Any:
+    """Recursively drop `key`, `secret`, `license`, `balance` from a record."""
+
+    if isinstance(record, dict):
+        return {k: _drop_secret_fields(v) for k, v in record.items() if k not in _JOURNAL_SECRET_FIELDS}
+    if isinstance(record, list):
+        return [_drop_secret_fields(v) for v in record]
+    return record
+
+
+def _read_journal_records(home: Path) -> list:
+    """Return all valid journal records under `<home>/journal`, in file order."""
+    journal_dir = Path(home) / "journal"
+    if not journal_dir.is_dir():
+        return []
+    records: list = []
+    for path in sorted(journal_dir.glob("*.jsonl")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            records.append(rec)
+    return records
+
+
+def cmd_journal(args, *, now: float | None = None):
+    """`krellbot journal --tail N | --since 24h|14d [--json]`.
+
+    `--since` accepts `24h` or `14d` only; unknown values exit 2. `--json`
+    emits one JSON object per line and drops `key`, `secret`, `license`,
+    and `balance` fields at any depth. `now` is injected for tests so the
+    since-window math does not depend on wall-clock time.
+    """
+    import time
+
+    if now is None:
+        now = time.time()
 
     tail = 5
+    since_seconds: int | None = None
+    as_json = False
     i = 0
     while i < len(args):
         a = args[i]
@@ -975,9 +1252,45 @@ def cmd_journal(args):
                 return 2
             i += 2
             continue
+        if a == "--since" and i + 1 < len(args):
+            value = args[i + 1]
+            if value not in _JOURNAL_WINDOW_SECONDS:
+                print(
+                    f"unsupported --since value: {value!r}; use one of 24h, 14d",
+                    file=sys.stderr,
+                )
+                return 2
+            since_seconds = _JOURNAL_WINDOW_SECONDS[value]
+            i += 2
+            continue
+        if a == "--json":
+            as_json = True
+            i += 1
+            continue
         print(f"Unknown argument: {a}", file=sys.stderr)
         return 2
-    return journal_tail(n=tail)
+
+    home = kb_paths.home()
+    records = _read_journal_records(home)
+    if not records:
+        print("no journal", flush=True)
+        return 0
+
+    if since_seconds is not None:
+        threshold = int(now) - since_seconds
+        records = [r for r in records if isinstance(r.get("ts"), int) and r["ts"] >= threshold]
+    else:
+        records = records[-tail:]
+
+    if not records:
+        print("no journal records", flush=True)
+        return 0
+
+    for rec in records:
+        if as_json:
+            rec = _drop_secret_fields(rec)
+        print(json.dumps(rec, sort_keys=True), flush=True)
+    return 0
 
 
 def _resolve_executable() -> str:
