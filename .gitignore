@@ -16,3 +16,8 @@ build/
 *.secret
 key.txt
 *.key
+
+# Local tool output (never ship)
+.wrangler/
+graphify-out/
+pytestdebug.log
