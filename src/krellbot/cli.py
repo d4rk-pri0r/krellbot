@@ -5,6 +5,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from decimal import Decimal
 from pathlib import Path
 
 from krellbot import paths as kb_paths
@@ -696,10 +697,262 @@ def cmd_backtest(args):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N",
         file=sys.stderr,
     )
     return 2
+
+
+def cmd_arm(args):
+    """`krellbot arm <pack.json> --venue V --mode M [--paper-balance USD]`."""
+    from krellbot import secrets as kb_secrets_mod
+    from krellbot.run import arm_pack
+
+    if not args:
+        print(
+            "usage: krellbot arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD]",
+            file=sys.stderr,
+        )
+        return 2
+    pack_arg = args[0]
+    venue = None
+    mode = None
+    paper_balance = None
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a == "--venue" and i + 1 < len(args):
+            venue = args[i + 1]
+            i += 2
+            continue
+        if a == "--mode" and i + 1 < len(args):
+            mode = args[i + 1]
+            i += 2
+            continue
+        if a == "--paper-balance" and i + 1 < len(args):
+            try:
+                paper_balance = Decimal(args[i + 1])
+            except (ValueError, ArithmeticError):
+                print(f"invalid --paper-balance: {args[i + 1]}", file=sys.stderr)
+                return 2
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+    if venue is None or mode is None:
+        print("--venue and --mode are required", file=sys.stderr)
+        return 2
+
+    key_check = None
+    if mode == "live":
+        from krellbot.cli_keys import _probe
+
+        def key_check(venue_arg):
+
+            try:
+                api_key, api_secret = kb_secrets_mod.get(venue_arg)
+            except (FileNotFoundError, ValueError, PermissionError):
+                return None
+            return _probe(venue_arg, api_key, api_secret)
+
+    return arm_pack(
+        Path(pack_arg),
+        venue=venue,
+        mode=mode,
+        paper_balance=paper_balance,
+        confirm_fn=None,
+        key_check=key_check,
+    )
+
+
+def cmd_disarm(args):
+    """`krellbot disarm --venue V --pair P`."""
+    from krellbot.run import disarm_pack
+
+    venue = None
+    pair = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--venue" and i + 1 < len(args):
+            venue = args[i + 1]
+            i += 2
+            continue
+        if a == "--pair" and i + 1 < len(args):
+            pair = args[i + 1]
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+    if venue is None or pair is None:
+        print("--venue and --pair are required", file=sys.stderr)
+        return 2
+    return disarm_pack(venue=venue, pair=pair)
+
+
+def cmd_stop(args):
+    """`krellbot stop --venue V --pair P --price N`."""
+    from krellbot.run import set_stop
+
+    venue = None
+    pair = None
+    price = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--venue" and i + 1 < len(args):
+            venue = args[i + 1]
+            i += 2
+            continue
+        if a == "--pair" and i + 1 < len(args):
+            pair = args[i + 1]
+            i += 2
+            continue
+        if a == "--price" and i + 1 < len(args):
+            try:
+                price = Decimal(args[i + 1])
+            except (ValueError, ArithmeticError):
+                print(f"invalid --price: {args[i + 1]}", file=sys.stderr)
+                return 2
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+    if venue is None or pair is None or price is None:
+        print("--venue, --pair, --price are required", file=sys.stderr)
+        return 2
+    return set_stop(venue=venue, pair=pair, new_stop=price)
+
+
+def cmd_tick(args):
+    """`krellbot tick --venue V [--offline-candles CSV]`."""
+    from krellbot.config import find_armed, load_config
+    from krellbot.run import tick as run_tick
+    from krellbot.venues.paper import PaperVenue
+
+    venue = None
+    offline = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--venue" and i + 1 < len(args):
+            venue = args[i + 1]
+            i += 2
+            continue
+        if a == "--offline-candles" and i + 1 < len(args):
+            offline = Path(args[i + 1])
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+    if venue is None:
+        print("--venue is required", file=sys.stderr)
+        return 2
+    config = load_config(kb_paths.home())
+    armed = find_armed(config, venue, config.armed[0].pair if config.armed else "SUIUSD")
+    if armed is None and config.armed:
+        armed = next((a for a in config.armed if a.venue == venue), None)
+    if armed is None:
+        print(f"no armed packs for {venue}", flush=True)
+        return 0
+
+    if any(a.mode == "live" for a in config.armed if a.venue == venue):
+        print("live tick is not enabled in this build", flush=True)
+        return 1
+
+    def rules_provider(pair):
+        from krellbot.venues.paper import default_rules
+
+        return default_rules(pair)
+
+    if offline is not None:
+
+        def reader(v, p):
+            from krellbot.pack.model import Candle
+
+            text = offline.read_text(encoding="utf-8")
+            candles = []
+            for line in text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("ts_ms,"):
+                    continue
+                parts = line.split(",")
+                if len(parts) != 6:
+                    continue
+                try:
+                    candles.append(
+                        Candle(
+                            ts_ms=int(parts[0]),
+                            open=Decimal(parts[1]),
+                            high=Decimal(parts[2]),
+                            low=Decimal(parts[3]),
+                            close=Decimal(parts[4]),
+                            volume=Decimal(parts[5]),
+                        )
+                    )
+                except (ValueError, ArithmeticError):
+                    continue
+            return candles
+    else:
+
+        def reader(v, p):
+            return []
+
+    has_key = False
+    if armed.mode == "live":
+        try:
+            kb_secrets.get(venue)
+            has_key = True
+        except (FileNotFoundError, ValueError, PermissionError):
+            has_key = False
+
+    paper = PaperVenue(
+        venue,
+        rules_provider=rules_provider,
+        candle_reader=reader,
+        home=kb_paths.home(),
+        starting_cash=armed.starting_cash,
+        has_stored_key=has_key,
+    )
+    return run_tick(venue=venue, venue_obj=paper, reader=reader)
+
+
+def cmd_status(args):
+    """`krellbot status [--venue V]`."""
+    from krellbot.run import status as run_status
+
+    venue = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--venue" and i + 1 < len(args):
+            venue = args[i + 1]
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+    return run_status(venue=venue)
+
+
+def cmd_journal(args):
+    """`krellbot journal --tail N`."""
+    from krellbot.run import journal_tail
+
+    tail = 5
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--tail" and i + 1 < len(args):
+            try:
+                tail = int(args[i + 1])
+            except ValueError:
+                print(f"invalid --tail: {args[i + 1]}", file=sys.stderr)
+                return 2
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+    return journal_tail(n=tail)
 
 
 def main(argv):
@@ -735,6 +988,18 @@ def main(argv):
         return cmd_backtest(argv[2:])
     if cmd == "data" and len(argv) >= 4 and argv[2] == "import" and argv[3] == "kraken-ohlcvt":
         return cmd_data_import_kraken_ohlcvt(argv[4:])
+    if cmd == "arm" and len(argv) >= 3:
+        return cmd_arm(argv[2:])
+    if cmd == "disarm" and len(argv) >= 2:
+        return cmd_disarm(argv[2:])
+    if cmd == "stop" and len(argv) >= 2:
+        return cmd_stop(argv[2:])
+    if cmd == "tick" and len(argv) >= 2:
+        return cmd_tick(argv[2:])
+    if cmd == "status" and len(argv) >= 2:
+        return cmd_status(argv[2:])
+    if cmd == "journal" and len(argv) >= 2:
+        return cmd_journal(argv[2:])
     return usage()
 
 
