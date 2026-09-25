@@ -58,12 +58,16 @@ class HttpTransport:
     def get(self, url: str, headers: dict[str, str]) -> dict:
         import urllib.request
 
+        from krellbot.tls import urlopen
+
         req = urllib.request.Request(url, headers=headers, method="GET")
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urlopen(req, timeout=20) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def post(self, url: str, body: dict, headers: dict[str, str]) -> dict:
         import urllib.request
+
+        from krellbot.tls import urlopen
 
         req = urllib.request.Request(
             url,
@@ -71,7 +75,7 @@ class HttpTransport:
             headers={**headers, "content-type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urlopen(req, timeout=20) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
 
@@ -131,7 +135,12 @@ def build_jwt(
     Claims: `sub=key_name, iss="cdp", aud=["cdp_service"], nbf=now,
     exp=now+120, uri="{METHOD} {host}{path}"` with a single space. Returns
     the three-part compact serialization.
+
+    Coinbase signs the path WITHOUT its query string: a `?...` in the `uri`
+    claim is rejected with 401. The query is stripped here so every caller
+    is covered; the request URL itself keeps the query.
     """
+    path = path.split("?", 1)[0]
     header = {"alg": alg, "typ": "JWT", "kid": key_name, "nonce": nonce_hex}
     claims = {
         "sub": key_name,

@@ -384,3 +384,37 @@ def test_coinbase_view_only_key_is_not_trade():
     perms = venue.check_key()
     assert perms.can_trade is False
     assert perms.can_withdraw is False
+
+
+def test_jwt_uri_claim_excludes_query_string_but_url_keeps_it():
+    """Coinbase signs `METHOD host path` without the query string; a query in
+    the `uri` claim is rejected with 401. The request URL must keep the query."""
+    secret, priv = _make_ed25519_test_key()
+    transport = FakeCoinbaseTransport(orders={"orders": [], "has_next": False})
+    venue = CoinbaseVenue("orgs/abc/keys/xyz", secret, transport)
+    venue.snapshot()
+    venue._find_order("c1", "BTC-USD")
+    queried = [c for c in transport.calls if c.method == "GET" and "?" in c.url]
+    assert {c.url.split("?", 1)[0].rsplit("/", 1)[-1] for c in queried} >= {"batch", "fills"}
+    for call in queried:
+        _header, claims = _jwt_for_record(call, priv)
+        path = call.url.split(API_HOST, 1)[1]
+        assert "?" not in claims["uri"], claims["uri"]
+        assert claims["uri"] == f"GET {API_HOST}{path.split('?', 1)[0]}"
+
+
+def test_build_jwt_strips_query_from_uri():
+    secret, _priv = _make_ed25519_test_key()
+    alg, key = detect_key(secret)
+    token = build_jwt(
+        alg,
+        key,
+        key_name="kid-q",
+        nonce_hex="22" * 16,
+        method="GET",
+        host=API_HOST,
+        path="/api/v3/brokerage/orders/historical/fills?limit=50",
+        now=1_700_000_200,
+    )
+    _header, claims, _sig = _decoded_jwt(token)
+    assert claims["uri"] == f"GET {API_HOST}/api/v3/brokerage/orders/historical/fills"
