@@ -52,14 +52,19 @@ def is_fixture(path: Path) -> bool:
 
 
 def requires_license_for(path: Path, home: Path) -> bool:
-    """True if the gate should apply to a pack installed at `path`.
+    """True only for a pack installed from the paid catalog.
 
-    Community and fixture packs default to NOT requiring a license. The
-    `arm_pack` call may override this with an explicit flag.
+    A pack you wrote does not need a license. Neither does a community pack.
+    Paid catalog packs live under ``packs/catalog/``. ``arm_pack`` can still
+    override this with an explicit flag.
     """
-    if is_community(path, home):
+    if is_community(path, home) or is_fixture(path):
         return False
-    return not is_fixture(path)
+    try:
+        path.resolve().relative_to((home / "packs" / "catalog").resolve())
+    except ValueError:
+        return False
+    return True
 
 
 def load_pack_dict(path: Path) -> dict:
