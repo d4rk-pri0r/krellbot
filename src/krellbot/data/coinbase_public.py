@@ -38,7 +38,9 @@ class HttpTransport:
         qs = "&".join(f"{k}={v}" for k, v in params.items())
         full = f"{url}?{qs}" if qs else url
         req = urllib.request.Request(full, headers={"user-agent": "krellbot/0.1"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        from krellbot.tls import urlopen
+
+        with urlopen(req, timeout=20) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
 

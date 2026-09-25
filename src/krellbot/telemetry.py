@@ -199,8 +199,10 @@ class UrllibTransport:
 
     def post(self, url: str, body: bytes, headers: dict) -> object:
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        from krellbot.tls import urlopen
+
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as res:
+            with urlopen(req, timeout=self._timeout) as res:
                 return res.read()
         except urllib.error.URLError:
             # Telemetry is best-effort. A failed POST must not crash the tick.

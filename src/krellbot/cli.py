@@ -103,7 +103,9 @@ def post_json(url, payload):
         headers={"content-type": "application/json", "user-agent": "krellbot/0.1"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=20) as res:
+    from krellbot.tls import urlopen
+
+    with urlopen(req, timeout=20) as res:
         return json.loads(res.read().decode())
 
 
@@ -356,8 +358,10 @@ def download_catalog(key):
             base + "/catalog?key=" + quoted,
             headers={"user-agent": "krellbot/0.1"},
         )
+        from krellbot.tls import urlopen
+
         try:
-            with urllib.request.urlopen(req, timeout=20) as res:
+            with urlopen(req, timeout=20) as res:
                 body = res.read()
         except Exception:
             continue
@@ -1363,7 +1367,9 @@ def _kraken_time_source() -> int:
         "https://api.kraken.com/0/public/Time",
         headers={"user-agent": "krellbot/0.1"},
     )
-    with urllib.request.urlopen(req, timeout=10) as res:
+    from krellbot.tls import urlopen
+
+    with urlopen(req, timeout=10) as res:
         body = res.read().decode("utf-8")
     payload = json.loads(body)
     return int(payload["result"]["unixtime"])
@@ -1469,7 +1475,9 @@ class _UrllibGetTransport:
 
     def get(self, url: str) -> bytes:
         req = urllib.request.Request(url, headers={"user-agent": "krellbot/0.1"})
-        with urllib.request.urlopen(req, timeout=self._timeout) as res:
+        from krellbot.tls import urlopen
+
+        with urlopen(req, timeout=self._timeout) as res:
             return res.read()
 
 

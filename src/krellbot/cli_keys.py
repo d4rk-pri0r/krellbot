@@ -69,4 +69,12 @@ def _probe(venue: str, api_key: str, api_secret: str, transport: Any = None) -> 
         return KeyPerms(can_trade=False, can_withdraw=True)
     except (OSError, RuntimeError, ValueError, TypeError, KeyError):
         return None
-    return venue_obj.check_key()
+    try:
+        return venue_obj.check_key()
+    except WithdrawCapableError as exc:
+        print(str(exc), file=sys.stderr)
+        from krellbot.venues.base import KeyPerms
+
+        return KeyPerms(can_trade=False, can_withdraw=True)
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError):
+        return None

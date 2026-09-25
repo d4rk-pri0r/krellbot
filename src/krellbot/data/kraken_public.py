@@ -37,7 +37,9 @@ def fetch_kraken_ohlc(pair: str, tf: str) -> list[Candle]:
     interval = OHLC_TF_MINUTES[tf]
     url = f"{OHLC_URL}?pair={pair}&interval={interval}"
     req = urllib.request.Request(url, headers={"user-agent": "krellbot/0.1"})
-    with urllib.request.urlopen(req, timeout=20) as resp:
+    from krellbot.tls import urlopen
+
+    with urlopen(req, timeout=20) as resp:
         body = resp.read()
     payload = json.loads(body.decode("utf-8"))
     candles = parse_kraken_ohlc(payload, pair=pair, tf=tf)

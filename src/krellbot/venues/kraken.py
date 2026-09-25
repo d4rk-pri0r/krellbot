@@ -70,6 +70,8 @@ class HttpTransport:
     def post(self, url: str, form: dict[str, str], headers: dict[str, str]) -> dict:
         import urllib.request
 
+        from krellbot.tls import urlopen
+
         body = urllib.parse.urlencode(form).encode("utf-8")
         req = urllib.request.Request(
             url,
@@ -77,14 +79,16 @@ class HttpTransport:
             headers={**headers, "content-type": "application/x-www-form-urlencoded"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urlopen(req, timeout=20) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def get(self, url: str, headers: dict[str, str] | None = None) -> dict:
         import urllib.request
 
+        from krellbot.tls import urlopen
+
         req = urllib.request.Request(url, headers=headers or {}, method="GET")
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urlopen(req, timeout=20) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
 

@@ -1,6 +1,6 @@
 [project]
 name = "krellbot"
-version = "0.9.0"
+version = "0.9.1"
 description = "Open crypto automation. A local engine that runs strategy packs on your own exchange account."
 readme = "README.md"
 license = "MIT"
