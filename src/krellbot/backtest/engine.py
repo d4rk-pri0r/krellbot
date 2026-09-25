@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal
 
-from krellbot.pack import run as evaluate_run
+from krellbot.pack.evaluate import run_series
 from krellbot.pack.model import Candle
 
 from .ledger import Ledger
@@ -84,6 +84,10 @@ class Backtester:
         round_trip_open_qty: Decimal | None = None
         records: list[BarRecord] = []
 
+        # Precompute every bar's Target once: bit-identical to per-prefix
+        # evaluation because every pack indicator is causal (see run_series).
+        targets = run_series(self.pack, self.candles)
+
         for t, candle in enumerate(self.candles):
             fill_record = None
             stop_fired = False
@@ -124,8 +128,7 @@ class Backtester:
                 pending = None
 
             if not stop_fired:
-                window = self.candles[: t + 1]
-                target = evaluate_run(self.pack, window)
+                target = targets[t]
                 if target.reason == "entry" and ledger.qty == ZERO and t + 1 < len(self.candles):
                     if target.stop_price is not None:
                         stop_price = target.stop_price

@@ -28,39 +28,76 @@ def run(pack: dict, candles: list[Candle]) -> Target:
     if not candles:
         return Target(long=False, stop_price=None, reason="flat")
 
+    computed, atr_series = _compute_all(pack, candles)
+    return _decide(pack, computed, candles, atr_series, len(candles) - 1)
+
+
+def run_series(pack: dict, candles: list[Candle]) -> list[Target]:
+    """Target for every bar index t, identical to run(pack, candles[: t + 1]).
+
+    Every indicator in the pack is causal (the value at index i depends only on
+    candles[: i + 1]), so computing each series once over the full candle list
+    gives, at every index t, exactly the value that ``ind.compute(candles[: t
+    + 1])`` returns at its last index. The precomputed series therefore yields
+    bit-identical Targets to the per-prefix ``run`` call.
+    """
+    if not candles:
+        return []
+    computed, atr_series = _compute_all(pack, candles)
+    return [_decide(pack, computed, candles, atr_series, t) for t in range(len(candles))]
+
+
+def _compute_all(pack: dict, candles: list[Candle]) -> tuple[dict[str, list[float | None]], list[float | None] | None]:
+    """Compute every pack indicator plus the ATR stop series (if any) once."""
     indicators_map: dict[str, dict] = pack.get("indicators", {})
     computed: dict[str, list[float | None]] = {
         name: ind.compute(candles, params) for name, params in indicators_map.items()
     }
+    risk = pack.get("risk") or {}
+    stop = risk.get("stop") or {}
+    atr_series: list[float | None] | None = None
+    if stop.get("type") == "atr":
+        atr_series = ind.compute(candles, {"fn": "atr", "len": int(stop["len"])})
+    return computed, atr_series
 
-    last = len(candles) - 1
 
+def _decide(
+    pack: dict,
+    computed: dict[str, list[float | None]],
+    candles: list[Candle],
+    atr_series: list[float | None] | None,
+    t: int,
+) -> Target:
+    """The per-bar decision used by BOTH ``run`` and ``run_series``.
+
+    Both entry paths share this helper so the two cannot drift: the difference
+    between ``run`` and ``run_series`` is only which index they evaluate, never
+    the rules at that index.
+    """
     # Used indicator names come from the condition tree.
     used = _used_indicators(pack.get("entry")) | _used_indicators(pack.get("exit"))
     for name in used:
         series = computed.get(name)
-        if series is None or series[last] is None:
+        if series is None or series[t] is None:
             return Target(long=False, stop_price=None, reason="warmup")
 
-    exit_hit = _eval_condition(pack.get("exit"), computed, candles, last)
+    exit_hit = _eval_condition(pack.get("exit"), computed, candles, t)
     if exit_hit:
         return Target(long=False, stop_price=None, reason="exit")
-    entry_hit = _eval_condition(pack.get("entry"), computed, candles, last)
+    entry_hit = _eval_condition(pack.get("entry"), computed, candles, t)
     if not entry_hit:
         return Target(long=False, stop_price=None, reason="flat")
 
     # Entry fired: compute stop.
     risk = pack["risk"]
     stop = risk["stop"]
-    last_close = candles[last].close
+    last_close = candles[t].close
     if stop["type"] == "pct":
         pct = Decimal(str(stop["pct"]))
         stop_price = last_close * (Decimal(1) - pct / Decimal(100))
     else:  # atr
-        atr_len = int(stop["len"])
         mult = Decimal(str(stop["mult"]))
-        atr_series = ind.compute(candles, {"fn": "atr", "len": atr_len})
-        atr_val = atr_series[last]
+        atr_val = atr_series[t] if atr_series is not None else None
         if atr_val is None:
             return Target(long=False, stop_price=None, reason="warmup")
         stop_price = last_close - Decimal(str(atr_val)) * mult
