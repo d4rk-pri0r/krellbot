@@ -256,6 +256,9 @@ def cmd_list():
     paid = result.get("status") in {"paid", "grace"}
     print(f"Catalog {data['updated']}  ${data['price_month_usd']}/month")
     print("Past results. Not a Krellbot fill.")
+    methodology = data.get("methodology")
+    if isinstance(methodology, str) and methodology.strip():
+        print(kb_sanitize.text(methodology.strip(), max_len=240))
     print()
     packs = sorted(data["packs"], key=lambda p: p["return_pct"], reverse=True)
     for pack in packs:

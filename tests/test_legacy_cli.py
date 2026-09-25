@@ -90,3 +90,29 @@ def test_version_flag_prints_package_version(home):
     result = run_cli(home, "--version")
     assert result.returncode == 0
     assert result.stdout.strip() == "0.9.1"
+
+
+def _write_catalog(home: Path, extra: dict) -> None:
+    root = home / ".krellbot"
+    root.mkdir(parents=True, exist_ok=True)
+    doc = {"updated": "2026-09-24", "price_month_usd": 39, "packs": [], **extra}
+    (root / "catalog.json").write_text(json.dumps(doc), encoding="utf-8")
+
+
+def test_list_prints_catalog_methodology_when_present(home):
+    note = "Our catalog bar was set after the first test round; every tested strategy is listed."
+    _write_catalog(home, {"methodology": note})
+    r = run_cli(home, "list")
+    assert r.returncode == 0, r.stderr
+    lines = r.stdout.splitlines()
+    i = lines.index("Past results. Not a Krellbot fill.")
+    assert lines[i + 1] == note
+
+
+def test_list_without_methodology_is_unchanged(home):
+    _write_catalog(home, {})
+    r = run_cli(home, "list")
+    assert r.returncode == 0, r.stderr
+    lines = r.stdout.splitlines()
+    i = lines.index("Past results. Not a Krellbot fill.")
+    assert lines[i + 1] == ""
