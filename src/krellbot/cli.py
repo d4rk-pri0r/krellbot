@@ -661,18 +661,41 @@ def cmd_backtest(args):
         slippage_mult = 1.0
 
     if data_csv is None:
-        print("--data <csv> is required", file=sys.stderr)
-        return 1
-    csv_path = Path(data_csv)
-    if not csv_path.exists():
-        print(f"No such file: {csv_path}", file=sys.stderr)
-        return 1
+        # No CSV given: use the local candle cache, fetching public candles once if empty.
+        from krellbot.data import read_cache, write_cache
 
-    from krellbot.data.cache import _parse_csv, sha256_bytes
+        home = kb_paths.home()
+        cached = read_cache(home, venue, pair, tf)
+        if cached is None:
+            try:
+                fetched = _default_fetch(venue, pair, tf, _default_transport())
+            except Exception as exc:  # network / venue error: name only, never the message
+                print(
+                    f"could not fetch public {venue} candles ({type(exc).__name__}); pass --data <csv>",
+                    file=sys.stderr,
+                )
+                return 1
+            if not fetched:
+                print(f"no public candles for {venue} {pair} {tf}; pass --data <csv>", file=sys.stderr)
+                return 1
+            write_cache(home, venue, pair, tf, fetched)
+            print(f"fetched {len(fetched)} {tf} candles from {venue} public data (cached)", file=sys.stderr)
+            cached = read_cache(home, venue, pair, tf)
+        if cached is None:
+            print(f"candle cache unreadable for {venue} {pair} {tf}; pass --data <csv>", file=sys.stderr)
+            return 1
+        candles, digest = cached
+    else:
+        csv_path = Path(data_csv)
+        if not csv_path.exists():
+            print(f"No such file: {csv_path}", file=sys.stderr)
+            return 1
 
-    body = csv_path.read_bytes()
-    candles = _parse_csv(body)
-    digest = sha256_bytes(body)
+        from krellbot.data.cache import _parse_csv, sha256_bytes
+
+        body = csv_path.read_bytes()
+        candles = _parse_csv(body)
+        digest = sha256_bytes(body)
 
     try:
         check_gaps(candles, tf, pair=pair, allow_gaps=allow_gaps)
@@ -1106,7 +1129,6 @@ def cmd_tick(args, *, fetch=None, transport=None):
     type name only, journaled, and the tick exits 1.
     """
     from krellbot.config import load_config
-    from krellbot.run import tick as run_tick
     from krellbot.venues.paper import PaperVenue, default_rules
 
     if fetch is None:
@@ -1158,12 +1180,12 @@ def cmd_tick(args, *, fetch=None, transport=None):
                 has_stored_key=has_key,
                 validate_transport=_as_validate_transport(transport) if has_key and armed.venue == "kraken" else None,
             )
-            return run_tick(venue=venue, venue_obj=venue_obj, reader=reader)
+            return _tick_and_summarize(home, venue, venue_obj, reader, armed.mode)
         venue_obj = _build_live_venue_for_offline(armed, transport=transport)
         if isinstance(venue_obj, str):
             print(venue_obj, flush=True)
             return 1
-        return run_tick(venue=venue, venue_obj=venue_obj, reader=reader)
+        return _tick_and_summarize(home, venue, venue_obj, reader, armed.mode)
 
     result = venue_for_tick(home=home, armed_list=armed_list, transport=transport, fetch=fetch)
     if isinstance(result, str):
@@ -1171,11 +1193,52 @@ def cmd_tick(args, *, fetch=None, transport=None):
         return 1
     venue_obj, reader = result
     try:
-        return run_tick(venue=venue, venue_obj=venue_obj, reader=reader)
+        return _tick_and_summarize(home, venue, venue_obj, reader, armed.mode)
     except CandleFetchError as exc:
         print(exc.exc_type_name, flush=True)
         _record_fetch_error(venue=venue, armed=armed, exc_type_name=exc.exc_type_name)
         return 1
+
+
+def _tick_summary_line(rec: dict, mode: str) -> str | None:
+    """One plain line for a tick journal record, or None if it is not a tick."""
+    if rec.get("kind") != "tick":
+        return None
+    d = rec.get("detail") or {}
+    pair = d.get("pair") or ""
+    head = f"{rec.get('venue')} {pair} {rec.get('pack')} ({mode}):"
+    reason = d.get("reason")
+
+    def qty(key: str) -> str:
+        return str(d.get(key) or "0")
+
+    if reason == "entry" and qty("entry_qty") not in ("0", "0.0"):
+        return f"{head} bought {qty('entry_qty')}, protective stop resting"
+    if reason == "exit" and qty("exit_qty") not in ("0", "0.0"):
+        return f"{head} sold {qty('exit_qty')}"
+    if qty("stop_qty") not in ("0", "0.0"):
+        return f"{head} stop filled, sold {qty('stop_qty')}"
+    owned = qty("owned_qty_after")
+    if reason == "no_candles":
+        return f"{head} no closed candle yet, nothing to do"
+    if reason == "warmup":
+        return f"{head} warming up indicators, no trade"
+    if owned not in ("0", "0.0"):
+        return f"{head} holding {owned}, stop resting"
+    return f"{head} no signal, staying flat"
+
+
+def _tick_and_summarize(home, venue, venue_obj, reader, mode) -> int:
+    """Run the tick, then print one line per journal record it wrote."""
+    from krellbot.run import tick as run_tick
+
+    before = len(_read_journal_records(home))
+    rc = run_tick(venue=venue, venue_obj=venue_obj, reader=reader)
+    for rec in _read_journal_records(home)[before:]:
+        line = _tick_summary_line(rec, mode)
+        if line:
+            print(kb_sanitize.text(line, max_len=200), flush=True)
+    return rc
 
 
 def cmd_status(args):

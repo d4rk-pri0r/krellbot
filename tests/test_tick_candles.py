@@ -190,3 +190,42 @@ def test_fetch_error_prints_exception_type_name_and_exits_1(home, fresh_keyring,
         text = files[-1].read_text(encoding="utf-8")
         assert "fetch_error" in text
         assert "ConnectionError" in text
+
+
+def test_tick_summary_lines_cover_each_outcome():
+    from krellbot.cli import _tick_summary_line
+
+    def rec(**detail):
+        return {"kind": "tick", "venue": "kraken", "pack": "p", "detail": {"pair": "SUIUSD", **detail}}
+
+    assert _tick_summary_line(rec(reason="entry", entry_qty="2.5"), "paper") == (
+        "kraken SUIUSD p (paper): bought 2.5, protective stop resting"
+    )
+    assert _tick_summary_line(rec(reason="exit", exit_qty="2.5"), "live") == "kraken SUIUSD p (live): sold 2.5"
+    assert _tick_summary_line(rec(reason="entry", entry_qty="0", owned_qty_after="2.5"), "paper").endswith(
+        "holding 2.5, stop resting"
+    )
+    assert _tick_summary_line(rec(reason="flat", stop_qty="2.5"), "paper").endswith("stop filled, sold 2.5")
+    assert _tick_summary_line(rec(reason="warmup"), "paper").endswith("warming up indicators, no trade")
+    assert _tick_summary_line(rec(reason="flat"), "paper").endswith("no signal, staying flat")
+    assert _tick_summary_line(rec(reason="no_candles"), "paper").endswith("no closed candle yet, nothing to do")
+    assert _tick_summary_line({"kind": "arm"}, "paper") is None
+
+
+def test_paper_tick_prints_what_it_did(home, fresh_keyring, capsys):
+    from krellbot.cli import cmd_tick
+    from krellbot.pack.model import Candle
+
+    pack_path = _write_pack(home, tf="1h", pair="SUIUSD")
+    _arm_paper(home, pack_path, pair="SUIUSD")
+    hour = 3_600_000
+    closes = [10, 9, 12]
+    candles = [
+        Candle(i * hour, Decimal(c), Decimal(c) + 1, Decimal(c) - 1, Decimal(c), Decimal(100))
+        for i, c in enumerate(closes)
+    ]
+    rc = cmd_tick(["--venue", "kraken"], fetch=_RecordingFetch(candles), transport=_SilentTransport())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "kraken SUIUSD tick-candles (paper): bought " in out
+    assert "protective stop resting" in out
