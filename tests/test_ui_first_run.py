@@ -1,0 +1,172 @@
+"""Local first-run preferences and trust snapshot.
+
+These tests prove the visit preference is bounded JSON, corrupt-safe,
+and never widens the home directory's permissions. They also prove the
+trust snapshot reflects a fake/null keychain without ever reading a
+secret value.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+
+# --- has_visited_dashboard / mark_visited_dashboard -------------------------
+
+
+def test_fresh_home_is_not_visited(tmp_path: Path) -> None:
+    from krellbot.ui.first_run import has_visited_dashboard
+
+    assert has_visited_dashboard(tmp_path) is False
+
+
+def test_mark_then_has_roundtrip(tmp_path: Path) -> None:
+    from krellbot.ui.first_run import has_visited_dashboard, mark_visited_dashboard
+
+    assert has_visited_dashboard(tmp_path) is False
+    mark_visited_dashboard(tmp_path)
+    assert has_visited_dashboard(tmp_path) is True
+
+
+def test_corrupt_preference_is_not_visited(tmp_path: Path) -> None:
+    from krellbot.ui.first_run import has_visited_dashboard, mark_visited_dashboard
+
+    mark_visited_dashboard(tmp_path)
+    assert has_visited_dashboard(tmp_path) is True
+
+    # Truncated / non-JSON payload must be treated as "not visited" and
+    # must not raise.
+    (tmp_path / "ui-preferences.json").write_text("{")
+    assert has_visited_dashboard(tmp_path) is False
+
+
+def test_preference_payload_is_bounded(tmp_path: Path) -> None:
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    mark_visited_dashboard(tmp_path)
+
+    payload = (tmp_path / "ui-preferences.json").read_text()
+    data = json.loads(payload)
+    assert data == {"visited_dashboard": True}
+
+
+def test_unreadable_preference_is_not_visited(tmp_path: Path) -> None:
+    from krellbot.ui.first_run import has_visited_dashboard, mark_visited_dashboard
+
+    mark_visited_dashboard(tmp_path)
+    assert has_visited_dashboard(tmp_path) is True
+
+    # Replace the file with a directory so open() fails. has_visited_dashboard
+    # must swallow OSError and return False.
+    (tmp_path / "ui-preferences.json").unlink()
+    (tmp_path / "ui-preferences.json").mkdir()
+    assert has_visited_dashboard(tmp_path) is False
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits")
+def test_mark_visited_does_not_widen_home(tmp_path: Path) -> None:
+    """Writing the preference file must not chmod the home directory.
+
+    atomic_write chmods only the file it creates; the surrounding home
+    must keep the mode the caller set. We start with a non-default mode
+    (0o750) and assert it survives a mark.
+    """
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    os.chmod(tmp_path, 0o750)
+    before = tmp_path.stat().st_mode & 0o777
+    assert before == 0o750
+
+    mark_visited_dashboard(tmp_path)
+
+    after = tmp_path.stat().st_mode & 0o777
+    assert after == before, f"home mode changed: {oct(before)} -> {oct(after)}"
+    # The preference file itself should still be private.
+    pref_mode = (tmp_path / "ui-preferences.json").stat().st_mode & 0o777
+    assert pref_mode == 0o600
+
+
+# --- trust_snapshot ---------------------------------------------------------
+
+
+def test_trust_snapshot_keys(tmp_path: Path) -> None:
+    from krellbot.ui import trust
+
+    snap = trust.trust_snapshot(tmp_path)
+    assert set(snap.keys()) == {
+        "home",
+        "home_mode",
+        "keychain_backend",
+        "keychain_ok",
+        "bind",
+        "live_arm_ui_allowed",
+        "trade_only_required",
+    }
+    assert snap["home"] == str(tmp_path)
+    assert snap["bind"] == "127.0.0.1"
+    assert snap["live_arm_ui_allowed"] is False
+    assert snap["trade_only_required"] is True
+
+
+def test_trust_snapshot_never_reads_secret(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fake/null keychain backend must surface keychain_ok=False, and the
+    snapshot must never expose any secret value.
+    """
+    from krellbot.ui import trust
+
+    monkeypatch.setattr(
+        trust,
+        "_keychain_backend",
+        lambda: ("keyring.backends.null.Keyring", "keychain backend is NullKeyring (not persistent)"),
+    )
+
+    snap = trust.trust_snapshot(tmp_path)
+
+    assert snap["keychain_backend"] == "keyring.backends.null.Keyring"
+    assert snap["keychain_ok"] is False
+
+    # No credential string should leak.
+    repr_ = repr(snap).lower()
+    assert "secret" not in repr_
+    assert "password" not in repr_
+    assert "api_key" not in repr_
+
+
+def test_trust_snapshot_reports_missing_home_mode(tmp_path: Path) -> None:
+    from krellbot.ui import trust
+
+    # Use a path that does not exist.
+    missing = tmp_path / "nope" / "home"
+    snap = trust.trust_snapshot(missing)
+    assert snap["home_mode"] is None
+
+
+def test_trust_snapshot_reports_home_mode(tmp_path: Path) -> None:
+    from krellbot.ui import trust
+
+    os.chmod(tmp_path, 0o700)
+    snap = trust.trust_snapshot(tmp_path)
+    assert snap["home_mode"] == "0o700"
+
+
+def test_trust_snapshot_reports_unreadable_home_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """If stat() raises OSError, home_mode must be None (not raise)."""
+    from krellbot.ui import trust
+
+    real_stat = Path.stat
+
+    def fake_stat(self, *args, **kwargs):  # noqa: ANN001
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    # trust_snapshot uses os.stat directly, not Path.stat — patch the module's
+    # reference.
+    monkeypatch.setattr(trust.os, "stat", fake_stat)
+    snap = trust.trust_snapshot(tmp_path)
+    assert snap["home_mode"] is None
