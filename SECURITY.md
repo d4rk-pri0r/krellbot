@@ -9,6 +9,7 @@ The client is open so you can read what it does before you run it.
 - Paper fills stay on this machine, inside `$KRELLBOT_HOME/run/paper-<venue>.json`. No exchange sees a paper fill.
 - A live order requires typing `LIVE` exactly at the first arm prompt and a key whose withdraw permission is off. The typed confirmation is a CLI-only path; the dashboard refuses live arm.
 - Telemetry is off until the operator types `y`. See [docs/telemetry.md](docs/telemetry.md).
+- The Exchange wizard step displays only historical status — "last stored through wizard at <ts>; current key presence not checked" or "unknown; not currently verified". It never claims a live connection; CLI-side rotation is not detectable from the page because no credential is read at render time.
 
 ## Code signing and notarization
 
@@ -80,10 +81,15 @@ responds 303 to `/<token>/dashboard` (PRG). A direct GET to
 `/<token>/dashboard` never marks the preference, so Back/forward
 navigation cannot flip it.
 
-The Next page labels exchange connection (slice C) and pack adoption
-(slice D) as future slices — they are not completed steps in this
-release. The free path today is the dashboard, the CLI, and
-`krellbot doctor`.
+The Next page labels pack adoption (slice D) as a future slice —
+not a completed step in this release. Slice C's Exchange (keys)
+step is part of the wizard today: the page is reached from the nav
+or Security's "Continue to exchange" link, runs a single credentialed
+probe-and-store POST, and renders only historical status (the
+durable "last stored through wizard at <ts>" timestamp from the
+last POST, or "unknown; not currently verified"). It never claims
+a live connection and never echoes credentials. The free path today
+is the dashboard, the CLI, and `krellbot doctor`.
 
 Static assets are entirely local — no CDN, no Google font, no
 external script. The wizard templates and the dashboard shell embed

@@ -558,7 +558,7 @@ _WELCOME_TEMPLATE = _wizard_html(
     "      <li><strong>Keys stay on this machine.</strong> Exchange API keys are stored in the local keychain; they are never sent to krellbot.dev.</li>\n"
     "      <li><strong>Official packs are optional and recommended.</strong> You can run any pack file you trust; official packs are not required.</li>\n"
     "    </ol>\n"
-    '    <p class="muted">Step 1 of 3 &middot; <a href="security">Continue to security</a> &middot; <a href="next">Skip to next</a></p>\n'
+    '    <p class="muted">Step 1 of 4 &middot; <a href="security">Continue to security</a> &middot; <a href="next">Skip to next</a></p>\n'
     "  </section>\n",
     route="welcome",
 )
@@ -583,7 +583,7 @@ _SECURITY_TEMPLATE = _wizard_html(
     '      <dd id="trust-permissions">Trade-only permission required, withdraw permission never granted. No exchange key is probed from this page.</dd>\n'
     "    </dl>\n"
     '    <p id="trust-diagnostic" class="__DIAGNOSTIC_CLASS__" __DIAGNOSTIC_HIDDEN__>__DIAGNOSTIC__</p>\n'
-    '    <p><a href="welcome">Back</a> &middot; <a href="next">Continue to next</a></p>\n'
+    '    <p class="muted">Step 2 of 4 &middot; <a href="welcome">Back</a> &middot; <a href="keys">Continue to exchange</a> &middot; <a href="next">Skip to next</a></p>\n'
     "  </section>\n",
     route="security",
 )
@@ -671,12 +671,16 @@ _KEYS_TEMPLATE = _wizard_html(
     "      <li>It does not run a live venue probe on every load. The status "
     "block reads the durable timestamp from the last POST, never a fresh "
     "request to Kraken or Coinbase.</li>\n"
-    "      <li>It does not claim a live-connection state. Without a "
-    "durable timestamp, the row reads 'stored; no current verification'.</li>\n"
+    "      <li>It does not claim a live-connection state. With a durable "
+    "timestamp, the row reads 'last stored through wizard at &lt;ts&gt;; "
+    "current key presence not checked'. Without one, it reads 'unknown; "
+    "not currently verified'. It never says 'currently connected' and "
+    "never claims a key is absent (CLI-side rotation is not detectable "
+    "without a credential read).</li>\n"
     "      <li>It does not echo credentials, errors, or stack traces back to "
     "the page.</li>\n"
     "    </ul>\n"
-    '    <p><a href="security">Back</a> &middot; <a href="next">Skip to next</a></p>\n'
+    '    <p class="muted">Step 3 of 4 &middot; <a href="security">Back</a> &middot; <a href="next">Continue to next</a></p>\n'
     "  </section>\n",
     route="keys",
 )
@@ -1258,8 +1262,10 @@ def _make_handler(server_config: _ServerConfig):
                    deliberately do NOT honour any caller-supplied probe
                    callable; the wizard layer is a closed entry point.
                 4. Persist the outcome via ``keys_status.record_outcome``
-                   so a later GET (no live probe) can render
-                   ``stored; last checked at <timestamp>``.
+                   so a later GET (no live probe) can render the historical
+                   ``last stored through wizard at <ts>; current key
+                   presence not checked`` claim — never a live
+                   ``currently connected`` framing.
                 5. 303 PRG to ``/<token>/keys``. The Location carries a
                    fragment-style status_message that survives the
                    redirect (query string is logged by some upstreams,
@@ -1306,7 +1312,10 @@ def _make_handler(server_config: _ServerConfig):
             )
 
             # Persist the durable status so the next GET (no live
-            # probe) can render ``stored; last checked at <ts>``.
+            # probe) can render the historical
+            # ``last stored through wizard at <ts>; current key
+            # presence not checked`` claim — never a live
+            # ``currently connected`` framing.
             try:
                 keys_status.record_outcome(
                     home,

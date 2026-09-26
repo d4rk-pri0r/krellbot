@@ -933,26 +933,59 @@ def test_status_after_store_says_stored_not_connected(home, fake_keyring, monkey
         visible = _visible(g_body.decode("utf-8", errors="replace")).lower()
         # Must show "stored" (with optional timestamp).
         assert "stored" in visible
-        # Must NOT claim "currently connected" or live-status phrases.
-        assert "currently connected" not in visible
+        # The per-venue status row (NOT the whole page — the page may
+        # honestly say "it never says 'currently connected'" in the
+        # 'what this page does not do' list) must NOT claim a live
+        # connection.
+        kraken_row = _extract_venue_status(g_body.decode("utf-8", "replace"), "kraken")
+        assert "currently connected" not in kraken_row.lower(), (
+            "per-venue status row must not claim 'currently connected'"
+        )
     finally:
         _stop(server)
 
 
+def _extract_venue_status(html: str, venue: str) -> str:
+    """Return the text of the per-venue status <dd> for ``venue``.
+
+    Scoping the 'currently connected' assertion to the actual status
+    row keeps the test honest after Task 4 added explanatory copy
+    that legitimately mentions the phrase in the 'what this page
+    does not do' list. Returning the whole row also lets future
+    tests pin the historical language verbatim.
+    """
+    m = re.search(
+        r'<dd\s+id="keys-status-' + re.escape(venue) + r'"[^>]*>(.*?)</dd>',
+        html,
+        flags=re.DOTALL,
+    )
+    return m.group(1) if m else ""
+
+
 def test_status_with_no_key_says_not_present(home, fake_keyring):
-    """With no stored key, the status page must say 'not stored' / 'no key'
-    or similar honest framing — never invent connectivity."""
+    """With no stored key, the status page must say 'unknown / not currently
+    verified' (per the closed SAFE_MESSAGES binding) — never invent
+    connectivity and never claim a key is absent."""
     server = _start(home)
     try:
         _status, _resp, body = _get(server, f"/{server.token}/keys")
         visible = _visible(body.decode("utf-8", errors="replace")).lower()
-        # An honest "no key stored" type phrase must appear.
-        assert (
-            "no key" in visible
-            or "not stored" in visible
-            or "no api key" in visible
-            or "no current verification" in visible
+        # An honest unknown / not-verified phrase must appear in the
+        # per-venue status row. (The actual closed message is
+        # 'unknown; not currently verified'.)
+        kraken_row = _extract_venue_status(body.decode("utf-8", "replace"), "kraken").lower()
+        coinbase_row = _extract_venue_status(body.decode("utf-8", "replace"), "coinbase").lower()
+        assert "not currently verified" in kraken_row, (
+            "kraken row must render the closed 'not currently verified' claim"
         )
+        assert "not currently verified" in coinbase_row, (
+            "coinbase row must render the closed 'not currently verified' claim"
+        )
+        assert "currently connected" not in kraken_row
+        assert "currently connected" not in coinbase_row
+        # Whole-page check: never 'no key stored' (would imply a
+        # current-keyring absence probe happened — it didn't).
+        assert "no key stored" not in visible
     finally:
         _stop(server)
 
@@ -1447,10 +1480,15 @@ def test_i2_valid_historic_stored_row_uses_historical_language(home, fake_keyrin
     try:
         status, _resp, body = _get(server, f"/{server.token}/keys")
         assert status == 200
-        visible = _visible(body.decode("utf-8", errors="replace"))
+        html = body.decode("utf-8", errors="replace")
+        visible = _visible(html)
         assert "last stored through wizard at 2026-09-26T12:00:00Z" in visible
         assert "current key presence not checked" in visible
-        assert "currently connected" not in visible.lower()
+        # Scope 'currently connected' to the kraken status row — the
+        # page legitimately mentions the phrase in its 'what this
+        # page does not do' rejection list.
+        kraken_row = _extract_venue_status(html, "kraken")
+        assert "currently connected" not in kraken_row.lower()
         assert "last checked at" not in visible
     finally:
         _stop(server)
@@ -1465,10 +1503,15 @@ def test_i2_no_metadata_means_unknown_not_no_key(home, fake_keyring):
     try:
         status, _resp, body = _get(server, f"/{server.token}/keys")
         assert status == 200
-        visible = _visible(body.decode("utf-8", errors="replace"))
+        html = body.decode("utf-8", errors="replace")
+        visible = _visible(html)
         assert "not currently verified" in visible
         assert "no key stored" not in visible
-        assert "currently connected" not in visible.lower()
+        # Scope 'currently connected' to the per-venue status row.
+        kraken_row = _extract_venue_status(html, "kraken").lower()
+        coinbase_row = _extract_venue_status(html, "coinbase").lower()
+        assert "currently connected" not in kraken_row
+        assert "currently connected" not in coinbase_row
     finally:
         _stop(server)
 
@@ -1490,11 +1533,20 @@ def test_i2_forged_timestamp_is_rejected(home, fake_keyring):
         try:
             status, _resp, body = _get(server, f"/{server.token}/keys")
             assert status == 200
-            visible = _visible(body.decode("utf-8", errors="replace"))
+            html = body.decode("utf-8", errors="replace")
+            visible = _visible(html)
             assert forged not in visible, f"forged timestamp leaked: {forged}"
             assert "alert(" not in visible
-            assert "last stored through wizard at" not in visible
+            # Scope the historical phrase to the kraken status row —
+            # the page legitimately mentions it in its 'what this
+            # page does not do' rejection list.
+            kraken_row = _extract_venue_status(html, "kraken")
+            assert "last stored through wizard at" not in kraken_row, (
+                f"forged timestamp bound a historical claim for case {forged!r}"
+            )
             assert "not currently verified" in visible
+            # Per-venue row stays not-claimed-live.
+            assert "currently connected" not in kraken_row.lower()
         finally:
             _stop(server)
 
@@ -1518,9 +1570,16 @@ def test_i2_unbound_stored_claim_is_rejected(home, fake_keyring):
         try:
             status, _resp, body = _get(server, f"/{server.token}/keys")
             assert status == 200
-            visible = _visible(body.decode("utf-8", errors="replace"))
-            assert "last stored through wizard at" not in visible, f"unbound stored claim accepted for case {case}"
+            html = body.decode("utf-8", errors="replace")
+            visible = _visible(html)
+            # Scope the historical phrase to the coinbase status row —
+            # the page legitimately mentions it in its 'what this
+            # page does not do' rejection list.
+            coinbase_row = _extract_venue_status(html, "coinbase")
+            assert "last stored through wizard at" not in coinbase_row, f"unbound stored claim accepted for case {case}"
             assert "not currently verified" in visible
+            # Per-venue row stays not-claimed-live.
+            assert "currently connected" not in coinbase_row.lower()
         finally:
             _stop(server)
 
@@ -1574,13 +1633,20 @@ def test_i2_stored_write_failure_after_keyring_store_not_green_not_no_key(home, 
         assert status == 303
         assert "stored" in (headers.get("location") or "")
         _g_status, _g_resp, g_body = _get(server, headers.get("location", f"/{server.token}/keys"))
-        visible = _visible(g_body.decode("utf-8", errors="replace"))
+        html = g_body.decode("utf-8", errors="replace")
+        visible = _visible(html)
         # The explicit safe POST result is still surfaced (PRG success line).
         assert "stored in native OS keychain" in visible
         # The status row stays non-green and never claims 'no key stored'.
         assert "no key stored" not in visible
-        assert "last stored through wizard at" not in visible
+        # Scope the historical phrase to the kraken status row — the
+        # page legitimately mentions it in its 'what this page does
+        # not do' rejection list.
+        kraken_row = _extract_venue_status(html, "kraken")
+        assert "last stored through wizard at" not in kraken_row
         assert "not currently verified" in visible
+        # Per-venue row stays not-claimed-live.
+        assert "currently connected" not in kraken_row.lower()
     finally:
         _stop(server)
 
@@ -1605,12 +1671,15 @@ def test_i2_post_still_reports_safe_success_in_prg(home, fake_keyring, monkeypat
         assert status == 303
         loc = headers.get("location", "")
         _g_status, _g_resp, g_body = _get(server, loc)
-        visible = _visible(g_body.decode("utf-8", errors="replace"))
+        html = g_body.decode("utf-8", errors="replace")
+        visible = _visible(html)
         assert "stored in native OS keychain" in visible
         # After the record, the durable row becomes the historical claim.
         assert "last stored through wizard at" in visible
         assert "current key presence not checked" in visible
-        assert "currently connected" not in visible.lower()
+        # Scope 'currently connected' to the per-venue status row.
+        kraken_row = _extract_venue_status(html, "kraken").lower()
+        assert "currently connected" not in kraken_row
     finally:
         _stop(server)
 
