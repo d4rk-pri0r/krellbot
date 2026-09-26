@@ -369,6 +369,11 @@ def test_view_json_cannot_break_out_of_script(home):
         json.dumps({"detail": payload}) + "\n",
         encoding="utf-8",
     )
+    # The wizard root renders the welcome shell (no visit preference yet).
+    # Set the preference so /<token>/ renders the dashboard, which is the
+    # view that embeds journal records.
+    from krellbot.ui.first_run import mark_visited_dashboard
+    mark_visited_dashboard(home)
     server, port = _start(home)
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port)

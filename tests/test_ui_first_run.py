@@ -4,12 +4,19 @@ These tests prove the visit preference is bounded JSON, corrupt-safe,
 and never widens the home directory's permissions. They also prove the
 trust snapshot reflects a fake/null keychain without ever reading a
 secret value.
+
+A second block at the bottom covers the B2 token-scoped wizard routes
+and fixed user-initiated exits served by `krellbot.ui.server`. Those
+tests exercise the HTTP layer (DashboardServer + http.client) and
+start the server on a random port (`port=0`), teardown is in `finally`.
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
+import socket
 import sys
 from pathlib import Path
 
@@ -305,3 +312,375 @@ def test_trust_snapshot_reports_unreadable_home_mode(tmp_path: Path, monkeypatch
     monkeypatch.setattr(trust.os, "stat", fake_stat)
     snap = trust.trust_snapshot(tmp_path)
     assert snap["home_mode"] is None
+
+
+# --- B2: token-scoped wizard routes + fixed exits ---------------------------
+#
+# These tests construct a DashboardServer on a random port and exercise the
+# HTTP layer with http.client. No sleep, no poll: the server is synchronous
+# and answers instantly. Tear-down lives in `finally` so a hung test does
+# not leak the listening socket.
+
+
+def _start_server(home: Path):
+    """Start a DashboardServer on a random port. Caller must stop."""
+    from krellbot.ui.server import DashboardServer
+
+    server = DashboardServer(home=home, port=0)
+    server.start()
+    return server
+
+
+def _parse_set_cookies(resp: http.client.HTTPResponse) -> dict[str, str]:
+    """Pull every Set-Cookie header off a response and return a name->value map."""
+    out: dict[str, str] = {}
+    for k, v in resp.getheaders():
+        if k.lower() != "set-cookie":
+            continue
+        first = v.split(";", 1)[0].strip()
+        if "=" not in first:
+            continue
+        name, _, value = first.partition("=")
+        out[name.strip()] = value.strip()
+    return out
+
+
+def _login(server, port: int) -> tuple[str, str]:
+    """GET /<token>/ once to set cookies. Returns (cookie_header, csrf)."""
+    conn = http.client.HTTPConnection("127.0.0.1", port)
+    try:
+        conn.request("GET", f"/{server.token}/")
+        resp = conn.getresponse()
+        resp.read()
+        cookies = _parse_set_cookies(resp)
+        session = cookies.get("krellbot_session", "")
+        csrf = cookies.get("krellbot_csrf", "")
+        assert session and csrf, (session, csrf, resp.getheaders())
+        return f"krellbot_session={session}; krellbot_csrf={csrf}", csrf
+    finally:
+        conn.close()
+
+
+def _post_form(server, port: int, path: str, body: str, *, cookies: str, origin: str | None):
+    conn = http.client.HTTPConnection("127.0.0.1", port)
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Cookie": cookies,
+    }
+    if origin is not None:
+        headers["Origin"] = origin
+    conn.request("POST", path, body=body, headers=headers)
+    return conn, conn.getresponse()
+
+
+def test_fresh_root_renders_welcome(tmp_path: Path) -> None:
+    """With no recorded visit, the index route must render the wizard's
+    Welcome shell — distinct from the dashboard — and the page must
+    expose the trust posture via a JSON bootstrap with no raw credential.
+    """
+    server = _start_server(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200, resp.status
+            # Welcome markers — the wizard's own brand.
+            assert "krellbot first-run wizard" in body.lower()
+            assert "welcome-section" in body
+            # Security posture is exposed on the Welcome shell via a JSON
+            # bootstrap view (`__KB_VIEW__`) — no raw credential string.
+            assert "__KB_VIEW__" in body
+            assert "keychain_backend" in body
+            # No raw credential string leaks even when the JSON is escaped.
+            low = body.lower()
+            assert "api_key" not in low
+            assert "password" not in low
+            assert "secret" not in low
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_security_route_has_posture_and_no_secret(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`GET /<token>/security` exposes the trust snapshot (path, backend) but
+    must never include any raw credential string."""
+    from krellbot.ui import trust
+
+    monkeypatch.setattr(
+        trust,
+        "_keychain_backend",
+        lambda: ("keyring.backends.null.Keyring", "keychain backend is NullKeyring (not persistent)"),
+    )
+    server = _start_server(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/security")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200, resp.status
+            # Backend path appears as text on the security shell.
+            assert "keyring.backends.null.Keyring" in body
+            # Home path appears.
+            assert str(tmp_path) in body
+            # No raw credential can leak.
+            low = body.lower()
+            assert "api_key" not in low
+            assert "password" not in low
+            assert "secret" not in low
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_post_visit_dashboard_changes_later_root_to_dashboard(tmp_path: Path) -> None:
+    """After a CSRF-protected POST /visit-dashboard flips the preference,
+    GET /<token>/ must render the dashboard shell, not welcome.
+    """
+    from krellbot.ui.first_run import has_visited_dashboard
+
+    server = _start_server(tmp_path)
+    try:
+        assert has_visited_dashboard(tmp_path) is False
+        cookies, csrf = _login(server, server.bound_port)
+        conn, resp = _post_form(
+            server,
+            server.bound_port,
+            f"/{server.token}/visit-dashboard",
+            f"csrf={csrf}",
+            cookies=cookies,
+            origin=f"http://127.0.0.1:{server.bound_port}",
+        )
+        assert resp.status == 200, resp.status
+        resp.read()
+        conn.close()
+        assert has_visited_dashboard(tmp_path) is True
+
+        # Now the root must be the dashboard shell, not the wizard welcome.
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200
+            assert "armed-section" in body  # dashboard-only block
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_back_button_from_dashboard_still_reaches_welcome(tmp_path: Path) -> None:
+    """The dashboard shell must surface a back-to-welcome affordance that
+    resolves to a fresh Welcome render (NOT a 404, NOT a token-less redirect
+    that would leak the gate)."""
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    mark_visited_dashboard(tmp_path)  # preference already set
+    server = _start_server(tmp_path)
+    try:
+        # Dashboard root.
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200
+            assert "armed-section" in body
+        finally:
+            conn.close()
+        # Explicit /welcome route (the Back target) also serves the wizard.
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/welcome")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200
+            assert "welcome" in body.lower()
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_fixed_exit_does_not_reflect_untrusted_target(tmp_path: Path) -> None:
+    """The exit table is a fixed allowlist. An attacker cannot bounce via
+    `?target=https://attacker.invalid`; the route is `out/...` and unknown
+    exits must 404 with NO Location header.
+    """
+    server = _start_server(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/out/evil?target=https://attacker.invalid")
+            resp = conn.getresponse()
+            assert resp.status == 404
+            assert resp.getheader("Location") is None
+            resp.read()
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_known_fixed_exits_redirect_with_no_referrer(tmp_path: Path) -> None:
+    """The two allowlisted exits return 302s to their fixed targets with
+    `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+    """
+    server = _start_server(tmp_path)
+    try:
+        for slug, target in (
+            ("docs", "https://krellbot.dev/docs/"),
+            ("source", "https://github.com/d4rk-pri0r/krellbot"),
+        ):
+            conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+            try:
+                conn.request("GET", f"/{server.token}/out/{slug}")
+                resp = conn.getresponse()
+                headers = {k.lower(): v for k, v in resp.getheaders()}
+                assert resp.status == 302, resp.status
+                assert headers.get("location") == target
+                assert headers.get("referrer-policy") == "no-referrer"
+                assert headers.get("cache-control") == "no-store"
+                resp.read()
+            finally:
+                conn.close()
+    finally:
+        server.stop()
+
+
+def test_missing_token_is_403_with_no_set_cookie(tmp_path: Path) -> None:
+    """A path token must match the server's token exactly. Missing-token
+    requests are 403 and must NOT set any cookie that would grant later
+    access to a guessed path.
+    """
+    server = _start_server(tmp_path)
+    try:
+        # Use the real token's length but a wrong value so we exercise the
+        # constant-time-compare path (not just the empty-string short-circuit).
+        wrong = "0" * len(server.token)
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{wrong}/welcome")
+            resp = conn.getresponse()
+            headers_blob = "\n".join(f"{k}: {v}" for k, v in resp.getheaders())
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 403
+            assert "set-cookie" not in headers_blob.lower()
+            assert server.token not in body
+            assert server.token not in headers_blob
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_foreign_host_gets_403_with_no_set_cookie(tmp_path: Path) -> None:
+    """A foreign Host header is rejected with 403 and no cookie is set."""
+    server = _start_server(tmp_path)
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.connect(("127.0.0.1", server.bound_port))
+            request = (
+                f"GET /{server.token}/welcome HTTP/1.1\r\n"
+                "Host: evil.example.com\r\n"
+                "Connection: close\r\n\r\n"
+            ).encode("ascii")
+            sock.sendall(request)
+            data = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+        finally:
+            sock.close()
+        head = data.split(b"\r\n", 1)[0].decode("ascii", errors="replace")
+        assert " 403 " in head, head
+        assert b"Set-Cookie" not in data
+    finally:
+        server.stop()
+
+
+def test_wizard_html_keeps_journal_injection_escaped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A journal string `</script><script>alert(1)</script>` must remain
+    escaped as `\\u003c` in any HTML the server emits — for both the
+    dashboard and the new wizard views.
+
+    The wizard views don't embed journal records by design, so they must
+    simply not contain an unescaped `</script>` tag anywhere. The
+    dashboard view IS journal-derived and is the path that proves the
+    escape helper actually fires.
+    """
+    from krellbot import paths as kb_paths
+
+    # Mirror the `home` fixture so `krellbot.paths.home()` resolves inside tmp_path.
+    monkeypatch.setenv("KRELLBOT_HOME", str(tmp_path))
+    monkeypatch.setattr(kb_paths, "home", lambda *a, **kw: tmp_path)
+    monkeypatch.setattr(kb_paths, "ensure_layout", lambda *a, **kw: None)
+    journal_dir = Path(tmp_path) / "journal"
+    journal_dir.mkdir(parents=True, exist_ok=True)
+    payload = "</script><script>alert(1)</script>"
+    (journal_dir / "2099-01.jsonl").write_text(
+        json.dumps({"detail": payload}) + "\n", encoding="utf-8"
+    )
+
+    server = _start_server(tmp_path)
+    try:
+        # Wizard views — they must not leak an unescaped </script>.
+        for path in (
+            f"/{server.token}/welcome",
+            f"/{server.token}/security",
+        ):
+            conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+            try:
+                conn.request("GET", path)
+                resp = conn.getresponse()
+                body = resp.read()
+                assert resp.status == 200, (path, resp.status)
+                assert b"</script><script>" not in body, path
+            finally:
+                conn.close()
+        # Dashboard view — same guarantee, with the escape exercised by
+        # the embedded journal string. /<token>/dashboard renders the
+        # dashboard directly regardless of the visit preference.
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/dashboard")
+            resp = conn.getresponse()
+            body = resp.read()
+            assert resp.status == 200
+            assert b"</script><script>" not in body
+            assert b"\\u003c/script\\u003e" in body
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_visit_dashboard_post_without_csrf_is_403(tmp_path: Path) -> None:
+    """POST visit-dashboard inherits the existing cookie+CSRF+Origin gate.
+    A POST without a session/CSRF cookie must be 403 and must NOT flip the
+    preference.
+    """
+    from krellbot.ui.first_run import has_visited_dashboard
+
+    server = _start_server(tmp_path)
+    try:
+        assert has_visited_dashboard(tmp_path) is False
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("POST", f"/{server.token}/visit-dashboard", body="csrf=anything")
+            resp = conn.getresponse()
+            assert resp.status == 403
+            resp.read()
+        finally:
+            conn.close()
+        assert has_visited_dashboard(tmp_path) is False
+    finally:
+        server.stop()

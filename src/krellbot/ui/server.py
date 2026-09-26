@@ -44,11 +44,48 @@ from krellbot import journal as kb_journal
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 
+from . import first_run
+from . import trust
+
 # ---- constants -----------------------------------------------------------
 
 _BIND_HOST = "127.0.0.1"  # The only bind address. No override.
 _TOKEN_BYTES = 32  # 32 bytes -> 64 hex chars
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# Fixed user-initiated exits. These are the ONLY external URLs the server
+# ever links to; the browser initiates the navigation and the server never
+# fetches them. Anything else under /out/* is 404 with no Location header.
+_EXITS: dict[str, str] = {
+    "out/docs": "https://krellbot.dev/docs/",
+    "out/source": "https://github.com/d4rk-pri0r/krellbot",
+}
+
+# Content-Security-Policy. `unsafe-inline` is permitted only because the
+# HTML currently inlines a JSON bootstrap script; tightening (nonce or JSON
+# script from a `/__kb_view__` endpoint) is B3's job, not B2's.
+_CSP = (
+    "default-src 'none'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self'; "
+    "img-src 'self'; "
+    "form-action 'self'; "
+    "base-uri 'none'; "
+    "frame-ancestors 'none'"
+)
+
+# Security headers applied to every HTML and redirect response from this
+# server. The dashboard is loopback-only and the wizard does not cache.
+_HTML_SECURITY_HEADERS = (
+    ("Content-Security-Policy", _CSP),
+    ("Referrer-Policy", "no-referrer"),
+    ("X-Content-Type-Options", "nosniff"),
+    ("Cache-Control", "no-store"),
+)
+
+# Wizard route names. Each maps to a server-rendered shell that embeds
+# a small `__KB_VIEW__` JSON bootstrap (escaped via `_embed_json`).
+_WIZARD_ROUTES = frozenset({"welcome", "security", "next"})
 
 
 # ---- helpers -------------------------------------------------------------
@@ -209,6 +246,136 @@ def _render_dashboard(home: Path, csrf: str) -> bytes:
     rendered = template.replace("__VIEW_JSON__", payload)
     rendered = rendered.replace('name="csrf"', f'name="csrf" value="{csrf}"')
     return rendered.encode("utf-8")
+
+
+def _render_welcome(home: Path, csrf: str) -> bytes:
+    """Render the wizard Welcome shell.
+
+    The view embedded here is the trust snapshot (no raw credentials)
+    plus the routes the wizard exposes. The browser submits the
+    visit-dashboard POST via a hidden form.
+    """
+    snap = trust.trust_snapshot(home)
+    view = {
+        "view": "wizard.welcome",
+        "trust": snap,
+        "home_mode": snap.get("home_mode"),
+        "next_routes": ["welcome", "security", "next", "dashboard"],
+        "exits": {"docs": "https://krellbot.dev/docs/", "source": "https://github.com/d4rk-pri0r/krellbot"},
+    }
+    payload = _embed_json(view)
+    body = _WELCOME_TEMPLATE
+    body = body.replace("__VIEW_JSON__", payload)
+    body = body.replace('name="csrf"', f'name="csrf" value="{csrf}"')
+    return body.encode("utf-8")
+
+
+def _render_security(home: Path, csrf: str) -> bytes:
+    """Render the wizard Security shell — trust posture, no secrets."""
+    snap = trust.trust_snapshot(home)
+    view = {
+        "view": "wizard.security",
+        "trust": snap,
+        "ok": snap.get("keychain_ok", False),
+    }
+    payload = _embed_json(view)
+    body = _SECURITY_TEMPLATE
+    body = body.replace("__VIEW_JSON__", payload)
+    body = body.replace('name="csrf"', f'name="csrf" value="{csrf}"')
+    return body.encode("utf-8")
+
+
+def _render_next(home: Path, csrf: str) -> bytes:
+    """Render the wizard Next-step shell — Exit Plan + Adopt.
+
+    The exit links point at the server's own fixed-exit routes
+    (/out/docs, /out/source), not at the external URLs, so the server
+    remains the only component that decides what may leave the box.
+    """
+    snap = trust.trust_snapshot(home)
+    view = {
+        "view": "wizard.next",
+        "trust": snap,
+        "exit_routes": {"docs": "out/docs", "source": "out/source"},
+    }
+    payload = _embed_json(view)
+    body = _NEXT_TEMPLATE
+    body = body.replace("__VIEW_JSON__", payload)
+    body = body.replace('name="csrf"', f'name="csrf" value="{csrf}"')
+    return body.encode("utf-8")
+
+
+def _wizard_html(wrapper: str) -> str:
+    """Wrap a per-route main block in the wizard shell.
+
+    The shell ships a strict CSP, no-referrer, no-store, and the wizard's
+    own navigation. The bootstrap JSON is escaped by `_embed_json`; the
+    template itself only contains literal markup, so there is no
+    untrusted content path here.
+    """
+    return (
+        "<!doctype html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '  <meta charset="utf-8">\n'
+        '  <meta name="viewport" content="width=device-width,initial-scale=1">\n'
+        '  <meta name="referrer" content="no-referrer">\n'
+        "  <title>krellbot first-run wizard</title>\n"
+        '  <link rel="stylesheet" href="../static/style.css">\n'
+        "</head>\n"
+        "<body>\n"
+        "<header>\n"
+        "  <h1>krellbot first-run wizard</h1>\n"
+        '  <p class="muted">loopback only. no call leaves this machine.</p>\n'
+        "</header>\n"
+        "<nav>\n"
+        '  <a href="../welcome">Welcome</a> |\n'
+        '  <a href="../security">Security</a> |\n'
+        '  <a href="../next">Next</a> |\n'
+        '  <a href="../dashboard">Dashboard</a> |\n'
+        '  <a href="../out/docs">Docs</a> |\n'
+        '  <a href="../out/source">Source</a>\n'
+        "</nav>\n"
+        "<main>\n"
+        f"{wrapper}\n"
+        "</main>\n"
+        "<footer>\n"
+        '  <p class="muted">Static assets are local. No CDN, no Google font, no external script.</p>\n'
+        "</footer>\n"
+        "<script>window.__KB_VIEW__ = __VIEW_JSON__;</script>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+
+
+_WELCOME_TEMPLATE = _wizard_html(
+    "  <section id=\"welcome-section\">\n"
+    "    <h2>Welcome</h2>\n"
+    "    <p>You are running krellbot for the first time on this loopback port.</p>\n"
+    "    <p>Read the security posture, then continue to the dashboard.</p>\n"
+    "    <form id=\"form-visit\" action=\"visit-dashboard\" method=\"POST\">\n"
+    "      <input type=\"hidden\" name=\"csrf\">\n"
+    '      <button type="submit">I have read the security posture — open the dashboard</button>\n'
+    "    </form>\n"
+    "  </section>\n"
+)
+
+_SECURITY_TEMPLATE = _wizard_html(
+    "  <section id=\"wizard-security-section\">\n"
+    "    <h2>Security posture</h2>\n"
+    "    <p>This is read-only. No keys, no balances, no orders leave the box.</p>\n"
+    "    <dl id=\"trust-list\"></dl>\n"
+    "    <p><a href=\"../welcome\">Back</a></p>\n"
+    "  </section>\n"
+)
+
+_NEXT_TEMPLATE = _wizard_html(
+    "  <section id=\"wizard-next-section\">\n"
+    "    <h2>Next steps</h2>\n"
+    "    <p>When you are ready, open the dashboard.</p>\n"
+    "    <p><a href=\"../dashboard\">Open dashboard</a></p>\n"
+    "  </section>\n"
+)
 
 
 def _embed_json(view: dict) -> str:
@@ -486,25 +653,100 @@ def _make_handler(server_config: _ServerConfig):
         # ---- GET routes -------------------------------------------------
 
         def _route_get(self, rest: str, port: int) -> None:
-            if rest in ("", "/"):
+            # Strip a leading slash for clean comparison.
+            route = rest.lstrip("/")
+            # Wizard routes: welcome / security / next.
+            if route in _WIZARD_ROUTES:
+                self._serve_wizard(route, port)
+                return
+            # Index route (`/`) chooses welcome or dashboard based on the
+            # recorded visit preference — never redirects to a URL missing
+            # the token.
+            if route in ("", "/"):
                 self._serve_index(port)
                 return
-            if rest.startswith("static/"):
-                self._serve_static(rest[len("static/") :])
+            # Direct /dashboard always renders the dashboard shell. The
+            # visit preference only governs what the *index* shows; if the
+            # user types /dashboard explicitly they get the dashboard.
+            if route == "dashboard":
+                self._send_html(
+                    _render_dashboard(server_config.home, server_config.csrf),
+                    port,
+                )
                 return
+            # Fixed user-initiated exits. Only the allowlisted slugs are
+            # honored; caller-controlled targets (query string, etc.) are
+            # never reflected.
+            if route in _EXITS:
+                self._serve_exit(_EXITS[route])
+                return
+            # Static asset fallback (existing behavior).
+            if route.startswith("static/"):
+                self._serve_static(route[len("static/") :])
+                return
+            # Anything else inside the token gate is 404 with no Location,
+            # so a guessed path cannot echo a redirect target.
             self._send_status(404, "Not Found")
 
         def _serve_index(self, port: int) -> None:
-            body = _render_dashboard(server_config.home, server_config.csrf)
+            """Serve the welcome OR the dashboard shell.
+
+            The choice depends on the recorded visit preference:
+                * visited_dashboard == True → dashboard
+                * any other case (missing, corrupt, non-bool) → welcome
+
+            We never redirect to a URL missing the token, so the same
+            route here serves both shells without disclosing the gate.
+            """
+            home = server_config.home
+            if first_run.has_visited_dashboard(home):
+                body = _render_dashboard(home, server_config.csrf)
+            else:
+                body = _render_welcome(home, server_config.csrf)
+            self._send_html(body, port)
+
+        def _serve_wizard(self, route: str, port: int) -> None:
+            """Serve a wizard view by name. Sets cookies so the wizard's
+            POST /visit-dashboard can satisfy the existing CSRF gate.
+            """
+            home = server_config.home
+            csrf = server_config.csrf
+            if route == "welcome":
+                body = _render_welcome(home, csrf)
+            elif route == "security":
+                body = _render_security(home, csrf)
+            elif route == "next":
+                body = _render_next(home, csrf)
+            else:  # pragma: no cover — _WIZARD_ROUTES is fixed
+                self._send_status(404, "Not Found")
+                return
+            self._send_html(body, port)
+
+        def _send_html(self, body: bytes, port: int) -> None:
+            """Write a 200 HTML response with the wizard/dashboard security
+            headers and the session+CSRF cookies. Shared by every HTML
+            response the server emits so the policy lives in exactly one
+            place.
+            """
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            # Set BOTH cookies on the first good GET.
             self.send_header("Set-Cookie", _session_cookie(server_config.token, port))
             self.send_header("Set-Cookie", _csrf_cookie(server_config.csrf, port))
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            for name, value in _HTML_SECURITY_HEADERS:
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
+
+        def _serve_exit(self, target: str) -> None:
+            """302 to a fixed, allowlisted external URL. Browser-initiated."""
+            self.send_response(302)
+            self.send_header("Location", target)
+            # Exits are one-shot; never cache, never leak the referrer.
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
 
         def _serve_static(self, rel: str) -> None:
             # Reject path traversal: no .., no leading slash.
@@ -540,8 +782,24 @@ def _make_handler(server_config: _ServerConfig):
                 self._do_stop_all()
             elif rest == "adopt":
                 self._do_adopt(form)
+            elif rest == "visit-dashboard":
+                self._do_visit_dashboard()
             else:
                 self._send_status(404, "Not Found")
+
+        def _do_visit_dashboard(self) -> None:
+            """Record the visit preference so future root GETs render the
+            dashboard shell instead of the wizard welcome.
+
+            The cookie/CSRF/Origin gate is enforced upstream in `_handle`;
+            by the time we get here the request is already authenticated.
+            """
+            try:
+                first_run.mark_visited_dashboard(server_config.home)
+            except OSError:
+                self._send_status(500, "Internal Server Error")
+                return
+            self._send_text(200, "visited")
 
         def _do_arm(self, form: dict) -> None:
             mode = (form.get("mode") or [""])[0]
