@@ -1480,18 +1480,22 @@ def cmd_doctor(args):
 
 
 def cmd_ui(args):
-    """`krellbot ui [--port N]`.
+    """`krellbot ui [--port N] [--open]`.
 
     Bind a token-gated dashboard to 127.0.0.1 on a random port (or the
-    given `--port`). Print the URL with the gate token. SIGINT stops the
-    server and returns 0. The server never accepts a non-loopback Host
-    header and never opens a socket to a venue.
+    given `--port`). Print the URL with the gate token. With `--open`,
+    hand the URL to the default browser once before the loop runs. SIGINT
+    stops the server and returns 0. The server never accepts a non-loopback
+    Host header and never opens a socket to a venue.
     """
     import signal
+    import webbrowser
 
+    from krellbot.ui.launch import open_url
     from krellbot.ui.server import DashboardServer
 
     port = 0
+    do_open = False
     i = 0
     while i < len(args):
         a = args[i]
@@ -1503,13 +1507,19 @@ def cmd_ui(args):
                 return 2
             i += 2
             continue
+        if a == "--open":
+            do_open = True
+            i += 1
+            continue
         print(f"Unknown argument: {a}", file=sys.stderr)
         return 2
 
     server = DashboardServer(home=kb_paths.home(), port=port)
     server.start()
 
-    url = f"http://127.0.0.1:{server.bound_port}/{server.token}/"
+    url = open_url(server, webbrowser.open) if do_open else (
+        f"http://127.0.0.1:{server.bound_port}/{server.token}/"
+    )
     print(f"Dashboard running at {url}")
     print("Open it in your browser. Ctrl-C to stop.")
     print("Bound to 127.0.0.1 only. Token in URL is also the session cookie.")
