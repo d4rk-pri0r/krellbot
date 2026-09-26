@@ -16,6 +16,30 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture
+def zero_umask():
+    """Force umask 0o000 so mkdir creates world-writable dirs by default.
+
+    This exposes the privacy bug where _ensure_home would skip its chmod
+    because the resulting mode (0o777) is not the umask-default 0o755.
+    """
+    old = os.umask(0o000)
+    try:
+        yield
+    finally:
+        os.umask(old)
+
+
+@pytest.fixture
+def custom_umask():
+    """Force a non-default umask (0o022 reversed to 0o077 so mkdir creates 0o700)."""
+    old = os.umask(0o077)
+    try:
+        yield
+    finally:
+        os.umask(old)
+
+
 # --- has_visited_dashboard / mark_visited_dashboard -------------------------
 
 
@@ -154,6 +178,52 @@ def test_mark_visited_does_not_widen_home(tmp_path: Path) -> None:
     # The preference file itself should still be private.
     pref_mode = (tmp_path / "ui-preferences.json").stat().st_mode & 0o777
     assert pref_mode == 0o600
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits")
+def test_ensure_home_is_0o700_under_zero_umask(tmp_path: Path, zero_umask) -> None:
+    """Privacy must hold under any umask, including umask=0o000.
+
+    With umask 0o000, a plain ``mkdir`` would create the directory with
+    mode 0o777 (world-readable/writable). _ensure_home must still leave
+    the freshly created home at exactly 0o700 so the data directory
+    cannot leak to other local users.
+    """
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    missing = tmp_path / "fresh-home-zero-umask"
+    assert not missing.exists()
+
+    mark_visited_dashboard(missing)
+
+    assert missing.is_dir()
+    home_mode = missing.stat().st_mode & 0o777
+    assert home_mode == 0o700, (
+        f"newly created home must be 0o700 under zero umask, got {oct(home_mode)}"
+    )
+    pref_mode = (missing / "ui-preferences.json").stat().st_mode & 0o777
+    assert pref_mode == 0o600
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits")
+def test_ensure_home_is_0o700_under_other_nonstandard_umask(tmp_path: Path, custom_umask) -> None:
+    """Privacy must also hold under a non-default umask like 0o077.
+
+    With umask 0o077, mkdir creates 0o700 (already private). _ensure_home
+    must still result in exactly 0o700 — no widening, no narrowing.
+    """
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    missing = tmp_path / "fresh-home-custom-umask"
+    assert not missing.exists()
+
+    mark_visited_dashboard(missing)
+
+    assert missing.is_dir()
+    home_mode = missing.stat().st_mode & 0o777
+    assert home_mode == 0o700, (
+        f"newly created home must be 0o700 under umask 0o077, got {oct(home_mode)}"
+    )
 
 
 # --- trust_snapshot ---------------------------------------------------------

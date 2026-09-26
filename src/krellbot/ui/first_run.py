@@ -33,24 +33,36 @@ def _pref_path(home: Path) -> Path:
 def _ensure_home(home: Path) -> None:
     """Create the data home privately on POSIX if it does not yet exist.
 
-    An already-existing home keeps its mode untouched. A freshly
-    created home is chmod'd to 0o700 only when the current mode is the
-    umask-default 0o755 from ``mkdir``, so a concurrent creator that
-    raced us to a stricter mode wins.
+    The freshly created home (and any missing parents) is created with an
+    explicit mode of 0o700 so the result is independent of the calling
+    process's umask: a permissive umask such as 0o000 cannot leak the
+    data home to other local users.
+
+    An already-existing home keeps its mode untouched — we never chmod a
+    directory we did not create, so a caller that pre-set a stricter or
+    more permissive mode keeps it.
+
+    mkdir errors propagate: callers depend on the directory existing, and
+    silently swallowing OSError here would let ``atomic_write`` crash
+    later with an ambiguous FileNotFoundError. Privacy is fail-closed:
+    if we cannot make the directory private, we do not make it at all.
     """
     existed = home.exists()
-    try:
-        home.mkdir(parents=True, exist_ok=True)
-    except OSError:
+    if existed:
         return
-    if _IS_WINDOWS or existed:
+    home.mkdir(parents=True, mode=0o700, exist_ok=True)
+    if _IS_WINDOWS:
         return
+    # Explicit mode on mkdir is honored by POSIX, but a hostile umask or a
+    # filesystem that ignores the mode argument (e.g. some FUSE mounts)
+    # could still leave the directory too open. Stat and enforce 0o700
+    # so the privacy guarantee holds regardless of those factors.
     try:
         st = os.stat(str(home))
-        if (st.st_mode & 0o777) == 0o755:
-            os.chmod(home, 0o700)
     except OSError:
-        pass
+        return
+    if (st.st_mode & 0o777) != 0o700:
+        os.chmod(home, 0o700)
 
 
 def has_visited_dashboard(home: Path) -> bool:
