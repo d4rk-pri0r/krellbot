@@ -321,7 +321,10 @@ def _wizard_html(wrapper: str) -> str:
         '  <meta name="viewport" content="width=device-width,initial-scale=1">\n'
         '  <meta name="referrer" content="no-referrer">\n'
         "  <title>krellbot first-run wizard</title>\n"
-        '  <link rel="stylesheet" href="../static/style.css">\n'
+        # Sibling-relative: resolves to /<token>/static/style.css whether
+        # the document is /<token>/ (root) or /<token>/<page>. A `../`
+        # prefix would drop the token and 403 on every nav + CSS fetch.
+        '  <link rel="stylesheet" href="static/style.css">\n'
         "</head>\n"
         "<body>\n"
         "<header>\n"
@@ -329,12 +332,12 @@ def _wizard_html(wrapper: str) -> str:
         '  <p class="muted">loopback only. no call leaves this machine.</p>\n'
         "</header>\n"
         "<nav>\n"
-        '  <a href="../welcome">Welcome</a> |\n'
-        '  <a href="../security">Security</a> |\n'
-        '  <a href="../next">Next</a> |\n'
-        '  <a href="../dashboard">Dashboard</a> |\n'
-        '  <a href="../out/docs">Docs</a> |\n'
-        '  <a href="../out/source">Source</a>\n'
+        '  <a href="welcome">Welcome</a> |\n'
+        '  <a href="security">Security</a> |\n'
+        '  <a href="next">Next</a> |\n'
+        '  <a href="dashboard">Dashboard</a> |\n'
+        '  <a href="out/docs">Docs</a> |\n'
+        '  <a href="out/source">Source</a>\n'
         "</nav>\n"
         "<main>\n"
         f"{wrapper}\n"
@@ -365,7 +368,7 @@ _SECURITY_TEMPLATE = _wizard_html(
     "    <h2>Security posture</h2>\n"
     "    <p>This is read-only. No keys, no balances, no orders leave the box.</p>\n"
     "    <dl id=\"trust-list\"></dl>\n"
-    "    <p><a href=\"../welcome\">Back</a></p>\n"
+    "    <p><a href=\"welcome\">Back</a></p>\n"
     "  </section>\n"
 )
 
@@ -373,7 +376,7 @@ _NEXT_TEMPLATE = _wizard_html(
     "  <section id=\"wizard-next-section\">\n"
     "    <h2>Next steps</h2>\n"
     "    <p>When you are ready, open the dashboard.</p>\n"
-    "    <p><a href=\"../dashboard\">Open dashboard</a></p>\n"
+    "    <p><a href=\"dashboard\">Open dashboard</a></p>\n"
     "  </section>\n"
 )
 
@@ -739,13 +742,17 @@ def _make_handler(server_config: _ServerConfig):
             self.wfile.write(body)
 
         def _serve_exit(self, target: str) -> None:
-            """302 to a fixed, allowlisted external URL. Browser-initiated."""
+            """302 to a fixed, allowlisted external URL. Browser-initiated.
+
+            The brief requires the same security-header set on redirects
+            as on HTML responses (CSP, Referrer-Policy, X-Content-Type-
+            Options, Cache-Control). The header loop is shared with the
+            HTML path so the policy lives in exactly one place.
+            """
             self.send_response(302)
             self.send_header("Location", target)
-            # Exits are one-shot; never cache, never leak the referrer.
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Cache-Control", "no-store")
+            for name, value in _HTML_SECURITY_HEADERS:
+                self.send_header(name, value)
             self.end_headers()
 
         def _serve_static(self, rel: str) -> None:

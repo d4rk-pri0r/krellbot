@@ -16,9 +16,11 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import re
 import socket
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 import pytest
 
@@ -529,7 +531,11 @@ def test_fixed_exit_does_not_reflect_untrusted_target(tmp_path: Path) -> None:
 
 def test_known_fixed_exits_redirect_with_no_referrer(tmp_path: Path) -> None:
     """The two allowlisted exits return 302s to their fixed targets with
-    `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+    the B2 security-header set on the redirect itself: CSP,
+    `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`,
+    and `Cache-Control: no-store`. The redirect is treated as a first-
+    class HTML/redirect response by the brief, so the policy lives here
+    too.
     """
     server = _start_server(tmp_path)
     try:
@@ -545,10 +551,120 @@ def test_known_fixed_exits_redirect_with_no_referrer(tmp_path: Path) -> None:
                 assert resp.status == 302, resp.status
                 assert headers.get("location") == target
                 assert headers.get("referrer-policy") == "no-referrer"
+                assert headers.get("x-content-type-options") == "nosniff"
                 assert headers.get("cache-control") == "no-store"
+                csp = headers.get("content-security-policy", "")
+                assert "default-src 'none'" in csp, csp
+                assert "frame-ancestors 'none'" in csp, csp
                 resp.read()
             finally:
                 conn.close()
+    finally:
+        server.stop()
+
+
+_HREF_RE = re.compile(r"""\b(?:href|action)\s*=\s*['"]([^'"]+)['"]""")
+
+
+def _wizard_hrefs(html: str) -> list[str]:
+    """Every href / action in a wizard HTML page, in document order."""
+    return _HREF_RE.findall(html)
+
+
+def test_wizard_links_resolve_under_token_and_fetch(tmp_path: Path) -> None:
+    """Every href in the wizard shell must be sibling-relative to the
+    document, NOT `../<route>`. The wizard pages live at `/<token>/welcome`,
+    `/<token>/security`, and `/<token>/next`, so a `../` prefix would
+    drop the token from the resolved URL and every navigation + the
+    stylesheet would 403.
+
+    For each wizard page, parse every href, resolve it against the page
+    URL, assert the resolved URL begins with `/{token}/` and is NOT just
+    `/<route>` (which is what `../welcome` produces). Also fetch the
+    resolved CSS + nav URLs and assert they return 200 (not 403/404).
+    """
+    server = _start_server(tmp_path)
+    try:
+        token = server.token
+        for page in ("welcome", "security", "next"):
+            conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+            try:
+                conn.request("GET", f"/{token}/{page}")
+                resp = conn.getresponse()
+                assert resp.status == 200, (page, resp.status)
+                html = resp.read().decode("utf-8")
+            finally:
+                conn.close()
+
+            page_url = f"http://127.0.0.1:{server.bound_port}/{token}/{page}"
+            for href in _wizard_hrefs(html):
+                # Skip anchors (form action="visit-dashboard" must stay
+                # sibling-relative too; verify below).
+                resolved = urljoin(page_url, href)
+                path = resolved.split("://", 1)[1].split("/", 1)[1]
+                assert path.startswith(f"{token}/"), (
+                    page, href, resolved, path,
+                )
+                # No token-less path (this is the B2 bug class).
+                assert not path.startswith("static/"), (page, href, path)
+                assert not path.startswith("welcome"), (page, href, path)
+                assert not path.startswith("security"), (page, href, path)
+                assert not path.startswith("next"), (page, href, path)
+                assert not path.startswith("dashboard"), (page, href, path)
+                assert not path.startswith("out/"), (page, href, path)
+
+            # Fetch the nav routes + CSS as a real client. All must be 200.
+            fetch_paths = [
+                f"/{token}/static/style.css",
+                f"/{token}/welcome",
+                f"/{token}/security",
+                f"/{token}/next",
+                f"/{token}/dashboard",
+                f"/{token}/out/docs",
+                f"/{token}/out/source",
+            ]
+            for path in fetch_paths:
+                conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+                try:
+                    conn.request("GET", path)
+                    resp = conn.getresponse()
+                    status = resp.status
+                    resp.read()
+                finally:
+                    conn.close()
+                # /dashboard and /out/* are 302 (dashboard shell) or 302
+                # (exits). /welcome, /security, /next, /static/style.css
+                # must all be 200. The dashboard route returns the
+                # dashboard HTML (200) when not visited? No — /dashboard
+                # is rendered by _route_get as the dashboard shell, 200.
+                # /out/* are 302 redirects. The point: nothing here may
+                # be 403 (token-less) or 404.
+                assert status in (200, 302), (page, path, status)
+    finally:
+        server.stop()
+
+
+def test_root_wizard_link_resolves_under_token(tmp_path: Path) -> None:
+    """A fresh `GET /<token>/` renders the welcome shell. Every href on
+    that page must still resolve under `/<token>/...` when the page URL
+    is the token root (not `/<token>/welcome`).
+    """
+    server = _start_server(tmp_path)
+    try:
+        token = server.token
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{token}/")
+            resp = conn.getresponse()
+            assert resp.status == 200
+            html = resp.read().decode("utf-8")
+        finally:
+            conn.close()
+        page_url = f"http://127.0.0.1:{server.bound_port}/{token}/"
+        for href in _wizard_hrefs(html):
+            resolved = urljoin(page_url, href)
+            path = resolved.split("://", 1)[1].split("/", 1)[1]
+            assert path.startswith(f"{token}/"), (href, resolved, path)
     finally:
         server.stop()
 
