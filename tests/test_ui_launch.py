@@ -183,6 +183,14 @@ def _stop_dashboard_proc(proc: subprocess.Popen) -> None:
         proc.send_signal(signal.SIGINT)
 
 
+def _assert_stopped_cleanly(proc: subprocess.Popen, stdout: str, stderr: str) -> None:
+    # Windows reports STATUS_CONTROL_C_EXIT after CTRL_BREAK_EVENT; POSIX
+    # catches KeyboardInterrupt and exits 0. Both are expected teardown,
+    # not a crash. Do not accept arbitrary nonzero exit codes.
+    expected = (0, 0xC000013A) if sys.platform == "win32" else (0,)
+    assert proc.returncode in expected, f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
+
+
 def _wait_for_dashboard_line(proc: subprocess.Popen, timeout: float = 10.0) -> str:
     """Block until `Dashboard running at ...` appears on the child's
     stdout, then return the line. Raises on timeout. This is a
@@ -248,7 +256,7 @@ def test_cmd_ui_without_open_does_not_call_browser(tmp_path):
         if proc.poll() is None:
             proc.kill()
             proc.communicate()
-    assert proc.returncode == 0, f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
+    _assert_stopped_cleanly(proc, stdout, stderr)
     assert not marker.exists(), (
         "webbrowser.open was invoked even though --open was not passed; "
         f"marker contents: {marker.read_text(encoding='utf-8')!r}"
@@ -289,7 +297,7 @@ def test_cmd_ui_with_open_invokes_browser(tmp_path):
         if proc.poll() is None:
             proc.kill()
             proc.communicate()
-    assert proc.returncode == 0, f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
+    _assert_stopped_cleanly(proc, stdout, stderr)
     assert marker.exists(), "marker file not written — webbrowser.open did not run with --open"
     recorded = marker.read_text(encoding="utf-8")
     assert recorded.startswith("http://127.0.0.1:"), recorded

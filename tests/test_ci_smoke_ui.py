@@ -519,13 +519,22 @@ def test_capture_url_from_subprocess_cleans_up_process_and_handles(tmp_path):
     sys.platform != "win32",
     reason="Windows-specific pipe creation flags; local macOS smoke only",
 )
-def test_capture_url_from_subprocess_uses_windows_process_group(tmp_path):
-    """On Windows, the helper must spawn the child with
-    ``CREATE_NEW_PROCESS_GROUP`` so the helper's ``finally:`` block
-    can deliver ``CTRL_C_EVENT`` (Python's ``signal.SIGINT`` on
-    Windows) cleanly to the child process group without taking
-    down the test runner or the parent shell.
+def test_capture_url_from_subprocess_uses_windows_process_group(tmp_path, monkeypatch):
+    """The real Windows Popen call requests CREATE_NEW_PROCESS_GROUP.
+
+    Popen does not expose its construction flags on the returned process;
+    spy on the actual call while still launching a real child.
     """
+    import scripts.ci_smoke_ui as helper
+
+    real_popen = subprocess.Popen
+    seen_flags: list[int] = []
+
+    def spy_popen(*args, **kwargs):
+        seen_flags.append(kwargs.get("creationflags", 0))
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(helper.subprocess, "Popen", spy_popen)
     binary = _binary_that_prints_url(18804, tmp_path / "logs" / "win.log")
     log_path = tmp_path / "logs" / "dashboard-win.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -538,10 +547,7 @@ def test_capture_url_from_subprocess_uses_windows_process_group(tmp_path):
     )
     try:
         assert url is not None
-        # If the child was launched with CREATE_NEW_PROCESS_GROUP, its
-        # creation flags include that bit (0x00000200).
-        creation_flags = getattr(proc, "creationflags", 0)
-        assert creation_flags & 0x00000200, f"child creationflags missing CREATE_NEW_PROCESS_GROUP: {creation_flags}"
+        assert seen_flags and seen_flags[0] & 0x00000200, f"child Popen missing CREATE_NEW_PROCESS_GROUP: {seen_flags}"
     finally:
         proc.terminate()
         try:
@@ -549,6 +555,7 @@ def test_capture_url_from_subprocess_uses_windows_process_group(tmp_path):
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=2)
+        _stop_capture(proc)
 
 
 # -- Workflow-shape guard: no POSIX-only cleanup in the Windows matrix --
