@@ -22,11 +22,27 @@ Checks (each a row in text and a field in JSON):
 - Each armed pack: cap cash versus `paper.default_rules(pair)` when that pair
   is known. Unknown pair warns `minimums not loaded`. We never invent a
   fake minimum.
+
+Readiness summary (new in Task 4):
+
+- `install_ready` is True iff the runtime can serve the local UI: home
+  permissions are not wrong, the keyring backend is a real persistent
+  one (not null/fail/fake), and a loopback bind probe succeeds. No
+  exchange key, no tick, and no scheduler unit are required for install
+  readiness.
+- `trading_ready` is True only when `install_ready` is True, a fresh tick
+  exists, and at least one stored key had its permissions probed with
+  `trade=True` AND `withdraw=False`. Unknown permissions are fail-closed:
+  `_keys_status` only emits `trade`/`withdraw` when a permission probe
+  ran, so a present key with no probe cannot satisfy the readiness check.
+- Existing warning semantics and the `ok` field are preserved. The new
+  fields live beside the old semantics, not in place of them.
 """
 
 from __future__ import annotations
 
 import json
+import socket
 import sys
 import time as _time
 from collections.abc import Callable
@@ -44,10 +60,38 @@ CLOCK_SKEW_WARN_SECONDS = 5
 
 
 def _home_mode_ok(home: Path) -> bool | None:
-    """True if home mode is `0o700`, None on Windows (skipped), False otherwise."""
+    """True for POSIX 0o700, False for missing/unsafe home, None on Windows."""
     if sys.platform == "win32":
         return None
-    return (home.stat().st_mode & 0o777) == 0o700
+    try:
+        return (home.stat().st_mode & 0o777) == 0o700
+    except OSError:
+        return False
+
+
+def _ui_bind_available() -> bool:
+    """Return True when a loopback bind probe succeeds.
+
+    Probes ``127.0.0.1:0`` with ``socket.socket()`` so the kernel assigns
+    a free port; closes the socket in ``finally`` so no descriptor leaks.
+    The bind address is fixed; no venue or remote address is touched.
+    Returns False on any OSError (host has no loopback, sandbox refuses
+    bind, etc.) so the readiness check stays honest about whether the
+    UI server can actually start.
+    """
+    sock: socket.socket | None = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        return True
+    except OSError:
+        return False
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
 
 
 def _keychain_backend() -> tuple[str | None, str | None]:
@@ -237,6 +281,8 @@ def _render_text(report: dict[str, Any]) -> str:
         lines.append(f"warnings: {'; '.join(report['warnings'])}")
     else:
         lines.append("warnings: none")
+    lines.append(f"install_ready: {report['install_ready']}")
+    lines.append(f"trading_ready: {report['trading_ready']}")
     return "\n".join(lines)
 
 
@@ -264,8 +310,13 @@ def run(
     warnings: list[str] = []
 
     home_mode_ok = _home_mode_ok(home)
+    home_is_dir = home.is_dir()
     if home_mode_ok is False:
-        warnings.append("home directory mode is not 0o700")
+        warnings.append("home directory is missing or mode is not 0o700")
+    elif not home_is_dir:
+        # Windows does not model DACLs (home_mode_ok is None), but a
+        # missing/non-directory home cannot be an install-ready data home.
+        warnings.append("home directory is missing or not a directory")
 
     backend_name, backend_warn = _keychain_backend()
     if backend_warn is not None:
@@ -300,6 +351,17 @@ def run(
 
     ok = len(warnings) == 0
 
+    # Readiness: install_ready means the runtime can serve the local UI.
+    # trading_ready is the stricter gate: install_ready AND a non-stale
+    # tick AND at least one probed key with trade=True AND withdraw=False.
+    # `_keys_status` only emits `trade`/`withdraw` after a real permission
+    # probe ran, so a present key with no probe is fail-closed.
+    install_ready = home_is_dir and home_mode_ok is not False and backend_warn is None and _ui_bind_available()
+    has_trade_only_key = any(
+        info.get("present") and info.get("trade") is True and info.get("withdraw") is False for info in keys.values()
+    )
+    trading_ready = install_ready and not last_tick_stale and has_trade_only_key
+
     report = {
         "ok": ok,
         "home_mode_ok": home_mode_ok,
@@ -313,6 +375,8 @@ def run(
         "license_status": license_status,
         "armed": armed_status,
         "warnings": warnings,
+        "install_ready": install_ready,
+        "trading_ready": trading_ready,
     }
 
     if as_json:

@@ -96,6 +96,31 @@ def _stop(server: DashboardServer | None) -> None:
         pass
 
 
+def test_loopback_start_never_needs_reverse_dns(tmp_path: Path, monkeypatch) -> None:
+    """Starting the local UI must not wait on hostname resolution."""
+
+    def unexpected_lookup(_host: str) -> str:
+        raise AssertionError("reverse DNS must not run on UI bind")
+
+    monkeypatch.setattr(socket, "getfqdn", unexpected_lookup)
+    server = DashboardServer(home=tmp_path, port=0)
+    try:
+        server.start()
+        assert server.bound_host == "127.0.0.1"
+        assert server.bound_port > 0
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port, timeout=2)
+        try:
+            conn.request("GET", f"/{server.token}/")
+            resp = conn.getresponse()
+            resp.read()
+            assert resp.status == 200
+        finally:
+            conn.close()
+    finally:
+        if server.bound_port:
+            server.stop()
+
+
 def _seed_two_paper_packs(home: Path) -> None:
     kb_paths.ensure_layout()
     cfg = kb_config.Config()
@@ -341,6 +366,13 @@ def test_root_does_not_disclose_token(home):
 
 def test_page_embeds_csrf_for_forms(home):
     """The browser cannot read the HttpOnly cookie, so the form field must carry it."""
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    # Mark visited so the dashboard shell renders at the index. The
+    # welcome/security/next shells only carry the wizard nav and a
+    # single form (the enter-dashboard POST on Next) — they have
+    # their own CSRF embedding tests.
+    mark_visited_dashboard(home)
     server, port = _start(home)
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port)
@@ -369,6 +401,12 @@ def test_view_json_cannot_break_out_of_script(home):
         json.dumps({"detail": payload}) + "\n",
         encoding="utf-8",
     )
+    # The wizard root renders the welcome shell (no visit preference yet).
+    # Set the preference so /<token>/ renders the dashboard, which is the
+    # view that embeds journal records.
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    mark_visited_dashboard(home)
     server, port = _start(home)
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port)

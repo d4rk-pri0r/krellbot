@@ -7,29 +7,55 @@
   <title>krellbot dashboard</title>
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
+<body class="dashboard">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
   <header>
     <h1>krellbot dashboard</h1>
     <p class="muted">loopback only. no call leaves this machine.</p>
+    <nav class="wizard-nav" aria-label="Wizard steps">
+      <a href="welcome" data-step="welcome">Welcome</a>
+      <a href="security" data-step="security">Security</a>
+      <a href="next" data-step="next">Next</a>
+      <a href="dashboard" data-step="dashboard" aria-current="page">Dashboard</a>
+      <a href="out/docs">Docs</a>
+      <a href="out/source">Source</a>
+    </nav>
+    <p class="muted resume-setup">
+      <a href="welcome">Resume setup</a> &middot; reopen the first-run wizard.
+    </p>
   </header>
 
-  <main>
+  <main id="main">
+    <section id="status-section" class="primary-card" aria-label="Local status">
+      <h2>Local status</h2>
+      <dl class="status-grid">
+        <dt>Backend</dt>
+        <dd id="status-backend">(loading)</dd>
+        <dt>Bind</dt>
+        <dd>127.0.0.1 (loopback only)</dd>
+        <dt>Live arm from the UI</dt>
+        <dd>Refused. CLI only.</dd>
+      </dl>
+      <p class="muted" id="status-note">Read-only. No keys, no balances, no orders leave the box.</p>
+    </section>
+
     <section id="armed-section">
       <h2>Armed packs</h2>
       <div id="armed-empty" class="muted" hidden>No armed packs.</div>
       <table id="armed-table" hidden>
         <thead>
           <tr>
-            <th>Pack</th>
-            <th>Version</th>
-            <th>Pending</th>
-            <th>Venue</th>
-            <th>Pair</th>
-            <th>Mode</th>
-            <th>Cap</th>
-            <th>Stop</th>
-            <th>Owned</th>
-            <th>Actions</th>
+            <th scope="col">Pack</th>
+            <th scope="col">Version</th>
+            <th scope="col">Pending</th>
+            <th scope="col">Venue</th>
+            <th scope="col">Pair</th>
+            <th scope="col">Mode</th>
+            <th scope="col">Cap</th>
+            <th scope="col">Stop</th>
+            <th scope="col">Owned</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody id="armed-body"></tbody>
@@ -65,17 +91,17 @@
       <form id="form-arm" action="arm" method="POST" class="card">
         <h3>Arm paper pack</h3>
         <p class="muted">Live arm from the page is refused. Use the CLI.</p>
-        <label>Pack file path
-          <input type="text" name="pack_path" placeholder="$KRELLBOT_HOME/packs/your-pack.json" required>
+        <label for="arm-pack-path">Pack file path
+          <input id="arm-pack-path" type="text" name="pack_path" placeholder="$KRELLBOT_HOME/packs/your-pack.json" required>
         </label>
-        <label>Venue
-          <select name="venue">
+        <label for="arm-venue">Venue
+          <select id="arm-venue" name="venue">
             <option value="kraken">kraken</option>
             <option value="coinbase">coinbase</option>
           </select>
         </label>
-        <label>Paper balance (USD)
-          <input type="number" name="paper_balance" step="any" min="1" value="1000" required>
+        <label for="arm-paper-balance">Paper balance (USD)
+          <input id="arm-paper-balance" type="number" name="paper_balance" step="any" min="1" value="1000" required>
         </label>
         <input type="hidden" name="mode" value="paper">
         <input type="hidden" name="csrf">
@@ -84,8 +110,8 @@
 
       <form id="form-disarm" action="disarm" method="POST" class="card">
         <h3>Disarm one pack</h3>
-        <label>Venue <input type="text" name="venue" required></label>
-        <label>Pair <input type="text" name="pair" required></label>
+        <label for="disarm-venue">Venue <input id="disarm-venue" type="text" name="venue" required></label>
+        <label for="disarm-pair">Pair <input id="disarm-pair" type="text" name="pair" required></label>
         <input type="hidden" name="csrf">
         <button type="submit">Disarm</button>
       </form>
@@ -100,13 +126,13 @@
       <form id="form-adopt" action="adopt" method="POST" class="card">
         <h3>Adopt pending version</h3>
         <p class="muted">Refused while the pack still owns quantity.</p>
-        <label>Pack id <input type="text" name="pack_id" required></label>
+        <label for="adopt-pack-id">Pack id <input id="adopt-pack-id" type="text" name="pack_id" required></label>
         <input type="hidden" name="csrf">
         <button type="submit">Adopt</button>
       </form>
     </section>
 
-    <section id="flash-section">
+    <section id="flash-section" aria-live="polite">
       <h2>Result</h2>
       <pre id="flash-pre"></pre>
     </section>
