@@ -649,20 +649,11 @@ def _smoke_step_run_block() -> str:
     return "\n".join(body_lines)
 
 
-def test_workflow_port_selection_runs_under_bash() -> None:
-    """Exercise the actual CI command; quoting bugs must not reach native builds."""
+def test_workflow_uses_os_assigned_port_without_shell_probe() -> None:
+    """Let the server bind port zero; no shell/Python quoting or bind race."""
     block = _smoke_step_run_block()
-    port_line = next(line for line in block.splitlines() if line.strip().startswith('PORT="$('))
-    result = subprocess.run(
-        ["bash", "-c", port_line + '; printf "%s\\n" "$PORT"'],
-        capture_output=True,
-        text=True,
-        timeout=15,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip().isdigit(), result.stdout
-    assert 0 < int(result.stdout.strip()) < 65536
+    assert "PORT=" not in block
+    assert "--port 0" in block
 
 
 def _matrix_os_list() -> list[str]:

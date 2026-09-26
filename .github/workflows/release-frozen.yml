@@ -158,13 +158,10 @@ jobs:
           else
             BIN="dist/krellbot/krellbot"
           fi
-          # Pick a free loopback port so the smoke can always
-          # bind even if the previous default (18889) is already
-          # taken. The dashboard's --port flag accepts any port;
-          # we don't pin a specific value. Inline python avoids
-          # needing a separate helper script.
-          PORT="$(uv run python -c 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-          echo "dashboard port = $PORT"
+          # Bind port 0 and let the OS assign an available loopback port.
+          # The helper reads the actual gated URL from the child's stdout;
+          # probing a port in a separate process adds a race and nested
+          # Bash/Python quoting breaks on Windows runners.
           # Cleanup: ``scripts/ci_smoke_ui.py`` owns the spawned
           # child via its own ``finally:`` block (SIGINT + wait +
           # SIGKILL fallback, then closes the capture). That covers
@@ -179,7 +176,7 @@ jobs:
           # ``tests/test_ci_smoke_ui.py::test_workflow_smoke_block_*``.
           uv run python scripts/ci_smoke_ui.py \
             --binary "$BIN" \
-            --port "$PORT" \
+            --port 0 \
             --home "${{ runner.temp }}/krellbot-home" \
             --log ui_smoke.log
 
