@@ -319,6 +319,66 @@ def test_kraken_extra_query_permissions_still_trade_only(home):
     assert perms.can_withdraw is False
 
 
+def test_kraken_documented_harmless_extras_trade_only(home):
+    """Every documented read-only extra in the published exchange guide
+    keeps the key trade-only.
+
+    Tokens here are documented in
+    https://docs.kraken.com/exchange/guides/rest/api-keys ("Query Closed
+    Orders", "Query Ledger", "Export Data", "Access WebSocket", "Query
+    affiliate participants") plus the `GetApiKeyInfo` schema enum
+    (https://docs.kraken.com/api-reference/account-data/get-api-key-info).
+    This is not a claim that the list is exhaustive — only that each
+    token here is one Kraken publishes as a read-only scope. Any token
+    NOT in the allowlist still fails closed.
+    """
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "query-closed-trades",
+                "query-ledger",
+                "export-data",
+                "create-ws-token",
+                "query-affiliate-participants",
+                "modify-trades",
+                "close-trades",
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    perms = venue.check_key()
+    assert perms.can_trade is True
+    assert perms.can_withdraw is False
+
+
+def test_kraken_unrecognized_permission_string_refused(home):
+    """An unknown permission string is refused even with all required perms.
+
+    A future Kraken-added token (e.g. a new `transfer-funds` scope) must
+    not silently pass: refuse and surface the unknown token in the reason.
+    Engine never weakens `WithdrawCapableError` for the refused key.
+    """
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+                "transfer-funds",  # not in any documented set
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError) as excinfo:
+        venue.check_key()
+    assert "transfer-funds" in str(excinfo.value)
+
+
 def test_kraken_check_key_does_not_leak_raw_apikey(home):
     """The raw `apiKey` value in the venue response must not appear in
     exception messages or in any string the engine logs."""

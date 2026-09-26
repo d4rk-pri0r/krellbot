@@ -30,7 +30,11 @@ from krellbot import journal, paths, sanitize
 from krellbot.venues.base import (
     Balance,
     Fill,
+    KeyMalformedError,
     KeyPerms,
+    KeyTradeOffError,
+    KeyUnverifiableError,
+    KrakenKeyUnknownPermissionError,
     OpenOrder,
     OrderRef,
     PairRules,
@@ -61,6 +65,36 @@ FORBIDDEN_PERMISSIONS = frozenset(
         "update-withdraw-address",
     }
 )
+
+# Tokens Kraken publishes in the API keys guide that grant read-only /
+# ancillary access (no funds movement). Anything outside this set AND
+# `REQUIRED_PERMISSIONS` AND `FORBIDDEN_PERMISSIONS` is treated as an
+# unrecognized scope and the key is refused. This is the documented set
+# only — not a claim of exhaustiveness.
+#
+# Sources:
+#   * https://docs.kraken.com/api-reference/account-data/get-api-key-info
+#     schema enum (response-side spellings), which is authoritative for
+#     any token Kraken returns in `GetApiKeyInfo.permissions`.
+#   * https://docs.kraken.com/exchange/guides/rest/api-keys (UI-side
+#     permission names shown in Settings → API). Tokens from this guide
+#     are included when their GetApiKeyInfo spelling is unambiguous.
+#
+# If Kraken later adds a new permission token that is not in this set,
+# the venue refuses it (see `KrakenKeyUnknownPermissionError`); the
+# allowlist is updated only after confirming the token is published in
+# the API reference or the guide above.
+DOCUMENTED_HARMLESS_EXTRAS = frozenset(
+    {
+        "query-closed-trades",
+        "query-ledger",
+        "export-data",
+        "create-ws-token",
+        "query-affiliate-participants",
+    }
+)
+
+ALL_KNOWN_PERMISSIONS = REQUIRED_PERMISSIONS | FORBIDDEN_PERMISSIONS | DOCUMENTED_HARMLESS_EXTRAS
 
 
 def _default_now_us() -> int:
@@ -315,29 +349,38 @@ class KrakenVenue:
     def check_key(self) -> KeyPerms:
         # Strictly validate the key against `GetApiKeyInfo` permissions.
         # See https://docs.kraken.com/api-reference/account-data/get-api-key-info.
+        #
         # A key that cannot probe its own permissions (invalid key,
         # permission denied) cannot be verified — refuse. A key whose
         # permission set is missing, malformed, lacks the four required
         # trade permissions, or grants withdrawal/address-management
         # rights is also refused. Only a documented trade-only permission
         # set is accepted.
+        #
+        # Unknown permission strings fail closed so a future Kraken-added
+        # token (e.g. `transfer-funds`) cannot silently make a verified
+        # key partially-trusted. Each refusal subclass is still
+        # `isinstance(WithdrawCapableError)` so the engine never weakens.
         try:
             data = self._private(GET_API_KEY_INFO, {})
         except _PermissionDenied:
-            raise WithdrawCapableError("kraken GetApiKeyInfo denied; key cannot be verified as trade-only") from None
+            raise KeyUnverifiableError("kraken GetApiKeyInfo denied; key cannot be verified as trade-only") from None
         result = _result(data)
         if not isinstance(result, dict):
-            raise WithdrawCapableError("kraken GetApiKeyInfo shape unknown; refused")
+            raise KeyMalformedError("kraken GetApiKeyInfo shape unknown; refused")
         permissions = result.get("permissions")
         if not isinstance(permissions, list) or not all(isinstance(p, str) for p in permissions):
-            raise WithdrawCapableError("kraken GetApiKeyInfo permissions missing or malformed; refused")
+            raise KeyMalformedError("kraken GetApiKeyInfo permissions missing or malformed; refused")
         perm_set = set(permissions)
         forbidden = FORBIDDEN_PERMISSIONS & perm_set
         if forbidden:
-            raise WithdrawCapableError("kraken key grants forbidden permissions; trade-only keys refused")
+            raise WithdrawCapableError(f"kraken key grants forbidden permissions: {sorted(forbidden)}; refused")
         missing = REQUIRED_PERMISSIONS - perm_set
         if missing:
-            raise WithdrawCapableError("kraken key missing required trade permissions; trade-only keys refused")
+            raise KeyTradeOffError(f"kraken key missing required trade permissions: {sorted(missing)}; refused")
+        unknown = sorted(perm_set - ALL_KNOWN_PERMISSIONS)
+        if unknown:
+            raise KrakenKeyUnknownPermissionError(f"kraken key grants unrecognized permissions: {unknown}; refused")
         return KeyPerms(can_trade=True, can_withdraw=False)
 
     # ---- internals ------------------------------------------------------

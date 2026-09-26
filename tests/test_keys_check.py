@@ -22,7 +22,7 @@ def isolated_home(monkeypatch, tmp_path):
 def test_keys_check_kraken_trade_only_exits_zero(isolated_home, fresh_keyring, monkeypatch, capsys):
     """A trade-only Kraken key prints `trade on, withdraw off` and exits 0."""
     from krellbot import cli_keys
-    from krellbot.venues.base import KeyPerms
+    from krellbot.venues.base import KeyProbeOutcome, KeyProbeResult
 
     fresh_keyring.set_password("krellbot:kraken", "key", "FAKEKEY")
     fresh_keyring.set_password("krellbot:kraken", "secret", "FAKESECRET")
@@ -31,7 +31,10 @@ def test_keys_check_kraken_trade_only_exits_zero(isolated_home, fresh_keyring, m
     monkeypatch.setattr(
         cli_keys,
         "_probe",
-        lambda venue, key, secret: KeyPerms(can_trade=True, can_withdraw=False),
+        lambda venue, key, secret: KeyProbeResult(
+            outcome=KeyProbeOutcome.TRADE_ONLY,
+            reason="trade on, withdraw off",
+        ),
     )
 
     rc = cli_keys.cmd_keys_check(["kraken"])
@@ -44,9 +47,9 @@ def test_keys_check_kraken_trade_only_exits_zero(isolated_home, fresh_keyring, m
 
 
 def test_keys_check_kraken_withdraw_capable_exits_one(isolated_home, fresh_keyring, monkeypatch, capsys):
-    """A key that returns a withdraw-capable `KeyPerms` must exit 1."""
+    """A key that returns a withdraw-capable `KeyProbeResult` must exit 1."""
     from krellbot import cli_keys
-    from krellbot.venues.base import KeyPerms
+    from krellbot.venues.base import KeyProbeOutcome, KeyProbeResult
 
     fresh_keyring.set_password("krellbot:kraken", "key", "FAKEKEY")
     fresh_keyring.set_password("krellbot:kraken", "secret", "FAKESECRET")
@@ -54,7 +57,10 @@ def test_keys_check_kraken_withdraw_capable_exits_one(isolated_home, fresh_keyri
     monkeypatch.setattr(
         cli_keys,
         "_probe",
-        lambda venue, key, secret: KeyPerms(can_trade=True, can_withdraw=True),
+        lambda venue, key, secret: KeyProbeResult(
+            outcome=KeyProbeOutcome.WITHDRAW_CAPABLE,
+            reason="venue confirmed withdraw rights; refused",
+        ),
     )
 
     rc = cli_keys.cmd_keys_check(["kraken"])
@@ -97,6 +103,7 @@ def test_keys_check_kraken_trade_only_live_probe_returns_trade_only(isolated_hom
     from fakes.fake_kraken import FakeKrakenTransport
 
     from krellbot import cli_keys, secrets
+    from krellbot.venues.base import KeyProbeOutcome
 
     fresh_keyring.set_password("krellbot:kraken", "key", "FAKEKEY")
     fresh_keyring.set_password("krellbot:kraken", "secret", KRAKEN_TEST_SECRET_B64)
@@ -113,21 +120,21 @@ def test_keys_check_kraken_trade_only_live_probe_returns_trade_only(isolated_hom
     )
 
     api_key, api_secret = secrets.get("kraken")
-    perms = cli_keys._probe("kraken", api_key, api_secret, transport=transport)
-    assert perms is not None
-    assert perms.can_trade is True
-    assert perms.can_withdraw is False
+    result = cli_keys._probe("kraken", api_key, api_secret, transport=transport)
+    assert result.outcome == KeyProbeOutcome.TRADE_ONLY
+    assert result.is_trade_only is True
 
 
 def test_keys_check_kraken_withdraw_capable_live_probe_returns_withdraw(isolated_home, fresh_keyring):
-    """End-to-end: GetApiKeyInfo reports withdraw-funds → `_probe` reports withdraw.
+    """End-to-end: GetApiKeyInfo reports withdraw-funds → `_probe` reports `withdraw_capable`.
 
-    `_probe` swallows `WithdrawCapableError` and converts it to a
-    `KeyPerms(can_trade=False, can_withdraw=True)` so the CLI exits 1.
+    `_probe` converts a typed `KeyProbeError` into a `KeyProbeResult`; the
+    engine never sees `WithdrawCapableError` weaken.
     """
     from fakes.fake_kraken import FakeKrakenTransport
 
     from krellbot import cli_keys, secrets
+    from krellbot.venues.base import KeyProbeOutcome
 
     fresh_keyring.set_password("krellbot:kraken", "key", "FAKEKEY")
     fresh_keyring.set_password("krellbot:kraken", "secret", KRAKEN_TEST_SECRET_B64)
@@ -137,16 +144,17 @@ def test_keys_check_kraken_withdraw_capable_live_probe_returns_withdraw(isolated
     )
 
     api_key, api_secret = secrets.get("kraken")
-    perms = cli_keys._probe("kraken", api_key, api_secret, transport=transport)
-    assert perms is not None
-    assert perms.can_withdraw is True
+    result = cli_keys._probe("kraken", api_key, api_secret, transport=transport)
+    assert result.outcome == KeyProbeOutcome.WITHDRAW_CAPABLE
+    assert result.is_trade_only is False
 
 
-def test_keys_check_kraken_read_only_live_probe_returns_no_trade(isolated_home, fresh_keyring):
-    """End-to-end: read-only key cannot trade → `_probe` reports `can_trade=False`."""
+def test_keys_check_kraken_read_only_live_probe_returns_trade_off(isolated_home, fresh_keyring):
+    """End-to-end: read-only key cannot trade → `_probe` reports `trade_off`."""
     from fakes.fake_kraken import FakeKrakenTransport
 
     from krellbot import cli_keys, secrets
+    from krellbot.venues.base import KeyProbeOutcome
 
     fresh_keyring.set_password("krellbot:kraken", "key", "FAKEKEY")
     fresh_keyring.set_password("krellbot:kraken", "secret", KRAKEN_TEST_SECRET_B64)
@@ -156,9 +164,9 @@ def test_keys_check_kraken_read_only_live_probe_returns_no_trade(isolated_home, 
     )
 
     api_key, api_secret = secrets.get("kraken")
-    perms = cli_keys._probe("kraken", api_key, api_secret, transport=transport)
-    assert perms is not None
-    assert perms.can_trade is False
+    result = cli_keys._probe("kraken", api_key, api_secret, transport=transport)
+    assert result.outcome == KeyProbeOutcome.TRADE_OFF
+    assert result.is_trade_only is False
 
 
 def test_keys_check_kraken_end_to_end_trade_only_exits_zero(isolated_home, fresh_keyring, monkeypatch, capsys):
