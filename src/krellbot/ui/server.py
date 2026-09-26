@@ -257,8 +257,8 @@ def _render_welcome(home: Path, csrf: str) -> bytes:
     """Render the wizard Welcome shell.
 
     The view embedded here is the trust snapshot (no raw credentials)
-    plus the routes the wizard exposes. The browser submits the
-    visit-dashboard POST via a hidden form.
+    plus the routes the wizard exposes. Continue navigates to Security;
+    only Next's CSRF-protected POST records the dashboard visit.
 
     B3: the three truthful statements and the Continue affordance are
     rendered server-side so the no-JS path is honest. JS may add a
@@ -863,7 +863,7 @@ def _make_handler(server_config: _ServerConfig):
 
         def _serve_wizard(self, route: str, port: int) -> None:
             """Serve a wizard view by name. Sets cookies so the wizard's
-            POST /visit-dashboard can satisfy the existing CSRF gate.
+            POST /enter-dashboard can satisfy the existing CSRF gate.
             """
             home = server_config.home
             csrf = server_config.csrf

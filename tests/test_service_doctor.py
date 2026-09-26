@@ -191,6 +191,21 @@ def test_doctor_reads_can_withdraw(home, fresh_keyring):
 # Readiness fields (install_ready / trading_ready)
 # ---------------------------------------------------------------------------
 
+def test_doctor_missing_explicit_home_warns_and_is_not_install_ready(tmp_path, fresh_keyring, monkeypatch):
+    """A nonexistent data home is a failing posture, not a crash or green check."""
+    from krellbot import doctor
+
+    missing = tmp_path / "never-created"
+    monkeypatch.setattr(doctor, "_keychain_backend", lambda: ("OS Keychain", None))
+    _rc, body = doctor.run(home=missing, write_root=tmp_path, as_json=True)
+    report = json.loads(body)
+    assert not missing.exists()
+    assert report["home_mode_ok"] is False
+    assert report["install_ready"] is False
+    assert report["trading_ready"] is False
+    assert any("home directory" in warning for warning in report["warnings"])
+
+
 
 def _stub_real_keyring_backend(monkeypatch):
     """Pretend the OS keyring reports a real persistent backend name.

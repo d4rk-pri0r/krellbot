@@ -60,10 +60,13 @@ CLOCK_SKEW_WARN_SECONDS = 5
 
 
 def _home_mode_ok(home: Path) -> bool | None:
-    """True if home mode is `0o700`, None on Windows (skipped), False otherwise."""
+    """True for POSIX 0o700, False for missing/unsafe home, None on Windows."""
     if sys.platform == "win32":
         return None
-    return (home.stat().st_mode & 0o777) == 0o700
+    try:
+        return (home.stat().st_mode & 0o777) == 0o700
+    except OSError:
+        return False
 
 
 def _ui_bind_available() -> bool:
@@ -308,7 +311,7 @@ def run(
 
     home_mode_ok = _home_mode_ok(home)
     if home_mode_ok is False:
-        warnings.append("home directory mode is not 0o700")
+        warnings.append("home directory is missing or mode is not 0o700")
 
     backend_name, backend_warn = _keychain_backend()
     if backend_warn is not None:
