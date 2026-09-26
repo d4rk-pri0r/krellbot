@@ -100,31 +100,49 @@ A fresh install renders the wizard at `/<token>/welcome` instead of the
 dashboard. The wizard has three steps: Welcome, Security, Next. Each
 step is a plain HTML page with sibling-relative `<a>` links, so a
 browser with JavaScript disabled can still navigate the wizard by
-following the links.
+following the links. A visible `<ol class="stepper">` shows the user
+where they are; the active step is `aria-current="step"` and the
+active nav link is `aria-current="page"`. The body carries
+`data-route="welcome|security|next"` so the JS hydrator can set
+highlights without rewriting hrefs.
 
 * **Welcome** states three truthful things: the engine is free and
   open-source, exchange keys stay on this machine, and official packs
-  are optional and recommended. Continue opens the dashboard via a
-  CSRF-protected POST (`/visit-dashboard`); Skip ahead jumps straight
-  to Security.
+  are optional and recommended. The page exposes only sibling-relative
+  `<a href="security">` / `<a href="next">` links — there is **no
+  Continue button** that posts a preference. Step 1 of 3.
 * **Security** shows the local trust posture (keychain backend name,
   resolved data home, home mode, bind address, live-arm rail, key
-  permissions) plus a fail-closed diagnostic if the keychain is not
-  persistent. The diagnostic names `krellbot doctor` as the next CLI
-  action — a null backend is never reported as a green check.
+  permissions) plus a fail-closed **aggregate** diagnostic. The
+  diagnostic is computed from BOTH the backend and the home mode: a
+  persistent keychain on a 0o755 home, or a 0o700 home with no
+  persistent keychain, is still fail-closed. The diagnostic names
+  `krellbot doctor` as the next CLI action — a null backend or a
+  permissive mode is never reported as a green check. The
+  "Key permissions" line is a REQUIREMENT statement ("Trade-only
+  permission required, withdraw permission never granted. No
+  exchange key is probed from this page."), not a validated
+  connection.
 * **Next** lists exchange connection (slice C) and pack adoption
   (slice D) as **future slices**, not as completed steps. The free
-  path today is the dashboard, the CLI (`krellbot ui`), and
-  `krellbot doctor`.
+  path today is the CLI (`krellbot ui`) and `krellbot doctor`. Step
+  3 of 3 carries an explicit **Enter dashboard** button that POSTs
+  to `/<token>/enter-dashboard` through the existing
+  token/session/CSRF/Origin gate; the server responds 303 to
+  `/<token>/dashboard` (PRG). Until that POST happens, the
+  preference is untouched.
 
 The dashboard itself is unchanged for users who reach it directly or
 who revisit `/<token>/`. A "Resume setup" link in the header returns
 to `/<token>/welcome` for users who want to revisit the wizard.
 
-Browser back/forward and wizard Back do not mutate trading state.
-Reaching the dashboard for the first time records a single
+Browser back/forward and wizard Back do not mutate trading state. A
+direct GET to `/<token>/dashboard` does not mark the preference:
+the dashboard is the explicit goal of the wizard, not a side effect
+of visiting the home URL. Reaching the dashboard for the first time
+through Next's Enter dashboard button records a single
 `ui-preferences.json` flag (mode `0600`) inside `$KRELLBOT_HOME`. That
-flag records that the user **visited** the dashboard; it does not
+flag records that the user **entered** the dashboard; it does not
 claim onboarding is complete.
 
 ## Static assets

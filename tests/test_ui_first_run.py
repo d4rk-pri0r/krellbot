@@ -242,11 +242,17 @@ def test_trust_snapshot_keys(tmp_path: Path) -> None:
     from krellbot.ui import trust
 
     snap = trust.trust_snapshot(tmp_path)
+    # B3 round 1 adds the aggregate posture fields. The backend-vs-mode
+    # split is honest: backend_ok reports persistence only; posture_ok
+    # aggregates backend AND 0o700 home.
     assert set(snap.keys()) == {
         "home",
         "home_mode",
+        "home_mode_ok",
         "keychain_backend",
         "keychain_ok",
+        "posture_ok",
+        "posture_warning",
         "bind",
         "live_arm_ui_allowed",
         "trade_only_required",
@@ -440,7 +446,8 @@ def test_security_route_has_posture_and_no_secret(tmp_path: Path, monkeypatch: p
 
 
 def test_post_visit_dashboard_changes_later_root_to_dashboard(tmp_path: Path) -> None:
-    """After a CSRF-protected POST /visit-dashboard flips the preference,
+    """After a CSRF-protected POST /visit-dashboard (now an alias for
+    /enter-dashboard) flips the preference and 303s to the dashboard,
     GET /<token>/ must render the dashboard shell, not welcome.
     """
     from krellbot.ui.first_run import has_visited_dashboard
@@ -457,7 +464,10 @@ def test_post_visit_dashboard_changes_later_root_to_dashboard(tmp_path: Path) ->
             cookies=cookies,
             origin=f"http://127.0.0.1:{server.bound_port}",
         )
-        assert resp.status == 200, resp.status
+        # Round 1 fix: the response is now a 303 PRG redirect to the
+        # token-scoped dashboard (not a 200 plain-text "visited").
+        assert resp.status == 303, resp.status
+        assert resp.getheader("Location", "").endswith("/dashboard"), resp.getheader("Location", "")
         resp.read()
         conn.close()
         assert has_visited_dashboard(tmp_path) is True

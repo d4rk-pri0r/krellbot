@@ -21,9 +21,11 @@
   var trust = view.trust || null;
 
   // ---- wizard nav active state (enhancement only; nav works without JS) ----
-  // The wizard nav <a> elements already have sibling-relative hrefs, so a
-  // no-JS browser navigates fine. JS just adds aria-current on the active
-  // link so the user can see where they are.
+  // The wizard nav <a> elements already have server-rendered
+  // aria-current on the active link. JS is only an enhancement: if
+  // we missed a route (e.g. a brand new wizard page), set the active
+  // state from body.dataset.route so the user always sees where they
+  // are.
   try {
     var current = document.body && document.body.dataset
       ? document.body.dataset.route
@@ -33,6 +35,15 @@
       for (var i = 0; i < navLinks.length; i++) {
         if (navLinks[i].getAttribute("data-step") === current) {
           navLinks[i].setAttribute("aria-current", "page");
+        }
+      }
+      // Advance the stepper past the current step (visually).
+      var stepperOrder = ["welcome", "security", "next"];
+      var currentIdx = stepperOrder.indexOf(current);
+      if (currentIdx > 0) {
+        var stepperSteps = document.querySelectorAll(".stepper-step");
+        for (var s = 0; s < currentIdx && s < stepperSteps.length; s++) {
+          stepperSteps[s].setAttribute("data-past", "true");
         }
       }
     }

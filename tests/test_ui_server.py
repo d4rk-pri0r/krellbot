@@ -341,6 +341,13 @@ def test_root_does_not_disclose_token(home):
 
 def test_page_embeds_csrf_for_forms(home):
     """The browser cannot read the HttpOnly cookie, so the form field must carry it."""
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    # Mark visited so the dashboard shell renders at the index. The
+    # welcome/security/next shells only carry the wizard nav and a
+    # single form (the enter-dashboard POST on Next) — they have
+    # their own CSRF embedding tests.
+    mark_visited_dashboard(home)
     server, port = _start(home)
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port)

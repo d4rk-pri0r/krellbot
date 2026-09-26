@@ -290,42 +290,44 @@ def _render_security(home: Path, csrf: str) -> bytes:
     for JS-driven enhancement (Progress highlights, etc.) but is
     never the only path.
 
-    The diagnostic is rendered server-side too: ``<p
-    id="trust-diagnostic" hidden>…</p>`` is filled with a CLI next
-    action (``krellbot doctor``) when the keychain is not OK. The
-    ``hidden`` attribute is added/removed on the server, not by JS.
+    B3 round 1: the diagnostic is computed from the AGGREGATE posture
+    (backend + home mode) rather than just the backend. A 0o755 home
+    with a persistent keychain is still fail-closed — we never show an
+    "all green" banner when one row is failing. The diagnostic names
+    ``krellbot doctor`` as the next CLI action.
     """
     snap = trust.trust_snapshot(home)
     backend = str(snap.get("keychain_backend") or "(unknown)")
     home_str = str(snap.get("home") or "(unset)")
     home_mode = str(snap.get("home_mode") or "unknown on this OS")
-    keychain_ok = bool(snap.get("keychain_ok"))
+    posture_ok = bool(snap.get("posture_ok"))
+    posture_warning = str(snap.get("posture_warning") or "")
     body = _SECURITY_TEMPLATE
     body = body.replace("__BACKEND__", _h(backend))
     body = body.replace("__HOME__", _h(home_str))
     body = body.replace("__HOME_MODE__", _h(home_mode))
-    if keychain_ok:
+    if posture_ok:
         diag_class = "trust-ok"
-        diag_text = "Persistent backend detected."
+        diag_text = "All posture checks passed."
         body = body.replace("__DIAGNOSTIC__", _h(diag_text))
         body = body.replace("__DIAGNOSTIC_CLASS__", diag_class)
         body = body.replace("__DIAGNOSTIC_HIDDEN__", "")
     else:
         diag_class = "trust-fail"
+        # Always name `krellbot doctor` as the next CLI action; surface
+        # the aggregate warning verbatim.
         diag_text = (
-            "This keychain is not persistent. Run "
-            "`krellbot doctor` for a real diagnostic."
+            f"{posture_warning} Run `krellbot doctor` for a real "
+            "diagnostic."
         )
         body = body.replace("__DIAGNOSTIC__", _h(diag_text))
         body = body.replace("__DIAGNOSTIC_CLASS__", diag_class)
         # Fail-closed: the diagnostic is visible by default.
         body = body.replace("__DIAGNOSTIC_HIDDEN__", "")
-    # Always show the diagnostic block server-side. CSS controls color,
-    # not visibility, so a no-JS user sees the truth.
     view = {
         "view": "wizard.security",
         "trust": snap,
-        "ok": keychain_ok,
+        "ok": posture_ok,
     }
     payload = _embed_json(view)
     body = body.replace("__VIEW_JSON__", payload)
@@ -358,7 +360,7 @@ def _render_next(home: Path, csrf: str) -> bytes:
     return body.encode("utf-8")
 
 
-def _wizard_html(wrapper: str) -> str:
+def _wizard_html(wrapper: str, route: str = "") -> str:
     """Wrap a per-route main block in the wizard shell.
 
     The shell ships a strict CSP, no-referrer, no-store, and the wizard's
@@ -371,7 +373,46 @@ def _wizard_html(wrapper: str) -> str:
     the no-JS path navigates the wizard by following the link. A
     ``data-wizard-progress`` attribute on the nav lets the JS hydrator
     highlight the active step without rewriting hrefs.
+
+    B3 round 1: the active route is server-rendered into ``aria-current``
+    on the matching nav link AND into ``<body data-route="…">`` so the
+    JS hydrator and a no-JS user both see the active affordance.
+    ``route`` must be the literal step name (welcome / security / next).
     """
+    # Server-set aria-current on the active nav link. We do this by
+    # rendering the active link with an extra attribute; the JS hydrator
+    # is then a no-op.
+    def _nav_link(step: str, label: str) -> str:
+        attrs = f'href="{step}" data-step="{step}"'
+        if step == route:
+            attrs += ' aria-current="page"'
+        return f'<a {attrs}>{label}</a>'
+
+    nav_active = (
+        f'{_nav_link("welcome", "Welcome")}'
+        f'{_nav_link("security", "Security")}'
+        f'{_nav_link("next", "Next")}'
+        f'{_nav_link("dashboard", "Dashboard")}'
+        f'<a href="out/docs">Docs</a>'
+        f'<a href="out/source">Source</a>'
+    )
+
+    # Build a stepper with 3 numbered dots showing past/current/upcoming.
+    # The current step carries the `aria-current="step"` attribute so a
+    # screen reader announces it.
+    stepper_steps = ["welcome", "security", "next"]
+    stepper_html = '<ol class="stepper" aria-label="Wizard progress">'
+    for i, step in enumerate(stepper_steps, start=1):
+        attrs = f'class="stepper-step" data-step="{step}"'
+        if step == route:
+            attrs += ' aria-current="step"'
+        stepper_html += f'<li {attrs}>{i}</li>'
+    stepper_html += "</ol>"
+
+    body_attrs = 'class="wizard"'
+    if route:
+        body_attrs += f' data-route="{route}"'
+
     return (
         "<!doctype html>\n"
         '<html lang="en">\n'
@@ -385,22 +426,17 @@ def _wizard_html(wrapper: str) -> str:
         # prefix would drop the token and 403 on every nav + CSS fetch.
         '  <link rel="stylesheet" href="static/style.css">\n'
         "</head>\n"
-        "<body class=\"wizard\">\n"
+        f"<body {body_attrs}>\n"
         "<header>\n"
         "  <h1>krellbot first-run wizard</h1>\n"
         '  <p class="muted">loopback only. no call leaves this machine.</p>\n'
+        f"  {stepper_html}\n"
         "</header>\n"
         # Each link is sibling-relative so no-JS navigation works without
-        # the JS hydrator rewriting hrefs. The current route is set by
-        # aria-current on the matching link; aria-current is server-set
-        # by the per-route template if needed (default: none).
-        '<nav class="wizard-nav" aria-label="Wizard steps">\n'
-        '  <a href="welcome" data-step="welcome">Welcome</a> |\n'
-        '  <a href="security" data-step="security">Security</a> |\n'
-        '  <a href="next" data-step="next">Next</a> |\n'
-        '  <a href="dashboard" data-step="dashboard">Dashboard</a> |\n'
-        '  <a href="out/docs">Docs</a> |\n'
-        '  <a href="out/source">Source</a>\n'
+        # the JS hydrator rewriting hrefs. The active route is flagged
+        # server-side with aria-current so a no-JS user sees it too.
+        f'<nav class="wizard-nav" aria-label="Wizard steps">\n'
+        f"  {nav_active}\n"
         "</nav>\n"
         "<main>\n"
         f"{wrapper}\n"
@@ -423,13 +459,11 @@ _WELCOME_TEMPLATE = _wizard_html(
     "      <li><strong>Keys stay on this machine.</strong> Exchange API keys are stored in the local keychain; they are never sent to krellbot.dev.</li>\n"
     "      <li><strong>Official packs are optional and recommended.</strong> You can run any pack file you trust; official packs are not required.</li>\n"
     "    </ol>\n"
-    "    <form id=\"form-visit\" action=\"visit-dashboard\" method=\"POST\">\n"
-    "      <input type=\"hidden\" name=\"csrf\">\n"
-    '      <button type="submit">Continue</button>\n'
-    "    </form>\n"
-    '    <p class="muted">Progress: 1 of 3 &middot; <a href="security">Skip ahead to security</a></p>\n'
-    "  </section>\n"
+    "    <p class=\"muted\">Step 1 of 3 &middot; <a href=\"security\">Continue to security</a> &middot; <a href=\"next\">Skip to next</a></p>\n"
+    "  </section>\n",
+    route="welcome",
 )
+
 
 _SECURITY_TEMPLATE = _wizard_html(
     "  <section id=\"wizard-security-section\">\n"
@@ -446,19 +480,24 @@ _SECURITY_TEMPLATE = _wizard_html(
     '      <dd id="trust-bind">127.0.0.1 (loopback only)</dd>\n'
     "      <dt>Live arm from the UI</dt>\n"
     '      <dd id="trust-live-arm">Refused. Live arm is CLI-only.</dd>\n'
-    "      <dt>Key permissions</dt>\n"
-    '      <dd id="trust-permissions">Trade permission on, withdraw permission off.</dd>\n'
+    "      <dt>Key permissions <span class=\"muted\">(required, not validated)</span></dt>\n"
+    '      <dd id="trust-permissions">Trade-only permission required, withdraw permission never granted. No exchange key is probed from this page.</dd>\n'
     "    </dl>\n"
     '    <p id="trust-diagnostic" class="__DIAGNOSTIC_CLASS__" __DIAGNOSTIC_HIDDEN__>__DIAGNOSTIC__</p>\n'
-    '    <p><a href="welcome">Back</a> &middot; <a href="dashboard">Open dashboard</a></p>\n'
-    "  </section>\n"
+    '    <p><a href="welcome">Back</a> &middot; <a href="next">Continue to next</a></p>\n'
+    "  </section>\n",
+    route="security",
 )
+
 
 _NEXT_TEMPLATE = _wizard_html(
     "  <section id=\"wizard-next-section\">\n"
     "    <h2>Next steps</h2>\n"
-    "    <p>When you are ready, open the dashboard.</p>\n"
-    "    <p><a href=\"dashboard\">Open dashboard</a></p>\n"
+    "    <p>When you are ready, enter the dashboard.</p>\n"
+    "    <form id=\"form-enter-dashboard\" action=\"enter-dashboard\" method=\"POST\" class=\"enter-form\">\n"
+    "      <input type=\"hidden\" name=\"csrf\">\n"
+    "      <button type=\"submit\">Enter dashboard</button>\n"
+    "    </form>\n"
     "    <h3>Coming in future slices</h3>\n"
     "    <p class=\"muted\">The following steps belong to later slices and are NOT available in this release:</p>\n"
     '    <ul class="future-list" aria-label="Future slices">\n'
@@ -467,13 +506,14 @@ _NEXT_TEMPLATE = _wizard_html(
     "    </ul>\n"
     "    <h3>The free path today</h3>\n"
     "    <ul>\n"
-    "      <li><a href=\"dashboard\">Open the dashboard</a> and arm a paper pack.</li>\n"
     "      <li>Run <code>krellbot ui</code> from a terminal at any time to relaunch this UI.</li>\n"
     "      <li>Run <code>krellbot doctor</code> for a complete readiness check.</li>\n"
     "    </ul>\n"
-    '    <p class="muted">Progress: 3 of 3 &middot; <a href="security">Back</a></p>\n'
-    "  </section>\n"
+    '    <p class="muted">Step 3 of 3 &middot; <a href="security">Back</a></p>\n'
+    "  </section>\n",
+    route="next",
 )
+
 
 
 def _embed_json(view: dict) -> str:
@@ -904,22 +944,39 @@ def _make_handler(server_config: _ServerConfig):
                 self._do_adopt(form)
             elif rest == "visit-dashboard":
                 self._do_visit_dashboard()
+            elif rest == "enter-dashboard":
+                self._do_enter_dashboard()
             else:
                 self._send_status(404, "Not Found")
 
         def _do_visit_dashboard(self) -> None:
+            """Legacy alias kept for backward compatibility. Returns 303
+            to the token-scoped dashboard via the same PRG contract as
+            enter-dashboard. New code should hit /enter-dashboard.
+            """
+            self._do_enter_dashboard()
+
+        def _do_enter_dashboard(self) -> None:
             """Record the visit preference so future root GETs render the
             dashboard shell instead of the wizard welcome.
 
             The cookie/CSRF/Origin gate is enforced upstream in `_handle`;
             by the time we get here the request is already authenticated.
+            On success we 303 to /<token>/dashboard (PRG). The response
+            never echoes an absolute URL or anything outside the gate.
             """
             try:
                 first_run.mark_visited_dashboard(server_config.home)
             except OSError:
                 self._send_status(500, "Internal Server Error")
                 return
-            self._send_text(200, "visited")
+            self.send_response(303, "See Other")
+            self.send_header("Location", f"/{server_config.token}/dashboard")
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            for name, value in _HTML_SECURITY_HEADERS:
+                self.send_header(name, value)
+            self.end_headers()
 
         def _do_arm(self, form: dict) -> None:
             mode = (form.get("mode") or [""])[0]

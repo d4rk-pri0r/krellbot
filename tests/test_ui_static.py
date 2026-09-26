@@ -272,7 +272,9 @@ def test_no_js_route_fallback_via_static_html():
 
     # Wizard shell: verify the nav exposes each wizard target. The
     # wizard template lives in server.py — read it and grep for the
-    # four sibling-relative links.
+    # four sibling-relative links. The round-1 refactor moves the
+    # attribute assembly into a helper, so we accept either a literal
+    # `<a … href="X"` or the helper call that emits it.
     server_py = (
         Path(__file__).resolve().parents[1]
         / "src"
@@ -282,9 +284,12 @@ def test_no_js_route_fallback_via_static_html():
     )
     src = server_py.read_text(encoding="utf-8")
     for target in ("welcome", "security", "next", "dashboard"):
-        assert re.search(
-            rf'<a[^>]+href="{re.escape(target)}"', src
-        ), (
+        pattern = (
+            rf'<a[^>]+href="{re.escape(target)}"'
+            rf'|href="{re.escape(target)}"'
+            rf'|_nav_link\(\s*"{re.escape(target)}"'
+        )
+        assert re.search(pattern, src), (
             f"wizard shell in server.py must expose {target!r} as a plain <a> link"
         )
 

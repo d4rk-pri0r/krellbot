@@ -57,16 +57,33 @@ secret, or a license token in the browser. The Security step renders
 the local trust posture from `trust_snapshot()`: the detected
 keychain backend class, the resolved `$KRELLBOT_HOME` path and
 POSIX mode, the loopback bind, the `live_arm_ui_allowed = False`
-rail, and a fail-closed diagnostic if the keychain is not persistent.
-The diagnostic names `krellbot doctor` as the next CLI action. A
-null backend is never reported as a green check.
+rail, and a fail-closed aggregate diagnostic.
+
+The aggregate diagnostic is computed from BOTH the backend and the
+home mode. A persistent keychain on a 0o755 home, or a 0o700 home
+with no persistent keychain, is still fail-closed: the diagnostic
+banner names `krellbot doctor` as the next CLI action. A null backend
+is never reported as a green check. The "Key permissions" line on
+the Security step is a REQUIREMENT statement ("Trade-only permission
+required, withdraw permission never granted. No exchange key is
+probed from this page."), not a validated connection — no key is
+probed from the UI.
 
 The wizard's Welcome page states three truthful things: the engine
 is free and open-source, exchange keys stay on this machine, and
-official packs are optional and recommended. The Next page labels
-exchange connection (slice C) and pack adoption (slice D) as future
-slices — they are not completed steps in this release. The free path
-today is the dashboard, the CLI, and `krellbot doctor`.
+official packs are optional and recommended. Welcome exposes only
+sibling-relative `<a href="security">` / `<a href="next">` links —
+there is no Continue button that posts a preference. Only Next's
+explicit **Enter dashboard** button POSTs `/<token>/enter-dashboard`
+through the existing token/session/CSRF/Origin gate and the server
+responds 303 to `/<token>/dashboard` (PRG). A direct GET to
+`/<token>/dashboard` never marks the preference, so Back/forward
+navigation cannot flip it.
+
+The Next page labels exchange connection (slice C) and pack adoption
+(slice D) as future slices — they are not completed steps in this
+release. The free path today is the dashboard, the CLI, and
+`krellbot doctor`.
 
 Static assets are entirely local — no CDN, no Google font, no
 external script. The wizard templates and the dashboard shell embed

@@ -21,7 +21,12 @@
   --canvas: #07090d;
   --canvas-elev: #0d1117;
   --card: #11161e;
-  --border: #1f2730;
+  /* Cyan-tinted border so the form outline is visible on the dark
+   * canvas (the previous #1f2730 against #0d1117 was ~1.25:1 — too
+   * low to see). #4a8aa8 against #0d1117 is ~5:1; against #07090d
+   * ~5.2:1 — solid decorative contrast. */
+  --border: #4a8aa8;
+  --border-soft: #2a4a5a;
   --ink: #e7f4f8;
   --muted: #8b9bab;
   --signal: #5ce1ff;
@@ -34,6 +39,9 @@
   --ok-bg: #0f1f17;
   --fail-text: #ffb4b4;
   --fail-bg: #2a1313;
+  --step-past: #5ce1ff;
+  --step-current: #7cefff;
+  --step-upcoming: #2a4a5a;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
 }
@@ -106,20 +114,44 @@ header h1 {
 .wizard-nav {
   font-size: .9rem;
   margin-top: .25rem;
+  padding: .25rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .25rem;
 }
 .wizard-nav a {
-  color: var(--ink);
+  color: var(--muted);
   text-decoration: none;
-  padding: .15rem .35rem;
+  padding: .25rem .5rem;
   border-radius: 3px;
   border-bottom: 1px dashed transparent;
 }
 .wizard-nav a[aria-current="page"] {
   color: var(--signal);
   border-bottom-color: var(--signal);
+  font-weight: 600;
 }
 .wizard-nav a:hover {
   border-bottom-color: var(--signal);
+  color: var(--ink);
+}
+
+/* Primary CTA — used by Enter dashboard and the future-slice free
+ * path buttons. The cyan-tinted surface (not just outline) is the
+ * single primary interactive accent on the page. */
+.enter-form button,
+button.primary {
+  background: var(--signal);
+  color: var(--canvas);
+  border-color: var(--signal);
+  padding: .55rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.enter-form button:hover,
+button.primary:hover {
+  background: var(--signal-strong);
+  border-color: var(--signal-strong);
 }
 
 .resume-setup {
@@ -240,6 +272,67 @@ td button {
   background: var(--danger-bg);
 }
 
+/* Dashboard hero card: the Local status block is the most important
+ * block on the page. We give it a slightly thicker border and a
+ * subtle gradient lift so the eye lands there first. */
+.card-primary,
+section.primary-card,
+section#status-section.primary-card {
+  border: 2px solid var(--signal);
+  background: linear-gradient(180deg, var(--canvas-elev), var(--canvas));
+  box-shadow: 0 0 0 1px rgba(92, 225, 255, .12);
+}
+section#status-section.primary-card h2 {
+  color: var(--signal-strong);
+}
+section#status-section.primary-card dt {
+  color: var(--muted);
+}
+section#status-section.primary-card dd {
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+/* Wizard stepper — 3 numbered dots above the nav. The current step
+ * is cyan with a thicker ring; past steps are filled cyan; upcoming
+ * are dim cyan border only. */
+.stepper {
+  list-style: none;
+  padding: 0;
+  margin: .5rem 0 0;
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+}
+.stepper-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  font-size: .8rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  border: 1px solid var(--step-upcoming);
+  background: transparent;
+  color: var(--muted);
+}
+.stepper-step[aria-current="step"] {
+  border: 2px solid var(--step-current);
+  background: rgba(124, 239, 255, .08);
+  color: var(--step-current);
+  box-shadow: 0 0 0 3px rgba(92, 225, 255, .12);
+}
+/* The previous steps turn cyan when the user advances past them.
+ * JS-free: the server tags which step is past when it knows the
+ * route; without JS, only the current step is highlighted. */
+.stepper-step[data-past="true"] {
+  background: var(--step-past);
+  color: var(--canvas);
+  border-color: var(--step-past);
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -276,7 +369,6 @@ button {
 button:hover {
   background: rgba(92, 225, 255, .12);
 }
-button[type="submit"][value="Stop all"],
 .card.danger button {
   border-color: var(--danger);
   color: var(--danger);
