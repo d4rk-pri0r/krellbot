@@ -45,7 +45,7 @@ from krellbot import journal as kb_journal
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 
-from . import first_run, trust
+from . import first_run, keys_status, trust
 
 # ---- constants -----------------------------------------------------------
 
@@ -85,7 +85,7 @@ _HTML_SECURITY_HEADERS = (
 
 # Wizard route names. Each maps to a server-rendered shell that embeds
 # a small `__KB_VIEW__` JSON bootstrap (escaped via `_embed_json`).
-_WIZARD_ROUTES = frozenset({"welcome", "security", "next"})
+_WIZARD_ROUTES = frozenset({"welcome", "security", "next", "keys"})
 
 
 # ---- helpers -------------------------------------------------------------
@@ -357,6 +357,102 @@ def _render_next(home: Path, csrf: str) -> bytes:
     return body.encode("utf-8")
 
 
+def _render_keys(home: Path, csrf: str, *, status_message: str | None = None) -> bytes:
+    """Render the wizard Exchange-key page and its honest status block.
+
+    The page is the GET target for the slice-C exchange step. It renders
+    server-side so a no-JS user sees the same affordances. The status
+    block is built from ``keys_status.read_status`` — that helper NEVER
+    probes a venue and NEVER reads the keyring secret bytes; it only
+    reports keyring slot presence and the durable ``verified_at``
+    timestamp recorded by an earlier POST. A missing timestamp is
+    rendered as "stored; no current verification", NOT a live-
+    connection framing — the brief explicitly disallows the live-status
+    framing.
+
+    ``status_message`` is set when the GET follows a 303 PRG from the
+    POST handler; it carries one of the closed per-outcome safe messages
+    (or ``None``). The message is server-rendered into HTML only after
+    it is validated against the closed safe-message set; raw form input
+    is never echoed here.
+    """
+    snap = trust.trust_snapshot(home)
+    raw_status = keys_status.read_status(home)
+    # Build a presentation-only status dict for the bootstrap JSON. We do
+    # NOT include the raw key/secret bytes — only booleans, timestamps,
+    # and the closed per-outcome message.
+    safe_status: dict[str, dict[str, object | None]] = {}
+    for venue, row in raw_status.items():
+        safe_status[venue] = {
+            "stored": bool(row.get("stored")),
+            "verified_at": row.get("verified_at"),
+            "last_status": row.get("last_status"),
+            "last_message": row.get("last_message"),
+        }
+
+    from krellbot import keys_onboarding
+
+    validated_status_message: str | None = None
+    if status_message is not None and status_message in keys_onboarding.SAFE_MESSAGES:
+        validated_status_message = status_message
+
+    def _row_text(venue: str) -> str:
+        row = raw_status.get(venue, {})
+        stored = bool(row.get("stored"))
+        verified_at = row.get("verified_at")
+        if not stored:
+            return "no key stored"
+        if not isinstance(verified_at, str) or not verified_at:
+            return "stored; no current verification"
+        return f"stored; last checked at {_h(verified_at)}"
+
+    # Compute a short, human-readable summary of the local trust
+    # posture so the page can honestly report the backend and home mode
+    # alongside the per-venue key status. The summary is built from
+    # the existing trust snapshot — no secrets, no key bytes.
+    backend_name = str(snap.get("keychain_backend") or "(unknown)")
+    home_path = str(snap.get("home") or "(unset)")
+    home_mode = str(snap.get("home_mode") or "unknown on this OS")
+    posture_ok = bool(snap.get("posture_ok"))
+    posture_warning = str(snap.get("posture_warning") or "")
+    if posture_ok:
+        posture_summary = "All posture checks passed."
+        posture_class = "trust-ok"
+    else:
+        posture_summary = (
+            f"{posture_warning} Run `krellbot doctor` for a real diagnostic."
+            if posture_warning
+            else "Run `krellbot doctor` for a real diagnostic."
+        )
+        posture_class = "trust-fail"
+
+    body = _KEYS_TEMPLATE
+    body = body.replace("__STATUS_KRAKEN__", _h(_row_text("kraken")))
+    body = body.replace("__STATUS_COINBASE__", _h(_row_text("coinbase")))
+    body = body.replace("__STATUS_BACKEND__", _h(backend_name))
+    body = body.replace("__STATUS_HOME__", _h(home_path))
+    body = body.replace("__STATUS_HOME_MODE__", _h(home_mode))
+    body = body.replace("__STATUS_POSTURE_SUMMARY__", _h(posture_summary))
+    body = body.replace("__STATUS_POSTURE_CLASS__", posture_class)
+    if validated_status_message is not None:
+        body = body.replace("__STATUS_MESSAGE__", _h(validated_status_message))
+        body = body.replace("__STATUS_MESSAGE_HIDDEN__", "")
+    else:
+        body = body.replace("__STATUS_MESSAGE__", "")
+        body = body.replace("__STATUS_MESSAGE_HIDDEN__", "hidden")
+    body = body.replace('name="csrf"', f'name="csrf" value="{csrf}"')
+
+    view = {
+        "view": "wizard.keys",
+        "trust": snap,
+        "status": safe_status,
+        "status_message": validated_status_message,
+    }
+    payload = _embed_json(view)
+    body = body.replace("__VIEW_JSON__", payload)
+    return body.encode("utf-8")
+
+
 def _wizard_html(wrapper: str, route: str = "") -> str:
     """Wrap a per-route main block in the wizard shell.
 
@@ -389,16 +485,17 @@ def _wizard_html(wrapper: str, route: str = "") -> str:
     nav_active = (
         f"{_nav_link('welcome', 'Welcome')}"
         f"{_nav_link('security', 'Security')}"
+        f"{_nav_link('keys', 'Exchange')}"
         f"{_nav_link('next', 'Next')}"
         f"{_nav_link('dashboard', 'Dashboard')}"
         f'<a href="out/docs">Docs</a>'
         f'<a href="out/source">Source</a>'
     )
 
-    # Build a stepper with 3 numbered dots showing past/current/upcoming.
+    # Build a stepper with 4 numbered dots showing past/current/upcoming.
     # The current step carries the `aria-current="step"` attribute so a
     # screen reader announces it.
-    stepper_steps = ["welcome", "security", "next"]
+    stepper_steps = ["welcome", "security", "keys", "next"]
     stepper_html = '<ol class="stepper" aria-label="Wizard progress">'
     for i, step in enumerate(stepper_steps, start=1):
         attrs = f'class="stepper-step" data-step="{step}"'
@@ -496,10 +593,9 @@ _NEXT_TEMPLATE = _wizard_html(
     '      <input type="hidden" name="csrf">\n'
     '      <button type="submit">Enter dashboard</button>\n'
     "    </form>\n"
-    "    <h3>Coming in future slices</h3>\n"
-    '    <p class="muted">The following steps belong to later slices and are NOT available in this release:</p>\n'
+    "    <h3>Future slices</h3>\n"
+    '    <p class="muted">The following belongs to a later slice and is NOT available in this release:</p>\n'
     '    <ul class="future-list" aria-label="Future slices">\n'
-    "      <li><strong>Slice C &mdash; exchange connection.</strong> Adding or rotating an exchange API key from this UI is a future slice; today the CLI is the only path.</li>\n"
     "      <li><strong>Slice D &mdash; pack adoption.</strong> A guided pack picker / scheduler installer is a future slice; today you run <code>krellbot pack lint</code> and <code>krellbot arm</code> from the CLI.</li>\n"
     "    </ul>\n"
     "    <h3>The free path today</h3>\n"
@@ -507,9 +603,78 @@ _NEXT_TEMPLATE = _wizard_html(
     "      <li>Run <code>krellbot ui</code> from a terminal at any time to relaunch this UI.</li>\n"
     "      <li>Run <code>krellbot doctor</code> for a complete readiness check.</li>\n"
     "    </ul>\n"
-    '    <p class="muted">Step 3 of 3 &middot; <a href="security">Back</a></p>\n'
+    '    <p class="muted">Step 4 of 4 &middot; <a href="keys">Back</a></p>\n'
     "  </section>\n",
     route="next",
+)
+
+
+_KEYS_TEMPLATE = _wizard_html(
+    '  <section id="wizard-keys-section">\n'
+    "    <h2>Exchange keys</h2>\n"
+    "    <p>Add or rotate an exchange API key from this page. The form below "
+    "sends one credential-bearing POST; the server probes the venue and "
+    "stores the result only if the venue confirms trade-only permissions.</p>\n"
+    "    <h3>Instructions</h3>\n"
+    '    <ol class="keys-instructions" aria-label="How to add an exchange key">\n'
+    "      <li>Create a <strong>read-only / trade-only</strong> API key on your "
+    "exchange (Kraken or Coinbase). <strong>Withdraw</strong> and "
+    "<strong>transfer</strong> permissions must stay off.</li>\n"
+    "      <li>Paste the API key and the API secret into the form below. "
+    "The key is sent over loopback only; nothing leaves this machine.</li>\n"
+    "      <li>The server runs a probe (a single credentialed request) and, "
+    "on success, stores the pair in your local OS keychain. The page never "
+    "echoes your secret back.</li>\n"
+    "      <li>If the venue refuses (withdraw, trade-off, invalid, etc.), the "
+    "keyring is left unchanged and the failure is shown below.</li>\n"
+    "    </ol>\n"
+    '    <form id="form-keys-add" action="keys/add" method="POST" autocomplete="off">\n'
+    '      <input type="hidden" name="csrf">\n'
+    '      <label for="keys-venue">Venue\n'
+    '        <select id="keys-venue" name="venue" required>\n'
+    '          <option value="kraken">Kraken</option>\n'
+    '          <option value="coinbase">Coinbase</option>\n'
+    "        </select>\n"
+    "      </label>\n"
+    '      <label for="keys-api-key">API key\n'
+    '        <input id="keys-api-key" type="text" name="api_key" autocomplete="off" required>\n'
+    "      </label>\n"
+    '      <label for="keys-api-secret">API secret\n'
+    '        <input id="keys-api-secret" type="password" name="api_secret" autocomplete="off" required>\n'
+    "      </label>\n"
+    '      <button type="submit">Add / rotate key</button>\n'
+    "    </form>\n"
+    "    <h3>Local trust posture</h3>\n"
+    '    <dl id="keys-trust" aria-label="Local trust posture">\n'
+    "      <dt>Keychain backend</dt>\n"
+    '      <dd id="keys-trust-backend">__STATUS_BACKEND__</dd>\n'
+    "      <dt>Data home</dt>\n"
+    '      <dd id="keys-trust-home">__STATUS_HOME__</dd>\n'
+    "      <dt>Home mode</dt>\n"
+    '      <dd id="keys-trust-home-mode">__STATUS_HOME_MODE__</dd>\n'
+    "    </dl>\n"
+    '    <p id="keys-trust-summary" class="__STATUS_POSTURE_CLASS__">__STATUS_POSTURE_SUMMARY__</p>\n'
+    "    <h3>Per-venue status</h3>\n"
+    '    <dl id="keys-status" aria-label="Key onboarding status">\n'
+    "      <dt>Kraken</dt>\n"
+    '      <dd id="keys-status-kraken">__STATUS_KRAKEN__</dd>\n'
+    "      <dt>Coinbase</dt>\n"
+    '      <dd id="keys-status-coinbase">__STATUS_COINBASE__</dd>\n'
+    "    </dl>\n"
+    '    <p id="keys-status-message" class="status-message" __STATUS_MESSAGE_HIDDEN__>__STATUS_MESSAGE__</p>\n'
+    "    <h3>What this page does not do</h3>\n"
+    "    <ul>\n"
+    "      <li>It does not run a live venue probe on every load. The status "
+    "block reads the durable timestamp from the last POST, never a fresh "
+    "request to Kraken or Coinbase.</li>\n"
+    "      <li>It does not claim a live-connection state. Without a "
+    "durable timestamp, the row reads 'stored; no current verification'.</li>\n"
+    "      <li>It does not echo credentials, errors, or stack traces back to "
+    "the page.</li>\n"
+    "    </ul>\n"
+    '    <p><a href="security">Back</a> &middot; <a href="next">Skip to next</a></p>\n'
+    "  </section>\n",
+    route="keys",
 )
 
 
@@ -523,6 +688,29 @@ def _embed_json(view: dict) -> str:
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
     )
+
+
+def _status_from_query(raw_query: str) -> str | None:
+    """Return the closed safe-message `status` value from a query string.
+
+    The 303 PRG from ``POST /<token>/keys/add`` carries the closed
+    status message in the URL so the GET can render it. Anything outside
+    ``keys_onboarding.SAFE_MESSAGES`` is rejected at this boundary so an
+    arbitrary `?status=...` value (e.g. a tampered URL or a leftover from
+    a previous build) cannot reach the renderer.
+    """
+    from krellbot import keys_onboarding
+
+    if not raw_query:
+        return None
+    pairs = urllib.parse.parse_qs(raw_query, keep_blank_values=False)
+    candidates = pairs.get("status") or []
+    if not candidates:
+        return None
+    candidate = candidates[0]
+    if candidate in keys_onboarding.SAFE_MESSAGES:
+        return candidate
+    return None
 
 
 def _h(value: str) -> str:
@@ -742,6 +930,7 @@ def _make_handler(server_config: _ServerConfig):
 
             # 2. Parse the path.
             raw_path = self.path.split("?", 1)[0]
+            raw_query = self.path.split("?", 1)[1] if "?" in self.path else ""
             stripped = raw_path.strip("/")
             parts = stripped.split("/", 1)
             path_token = parts[0] if parts else ""
@@ -793,18 +982,18 @@ def _make_handler(server_config: _ServerConfig):
 
             # 6. Route.
             if method == "GET":
-                self._route_get(rest, port)
+                self._route_get(rest, port, raw_query)
             else:
                 self._route_post(rest, form)
 
         # ---- GET routes -------------------------------------------------
 
-        def _route_get(self, rest: str, port: int) -> None:
+        def _route_get(self, rest: str, port: int, raw_query: str = "") -> None:
             # Strip a leading slash for clean comparison.
             route = rest.lstrip("/")
-            # Wizard routes: welcome / security / next.
+            # Wizard routes: welcome / security / next / keys.
             if route in _WIZARD_ROUTES:
-                self._serve_wizard(route, port)
+                self._serve_wizard(route, port, raw_query)
                 return
             # Index route (`/`) chooses welcome or dashboard based on the
             # recorded visit preference — never redirects to a URL missing
@@ -852,7 +1041,7 @@ def _make_handler(server_config: _ServerConfig):
                 body = _render_welcome(home, server_config.csrf)
             self._send_html(body, port)
 
-        def _serve_wizard(self, route: str, port: int) -> None:
+        def _serve_wizard(self, route: str, port: int, raw_query: str = "") -> None:
             """Serve a wizard view by name. Sets cookies so the wizard's
             POST /enter-dashboard can satisfy the existing CSRF gate.
             """
@@ -864,6 +1053,12 @@ def _make_handler(server_config: _ServerConfig):
                 body = _render_security(home, csrf)
             elif route == "next":
                 body = _render_next(home, csrf)
+            elif route == "keys":
+                # The keys page may carry a closed `?status=<safe_message>`
+                # query after a 303 PRG. Parse it here; the renderer
+                # validates against SAFE_MESSAGES so an arbitrary value
+                # is dropped.
+                body = _render_keys(home, csrf, status_message=_status_from_query(raw_query))
             else:  # pragma: no cover — _WIZARD_ROUTES is fixed
                 self._send_status(404, "Not Found")
                 return
@@ -937,6 +1132,8 @@ def _make_handler(server_config: _ServerConfig):
                 self._do_visit_dashboard()
             elif rest == "enter-dashboard":
                 self._do_enter_dashboard()
+            elif rest == "keys/add":
+                self._do_keys_add(form)
             else:
                 self._send_status(404, "Not Found")
 
@@ -1035,6 +1232,110 @@ def _make_handler(server_config: _ServerConfig):
             kb_config.adopt_pending_version(armed)
             kb_config.save_config(server_config.home, config)
             self._send_text(200, "adopted")
+
+        def _do_keys_add(self, form: dict) -> None:
+            """One-shot credential-bearing POST → probe-and-store → PRG 303.
+
+            The cookie/CSRF/Origin/Host gate is enforced upstream in
+            ``_handle``; by the time we reach here the request is
+            already authenticated. The flow:
+
+                1. Validate venue ∈ {kraken, coinbase}; missing/blank
+                   fields → 400 (still 303 PRG so a no-JS browser
+                   bounces back to the status page, never echoes the
+                   form value).
+                2. Resolve the active keyring backend. Native OS
+                   keychains only — anything else (null / fail /
+                   plaintext / FakeKeyring in production) is rejected
+                   via the UNSUPPORTED_BACKEND result.
+                3. Call ``keys_onboarding.probe_and_store`` with
+                   ``probe=None`` so the canonical CLI probe is the
+                   single authority for the trade-only claim. We
+                   deliberately do NOT honour any caller-supplied probe
+                   callable; the wizard layer is a closed entry point.
+                4. Persist the outcome via ``keys_status.record_outcome``
+                   so a later GET (no live probe) can render
+                   ``stored; last checked at <timestamp>``.
+                5. 303 PRG to ``/<token>/keys``. The Location carries a
+                   fragment-style status_message that survives the
+                   redirect (query string is logged by some upstreams,
+                   so we use the path with a query token — a closed
+                   per-outcome safe message).
+
+            On any error path the response body is empty and the
+            Location does not include the form values. The CSRF/Origin/
+            Host rejections happen upstream and never reach this method.
+            """
+            venue = (form.get("venue") or [""])[0].strip().lower()
+            api_key = (form.get("api_key") or [""])[0]
+            api_secret = (form.get("api_secret") or [""])[0]
+            # Use a sentinel so a bad input becomes a 303 with the
+            # INVALID_ARGUMENT safe message rather than a 400 that
+            # leaves the user on a dead-end error page.
+            self._process_keys_add(venue, api_key, api_secret)
+
+        def _process_keys_add(self, venue: str, api_key: str, api_secret: str) -> None:
+            """Run the probe-and-store pipeline and 303 PRG to the
+            credential-free status page."""
+            from krellbot import keys_onboarding
+
+            home = server_config.home
+
+            # Resolve the active keyring backend (production: native
+            # OS only; tests inject FakeKeyring via the env var that
+            # conftest.py sets). We deliberately do NOT honour the
+            # ``allow_injected_fake_backend`` opt-in here — the wizard
+            # path is closed.
+            import keyring as _keyring
+
+            backend = _keyring.get_keyring()
+            # The wizard is the canonical closed entry point: probe=None,
+            # allow_injected_fake_backend=False. An injected callable or
+            # a forged fake-keyring backend cannot bypass the gate.
+            result = keys_onboarding.probe_and_store(
+                venue,
+                api_key,
+                api_secret,
+                keyring_backend=backend,
+                probe=None,
+                allow_injected_fake_backend=False,
+            )
+
+            # Persist the durable status so the next GET (no live
+            # probe) can render ``stored; last checked at <ts>``.
+            try:
+                keys_status.record_outcome(
+                    home,
+                    venue,
+                    status=result.status.value,
+                    message=result.message,
+                )
+            except OSError:
+                # OSError on record_outcome does NOT undo a successful
+                # store — the keyring is already authoritative. The
+                # status snapshot is presentation-only; a failure to
+                # write it surfaces as "no current verification" on the
+                # next GET, which is honest about the gap.
+                pass
+
+            # 303 PRG. Location carries the closed status_message via
+            # the query string so the GET can render it. ``message``
+            # is one of SAFE_MESSAGES (enforced inside the result
+            # dataclass), so it is safe to embed in a URL.
+            location = f"/{server_config.token}/keys?status={urllib.parse.quote(result.message)}"
+            self._send_keys_redirect(location)
+
+        def _send_keys_redirect(self, location: str) -> None:
+            """Send a 303 PRG with the wizard security headers and a
+            ``Cache-Control: no-store`` so no intermediate cache will
+            replay the credential-bearing POST body."""
+            self.send_response(303, "See Other")
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            for name, value in _HTML_SECURITY_HEADERS:
+                self.send_header(name, value)
+            self.end_headers()
 
         # ---- response helpers -------------------------------------------
 
