@@ -168,18 +168,29 @@ class KeyProbeResult:
     def to_key_perms(self) -> KeyPerms:
         """Narrow the typed result to the engine's `KeyPerms` shape.
 
-        Only `trade_only` is `can_trade=True, can_withdraw=False`; every
-        other outcome is mapped to `can_trade=False, can_withdraw=False`
+        `trade_only` → ``(can_trade=True, can_withdraw=False)`` so the
+        arm site accepts the key.
+
+        `withdraw_capable` → ``(can_trade=False, can_withdraw=True)`` so
+        the arm site can distinguish a confirmed-withdraw key (which
+        reports ``"withdraw is on; trade-only keys refused"``) from a
+        plain trade-off / invalid / malformed / unreachable refusal
+        (which reports ``"trade is off"``). Without this distinction the
+        arm-site diagnostic collapses every refusal to the same line and
+        the user cannot tell what was actually wrong.
+
+        Every other outcome → ``(can_trade=False, can_withdraw=False)``
         so the engine refuses the key. Use this when plumbing the result
         into callers that still inspect `can_trade` / `can_withdraw`
         booleans (e.g. `arm_pack`).
         """
         from krellbot.venues.base import KeyPerms  # local import: avoid cycle
 
-        return KeyPerms(
-            can_trade=self.outcome == KeyProbeOutcome.TRADE_ONLY,
-            can_withdraw=False,
-        )
+        if self.outcome == KeyProbeOutcome.TRADE_ONLY:
+            return KeyPerms(can_trade=True, can_withdraw=False)
+        if self.outcome == KeyProbeOutcome.WITHDRAW_CAPABLE:
+            return KeyPerms(can_trade=False, can_withdraw=True)
+        return KeyPerms(can_trade=False, can_withdraw=False)
 
 
 class WithdrawCapableError(RuntimeError):

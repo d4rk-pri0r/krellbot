@@ -187,6 +187,12 @@ def test_probe_unknown_extra_permission_refused(isolated_home, fresh_keyring) ->
     Fails closed on unknown extras so a future Kraken-added permission
     cannot silently turn a verified-trade-only key into a partially
     trusted one.
+
+    The reason text is a fixed safe string that does NOT echo the
+    unrecognized permission token (N2 round-2 fix); a future maintainer
+    could otherwise have built an exception message that leaked
+    credential material. The user can still pinpoint the cause via
+    `krellbot keys check <venue>` output combined with venue-side logs.
     """
     from krellbot import cli_keys, secrets
 
@@ -204,8 +210,11 @@ def test_probe_unknown_extra_permission_refused(isolated_home, fresh_keyring) ->
     result = cli_keys._probe("kraken", api_key, api_secret, transport=transport)
     assert result.outcome == KeyProbeOutcome.TRADE_OFF
     assert result.is_trade_only is False
-    # Reason names the unknown permission so the reviewer can pinpoint it.
-    assert "transfer-funds" in result.reason
+    # Reason is a fixed safe string and MUST NOT echo the unrecognized
+    # permission token (N2 round-2: defense in depth against credential
+    # material leaking through the venue's exception message).
+    assert "transfer-funds" not in result.reason
+    assert result.reason.strip(), "expected a non-empty refusal reason"
 
 
 # --- CLI surface: exit codes and reason printing (reviewer Q2) ------------

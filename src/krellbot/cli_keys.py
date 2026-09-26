@@ -122,13 +122,20 @@ def _probe(venue: str, api_key: str, api_secret: str, transport: Any = None) -> 
         # Distinguish reasons so the CLI can tell invalid / malformed /
         # trade-off / unknown-permission cases apart. Each subclass is
         # still a `WithdrawCapableError`, so the engine refuses all.
-        reason = _reason_for(exc)
+        # The reason text is keyed on the exception type, NOT on
+        # `str(exc)`: the helper never echoes the venue's exception
+        # message because that message could embed credential material
+        # in a future maintainer's subclass. `sanitize.register_secret`
+        # remains a last-line redaction at the print boundary.
         outcome = _outcome_for(exc)
-        return _result(outcome, reason)
+        return _result(outcome, _reason_for(exc))
     except WithdrawCapableError as exc:
-        # Withdraw-capable key (forbidden permission). The raw `WithdrawCapableError`
-        # is the contract for "venue confirmed withdraw rights".
-        return _result(KeyProbeOutcome.WITHDRAW_CAPABLE, str(exc))
+        # Bare `WithdrawCapableError` (e.g. an untyped subclass added
+        # by a future venue adapter) is the contract for "venue
+        # confirmed withdraw rights". `_reason_for` keys on the type
+        # and returns a fixed safe string, so credential material
+        # cannot leak through `str(exc)`.
+        return _result(KeyProbeOutcome.WITHDRAW_CAPABLE, _reason_for(exc))
     except (OSError, RuntimeError) as exc:
         return _result(KeyProbeOutcome.UNREACHABLE, _safe_unreachable_reason(exc))
     except (ValueError, TypeError, KeyError) as exc:
@@ -173,18 +180,42 @@ def _outcome_for(exc: BaseException) -> str:
 def _reason_for(exc: BaseException) -> str:
     """Return a short, secret-free reason for a typed probe exception.
 
-    The original exception message is used only when it cannot carry
-    key/secret material. Today, all typed subclasses raise messages that
-    name Kraken permission tokens or "GetApiKeyInfo denied" — none of
-    which contain user-supplied credentials, and the registered
-    `sanitize.register_secret` redacts any incidental match.
+    The reason is keyed on the exception **type**, never on `str(exc)`.
+    `sanitize.register_secret` is not relied on as the catch-all because
+    it cannot catch secrets that have not been registered (a future
+    subclass that embeds a new credential in its message would leak
+    straight through). Per-type fixed strings keep the printed reason
+    short, user-actionable, and provably secret-free.
+
+    Any unknown subclass collapses to the generic refusal reason — there
+    is no informative message we can safely echo. The `KeyProbeOutcome`
+    axis (`_outcome_for`) keeps the refusal taxonomy intact.
     """
-    msg = str(exc).strip()
-    if not msg:
-        return "key refused"
-    # The venue messages already end with a refusal clause; if a future
-    # subclass is missing one we keep the call short.
-    return msg if msg.endswith(".") or "refused" in msg.lower() else f"{msg}; refused"
+    from krellbot.venues.base import (
+        KeyMalformedError,
+        KeyTradeOffError,
+        KeyUnverifiableError,
+        KrakenKeyUnknownPermissionError,
+        WithdrawCapableError,
+    )
+
+    if isinstance(exc, KeyUnverifiableError):
+        return "key cannot be verified (invalid or permission denied); refused"
+    if isinstance(exc, KeyMalformedError):
+        return "venue response shape unknown; refused"
+    if isinstance(exc, KeyTradeOffError):
+        return "missing required trade permission; refused"
+    if isinstance(exc, KrakenKeyUnknownPermissionError):
+        return "venue returned an unrecognized permission; refused"
+    if isinstance(exc, WithdrawCapableError):
+        # Bare `WithdrawCapableError` or unrecognised subclass. The
+        # contract is "venue confirmed withdraw rights", regardless of
+        # what the message happens to contain. A future maintainer
+        # adding a typed subclass cannot bypass the safe-message contract
+        # because the typed-subclass branches above match first.
+        return "venue confirmed withdraw rights; refused"
+    # Any other typed `BaseException` is refused; do not echo `str(exc)`.
+    return "key refused"
 
 
 def _safe_malformed_reason(exc: BaseException) -> str:
