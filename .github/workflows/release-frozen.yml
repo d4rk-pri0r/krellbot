@@ -163,7 +163,7 @@ jobs:
           # taken. The dashboard's --port flag accepts any port;
           # we don't pin a specific value. Inline python avoids
           # needing a separate helper script.
-          PORT="$(uv run python -c 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(("'"'"'127.0.0.1'"'"', 0)); print(s.getsockname()[1])')"
+          PORT="$(uv run python -c 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
           echo "dashboard port = $PORT"
           # Cleanup: ``scripts/ci_smoke_ui.py`` owns the spawned
           # child via its own ``finally:`` block (SIGINT + wait +
