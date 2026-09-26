@@ -70,22 +70,6 @@ def _login(server: DashboardServer, port: int) -> tuple[str, str]:
         conn.close()
 
 
-def _login_via_keys(server: DashboardServer, port: int) -> tuple[str, str]:
-    """Same as _login but uses the /<token>/keys GET to also set the keys wizard cookies."""
-    conn = http.client.HTTPConnection("127.0.0.1", port)
-    try:
-        conn.request("GET", f"/{server.token}/keys")
-        resp = conn.getresponse()
-        resp.read()
-        cookies = _parse_set_cookies(resp)
-        session = cookies.get("krellbot_session", "")
-        csrf = cookies.get("krellbot_csrf", "")
-        assert session and csrf, (session, csrf)
-        return f"krellbot_session={session}; krellbot_csrf={csrf}", csrf
-    finally:
-        conn.close()
-
-
 def _get(server: DashboardServer, path: str, *, cookies: str | None = None):
     conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
     try:
@@ -1236,5 +1220,442 @@ def test_post_keys_add_status_url_message_within_safe_set(home, fake_keyring, mo
         qs = parse_qs(parsed.query)
         st = (qs.get("status") or [""])[0]
         assert st in keys_onboarding.SAFE_MESSAGES, st
+    finally:
+        _stop(server)
+
+
+# =============================================================================
+# Review fix round — C1: persisted last_message must be closed-set at READ time
+# =============================================================================
+
+
+def _bootstrap_json(body_text: str) -> str:
+    """Extract the __KB_VIEW__ payload from a rendered keys page."""
+    match = re.search(r"__KB_VIEW__ = (.*?);</script>", body_text, flags=re.DOTALL)
+    assert match, "page must carry a __KB_VIEW__ bootstrap payload"
+    return match.group(1)
+
+
+def _write_status_file(home: Path, payload: dict) -> None:
+    (home / "keys-onboarding-status.json").write_text(json.dumps({"version": 1, **payload}), encoding="utf-8")
+
+
+def test_c1_malformed_status_sentinel_absent_everywhere(home, fake_keyring):
+    """C1 Critical: a seeded/malformed status file whose last_message is outside
+    the closed SAFE_MESSAGES set must never reach the HTML or the bootstrap —
+    even though the shape (a non-empty string) would pass a naive type check."""
+    sentinel = "SK-LEAK-9876543210-DO-NOT-RENDER"
+    _write_status_file(
+        home,
+        {
+            "kraken": {
+                "stored": True,
+                "verified_at": "2026-09-26T00:00:00Z",
+                "last_status": "stored",
+                "last_message": sentinel,
+            }
+        },
+    )
+    server = _start(home)
+    try:
+        status, _resp, body = _get(server, f"/{server.token}/keys")
+        assert status == 200
+        text = body.decode("utf-8", errors="replace")
+        assert sentinel not in text, "out-of-set last_message leaked into the page"
+        view = _bootstrap_json(text)
+        assert sentinel not in view, "out-of-set last_message leaked into __KB_VIEW__"
+    finally:
+        _stop(server)
+
+
+def test_c1_script_payload_in_last_message_is_not_rendered(home, fake_keyring):
+    """C1 Critical: a script payload persisted as last_message must be absent
+    from the response — no XSS vector via a tampered status file."""
+    payload = '<script>alert("xss-from-status-file")</script>'
+    _write_status_file(
+        home,
+        {
+            "coinbase": {
+                "stored": True,
+                "verified_at": "2026-09-26T00:00:00Z",
+                "last_status": "stored",
+                "last_message": payload,
+            }
+        },
+    )
+    server = _start(home)
+    try:
+        status, _resp, body = _get(server, f"/{server.token}/keys")
+        assert status == 200
+        text = body.decode("utf-8", errors="replace")
+        assert payload not in text
+        assert "alert(" not in text
+        assert "<script>alert" not in _bootstrap_json(text)
+    finally:
+        _stop(server)
+
+
+def test_c1_read_raw_drops_out_of_set_message(home, fresh_keyring):
+    """C1 boundary pin: keys_status._read_raw itself must drop an out-of-set
+    last_message at the read boundary (not rely on the renderer)."""
+    from krellbot.ui import keys_status
+
+    sentinel = "NOT-IN-SAFE-SET-SENTINEL-XYZ"
+    _write_status_file(
+        home,
+        {
+            "kraken": {
+                "stored": True,
+                "verified_at": "2026-09-26T00:00:00Z",
+                "last_status": "stored",
+                "last_message": sentinel,
+            }
+        },
+    )
+    row = keys_status._read_raw(home)["kraken"]
+    assert row["last_message"] is None
+    assert row["last_status"] == "stored"
+
+
+def test_c1_read_raw_keeps_in_set_message(home, fresh_keyring):
+    """The closed-set gate at the read boundary must not over-block: a valid
+    SAFE_MESSAGES value survives the read (regression guard)."""
+    from krellbot import keys_onboarding
+    from krellbot.ui import keys_status
+
+    msg = "stored in native OS keychain"
+    assert msg in keys_onboarding.SAFE_MESSAGES
+    _write_status_file(
+        home,
+        {
+            "kraken": {
+                "stored": True,
+                "verified_at": "2026-09-26T00:00:00Z",
+                "last_status": "stored",
+                "last_message": msg,
+            }
+        },
+    )
+    row = keys_status._read_raw(home)["kraken"]
+    assert row["last_message"] == msg
+    assert row["stored"] is True
+    assert row["verified_at"] == "2026-09-26T00:00:00Z"
+
+
+# =============================================================================
+# Review fix round — I1: GET keys_status makes ZERO keyring calls
+# =============================================================================
+
+
+def test_i1_get_keys_reads_no_credentials(home, fresh_keyring, monkeypatch):
+    """I1 Important: a GET of /<token>/keys must make ZERO credential reads
+    of the keyring — no get_password (the API key itself would be returned
+    to the process), no mutation, and no venue probe. The key-status
+    presentation derives only from durable nonsecret metadata.
+
+    Note: the upstream Slice-B backend/posture block (brief-mandated
+    "honest backend/posture status", shared with welcome/security and
+    explicitly kept unchanged) identifies the active backend via
+    ``keyring.get_keyring`` — that returns backend identity only and CANNOT
+    return credential bytes. The status derivation itself is pinned to
+    zero keyring calls of any kind in the unit test below."""
+    import keyring
+
+    from krellbot import cli_keys as kb_cli_keys
+
+    calls: list[str] = []
+
+    def _deny(name):
+        def _exploding(*args, **kwargs):
+            calls.append(name)
+            raise AssertionError(f"GET /keys must not call keyring.{name}")
+
+        return _exploding
+
+    monkeypatch.setattr(keyring, "get_password", _deny("get_password"), raising=True)
+    monkeypatch.setattr(keyring, "set_password", _deny("set_password"), raising=True)
+    monkeypatch.setattr(keyring, "delete_password", _deny("delete_password"), raising=True)
+
+    def _explode_probe(*a, **kw):
+        raise AssertionError("GET /keys must not call _probe")
+
+    monkeypatch.setattr(kb_cli_keys, "_probe", _explode_probe)
+
+    server = _start(home)
+    try:
+        _login(server, server.bound_port)
+        status, _resp, _body = _get(server, f"/{server.token}/keys")
+        assert status == 200
+        assert calls == [], f"GET /keys made credential keyring calls: {calls}"
+    finally:
+        _stop(server)
+
+
+def test_i1_read_status_makes_no_keyring_calls(home, fresh_keyring, monkeypatch):
+    """I1 boundary pin at the helper: keys_status.read_status itself must
+    make ZERO keyring module calls of any kind — get_password AND
+    get_keyring. The module does not import keyring at all; this test
+    keeps it that way."""
+    import keyring
+
+    from krellbot.ui import keys_status
+
+    calls: list[str] = []
+
+    def _deny(name):
+        def _exploding(*args, **kwargs):
+            calls.append(name)
+            raise AssertionError(f"read_status must not call keyring.{name}")
+
+        return _exploding
+
+    monkeypatch.setattr(keyring, "get_password", _deny("get_password"), raising=True)
+    monkeypatch.setattr(keyring, "get_keyring", _deny("get_keyring"), raising=True)
+    monkeypatch.setattr(keyring, "set_password", _deny("set_password"), raising=True)
+    monkeypatch.setattr(keyring, "delete_password", _deny("delete_password"), raising=True)
+    snapshot = keys_status.read_status(home)
+    assert calls == [], f"read_status made keyring calls: {calls}"
+    assert set(snapshot) == {"kraken", "coinbase"}
+    # A blank home yields the unknown shape, not a "no key" claim.
+    for row in snapshot.values():
+        assert row["stored"] is False
+        assert row["verified_at"] is None
+
+
+# =============================================================================
+# Review fix round — I2: historical, strictly-validated status semantics
+# =============================================================================
+
+
+def _seed_stored_row(venue: str, *, verified_at, last_status="stored", last_message="stored in native OS keychain"):
+    return {
+        venue: {
+            "stored": True,
+            "verified_at": verified_at,
+            "last_status": last_status,
+            "last_message": last_message,
+        }
+    }
+
+
+def test_i2_valid_historic_stored_row_uses_historical_language(home, fake_keyring):
+    """I2: a fully-bound historic STORED row renders the historical phrase
+    'last stored through wizard at <ts>; current key presence not checked' —
+    never a live 'currently connected' claim."""
+    _write_status_file(home, _seed_stored_row("kraken", verified_at="2026-09-26T12:00:00Z"))
+    server = _start(home)
+    try:
+        status, _resp, body = _get(server, f"/{server.token}/keys")
+        assert status == 200
+        visible = _visible(body.decode("utf-8", errors="replace"))
+        assert "last stored through wizard at 2026-09-26T12:00:00Z" in visible
+        assert "current key presence not checked" in visible
+        assert "currently connected" not in visible.lower()
+        assert "last checked at" not in visible
+    finally:
+        _stop(server)
+
+
+def test_i2_no_metadata_means_unknown_not_no_key(home, fake_keyring):
+    """I2: with NO status metadata at all, the page must say unknown /
+    'not currently verified' — it must NOT claim 'no key stored' (that claim
+    was derived from the now-forbidden keyring presence read and would also
+    be wrong after CLI-side removal or a failed status write)."""
+    server = _start(home)
+    try:
+        status, _resp, body = _get(server, f"/{server.token}/keys")
+        assert status == 200
+        visible = _visible(body.decode("utf-8", errors="replace"))
+        assert "not currently verified" in visible
+        assert "no key stored" not in visible
+        assert "currently connected" not in visible.lower()
+    finally:
+        _stop(server)
+
+
+def test_i2_forged_timestamp_is_rejected(home, fake_keyring):
+    """I2: a forged attacker string as verified_at ('stored; last checked at
+    <attacker string>') must not reach the page. Invalid timestamps render
+    unknown/not currently verified, never the forged text and never a
+    bound historic claim."""
+    forgeries = [
+        '<script>alert("ts")</script>',
+        "yesterday, trust me",
+        "2026-13-45T99:99:99Z",
+        "not-a-timestamp",
+    ]
+    for forged in forgeries:
+        _write_status_file(home, _seed_stored_row("kraken", verified_at=forged))
+        server = _start(home)
+        try:
+            status, _resp, body = _get(server, f"/{server.token}/keys")
+            assert status == 200
+            visible = _visible(body.decode("utf-8", errors="replace"))
+            assert forged not in visible, f"forged timestamp leaked: {forged}"
+            assert "alert(" not in visible
+            assert "last stored through wizard at" not in visible
+            assert "not currently verified" in visible
+        finally:
+            _stop(server)
+
+
+def test_i2_unbound_stored_claim_is_rejected(home, fake_keyring):
+    """I2: 'stored'-shaped metadata is only trusted when it is fully bound to
+    a closed STORED outcome — last_status='stored' AND the STORED safe
+    message. A file that asserts stored=true with a refusal status or a
+    non-STORED closed message must render unknown, not a stored claim."""
+    cases = [
+        {
+            "last_status": "refused_invalid",
+            "last_message": "key cannot be verified (invalid or permission denied); refused",
+        },
+        {"last_status": "stored", "last_message": "key has withdraw rights; refused"},
+        {"last_status": "store_failed", "last_message": "keyring write failed; prior pair restored"},
+    ]
+    for case in cases:
+        _write_status_file(home, _seed_stored_row("coinbase", verified_at="2026-09-26T12:00:00Z", **case))
+        server = _start(home)
+        try:
+            status, _resp, body = _get(server, f"/{server.token}/keys")
+            assert status == 200
+            visible = _visible(body.decode("utf-8", errors="replace"))
+            assert "last stored through wizard at" not in visible, f"unbound stored claim accepted for case {case}"
+            assert "not currently verified" in visible
+        finally:
+            _stop(server)
+
+
+def test_i2_cli_removal_is_never_implied_detectable(home, fake_keyring, monkeypatch):
+    """I2: CLI-side key removal is not detectable without a credential read
+    and must not be implied otherwise. With a historic STORED row present
+    and the keyring physically emptied, the page must STILL render the
+    honest historical line — not 'no key stored'."""
+    _write_status_file(home, _seed_stored_row("kraken", verified_at="2026-09-26T12:00:00Z"))
+    server = _start(home)
+    try:
+        # Empty the keyring AFTER seeding the metadata (simulates `krellbot
+        # keys remove` outside the browser). No keyring read may inform the
+        # page; the historic claim must be presented as historic.
+        fake_keyring._store.clear()
+        status, _resp, body = _get(server, f"/{server.token}/keys")
+        assert status == 200
+        visible = _visible(body.decode("utf-8", errors="replace"))
+        assert "last stored through wizard at 2026-09-26T12:00:00Z" in visible
+        assert "current key presence not checked" in visible
+        assert "no key stored" not in visible
+    finally:
+        _stop(server)
+
+
+def test_i2_stored_write_failure_after_keyring_store_not_green_not_no_key(home, fake_keyring, monkeypatch):
+    """I2: if the status write fails AFTER a keyring STORED, a subsequent GET
+    must remain non-green AND must not claim 'no key stored'. The PRG still
+    reports the POST's safe success message."""
+    from krellbot.ui import keys_status as ui_keys_status
+
+    _make_trade_only_kraken_probe(monkeypatch)
+    _bypass_backend_check(monkeypatch)
+
+    def _failing_record_outcome(*args, **kwargs):
+        raise OSError("simulated status-file write failure")
+
+    monkeypatch.setattr(ui_keys_status, "record_outcome", _failing_record_outcome)
+    server = _start(home)
+    try:
+        cookies, csrf = _login(server, server.bound_port)
+        body = f"csrf={csrf}&venue=kraken&api_key=K&api_secret=S"
+        status, headers, _b = _post(
+            server,
+            f"/{server.token}/keys/add",
+            body=body,
+            cookies=cookies,
+            origin=f"http://127.0.0.1:{server.bound_port}",
+        )
+        assert status == 303
+        assert "stored" in (headers.get("location") or "")
+        _g_status, _g_resp, g_body = _get(server, headers.get("location", f"/{server.token}/keys"))
+        visible = _visible(g_body.decode("utf-8", errors="replace"))
+        # The explicit safe POST result is still surfaced (PRG success line).
+        assert "stored in native OS keychain" in visible
+        # The status row stays non-green and never claims 'no key stored'.
+        assert "no key stored" not in visible
+        assert "last stored through wizard at" not in visible
+        assert "not currently verified" in visible
+    finally:
+        _stop(server)
+
+
+def test_i2_post_still_reports_safe_success_in_prg(home, fake_keyring, monkeypatch):
+    """I2: an explicit safe POST result can still report success in PRG
+    without claiming persistent current connectivity — the per-POST line and
+    the durable status block are distinct claims."""
+    _make_trade_only_kraken_probe(monkeypatch)
+    _bypass_backend_check(monkeypatch)
+    server = _start(home)
+    try:
+        cookies, csrf = _login(server, server.bound_port)
+        body = f"csrf={csrf}&venue=kraken&api_key=K&api_secret=S"
+        status, headers, _b = _post(
+            server,
+            f"/{server.token}/keys/add",
+            body=body,
+            cookies=cookies,
+            origin=f"http://127.0.0.1:{server.bound_port}",
+        )
+        assert status == 303
+        loc = headers.get("location", "")
+        _g_status, _g_resp, g_body = _get(server, loc)
+        visible = _visible(g_body.decode("utf-8", errors="replace"))
+        assert "stored in native OS keychain" in visible
+        # After the record, the durable row becomes the historical claim.
+        assert "last stored through wizard at" in visible
+        assert "current key presence not checked" in visible
+        assert "currently connected" not in visible.lower()
+    finally:
+        _stop(server)
+
+
+# =============================================================================
+# Review fix round — minors: encoded malicious query; HEAD /keys/add
+# =============================================================================
+
+
+def test_keys_status_encoded_malicious_query_not_echoed(home, fake_keyring):
+    """A percent-encoded script payload in ?status= must be dropped by the
+    closed-set gate — decoded or not, it never reaches the rendered page."""
+    from urllib.parse import quote
+
+    server = _start(home)
+    try:
+        for encoded in (quote('<script>alert("q")</script>'), "%2560script%2560"):
+            _status, _resp, body = _get(server, f"/{server.token}/keys?status={encoded}")
+            text = body.decode("utf-8", errors="replace")
+            visible = _visible(text)
+            assert "<script>alert" not in visible
+            assert "alert(" not in visible
+            # The message paragraph stays hidden when no valid status is set.
+            assert 'status-message" hidden' in text
+    finally:
+        _stop(server)
+
+
+def test_head_keys_add_is_rejected_without_processing(home, fake_keyring):
+    """HEAD /keys/add must not process a credential-bearing request: the
+    handler defines no do_HEAD, so BaseHTTPRequestHandler answers 501 — a
+    plain refusal with no body, no keyring, no probe."""
+    server = _start(home)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request(
+                "HEAD",
+                f"/{server.token}/keys/add",
+                headers={"Host": f"127.0.0.1:{server.bound_port}"},
+            )
+            resp = conn.getresponse()
+            resp.read()
+            assert resp.status in (403, 404, 405, 501), resp.status
+        finally:
+            conn.close()
     finally:
         _stop(server)

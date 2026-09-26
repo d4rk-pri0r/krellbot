@@ -363,12 +363,13 @@ def _render_keys(home: Path, csrf: str, *, status_message: str | None = None) ->
     The page is the GET target for the slice-C exchange step. It renders
     server-side so a no-JS user sees the same affordances. The status
     block is built from ``keys_status.read_status`` — that helper NEVER
-    probes a venue and NEVER reads the keyring secret bytes; it only
-    reports keyring slot presence and the durable ``verified_at``
-    timestamp recorded by an earlier POST. A missing timestamp is
-    rendered as "stored; no current verification", NOT a live-
-    connection framing — the brief explicitly disallows the live-status
-    framing.
+    probes a venue and NEVER reads the keyring (not even a presence
+    check); it reports only the durable, nonsecret metadata recorded by
+    an earlier POST. The claim is HISTORICAL: "last stored through wizard
+    at <timestamp>; current key presence not checked". A missing or
+    invalid row renders "unknown; not currently verified" — never a
+    live-connection framing and never "no key stored" (current keyring
+    presence is deliberately not checked on GET).
 
     ``status_message`` is set when the GET follows a 303 PRG from the
     POST handler; it carries one of the closed per-outcome safe messages
@@ -380,7 +381,9 @@ def _render_keys(home: Path, csrf: str, *, status_message: str | None = None) ->
     raw_status = keys_status.read_status(home)
     # Build a presentation-only status dict for the bootstrap JSON. We do
     # NOT include the raw key/secret bytes — only booleans, timestamps,
-    # and the closed per-outcome message.
+    # and the closed per-outcome message (all validated by keys_status at
+    # the read boundary: closed status enum, closed safe-message set,
+    # strict ISO-8601 UTC timestamp).
     safe_status: dict[str, dict[str, object | None]] = {}
     for venue, row in raw_status.items():
         safe_status[venue] = {
@@ -400,11 +403,12 @@ def _render_keys(home: Path, csrf: str, *, status_message: str | None = None) ->
         row = raw_status.get(venue, {})
         stored = bool(row.get("stored"))
         verified_at = row.get("verified_at")
-        if not stored:
-            return "no key stored"
-        if not isinstance(verified_at, str) or not verified_at:
-            return "stored; no current verification"
-        return f"stored; last checked at {_h(verified_at)}"
+        if not stored or not isinstance(verified_at, str) or not verified_at:
+            # Unknown / not currently verified. We deliberately do NOT
+            # render "no key stored": that would assert current keyring
+            # absence, which a credential-free GET never established.
+            return "unknown; not currently verified"
+        return f"last stored through wizard at {_h(verified_at)}; current key presence not checked"
 
     # Compute a short, human-readable summary of the local trust
     # posture so the page can honestly report the backend and home mode
