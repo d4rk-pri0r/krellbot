@@ -68,6 +68,71 @@ def test_unreadable_preference_is_not_visited(tmp_path: Path) -> None:
     assert has_visited_dashboard(tmp_path) is False
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"visited_dashboard": 1}',                # truthy non-bool
+        '{"visited_dashboard": "true"}',          # truthy string
+        '{"visited_dashboard": "yes"}',           # truthy string
+        '{"visited_dashboard": 0.1}',              # truthy float
+        '{"visited_dashboard": [true]}',          # truthy list
+        '{"visited_dashboard": null}',             # missing/falsy
+        '{"visited_dashboard": false}',           # explicit false
+        '{}',                                      # missing key
+    ],
+)
+def test_has_visited_dashboard_strict_bool(tmp_path: Path, raw: str) -> None:
+    """Any non-literal-True value must read as 'not visited'.
+
+    Only the exact JSON literal `true` flips the wizard off; strings,
+    numbers, lists, null, false, and missing keys keep the user in the
+    wizard so a corrupt or hand-edited file cannot silently re-arm it.
+    """
+    from krellbot.ui.first_run import has_visited_dashboard
+
+    (tmp_path / "ui-preferences.json").write_text(raw)
+    assert has_visited_dashboard(tmp_path) is False
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits")
+def test_mark_creates_missing_home_at_0o700(tmp_path: Path) -> None:
+    """When the home does not exist yet, mark_visited_dashboard must create
+    it with mode 0o700 on POSIX rather than letting atomic_write raise
+    FileNotFoundError. The preference file inside is then 0o600.
+    """
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    missing = tmp_path / "fresh-home"
+    assert not missing.exists()
+
+    mark_visited_dashboard(missing)
+
+    assert missing.is_dir()
+    home_mode = missing.stat().st_mode & 0o777
+    assert home_mode == 0o700, f"newly created home should be 0o700, got {oct(home_mode)}"
+    pref_mode = (missing / "ui-preferences.json").stat().st_mode & 0o777
+    assert pref_mode == 0o600
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits")
+def test_mark_does_not_widen_existing_home(tmp_path: Path) -> None:
+    """If the home already exists with a non-default mode, marking must
+    not chmod it. (Covered more strictly by test_mark_visited_does_not_widen_home,
+    but this version does not pre-condition the mode to 0o750.)
+    """
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    home = tmp_path / "existing-home"
+    home.mkdir(mode=0o755)
+    before = home.stat().st_mode & 0o777
+    assert before == 0o755
+
+    mark_visited_dashboard(home)
+
+    after = home.stat().st_mode & 0o777
+    assert after == before, f"home mode changed: {oct(before)} -> {oct(after)}"
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits")
 def test_mark_visited_does_not_widen_home(tmp_path: Path) -> None:
     """Writing the preference file must not chmod the home directory.
