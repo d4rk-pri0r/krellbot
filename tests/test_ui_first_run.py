@@ -779,6 +779,239 @@ def test_wizard_html_keeps_journal_injection_escaped(tmp_path: Path, monkeypatch
         server.stop()
 
 
+def test_security_view_renders_backend_and_home_server_side(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """B3 contract: the security view MUST render the actual backend
+    name and resolved data home in the visible HTML body, not via
+    JS-only hydration. JS may ENHANCE the view, but the static HTML
+    must show the truth so the no-JS path is honest.
+
+    This is the real no-JS fallback the brief asks for: a user with
+    scripts disabled must still see "macOS Keychain" (or whatever the
+    actual backend is) on the page, not an empty list.
+
+    The bootstrap JSON (window.__KB_VIEW__) carries the same data,
+    but that path requires JavaScript to evaluate. The visible
+    markup between ``<body>...</body>`` (excluding script tags) is the
+    no-JS fallback.
+    """
+    import re
+
+    from krellbot.ui import trust
+
+    monkeypatch.setattr(
+        trust,
+        "_keychain_backend",
+        lambda: ("keyring.backends.macOS.Keyring", None),
+    )
+
+    server = _start_server(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/security")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200, resp.status
+            # Strip script tags so the JSON bootstrap (window.__KB_VIEW__)
+            # does not satisfy the assertion. The visible body must carry
+            # the value on its own — that's the no-JS fallback.
+            visible = re.sub(
+                r"<script\b[^>]*>.*?</script>",
+                "",
+                body,
+                flags=re.DOTALL,
+            )
+            assert "keyring.backends.macOS.Keyring" in visible, (
+                "security view must render backend name in visible HTML, "
+                "not just in window.__KB_VIEW__ (JS-only hydration is not "
+                "a no-JS fallback)"
+            )
+            assert str(tmp_path) in visible, (
+                "security view must render resolved home in visible HTML"
+            )
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_security_view_surfaces_fail_closed_diagnostic_on_null_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the keychain backend is the fake/null keyring, the security
+    view must surface a fail-closed diagnostic naming the next CLI
+    action (``krellbot doctor`` or equivalent). A null backend must
+    NOT be reported as a green check.
+
+    The diagnostic must appear in the visible body, not just the
+    JSON bootstrap, so a no-JS user sees the truth.
+    """
+    import re
+
+    from krellbot.ui import trust
+
+    monkeypatch.setattr(
+        trust,
+        "_keychain_backend",
+        lambda: ("keyring.backends.null.Keyring", "keychain backend is NullKeyring (not persistent)"),
+    )
+
+    server = _start_server(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/security")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200
+            visible = re.sub(
+                r"<script\b[^>]*>.*?</script>",
+                "",
+                body,
+                flags=re.DOTALL,
+            )
+            lower = visible.lower()
+            # The page must surface the failing backend (truth), AND a
+            # next-action diagnostic — not a green checkmark.
+            assert "null" in lower, "failing backend name must be visible"
+            assert "doctor" in lower or "krellbot doctor" in lower, (
+                "failing backend must point the user at `krellbot doctor` "
+                "(or equivalent CLI diagnostic)"
+            )
+            honest = (
+                "not persistent" in lower
+                or "fail" in lower
+                or "not ok" in lower
+                or "refused" in lower
+                or "unavailable" in lower
+                or "missing" in lower
+            )
+            assert honest, (
+                "failing backend must be visibly NOT a green check; "
+                "page should say the backend is unavailable / fail-closed / refused"
+            )
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_welcome_view_serves_three_truthful_statements(tmp_path: Path) -> None:
+    """The Welcome shell must declare the three truthful statements
+    in the visible HTML so they appear without JavaScript.
+
+    Statements: free open-source local engine, keys stay on this machine,
+    official packs are optional and recommended.
+    """
+    import re
+
+    server = _start_server(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/welcome")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200
+            visible = re.sub(
+                r"<script\b[^>]*>.*?</script>",
+                "",
+                body,
+                flags=re.DOTALL,
+            )
+            lower = visible.lower()
+            assert "open-source" in lower or "open source" in lower or "free" in lower, (
+                "welcome must declare the engine is free / open-source"
+            )
+            assert "stay" in lower and "machine" in lower, (
+                "welcome must say keys stay on this machine"
+            )
+            assert "pack" in lower and ("optional" in lower or "recommended" in lower), (
+                "welcome must label official packs as optional / recommended"
+            )
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_next_view_marks_exchange_and_pack_flows_as_future(tmp_path: Path) -> None:
+    """The Next view must clearly label exchange connection (C) and
+    pack adoption (D) as future slices, and must expose the CLI/free
+    path so the user is not funnelled toward a fake-success button.
+
+    The future / CLI labels must be visible HTML, not just JSON.
+    """
+    import re
+
+    server = _start_server(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/next")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200
+            visible = re.sub(
+                r"<script\b[^>]*>.*?</script>",
+                "",
+                body,
+                flags=re.DOTALL,
+            )
+            lower = visible.lower()
+            assert (
+                "future" in lower
+                or "later" in lower
+                or "coming" in lower
+                or "upcoming" in lower
+                or "next slice" in lower
+                or "next slices" in lower
+            ), "next must mark exchange / pack flows as future slices"
+            assert (
+                "krellbot ui" in lower
+                or "free path" in lower
+                or "cli" in lower
+                or "command line" in lower
+            ), "next must allow the CLI / free path"
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
+def test_dashboard_reskin_keeps_paper_action_forms(tmp_path: Path) -> None:
+    """The B3 dashboard reskin must keep every existing paper-action
+    form field name + CSRF hidden field. We render the dashboard shell
+    and grep the response.
+    """
+    from krellbot.ui.first_run import mark_visited_dashboard
+
+    mark_visited_dashboard(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port)
+        try:
+            conn.request("GET", f"/{server.token}/dashboard")
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            assert resp.status == 200
+            for needle in (
+                'action="arm"',
+                'action="disarm"',
+                'action="stop_all"',
+                'action="adopt"',
+                'name="pack_path"',
+                'name="paper_balance"',
+                'name="pack_id"',
+                'name="csrf"',
+            ):
+                assert needle in body, f"dashboard reskin lost {needle!r}"
+        finally:
+            conn.close()
+    finally:
+        server.stop()
+
+
 def test_visit_dashboard_post_without_csrf_is_403(tmp_path: Path) -> None:
     """POST visit-dashboard inherits the existing cookie+CSRF+Origin gate.
     A POST without a session/CSRF cookie must be 403 and must NOT flip the

@@ -1,55 +1,372 @@
-:root {
-  color-scheme: light dark;
-  --bg: #fafafa;
-  --fg: #111;
-  --muted: #666;
-  --card: #fff;
-  --border: #ddd;
-  --danger: #b00020;
-  --ok: #0a7d2c;
-}
+/* krellbot first-run wizard + dashboard visual system.
+ *
+ * Approved visual spec:
+ *   - near-black canvas:    #07090d
+ *   - precise cyan primary: #5ce1ff (single interactive accent)
+ *   - restrained lime:      #C6FF3D (status only, never a second CTA palette)
+ *   - dark color-scheme so the browser does not flash a light theme
+ *
+ * No second brand. No CDN fonts. No looping effects. Reduced-motion
+ * support is mandatory (a release check, not a nice-to-have).
+ *
+ * Tabular numeric figures, monospaced IDs, responsive density, and a
+ * visible focus ring on every interactive element are required for
+ * release. Focus contrast is achieved with a 2px cyan outline + 3px
+ * offset; the offset keeps the outline visible against the dark
+ * canvas without relying on colour alone.
+ */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #161616;
-    --fg: #e6e6e6;
-    --muted: #999;
-    --card: #1f1f1f;
-    --border: #2c2c2c;
-  }
+:root {
+  color-scheme: dark;
+  --canvas: #07090d;
+  --canvas-elev: #0d1117;
+  --card: #11161e;
+  --border: #1f2730;
+  --ink: #e7f4f8;
+  --muted: #8b9bab;
+  --signal: #5ce1ff;
+  --signal-strong: #7cefff;
+  --warn: #C6FF3D;
+  --danger: #ff7a7a;
+  --danger-bg: #2a1313;
+  --focus-ring: #5ce1ff;
+  --ok-text: #b9f3d4;
+  --ok-bg: #0f1f17;
+  --fail-text: #ffb4b4;
+  --fail-bg: #2a1313;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
 
-body {
+html, body {
   margin: 0;
-  padding: 0 1.25rem 3rem;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  line-height: 1.4;
+  padding: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
 }
 
-header h1 { margin: 1rem 0 .25rem; font-size: 1.5rem; }
+body {
+  min-height: 100vh;
+  padding: 0 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+header {
+  max-width: 1100px;
+  width: 100%;
+  margin: 1.25rem auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
 .muted { color: var(--muted); }
 
-main { display: flex; flex-direction: column; gap: 1.5rem; max-width: 1100px; margin: 0 auto; }
-section { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
-section h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
+.skip-link {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  background: var(--signal);
+  color: var(--canvas);
+  padding: .35rem .6rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 4px;
+  z-index: 100;
+}
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+}
 
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: .35rem .5rem; border-bottom: 1px solid var(--border); text-align: left; font-size: .9rem; vertical-align: top; }
-th { color: var(--muted); font-weight: 600; }
+.wizard-nav {
+  font-size: .9rem;
+  margin-top: .25rem;
+}
+.wizard-nav a {
+  color: var(--ink);
+  text-decoration: none;
+  padding: .15rem .35rem;
+  border-radius: 3px;
+  border-bottom: 1px dashed transparent;
+}
+.wizard-nav a[aria-current="page"] {
+  color: var(--signal);
+  border-bottom-color: var(--signal);
+}
+.wizard-nav a:hover {
+  border-bottom-color: var(--signal);
+}
 
-.card { border: 1px solid var(--border); border-radius: 6px; padding: .75rem 1rem; margin-bottom: 1rem; }
-.card.danger { border-color: var(--danger); }
-.card h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.resume-setup {
+  margin: 0;
+  font-size: .85rem;
+}
 
-label { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .5rem; font-size: .9rem; }
-input, select { padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); font: inherit; }
-button { padding: .4rem .9rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); cursor: pointer; font: inherit; }
-button:hover { background: var(--border); }
+section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+}
 
-pre { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: .5rem; overflow-x: auto; font-size: .8rem; margin: 0; }
+section h2 {
+  margin: 0 0 .6rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
 
-footer { margin-top: 2rem; text-align: center; }
+section h3 {
+  margin: 0 0 .4rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+dl {
+  margin: 0;
+}
+dl > dt {
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  margin-top: .6rem;
+}
+dl > dt:first-child { margin-top: 0; }
+dl > dd {
+  margin: .15rem 0 0;
+  font-size: .95rem;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+dl > dd[aria-invalid="true"] {
+  color: var(--fail-text);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  gap: .1rem 1rem;
+}
+.status-grid dt { margin-top: 0; }
+.status-grid dd { margin-top: 0; }
+
+.truth-list {
+  margin: .25rem 0 .75rem;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+}
+.truth-list li {
+  padding-left: .25rem;
+}
+
+.future-list {
+  margin: .25rem 0 .75rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+}
+.future-list li { padding-left: .25rem; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: .92em;
+  background: var(--canvas-elev);
+  border: 1px solid var(--border);
+  padding: 0 .25rem;
+  border-radius: 3px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+th, td {
+  padding: .35rem .5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: .9rem;
+  vertical-align: top;
+}
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+td {
+  font-family: var(--font-mono);
+}
+td button {
+  font-family: var(--font-sans);
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .75rem 1rem;
+  margin-bottom: 1rem;
+  background: var(--canvas-elev);
+}
+.card.danger {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  margin-bottom: .5rem;
+  font-size: .9rem;
+  color: var(--muted);
+}
+
+input, select, textarea {
+  padding: .35rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--font-sans);
+}
+
+input[type="number"], td {
+  font-variant-numeric: tabular-nums;
+}
+
+button {
+  padding: .4rem .9rem;
+  border: 1px solid var(--signal);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--signal);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+button:hover {
+  background: rgba(92, 225, 255, .12);
+}
+button[type="submit"][value="Stop all"],
+.card.danger button {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.card.danger button:hover {
+  background: rgba(255, 122, 122, .12);
+}
+
+pre {
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .5rem;
+  overflow-x: auto;
+  font-size: .8rem;
+  margin: 0;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+footer {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+/* Trust diagnostics: visible in the visible body. The server fills
+ * the class with trust-ok or trust-fail; CSS controls colour but
+ * visibility is server-side so a no-JS user sees the truth. */
+#trust-diagnostic {
+  margin-top: 1rem;
+  padding: .55rem .75rem;
+  border-radius: 4px;
+  font-size: .9rem;
+}
+#trust-diagnostic.trust-ok {
+  color: var(--ok-text);
+  background: var(--ok-bg);
+  border: 1px solid rgba(185, 243, 212, .35);
+}
+#trust-diagnostic.trust-fail {
+  color: var(--fail-text);
+  background: var(--fail-bg);
+  border: 1px solid rgba(255, 122, 122, .5);
+}
+
+/* Visible focus on every interactive element. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+/* Reduced motion: no transitions, no animations. The brief requires
+ * this for the no-looping-effects rule. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Narrow viewport: cards stack vertically, tables become scrollable
+ * to keep numeric columns aligned. */
+@media (max-width: 720px) {
+  body { padding: 0 .75rem 2rem; }
+  header { padding: 0 .25rem; }
+  section { padding: .85rem .9rem; }
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}

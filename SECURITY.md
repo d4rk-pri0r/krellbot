@@ -49,4 +49,29 @@ calls Kraken, Coinbase, or `krellbot.dev`. The gate token is 32 bytes
 from `secrets.token_hex(32)` and lives only in the URL the CLI prints
 and the matching `krellbot_session` cookie.
 
+## First-run wizard and trust screen
+
+A fresh install renders the wizard at `/<token>/welcome` instead of
+the dashboard. The wizard is read-only — it never accepts a key, a
+secret, or a license token in the browser. The Security step renders
+the local trust posture from `trust_snapshot()`: the detected
+keychain backend class, the resolved `$KRELLBOT_HOME` path and
+POSIX mode, the loopback bind, the `live_arm_ui_allowed = False`
+rail, and a fail-closed diagnostic if the keychain is not persistent.
+The diagnostic names `krellbot doctor` as the next CLI action. A
+null backend is never reported as a green check.
+
+The wizard's Welcome page states three truthful things: the engine
+is free and open-source, exchange keys stay on this machine, and
+official packs are optional and recommended. The Next page labels
+exchange connection (slice C) and pack adoption (slice D) as future
+slices — they are not completed steps in this release. The free path
+today is the dashboard, the CLI, and `krellbot doctor`.
+
+Static assets are entirely local — no CDN, no Google font, no
+external script. The wizard templates and the dashboard shell embed
+`window.__KB_VIEW__` as an inline script with every value escaped by
+`_embed_json`, so a journal string or trust value containing `<`
+cannot close the script tag.
+
 If you find a problem, open an issue on this repository. Do not send a key, a secret, or a license key in the issue.

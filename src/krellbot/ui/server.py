@@ -226,12 +226,17 @@ def _view_snapshot(home: Path) -> dict:
     for venue in sorted(seen_venues):
         paper_by_venue[venue] = _read_paper_state(home, venue)
     license_cache = kb_license.read_cache(home)
+    # Embed the trust snapshot too so the dashboard's status grid can
+    # show the actual backend name. The snapshot is presentation-only;
+    # no secrets are read.
+    snap = trust.trust_snapshot(home)
     return {
         "armed": armed_view,
         "paper": paper_by_venue,
         "license": license_cache,
         "journal_tail": _read_journal_tail(home),
         "receipts": _read_receipts(home),
+        "trust": snap,
     }
 
 
@@ -254,6 +259,11 @@ def _render_welcome(home: Path, csrf: str) -> bytes:
     The view embedded here is the trust snapshot (no raw credentials)
     plus the routes the wizard exposes. The browser submits the
     visit-dashboard POST via a hidden form.
+
+    B3: the three truthful statements and the Continue affordance are
+    rendered server-side so the no-JS path is honest. JS may add a
+    Progress affordance / nav highlighting but is not required to see
+    the truth.
     """
     snap = trust.trust_snapshot(home)
     view = {
@@ -271,15 +281,53 @@ def _render_welcome(home: Path, csrf: str) -> bytes:
 
 
 def _render_security(home: Path, csrf: str) -> bytes:
-    """Render the wizard Security shell — trust posture, no secrets."""
+    """Render the wizard Security shell — trust posture, no secrets.
+
+    B3: the trust posture is rendered **server-side** into the
+    ``<dl id="trust-list">`` so a no-JS user sees the actual backend
+    name, home path, permission rails, and fail-closed diagnostic.
+    The bootstrap JSON (window.__KB_VIEW__) carries the same data
+    for JS-driven enhancement (Progress highlights, etc.) but is
+    never the only path.
+
+    The diagnostic is rendered server-side too: ``<p
+    id="trust-diagnostic" hidden>…</p>`` is filled with a CLI next
+    action (``krellbot doctor``) when the keychain is not OK. The
+    ``hidden`` attribute is added/removed on the server, not by JS.
+    """
     snap = trust.trust_snapshot(home)
+    backend = str(snap.get("keychain_backend") or "(unknown)")
+    home_str = str(snap.get("home") or "(unset)")
+    home_mode = str(snap.get("home_mode") or "unknown on this OS")
+    keychain_ok = bool(snap.get("keychain_ok"))
+    body = _SECURITY_TEMPLATE
+    body = body.replace("__BACKEND__", _h(backend))
+    body = body.replace("__HOME__", _h(home_str))
+    body = body.replace("__HOME_MODE__", _h(home_mode))
+    if keychain_ok:
+        diag_class = "trust-ok"
+        diag_text = "Persistent backend detected."
+        body = body.replace("__DIAGNOSTIC__", _h(diag_text))
+        body = body.replace("__DIAGNOSTIC_CLASS__", diag_class)
+        body = body.replace("__DIAGNOSTIC_HIDDEN__", "")
+    else:
+        diag_class = "trust-fail"
+        diag_text = (
+            "This keychain is not persistent. Run "
+            "`krellbot doctor` for a real diagnostic."
+        )
+        body = body.replace("__DIAGNOSTIC__", _h(diag_text))
+        body = body.replace("__DIAGNOSTIC_CLASS__", diag_class)
+        # Fail-closed: the diagnostic is visible by default.
+        body = body.replace("__DIAGNOSTIC_HIDDEN__", "")
+    # Always show the diagnostic block server-side. CSS controls color,
+    # not visibility, so a no-JS user sees the truth.
     view = {
         "view": "wizard.security",
         "trust": snap,
-        "ok": snap.get("keychain_ok", False),
+        "ok": keychain_ok,
     }
     payload = _embed_json(view)
-    body = _SECURITY_TEMPLATE
     body = body.replace("__VIEW_JSON__", payload)
     body = body.replace('name="csrf"', f'name="csrf" value="{csrf}"')
     return body.encode("utf-8")
@@ -291,6 +339,11 @@ def _render_next(home: Path, csrf: str) -> bytes:
     The exit links point at the server's own fixed-exit routes
     (/out/docs, /out/source), not at the external URLs, so the server
     remains the only component that decides what may leave the box.
+
+    B3: the exchange (slice C) and pack adoption (slice D) flows are
+    explicitly labelled as future slices, never as completed. The CLI
+    / free path is always exposed so the user is not funnelled toward
+    a fake-success button.
     """
     snap = trust.trust_snapshot(home)
     view = {
@@ -312,6 +365,12 @@ def _wizard_html(wrapper: str) -> str:
     own navigation. The bootstrap JSON is escaped by `_embed_json`; the
     template itself only contains literal markup, so there is no
     untrusted content path here.
+
+    B3: the shell carries a ``<nav class="wizard-nav">`` with the four
+    routes as sibling-relative ``<a>`` tags. ``href`` is plain text so
+    the no-JS path navigates the wizard by following the link. A
+    ``data-wizard-progress`` attribute on the nav lets the JS hydrator
+    highlight the active step without rewriting hrefs.
     """
     return (
         "<!doctype html>\n"
@@ -326,16 +385,20 @@ def _wizard_html(wrapper: str) -> str:
         # prefix would drop the token and 403 on every nav + CSS fetch.
         '  <link rel="stylesheet" href="static/style.css">\n'
         "</head>\n"
-        "<body>\n"
+        "<body class=\"wizard\">\n"
         "<header>\n"
         "  <h1>krellbot first-run wizard</h1>\n"
         '  <p class="muted">loopback only. no call leaves this machine.</p>\n'
         "</header>\n"
-        "<nav>\n"
-        '  <a href="welcome">Welcome</a> |\n'
-        '  <a href="security">Security</a> |\n'
-        '  <a href="next">Next</a> |\n'
-        '  <a href="dashboard">Dashboard</a> |\n'
+        # Each link is sibling-relative so no-JS navigation works without
+        # the JS hydrator rewriting hrefs. The current route is set by
+        # aria-current on the matching link; aria-current is server-set
+        # by the per-route template if needed (default: none).
+        '<nav class="wizard-nav" aria-label="Wizard steps">\n'
+        '  <a href="welcome" data-step="welcome">Welcome</a> |\n'
+        '  <a href="security" data-step="security">Security</a> |\n'
+        '  <a href="next" data-step="next">Next</a> |\n'
+        '  <a href="dashboard" data-step="dashboard">Dashboard</a> |\n'
         '  <a href="out/docs">Docs</a> |\n'
         '  <a href="out/source">Source</a>\n'
         "</nav>\n"
@@ -355,11 +418,16 @@ _WELCOME_TEMPLATE = _wizard_html(
     "  <section id=\"welcome-section\">\n"
     "    <h2>Welcome</h2>\n"
     "    <p>You are running krellbot for the first time on this loopback port.</p>\n"
-    "    <p>Read the security posture, then continue to the dashboard.</p>\n"
+    "    <ol class=\"truth-list\" aria-label=\"What krellbot is\">\n"
+    "      <li><strong>Free, open-source local engine.</strong> The code you have runs on this machine; krellbot.dev does not host a service.</li>\n"
+    "      <li><strong>Keys stay on this machine.</strong> Exchange API keys are stored in the local keychain; they are never sent to krellbot.dev.</li>\n"
+    "      <li><strong>Official packs are optional and recommended.</strong> You can run any pack file you trust; official packs are not required.</li>\n"
+    "    </ol>\n"
     "    <form id=\"form-visit\" action=\"visit-dashboard\" method=\"POST\">\n"
     "      <input type=\"hidden\" name=\"csrf\">\n"
-    '      <button type="submit">I have read the security posture — open the dashboard</button>\n'
+    '      <button type="submit">Continue</button>\n'
     "    </form>\n"
+    '    <p class="muted">Progress: 1 of 3 &middot; <a href="security">Skip ahead to security</a></p>\n'
     "  </section>\n"
 )
 
@@ -367,8 +435,22 @@ _SECURITY_TEMPLATE = _wizard_html(
     "  <section id=\"wizard-security-section\">\n"
     "    <h2>Security posture</h2>\n"
     "    <p>This is read-only. No keys, no balances, no orders leave the box.</p>\n"
-    "    <dl id=\"trust-list\"></dl>\n"
-    "    <p><a href=\"welcome\">Back</a></p>\n"
+    "    <dl id=\"trust-list\">\n"
+    "      <dt>Keychain backend</dt>\n"
+    '      <dd id="trust-backend">__BACKEND__</dd>\n'
+    "      <dt>Data home</dt>\n"
+    '      <dd id="trust-home">__HOME__</dd>\n'
+    "      <dt>Home mode</dt>\n"
+    '      <dd id="trust-home-mode">__HOME_MODE__</dd>\n'
+    "      <dt>UI bind</dt>\n"
+    '      <dd id="trust-bind">127.0.0.1 (loopback only)</dd>\n'
+    "      <dt>Live arm from the UI</dt>\n"
+    '      <dd id="trust-live-arm">Refused. Live arm is CLI-only.</dd>\n'
+    "      <dt>Key permissions</dt>\n"
+    '      <dd id="trust-permissions">Trade permission on, withdraw permission off.</dd>\n'
+    "    </dl>\n"
+    '    <p id="trust-diagnostic" class="__DIAGNOSTIC_CLASS__" __DIAGNOSTIC_HIDDEN__>__DIAGNOSTIC__</p>\n'
+    '    <p><a href="welcome">Back</a> &middot; <a href="dashboard">Open dashboard</a></p>\n'
     "  </section>\n"
 )
 
@@ -377,6 +459,19 @@ _NEXT_TEMPLATE = _wizard_html(
     "    <h2>Next steps</h2>\n"
     "    <p>When you are ready, open the dashboard.</p>\n"
     "    <p><a href=\"dashboard\">Open dashboard</a></p>\n"
+    "    <h3>Coming in future slices</h3>\n"
+    "    <p class=\"muted\">The following steps belong to later slices and are NOT available in this release:</p>\n"
+    '    <ul class="future-list" aria-label="Future slices">\n'
+    "      <li><strong>Slice C &mdash; exchange connection.</strong> Adding or rotating an exchange API key from this UI is a future slice; today the CLI is the only path.</li>\n"
+    "      <li><strong>Slice D &mdash; pack adoption.</strong> A guided pack picker / scheduler installer is a future slice; today you run <code>krellbot pack lint</code> and <code>krellbot arm</code> from the CLI.</li>\n"
+    "    </ul>\n"
+    "    <h3>The free path today</h3>\n"
+    "    <ul>\n"
+    "      <li><a href=\"dashboard\">Open the dashboard</a> and arm a paper pack.</li>\n"
+    "      <li>Run <code>krellbot ui</code> from a terminal at any time to relaunch this UI.</li>\n"
+    "      <li>Run <code>krellbot doctor</code> for a complete readiness check.</li>\n"
+    "    </ul>\n"
+    '    <p class="muted">Progress: 3 of 3 &middot; <a href="security">Back</a></p>\n'
     "  </section>\n"
 )
 
@@ -390,6 +485,24 @@ def _embed_json(view: dict) -> str:
         .replace(">", "\\u003e")
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
+    )
+
+
+def _h(value: str) -> str:
+    """HTML-escape a string for safe insertion into the wizard shell.
+
+    The trust snapshot's values are paths and class names from the
+    local machine — the snapshot module never reads raw secrets — but
+    we still escape on the way into HTML so a keychain backend whose
+    class path somehow contains ``<`` cannot inject markup into the
+    visible page.
+    """
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
     )
 
 

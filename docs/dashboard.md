@@ -69,6 +69,13 @@ The dashboard reads only from disk under `$KRELLBOT_HOME`:
 
 No call to Kraken, Coinbase, or krellbot.dev happens at any point.
 
+The dashboard also surfaces a read-only **Local status** card at the
+top of the page: the detected keychain backend, the bind address
+(`127.0.0.1`), and a one-line "live arm from the UI is refused" rail.
+The status block is the dashboard's expression of the same trust
+snapshot the wizard shows on `/<token>/security`; both are computed
+server-side from `trust_snapshot()` and never include raw credentials.
+
 ## Actions
 
 * **Arm paper** — submits `pack_path`, `venue`, `paper_balance`, and
@@ -87,13 +94,63 @@ Every action submits to a relative URL (`arm`, `disarm`, `stop_all`,
 `adopt`) and the server reads the form body itself. There is no external
 HTTP, no JSON-only path, no third-party CDN, and no Google font.
 
+## First-run wizard
+
+A fresh install renders the wizard at `/<token>/welcome` instead of the
+dashboard. The wizard has three steps: Welcome, Security, Next. Each
+step is a plain HTML page with sibling-relative `<a>` links, so a
+browser with JavaScript disabled can still navigate the wizard by
+following the links.
+
+* **Welcome** states three truthful things: the engine is free and
+  open-source, exchange keys stay on this machine, and official packs
+  are optional and recommended. Continue opens the dashboard via a
+  CSRF-protected POST (`/visit-dashboard`); Skip ahead jumps straight
+  to Security.
+* **Security** shows the local trust posture (keychain backend name,
+  resolved data home, home mode, bind address, live-arm rail, key
+  permissions) plus a fail-closed diagnostic if the keychain is not
+  persistent. The diagnostic names `krellbot doctor` as the next CLI
+  action — a null backend is never reported as a green check.
+* **Next** lists exchange connection (slice C) and pack adoption
+  (slice D) as **future slices**, not as completed steps. The free
+  path today is the dashboard, the CLI (`krellbot ui`), and
+  `krellbot doctor`.
+
+The dashboard itself is unchanged for users who reach it directly or
+who revisit `/<token>/`. A "Resume setup" link in the header returns
+to `/<token>/welcome` for users who want to revisit the wizard.
+
+Browser back/forward and wizard Back do not mutate trading state.
+Reaching the dashboard for the first time records a single
+`ui-preferences.json` flag (mode `0600`) inside `$KRELLBOT_HOME`. That
+flag records that the user **visited** the dashboard; it does not
+claim onboarding is complete.
+
 ## Static assets
 
 `src/krellbot/ui/static/` contains only relative references: `index.html`
 loads `static/style.css` and `static/app.js`. The HTML, CSS, and JS files
 contain no `http://`, no `https://`, and no protocol-relative `//` URLs.
-The repository enforces this with `rg -n "https?://" src/krellbot/ui/static`,
-which must come back empty.
+The wizard templates in `src/krellbot/ui/server.py` likewise never
+emit an external URL — `out/docs` and `out/source` are server-internal
+302 redirects to fixed allowlisted targets. The repository enforces
+this with `rg -n "https?://" src/krellbot/ui/static`, which must come
+back empty.
+
+Visual contract:
+
+* Canvas `#07090d`, ink `#e7f4f8`, single primary interactive accent
+  `#5ce1ff`. Lime `#C6FF3D` is a status token only, not a second CTA
+  palette.
+* `color-scheme: dark` declared on `:root` so the browser does not
+  flash a light theme before the stylesheet loads.
+* `:focus-visible` is a 2px cyan outline with 3px offset; the rule is
+  present on every interactive element.
+* `@media (prefers-reduced-motion: reduce)` collapses animations and
+  transitions to `.01ms` so motion-sensitive users get a still UI.
+* Tabular figures and a monospace stack render numeric columns so
+  prices, qty, and cap align under each other.
 
 ## Tests
 
@@ -103,6 +160,22 @@ external URLs in static, stop-all disarming, live-arm refusal, and
 adopt-while-long refusal. Every test starts a `DashboardServer` on a
 thread with `port=0`, reads the bound port back, talks to it over
 `http.client`, and tears the server down in `finally`. No sleep-to-poll.
+
+`tests/test_ui_first_run.py` covers the first-run visit preference
+(`has_visited_dashboard`, `mark_visited_dashboard`), the trust snapshot
+(`trust_snapshot`), and the B2/B3 wizard route contracts: each
+`/welcome`, `/security`, `/next`, `/dashboard` route is exercised
+against the real `DashboardServer` with the trust snapshot rendered
+server-side and no external URL leaks.
+
+`tests/test_ui_static.py` covers the local-asset contract: shipped
+HTML/CSS/JS contains no `http://`, `https://`, or protocol-relative
+URLs; CSS declares `prefers-reduced-motion` and `:focus-visible`; the
+dashboard's existing paper-action forms keep their field names and
+hidden CSRF; the visible markup on `/<token>/security` contains the
+actual backend path and home (no JS-only hydration as the no-JS
+fallback); the no-JS route fallback exposes every wizard route as a
+plain `<a href>`.
 
 ## Threat model
 
@@ -125,3 +198,9 @@ thread with `port=0`, reads the bound port back, talks to it over
   `trading_ready` only goes true when an exchange key was probed with
   `trade=True` AND `withdraw=False`. The dashboard cannot bypass this
   check; live arm POSTs are 403 before any state change.
+* Static assets never reach outside the loopback. The wizard templates
+  embed `window.__KB_VIEW__` as an inline `<script>`; every value is
+  escaped by `_embed_json` so a journal string or trust value with
+  `<` cannot close the script tag. The dashboard view includes the
+  same trust snapshot, but only the values from `trust_snapshot()` —
+  no raw secrets, no credentials, no API keys.

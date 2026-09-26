@@ -46,6 +46,33 @@ krellbot ui --open     # print the URL and hand it to the default browser
 krellbot ui --port N   # bind a fixed loopback port instead of a random one
 ```
 
+### First-run wizard
+
+The first time the dashboard server is opened, the browser renders
+`/{token}/welcome` instead of the dashboard. The wizard has three
+steps: Welcome, Security, Next. Each step is a plain HTML page with
+sibling-relative `<a>` links, so a browser with JavaScript disabled
+can still navigate the wizard by following the links.
+
+* **Welcome** — three truthful statements (free and open-source,
+  keys stay on this machine, official packs are optional and
+  recommended) and a `Continue` button that POSTs to
+  `/visit-dashboard` to flip the local visit preference.
+* **Security** — the local trust posture, server-rendered from
+  `trust_snapshot()`: keychain backend name, resolved home path and
+  POSIX mode, loopback bind, live-arm rail, and key permissions. A
+  fail-closed diagnostic names `krellbot doctor` as the next CLI
+  action when the keychain is not persistent.
+* **Next** — exchange connection (slice C) and pack adoption
+  (slice D) are labelled as future slices, not as completed steps.
+  The free path today is the dashboard, `krellbot ui`, and
+  `krellbot doctor`.
+
+After the wizard is dismissed once, `/<token>/` renders the
+dashboard shell directly. A "Resume setup" link in the header
+returns to the wizard at any time. Browser back/forward and
+wizard Back never mutate trading state.
+
 ### What gets written
 
 | What | POSIX | Windows |
