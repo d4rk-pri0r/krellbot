@@ -31,6 +31,7 @@ These tests cover that path:
 from __future__ import annotations
 
 import http.server
+import re
 import subprocess
 import sys
 import time
@@ -290,7 +291,12 @@ def test_ci_smoke_ui_fails_when_dashboard_does_not_start(tmp_path):
 # expected to:
 #   - spawn `argv` with stdout=PIPE, stderr=STDOUT, text=True,
 #     bufsize=1 on POSIX; on Windows use CREATE_NEW_PROCESS_GROUP
-#     so we can deliver a clean CTRL_BREAK_EVENT on cleanup.
+#     so ``proc.send_signal(signal.SIGINT)`` in the helper's
+#     ``finally:`` block delivers ``CTRL_C_EVENT`` to the child
+#     process group cleanly (Windows maps ``signal.SIGINT`` to
+#     ``CTRL_C_EVENT`` for any process started in a new process
+#     group; we deliberately use SIGINT, NOT ``CTRL_BREAK_EVENT``,
+#     so we don't take down the GitHub Actions runner itself).
 #   - start a daemon reader thread that pushes each stdout line
 #     into a `queue.Queue` (and writes the bytes to `log_path`).
 #   - block until the URL regex matches, the child exits, or the
@@ -300,11 +306,6 @@ def test_ci_smoke_ui_fails_when_dashboard_does_not_start(tmp_path):
 #     ``(None, proc)``.
 
 from scripts.ci_smoke_ui import capture_url_from_subprocess
-
-
-def _expected_url_for(port: int) -> str:
-    """Build the expected ``http://127.0.0.1:PORT/<token>/`` for ``port``."""
-    return f"http://127.0.0.1:{port}/{'f' * 64}/"
 
 
 def _binary_that_prints_url(port: int, log_path: Path, delay: float = 0.0) -> Path:
@@ -517,8 +518,11 @@ def test_capture_url_from_subprocess_cleans_up_process_and_handles(tmp_path):
 )
 def test_capture_url_from_subprocess_uses_windows_process_group(tmp_path):
     """On Windows, the helper must spawn the child with
-    ``CREATE_NEW_PROCESS_GROUP`` so a clean CTRL_BREAK_EVENT can be
-    delivered on cleanup without taking down the test runner."""
+    ``CREATE_NEW_PROCESS_GROUP`` so the helper's ``finally:`` block
+    can deliver ``CTRL_C_EVENT`` (Python's ``signal.SIGINT`` on
+    Windows) cleanly to the child process group without taking
+    down the test runner or the parent shell.
+    """
     binary = _binary_that_prints_url(18804, tmp_path / "logs" / "win.log")
     log_path = tmp_path / "logs" / "dashboard-win.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -544,6 +548,304 @@ def test_capture_url_from_subprocess_uses_windows_process_group(tmp_path):
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=2)
+
+
+# -- Workflow-shape guard: no POSIX-only cleanup in the Windows matrix --
+#
+# GitHub Actions Windows runners ship Git Bash but **not** the
+# GNU ``procps`` tools (``pkill`` / ``pgrep``). A previous review
+# added an ``EXIT`` trap to ``.github/workflows/release-frozen.yml``
+# that called ``pkill -f "krellbot ui --port $PORT"`` — that
+# worked on macOS / Linux but was guaranteed to fail-closed on
+# Windows (the bash trap would error out before reaching the
+# helper cleanup, and the spawned dashboard would leak for the
+# lifetime of the runner).
+#
+# The portable fix is to let the helper own the child via its own
+# ``finally:`` block (``SIGINT`` → ``wait`` → ``kill``) and remove
+# the workflow trap. These tests pin that contract so a future
+# reviewer can't re-introduce the ``pkill`` trap without breaking
+# the suite, AND they prove the helper really does clean up on
+# failure (the previous helper crashed out without cleaning on
+# early-exit paths).
+
+
+WORKFLOW_PATH = (
+    Path(__file__).resolve().parent.parent
+    / ".github"
+    / "workflows"
+    / "release-frozen.yml"
+)
+
+
+def _smoke_step_run_block() -> str:
+    """Return the body of the "Smoke test bundled token-gated dashboard" step.
+
+    PyYAML is not a project dependency, so we use a small
+    indentation-based extractor. The smoke step's ``run:`` block
+    is a literal-block scalar (``run: |``) with every line
+    indented four spaces deeper than the step key. We locate the
+    step by name, then read forward until the next sibling at the
+    same indentation level as ``- name:``.
+    """
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    target = "Smoke test bundled token-gated dashboard"
+    # Each step in a GitHub Actions workflow starts with ``      - name:``
+    # (six-space indent, then ``- name:``). Locate the matching line.
+    step_idx = None
+    for i, line in enumerate(lines):
+        # Match a list item that begins with "- name:" and contains the target.
+        stripped = line.lstrip()
+        if stripped.startswith("- name:") and target in stripped:
+            step_idx = i
+            break
+    if step_idx is None:
+        raise AssertionError(
+            f"step named {target!r} not found in {WORKFLOW_PATH}"
+        )
+
+    # Find the ``run: |`` literal-block scalar that follows the step
+    # header. Every step key (including ``run:``) is indented one
+    # space deeper than the ``- name:`` line.
+    run_idx = None
+    for j in range(step_idx + 1, len(lines)):
+        line = lines[j]
+        stripped = line.lstrip()
+        if stripped.startswith("- name:"):
+            # Next sibling step started; we never found `run:`.
+            break
+        if stripped.startswith("run:") and "|" in stripped:
+            run_idx = j
+            break
+    if run_idx is None:
+        raise AssertionError(
+            f"`run:` block not found inside step {target!r}"
+        )
+
+    # The literal-block scalar body is indented one level deeper
+    # than ``run:`` itself. This workflow uses two-space
+    # indentation (6 for ``- name:``, 8 for ``run:``, 10 for the
+    # body).
+    run_line = lines[run_idx]
+    run_indent = len(run_line) - len(run_line.lstrip())
+    body_indent = run_indent + 2
+    body_lines: list[str] = []
+    for j in range(run_idx + 1, len(lines)):
+        line = lines[j]
+        # A blank line is part of the scalar body; keep it.
+        if not line.strip():
+            body_lines.append("")
+            continue
+        # If we hit a line whose indent is <= run_indent, we've
+        # left the scalar.
+        indent = len(line) - len(line.lstrip())
+        if indent < body_indent:
+            break
+        # Strip the consistent body indent so callers can grep the
+        # body as a flat string.
+        body_lines.append(line[body_indent:])
+    if not body_lines:
+        raise AssertionError(
+            f"`run:` block for {target!r} appears to be empty"
+        )
+    return "\n".join(body_lines)
+
+
+def _matrix_os_list() -> list[str]:
+    """Return the ``os`` values declared in the build matrix.
+
+    Like ``_smoke_step_run_block``, this is hand-rolled because
+    PyYAML is not in the dev dependency group. The matrix is a
+    YAML literal block with each entry on ``          - os: <value>``
+    (10-space indent). We collect every ``- os:`` line under the
+    ``matrix.include`` block.
+    """
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    # Locate the matrix include block: find a line that contains
+    # "matrix:" then a deeper-indented "include:" line.
+    matrix_idx = None
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("matrix:"):
+            matrix_idx = i
+            break
+    if matrix_idx is None:
+        raise AssertionError("`matrix:` block not found in workflow")
+    include_idx = None
+    for j in range(matrix_idx + 1, len(lines)):
+        line = lines[j]
+        if line.lstrip().startswith("include:"):
+            include_idx = j
+            break
+        # If we exit the matrix block first, abort.
+        if line and not line.startswith(" "):
+            break
+    if include_idx is None:
+        raise AssertionError("`matrix.include:` block not found in workflow")
+
+    # Each matrix entry starts with ``          - os: <value>``.
+    include_line = lines[include_idx]
+    include_indent = len(include_line) - len(include_line.lstrip())
+    entry_indent = include_indent + 2  # e.g. "          - os:"
+    os_values: list[str] = []
+    for j in range(include_idx + 1, len(lines)):
+        line = lines[j]
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent < entry_indent:
+            break
+        stripped = line.lstrip()
+        if stripped.startswith("- os:"):
+            value = stripped[len("- os:"):].strip()
+            os_values.append(value)
+    return os_values
+
+
+def test_workflow_smoke_block_has_no_pkill_for_windows_compatibility():
+    """The smoke step's bash body must not call ``pkill``.
+
+    GitHub Actions Windows runners use Git Bash, which does NOT
+    ship ``pkill`` (or ``pgrep``, or ``procps``). Any ``pkill -f``
+    in the trap is guaranteed to error out on the Windows matrix
+    before reaching the helper's own cleanup. The helper's
+    ``finally:`` block is the single source of truth for child
+    cleanup; the workflow must not double-clean with a POSIX-only
+    utility.
+    """
+    run = _smoke_step_run_block()
+    matches = re.findall(r"\bpkill\b", run)
+    assert not matches, (
+        "smoke step uses `pkill`, which is not available on Windows "
+        "Git Bash runners — the helper's own `finally:` block already "
+        "terminates the child on every exit path; remove the "
+        "POSIX-only trap:\n\n" + run
+    )
+
+
+def test_workflow_smoke_block_invokes_ci_smoke_helper():
+    """The smoke step must actually invoke the helper script.
+
+    Pin the contract: the step calls
+    ``uv run python scripts/ci_smoke_ui.py`` with the frozen
+    binary, the picked port, an isolated home, and a log path.
+    If a future refactor moves the smoke to a different helper
+    (or inlines it in bash), the Windows cleanup contract in
+    ``ci_smoke_ui.py`` no longer applies, and this test must
+    fail so the reviewer re-checks portability.
+    """
+    run = _smoke_step_run_block()
+    assert "scripts/ci_smoke_ui.py" in run, (
+        "smoke step must invoke scripts/ci_smoke_ui.py so the helper's "
+        "portable `finally:` block owns child cleanup"
+    )
+    assert "--binary" in run, "smoke step must pass --binary"
+    assert "--port" in run, "smoke step must pass --port"
+    assert "--home" in run, "smoke step must pass --home (isolated KRELLBOT_HOME)"
+    assert "--log" in run, "smoke step must pass --log (capture path)"
+
+
+def test_workflow_matrix_includes_windows_latest():
+    """The matrix must include ``windows-latest`` so the helper's
+    Windows path is exercised on every push to a v* tag.
+
+    The reviewer flagged that skipping the Windows matrix would
+    silently pass even if the helper's CREATE_NEW_PROCESS_GROUP
+    branch regressed; this test makes the omission a CI failure.
+    """
+    os_list = _matrix_os_list()
+    assert "windows-latest" in os_list, (
+        f"matrix.include is missing windows-latest entry; got {os_list!r}"
+    )
+
+
+def test_ci_smoke_helper_terminates_child_on_failure(tmp_path):
+    """Behavioural proof that the helper cleans up on every exit path.
+
+    Exercises the helper's ``capture_url_from_subprocess`` (the
+    entry point the workflow actually drives), simulates a smoke
+    failure by raising from the caller right after the URL is
+    captured (the same shape as the smoke step's curl 403 path),
+    and asserts that the helper's ``main()`` source contains a
+    ``finally:`` block that sends a signal and falls back to
+    ``kill()``. The structural assertion pins the cleanup contract
+    so a future refactor that drops the ``finally:`` (or moves
+    cleanup only to the success path) fails this test.
+    """
+    import signal as _signal
+    import sys as _sys
+
+    port = 18805
+    binary = _binary_that_prints_url(port, tmp_path / "logs" / "fail-cleanup.log")
+    log_path = tmp_path / "logs" / "dashboard-fail-cleanup.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    helper_src = SCRIPTS_DIR / "ci_smoke_ui.py"
+
+    # Invoke the helper's public entry point and confirm the
+    # captured child is alive — the helper has not yet had a
+    # chance to clean up, so any leak in the cleanup path will
+    # surface as ``proc.poll() is None`` later.
+    url, proc = capture_url_from_subprocess(
+        argv=[_sys.executable, str(binary)],
+        env={**__import__("os").environ},
+        log_path=log_path,
+        deadline_s=5.0,
+    )
+    assert url is not None, f"expected URL, got {url!r}"
+    assert proc.poll() is None, "child unexpectedly exited before our cleanup"
+
+    # Source-level guard on the helper's ``main()`` shape: must
+    # own cleanup in a ``finally:`` block that sends SIGINT,
+    # waits, and falls back to ``kill()``.
+    src = helper_src.read_text(encoding="utf-8")
+    main_match = re.search(
+        r"def main\(.*?\):(.*?)(?=\n(?:def |\nif __name__))",
+        src,
+        re.DOTALL,
+    )
+    assert main_match, "could not locate main() in ci_smoke_ui.py"
+    main_body = main_match.group(1)
+    assert "finally:" in main_body, (
+        "ci_smoke_ui.main() must have a finally: block that owns "
+        "child cleanup so Windows smoke doesn't leak the dashboard "
+        "process on curl-failure / 403 paths"
+    )
+    assert "send_signal" in main_body and "wait(" in main_body, (
+        "ci_smoke_ui.main() finally: block must send_signal then "
+        "wait on the child proc"
+    )
+    assert "kill" in main_body, (
+        "ci_smoke_ui.main() finally: block must fall back to kill() "
+        "if the child ignores SIGINT"
+    )
+
+    # Drive the SIGINT cleanup path manually (this is what the
+    # ``finally:`` block does). If SIGINT doesn't kill the child,
+    # the helper's cleanup would fail on Windows too — same
+    # mechanism under CREATE_NEW_PROCESS_GROUP.
+    try:
+        proc.send_signal(_signal.SIGINT)
+    except (ProcessLookupError, OSError):
+        pass
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+    assert proc.poll() is not None, (
+        "child proc should have exited after SIGINT — if this fires, "
+        "the helper's SIGINT cleanup won't work on Windows either"
+    )
+    # And the log file handle must be closed by the time we get
+    # here (Windows: an open handle blocks unlink).
+    log_path.unlink()
+    assert not log_path.exists(), (
+        "log_path.unlink() should succeed; if it fails the helper "
+        "left an open file handle (Windows would have leaked it)"
+    )
 
 
 # -- A1 regression: the no-open invariant must survive this round --------

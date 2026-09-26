@@ -155,10 +155,18 @@ jobs:
           # needing a separate helper script.
           PORT="$(uv run python -c 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(("'"'"'127.0.0.1'"'"', 0)); print(s.getsockname()[1])')"
           echo "dashboard port = $PORT"
-          # Cleanup trap: best-effort kill any leftover dashboard
-          # child in case the helper exits non-zero (curl failure,
-          # etc.). Ensures CI doesn't leak processes between runs.
-          trap 'echo "smoke: cleanup trap — best-effort kill of leftover dashboard"; pkill -f "krellbot ui --port $PORT" 2>/dev/null || true' EXIT
+          # Cleanup: ``scripts/ci_smoke_ui.py`` owns the spawned
+          # child via its own ``finally:`` block (SIGINT + wait +
+          # SIGKILL fallback, then closes the capture). That covers
+          # success AND every early-exit path (curl failure, 403,
+          # etc.), so we do NOT install a bash ``trap`` here. The
+          # helper is the single source of truth for child
+          # cleanup; a workflow-side trap would either be
+          # POSIX-only (and therefore unavailable on Windows Git
+          # Bash runners, which ship without the GNU ``procps``
+          # tools) or would duplicate the helper's own cleanup in
+          # a way that's hard to reason about. See
+          # ``tests/test_ci_smoke_ui.py::test_workflow_smoke_block_*``.
           uv run python scripts/ci_smoke_ui.py \
             --binary "$BIN" \
             --port "$PORT" \
