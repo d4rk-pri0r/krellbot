@@ -96,6 +96,31 @@ def _stop(server: DashboardServer | None) -> None:
         pass
 
 
+def test_loopback_start_never_needs_reverse_dns(tmp_path: Path, monkeypatch) -> None:
+    """Starting the local UI must not wait on hostname resolution."""
+
+    def unexpected_lookup(_host: str) -> str:
+        raise AssertionError("reverse DNS must not run on UI bind")
+
+    monkeypatch.setattr(socket, "getfqdn", unexpected_lookup)
+    server = DashboardServer(home=tmp_path, port=0)
+    try:
+        server.start()
+        assert server.bound_host == "127.0.0.1"
+        assert server.bound_port > 0
+        conn = http.client.HTTPConnection("127.0.0.1", server.bound_port, timeout=2)
+        try:
+            conn.request("GET", f"/{server.token}/")
+            resp = conn.getresponse()
+            resp.read()
+            assert resp.status == 200
+        finally:
+            conn.close()
+    finally:
+        if server.bound_port:
+            server.stop()
+
+
 def _seed_two_paper_packs(home: Path) -> None:
     kb_paths.ensure_layout()
     cfg = kb_config.Config()

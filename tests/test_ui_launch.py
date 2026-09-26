@@ -163,15 +163,7 @@ def _spawn_ui_with_browser_marker(
         import subprocess as _sp  # local import: CREATE_NEW_PROCESS_GROUP only on Windows
 
         popen_kwargs["creationflags"] = _sp.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
-    # Dump the child stack if startup stalls before it can print the bound URL.
-    # This test runs on macOS 3.13 in CI, where a silent child otherwise
-    # leaves no clue whether imports, keychain, or socket binding stalled.
-    diagnostic_entry = (
-        "import faulthandler,runpy; "
-        "faulthandler.dump_traceback_later(5); "
-        "runpy.run_module('krellbot.cli', run_name='__main__')"
-    )
-    return subprocess.Popen([sys.executable, "-c", diagnostic_entry, *args], **popen_kwargs)  # type: ignore[arg-type]
+    return subprocess.Popen([sys.executable, "-m", "krellbot.cli", *args], **popen_kwargs)  # type: ignore[arg-type]
 
 
 def _stop_dashboard_proc(proc: subprocess.Popen) -> None:

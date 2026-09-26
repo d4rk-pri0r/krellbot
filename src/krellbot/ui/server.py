@@ -33,6 +33,7 @@ import hmac
 import http.server
 import json
 import secrets
+import socketserver
 import threading
 import urllib.parse
 from decimal import ROUND_DOWN, Decimal
@@ -1070,6 +1071,18 @@ def _make_handler(server_config: _ServerConfig):
 # ---- server wrapper ------------------------------------------------------
 
 
+class _LoopbackHTTPServer(http.server.ThreadingHTTPServer):
+    """Bind locally without HTTPServer's unnecessary reverse DNS lookup."""
+
+    def server_bind(self) -> None:
+        # HTTPServer.server_bind calls socket.getfqdn(127.0.0.1), which can
+        # block on a misconfigured resolver even though we never use the
+        # resolved name. Preserve TCPServer's bind and HTTPServer's fields.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = _BIND_HOST
+        self.server_port = self.server_address[1]
+
+
 class DashboardServer:
     """Threaded loopback HTTP server.
 
@@ -1085,7 +1098,7 @@ class DashboardServer:
         self.csrf: str = secrets.token_hex(_TOKEN_BYTES)
         self.bound_host: str = _BIND_HOST
         self.bound_port: int = 0
-        self._server: http.server.ThreadingHTTPServer | None = None
+        self._server: _LoopbackHTTPServer | None = None
         self._thread: threading.Thread | None = None
         # Defer socket bind to start() so a failed start doesn't leak.
 
@@ -1094,7 +1107,7 @@ class DashboardServer:
             return
         config = _ServerConfig(self.token, self.csrf, self._home)
         handler_cls = _make_handler(config)
-        self._server = http.server.ThreadingHTTPServer((_BIND_HOST, self._requested_port), handler_cls)
+        self._server = _LoopbackHTTPServer((_BIND_HOST, self._requested_port), handler_cls)
         # Block reuse so a tight test loop can rebind to the same port.
         self._server.allow_reuse_address = False
         self.bound_port = int(self._server.server_address[1])
