@@ -380,6 +380,7 @@ def test_view_json_cannot_break_out_of_script(home):
     # Set the preference so /<token>/ renders the dashboard, which is the
     # view that embeds journal records.
     from krellbot.ui.first_run import mark_visited_dashboard
+
     mark_visited_dashboard(home)
     server, port = _start(home)
     try:

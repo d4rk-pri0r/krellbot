@@ -37,8 +37,7 @@ def test_frozen_main_module_imports_entry_from_krellbot_cli():
     from krellbot.cli import entry as real_entry
 
     assert module.entry is real_entry, (
-        "scripts/frozen_main.py must import entry directly from krellbot.cli, "
-        "not wrap or re-export it."
+        "scripts/frozen_main.py must import entry directly from krellbot.cli, not wrap or re-export it."
     )
 
 
@@ -60,9 +59,7 @@ def test_frozen_main_invokes_entry_when_run_as_main(monkeypatch):
         runpy.run_path(str(FROZEN_MAIN), run_name="__main__")
 
     recorder.assert_called_once_with()
-    assert exc_info.value.code == 0, (
-        f"entry() returned 0; expected SystemExit(0); got {exc_info.value.code!r}"
-    )
+    assert exc_info.value.code == 0, f"entry() returned 0; expected SystemExit(0); got {exc_info.value.code!r}"
 
 
 def test_frozen_main_subprocess_runs_entry(tmp_path):
@@ -109,8 +106,7 @@ def test_frozen_main_subprocess_runs_entry(tmp_path):
         env=env,
     )
     assert proc.returncode == 42, (
-        f"entry() returned 42; expected exit 42; got {proc.returncode}; "
-        f"stderr={proc.stderr!r}"
+        f"entry() returned 42; expected exit 42; got {proc.returncode}; stderr={proc.stderr!r}"
     )
     # The mock call count assertion (entry was actually called when
     # run as __main__) is covered by

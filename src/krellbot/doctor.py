@@ -353,10 +353,7 @@ def run(
     # probe ran, so a present key with no probe is fail-closed.
     install_ready = home_mode_ok is not False and backend_warn is None and _ui_bind_available()
     has_trade_only_key = any(
-        info.get("present")
-        and info.get("trade") is True
-        and info.get("withdraw") is False
-        for info in keys.values()
+        info.get("present") and info.get("trade") is True and info.get("withdraw") is False for info in keys.values()
     )
     trading_ready = install_ready and not last_tick_stale and has_trade_only_key
 

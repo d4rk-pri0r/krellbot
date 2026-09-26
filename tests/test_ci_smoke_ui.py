@@ -231,8 +231,7 @@ def test_ci_smoke_ui_succeeds_against_fake_dashboard(fake_dashboard, tmp_path):
         timeout=30,
     )
     assert rc.returncode == 0, (
-        f"ci_smoke_ui exited {rc.returncode}; stderr={rc.stderr[:500]!r}; "
-        f"stdout={rc.stdout[:500]!r}"
+        f"ci_smoke_ui exited {rc.returncode}; stderr={rc.stderr[:500]!r}; stdout={rc.stdout[:500]!r}"
     )
     assert "ok:" in rc.stdout, rc.stdout
 
@@ -241,9 +240,7 @@ def test_ci_smoke_ui_fails_when_dashboard_does_not_start(tmp_path):
     """If the binary never prints a URL, the helper exits 3."""
     fake_bin = tmp_path / "silent-krellbot"
     fake_bin.write_text(
-        "#!/usr/bin/env python3\n"
-        "import time\n"
-        "time.sleep(15)\n",  # never prints a URL within the 10s deadline
+        "#!/usr/bin/env python3\nimport time\ntime.sleep(15)\n",  # never prints a URL within the 10s deadline
         encoding="utf-8",
     )
     fake_bin.chmod(0o755)
@@ -267,10 +264,7 @@ def test_ci_smoke_ui_fails_when_dashboard_does_not_start(tmp_path):
         cwd=str(tmp_path),
         timeout=30,
     )
-    assert rc.returncode == 3, (
-        f"expected exit 3 (no URL); got {rc.returncode}; "
-        f"stderr={rc.stderr[:500]!r}"
-    )
+    assert rc.returncode == 3, f"expected exit 3 (no URL); got {rc.returncode}; stderr={rc.stderr[:500]!r}"
     assert "dashboard never printed" in rc.stderr
 
 
@@ -381,9 +375,7 @@ def test_capture_url_from_subprocess_times_out(tmp_path):
     """If the child never prints the URL, the helper returns ``(None, proc)``."""
     silent = tmp_path / "silent.py"
     silent.write_text(
-        "#!/usr/bin/env python3\n"
-        "import time\n"
-        "time.sleep(30)\n",
+        "#!/usr/bin/env python3\nimport time\ntime.sleep(30)\n",
         encoding="utf-8",
     )
     silent.chmod(0o755)
@@ -538,9 +530,7 @@ def test_capture_url_from_subprocess_uses_windows_process_group(tmp_path):
         # If the child was launched with CREATE_NEW_PROCESS_GROUP, its
         # creation flags include that bit (0x00000200).
         creation_flags = getattr(proc, "creationflags", 0)
-        assert creation_flags & 0x00000200, (
-            f"child creationflags missing CREATE_NEW_PROCESS_GROUP: {creation_flags}"
-        )
+        assert creation_flags & 0x00000200, f"child creationflags missing CREATE_NEW_PROCESS_GROUP: {creation_flags}"
     finally:
         proc.terminate()
         try:
@@ -570,12 +560,7 @@ def test_capture_url_from_subprocess_uses_windows_process_group(tmp_path):
 # early-exit paths).
 
 
-WORKFLOW_PATH = (
-    Path(__file__).resolve().parent.parent
-    / ".github"
-    / "workflows"
-    / "release-frozen.yml"
-)
+WORKFLOW_PATH = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release-frozen.yml"
 
 
 def _smoke_step_run_block() -> str:
@@ -601,9 +586,7 @@ def _smoke_step_run_block() -> str:
             step_idx = i
             break
     if step_idx is None:
-        raise AssertionError(
-            f"step named {target!r} not found in {WORKFLOW_PATH}"
-        )
+        raise AssertionError(f"step named {target!r} not found in {WORKFLOW_PATH}")
 
     # Find the ``run: |`` literal-block scalar that follows the step
     # header. Every step key (including ``run:``) is indented one
@@ -619,9 +602,7 @@ def _smoke_step_run_block() -> str:
             run_idx = j
             break
     if run_idx is None:
-        raise AssertionError(
-            f"`run:` block not found inside step {target!r}"
-        )
+        raise AssertionError(f"`run:` block not found inside step {target!r}")
 
     # The literal-block scalar body is indented one level deeper
     # than ``run:`` itself. This workflow uses two-space
@@ -646,9 +627,7 @@ def _smoke_step_run_block() -> str:
         # body as a flat string.
         body_lines.append(line[body_indent:])
     if not body_lines:
-        raise AssertionError(
-            f"`run:` block for {target!r} appears to be empty"
-        )
+        raise AssertionError(f"`run:` block for {target!r} appears to be empty")
     return "\n".join(body_lines)
 
 
@@ -699,7 +678,7 @@ def _matrix_os_list() -> list[str]:
             break
         stripped = line.lstrip()
         if stripped.startswith("- os:"):
-            value = stripped[len("- os:"):].strip()
+            value = stripped[len("- os:") :].strip()
             os_values.append(value)
     return os_values
 
@@ -738,8 +717,7 @@ def test_workflow_smoke_block_invokes_ci_smoke_helper():
     """
     run = _smoke_step_run_block()
     assert "scripts/ci_smoke_ui.py" in run, (
-        "smoke step must invoke scripts/ci_smoke_ui.py so the helper's "
-        "portable `finally:` block owns child cleanup"
+        "smoke step must invoke scripts/ci_smoke_ui.py so the helper's portable `finally:` block owns child cleanup"
     )
     assert "--binary" in run, "smoke step must pass --binary"
     assert "--port" in run, "smoke step must pass --port"
@@ -756,9 +734,7 @@ def test_workflow_matrix_includes_windows_latest():
     branch regressed; this test makes the omission a CI failure.
     """
     os_list = _matrix_os_list()
-    assert "windows-latest" in os_list, (
-        f"matrix.include is missing windows-latest entry; got {os_list!r}"
-    )
+    assert "windows-latest" in os_list, f"matrix.include is missing windows-latest entry; got {os_list!r}"
 
 
 def test_ci_smoke_helper_terminates_child_on_failure(tmp_path):
@@ -814,13 +790,9 @@ def test_ci_smoke_helper_terminates_child_on_failure(tmp_path):
         "process on curl-failure / 403 paths"
     )
     assert "send_signal" in main_body and "wait(" in main_body, (
-        "ci_smoke_ui.main() finally: block must send_signal then "
-        "wait on the child proc"
+        "ci_smoke_ui.main() finally: block must send_signal then wait on the child proc"
     )
-    assert "kill" in main_body, (
-        "ci_smoke_ui.main() finally: block must fall back to kill() "
-        "if the child ignores SIGINT"
-    )
+    assert "kill" in main_body, "ci_smoke_ui.main() finally: block must fall back to kill() if the child ignores SIGINT"
 
     # Drive the SIGINT cleanup path manually (this is what the
     # ``finally:`` block does). If SIGINT doesn't kill the child,
@@ -871,9 +843,7 @@ def test_a1_no_open_browser_regression_survives_flush(tmp_path):
     # proof is `test_cmd_ui_without_open_does_not_call_browser` in
     # `tests/test_ui_launch.py`; this is the structural smoke that
     # the flush change did not accidentally hoist the import.
-    cli_path = (
-        Path(__file__).resolve().parent.parent / "src" / "krellbot" / "cli.py"
-    )
+    cli_path = Path(__file__).resolve().parent.parent / "src" / "krellbot" / "cli.py"
     src = cli_path.read_text(encoding="utf-8")
     # The conditional webbrowser import lives inside cmd_ui's body
     # and is preceded by `if do_open:`. If a future change ever
@@ -883,15 +853,12 @@ def test_a1_no_open_browser_regression_survives_flush(tmp_path):
 
     # Look for the `import webbrowser` line.
     wb_lines = [
-        line for line in src.splitlines()
-        if line.strip().startswith("import webbrowser")
-        or line.strip().startswith("from webbrowser")
+        line
+        for line in src.splitlines()
+        if line.strip().startswith("import webbrowser") or line.strip().startswith("from webbrowser")
     ]
     assert wb_lines, "webbrowser import line missing from cli.py"
     line_no = src.splitlines().index(wb_lines[0]) + 1
     # The 10 lines above the import must contain the `do_open` guard.
-    window = "\n".join(src.splitlines()[max(0, line_no - 12):line_no - 1])
-    assert "do_open" in window, (
-        "webbrowser import must be guarded by `if do_open:`; "
-        f"preceding window:\n{window}"
-    )
+    window = "\n".join(src.splitlines()[max(0, line_no - 12) : line_no - 1])
+    assert "do_open" in window, f"webbrowser import must be guarded by `if do_open:`; preceding window:\n{window}"

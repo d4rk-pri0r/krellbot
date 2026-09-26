@@ -22,7 +22,6 @@ import pytest
 from krellbot.ui.launch import open_url, token_url
 from krellbot.ui.server import DashboardServer
 
-
 # ---- token_url ---------------------------------------------------------
 
 
@@ -70,6 +69,7 @@ def test_open_url_swallows_opener_oserror(tmp_path):
     server = DashboardServer(home=tmp_path, port=0)
     server.start()
     try:
+
         def boom(_value: str) -> bool:
             raise OSError("no display")
 
@@ -141,9 +141,7 @@ def _spawn_ui_with_browser_marker(
     # %1$s first lets the marker script receive the marker-path and
     # URL as separate argv entries; the trailing %s is the URL
     # substitution webbrowser performs.
-    env["BROWSER"] = (
-        f'"{sys.executable}" "{marker_script}" "{marker_path}" %s'
-    )
+    env["BROWSER"] = f'"{sys.executable}" "{marker_script}" "{marker_path}" %s'
     # Flush stdout line-by-line so the parent's reader sees the
     # readiness signal as soon as cmd_ui prints it. Without this,
     # Python's block-buffered stdout keeps the URL line sitting in
@@ -192,10 +190,7 @@ def _wait_for_dashboard_line(proc: subprocess.Popen, timeout: float = 10.0) -> s
         return line_holder[0]
     stderr = proc.stderr.read() if proc.stderr else ""
     if exited:
-        pytest.fail(
-            f"cmd_ui exited before printing the URL line: "
-            f"rc={exited[0]} stderr={stderr!r}"
-        )
+        pytest.fail(f"cmd_ui exited before printing the URL line: rc={exited[0]} stderr={stderr!r}")
     pytest.fail(f"timed out after {timeout}s waiting for the Dashboard URL line")
 
 
@@ -222,16 +217,12 @@ def test_cmd_ui_without_open_does_not_call_browser(tmp_path):
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, stderr = proc.communicate()
-            pytest.fail(
-                f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}"
-            )
+            pytest.fail(f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}")
     finally:
         if proc.poll() is None:
             proc.kill()
             proc.communicate()
-    assert proc.returncode == 0, (
-        f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
-    )
+    assert proc.returncode == 0, f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
     assert not marker.exists(), (
         "webbrowser.open was invoked even though --open was not passed; "
         f"marker contents: {marker.read_text(encoding='utf-8')!r}"
@@ -266,18 +257,12 @@ def test_cmd_ui_with_open_invokes_browser(tmp_path):
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, stderr = proc.communicate()
-            pytest.fail(
-                f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}"
-            )
+            pytest.fail(f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}")
     finally:
         if proc.poll() is None:
             proc.kill()
             proc.communicate()
-    assert proc.returncode == 0, (
-        f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
-    )
-    assert marker.exists(), (
-        "marker file not written — webbrowser.open did not run with --open"
-    )
+    assert proc.returncode == 0, f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
+    assert marker.exists(), "marker file not written — webbrowser.open did not run with --open"
     recorded = marker.read_text(encoding="utf-8")
     assert recorded.startswith("http://127.0.0.1:"), recorded

@@ -44,8 +44,7 @@ from krellbot import journal as kb_journal
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 
-from . import first_run
-from . import trust
+from . import first_run, trust
 
 # ---- constants -----------------------------------------------------------
 
@@ -316,10 +315,7 @@ def _render_security(home: Path, csrf: str) -> bytes:
         diag_class = "trust-fail"
         # Always name `krellbot doctor` as the next CLI action; surface
         # the aggregate warning verbatim.
-        diag_text = (
-            f"{posture_warning} Run `krellbot doctor` for a real "
-            "diagnostic."
-        )
+        diag_text = f"{posture_warning} Run `krellbot doctor` for a real diagnostic."
         body = body.replace("__DIAGNOSTIC__", _h(diag_text))
         body = body.replace("__DIAGNOSTIC_CLASS__", diag_class)
         # Fail-closed: the diagnostic is visible by default.
@@ -379,6 +375,7 @@ def _wizard_html(wrapper: str, route: str = "") -> str:
     JS hydrator and a no-JS user both see the active affordance.
     ``route`` must be the literal step name (welcome / security / next).
     """
+
     # Server-set aria-current on the active nav link. We do this by
     # rendering the active link with an extra attribute; the JS hydrator
     # is then a no-op.
@@ -386,13 +383,13 @@ def _wizard_html(wrapper: str, route: str = "") -> str:
         attrs = f'href="{step}" data-step="{step}"'
         if step == route:
             attrs += ' aria-current="page"'
-        return f'<a {attrs}>{label}</a>'
+        return f"<a {attrs}>{label}</a>"
 
     nav_active = (
-        f'{_nav_link("welcome", "Welcome")}'
-        f'{_nav_link("security", "Security")}'
-        f'{_nav_link("next", "Next")}'
-        f'{_nav_link("dashboard", "Dashboard")}'
+        f"{_nav_link('welcome', 'Welcome')}"
+        f"{_nav_link('security', 'Security')}"
+        f"{_nav_link('next', 'Next')}"
+        f"{_nav_link('dashboard', 'Dashboard')}"
         f'<a href="out/docs">Docs</a>'
         f'<a href="out/source">Source</a>'
     )
@@ -406,7 +403,7 @@ def _wizard_html(wrapper: str, route: str = "") -> str:
         attrs = f'class="stepper-step" data-step="{step}"'
         if step == route:
             attrs += ' aria-current="step"'
-        stepper_html += f'<li {attrs}>{i}</li>'
+        stepper_html += f"<li {attrs}>{i}</li>"
     stepper_html += "</ol>"
 
     body_attrs = 'class="wizard"'
@@ -451,25 +448,25 @@ def _wizard_html(wrapper: str, route: str = "") -> str:
 
 
 _WELCOME_TEMPLATE = _wizard_html(
-    "  <section id=\"welcome-section\">\n"
+    '  <section id="welcome-section">\n'
     "    <h2>Welcome</h2>\n"
     "    <p>You are running krellbot for the first time on this loopback port.</p>\n"
-    "    <ol class=\"truth-list\" aria-label=\"What krellbot is\">\n"
+    '    <ol class="truth-list" aria-label="What krellbot is">\n'
     "      <li><strong>Free, open-source local engine.</strong> The code you have runs on this machine; krellbot.dev does not host a service.</li>\n"
     "      <li><strong>Keys stay on this machine.</strong> Exchange API keys are stored in the local keychain; they are never sent to krellbot.dev.</li>\n"
     "      <li><strong>Official packs are optional and recommended.</strong> You can run any pack file you trust; official packs are not required.</li>\n"
     "    </ol>\n"
-    "    <p class=\"muted\">Step 1 of 3 &middot; <a href=\"security\">Continue to security</a> &middot; <a href=\"next\">Skip to next</a></p>\n"
+    '    <p class="muted">Step 1 of 3 &middot; <a href="security">Continue to security</a> &middot; <a href="next">Skip to next</a></p>\n'
     "  </section>\n",
     route="welcome",
 )
 
 
 _SECURITY_TEMPLATE = _wizard_html(
-    "  <section id=\"wizard-security-section\">\n"
+    '  <section id="wizard-security-section">\n'
     "    <h2>Security posture</h2>\n"
     "    <p>This is read-only. No keys, no balances, no orders leave the box.</p>\n"
-    "    <dl id=\"trust-list\">\n"
+    '    <dl id="trust-list">\n'
     "      <dt>Keychain backend</dt>\n"
     '      <dd id="trust-backend">__BACKEND__</dd>\n'
     "      <dt>Data home</dt>\n"
@@ -480,7 +477,7 @@ _SECURITY_TEMPLATE = _wizard_html(
     '      <dd id="trust-bind">127.0.0.1 (loopback only)</dd>\n'
     "      <dt>Live arm from the UI</dt>\n"
     '      <dd id="trust-live-arm">Refused. Live arm is CLI-only.</dd>\n'
-    "      <dt>Key permissions <span class=\"muted\">(required, not validated)</span></dt>\n"
+    '      <dt>Key permissions <span class="muted">(required, not validated)</span></dt>\n'
     '      <dd id="trust-permissions">Trade-only permission required, withdraw permission never granted. No exchange key is probed from this page.</dd>\n'
     "    </dl>\n"
     '    <p id="trust-diagnostic" class="__DIAGNOSTIC_CLASS__" __DIAGNOSTIC_HIDDEN__>__DIAGNOSTIC__</p>\n'
@@ -491,15 +488,15 @@ _SECURITY_TEMPLATE = _wizard_html(
 
 
 _NEXT_TEMPLATE = _wizard_html(
-    "  <section id=\"wizard-next-section\">\n"
+    '  <section id="wizard-next-section">\n'
     "    <h2>Next steps</h2>\n"
     "    <p>When you are ready, enter the dashboard.</p>\n"
-    "    <form id=\"form-enter-dashboard\" action=\"enter-dashboard\" method=\"POST\" class=\"enter-form\">\n"
-    "      <input type=\"hidden\" name=\"csrf\">\n"
-    "      <button type=\"submit\">Enter dashboard</button>\n"
+    '    <form id="form-enter-dashboard" action="enter-dashboard" method="POST" class="enter-form">\n'
+    '      <input type="hidden" name="csrf">\n'
+    '      <button type="submit">Enter dashboard</button>\n'
     "    </form>\n"
     "    <h3>Coming in future slices</h3>\n"
-    "    <p class=\"muted\">The following steps belong to later slices and are NOT available in this release:</p>\n"
+    '    <p class="muted">The following steps belong to later slices and are NOT available in this release:</p>\n'
     '    <ul class="future-list" aria-label="Future slices">\n'
     "      <li><strong>Slice C &mdash; exchange connection.</strong> Adding or rotating an exchange API key from this UI is a future slice; today the CLI is the only path.</li>\n"
     "      <li><strong>Slice D &mdash; pack adoption.</strong> A guided pack picker / scheduler installer is a future slice; today you run <code>krellbot pack lint</code> and <code>krellbot arm</code> from the CLI.</li>\n"
@@ -513,7 +510,6 @@ _NEXT_TEMPLATE = _wizard_html(
     "  </section>\n",
     route="next",
 )
-
 
 
 def _embed_json(view: dict) -> str:
@@ -537,13 +533,7 @@ def _h(value: str) -> str:
     class path somehow contains ``<`` cannot inject markup into the
     visible page.
     """
-    return (
-        str(value)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
+    return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 # ---- stop_all action -----------------------------------------------------

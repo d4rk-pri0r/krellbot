@@ -8,7 +8,7 @@ never lands on disk and is not put in an env var.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from krellbot.ui.server import DashboardServer
 

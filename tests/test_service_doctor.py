@@ -191,6 +191,7 @@ def test_doctor_reads_can_withdraw(home, fresh_keyring):
 # Readiness fields (install_ready / trading_ready)
 # ---------------------------------------------------------------------------
 
+
 def test_doctor_missing_explicit_home_warns_and_is_not_install_ready(tmp_path, fresh_keyring, monkeypatch):
     """A nonexistent data home is a failing posture, not a crash or green check."""
     from krellbot import doctor
@@ -204,7 +205,6 @@ def test_doctor_missing_explicit_home_warns_and_is_not_install_ready(tmp_path, f
     assert report["install_ready"] is False
     assert report["trading_ready"] is False
     assert any("home directory" in warning for warning in report["warnings"])
-
 
 
 def _stub_real_keyring_backend(monkeypatch):
@@ -242,7 +242,7 @@ def test_doctor_fresh_home_is_install_ready_but_not_trading_ready(home, fresh_ke
     _stub_real_keyring_backend(monkeypatch)
     from krellbot import doctor
 
-    rc, body = doctor.run(
+    _rc, body = doctor.run(
         home=home,
         write_root=home,
         time_source=lambda: 1_000,
@@ -318,6 +318,7 @@ def test_doctor_fail_keyring_is_never_install_ready(home, fresh_keyring, monkeyp
             return None
 
     import keyring
+
     monkeypatch.setattr(keyring, "get_keyring", lambda: FailKeyring())
 
     _rc, body = doctor.run(

@@ -31,7 +31,6 @@ import http.client
 import re
 from pathlib import Path
 
-
 # ---- helpers --------------------------------------------------------------
 
 
@@ -132,8 +131,7 @@ def test_welcome_continue_does_not_flip_preference(tmp_path: Path) -> None:
         # visit-dashboard. The preference flip belongs only on Next's
         # "Enter Dashboard" action.
         assert 'action="visit-dashboard"' not in body, (
-            "welcome must not POST visit-dashboard on Continue; "
-            "the primary path is GET Welcome→Security→Next"
+            "welcome must not POST visit-dashboard on Continue; the primary path is GET Welcome→Security→Next"
         )
     finally:
         server.stop()
@@ -252,8 +250,7 @@ def test_wizard_body_carries_data_route_per_page(tmp_path: Path) -> None:
             status, _resp, body = _get(server, f"/{server.token}/{route}")
             assert status == 200, route
             assert f'data-route="{route}"' in body, (
-                f"{route}: missing data-route on body (app.js nav "
-                "highlighting is dead)"
+                f"{route}: missing data-route on body (app.js nav highlighting is dead)"
             )
             # The matching nav link must have aria-current=page.
             pattern = (
@@ -261,8 +258,7 @@ def test_wizard_body_carries_data_route_per_page(tmp_path: Path) -> None:
                 rf'|aria-current="page"[^>]*href="{re.escape(route)}"'
             )
             assert re.search(pattern, body), (
-                f"{route}: nav link is missing aria-current=page "
-                "(no-JS user does not see the active affordance)"
+                f"{route}: nav link is missing aria-current=page (no-JS user does not see the active affordance)"
             )
     finally:
         server.stop()
@@ -276,16 +272,14 @@ def test_dashboard_nav_does_not_mark_active_for_wizard(tmp_path: Path) -> None:
     try:
         status, _resp, body = _get(server, f"/{server.token}/welcome")
         assert status == 200
-        nav_match = re.search(r'<nav[^>]*wizard-nav.*?</nav>', body, flags=re.DOTALL)
+        nav_match = re.search(r"<nav[^>]*wizard-nav.*?</nav>", body, flags=re.DOTALL)
         assert nav_match, "wizard nav missing"
         nav = nav_match.group(0)
         assert 'href="welcome"' in nav
         assert 'aria-current="page"' in nav
         # No other nav link may claim aria-current on the welcome page.
         other = re.sub(r'<a [^>]*href="welcome"[^>]*>.*?</a>', "", nav, flags=re.DOTALL)
-        assert 'aria-current="page"' not in other, (
-            "only the Welcome link may be aria-current on /welcome"
-        )
+        assert 'aria-current="page"' not in other, "only the Welcome link may be aria-current on /welcome"
     finally:
         server.stop()
 
@@ -299,6 +293,7 @@ def test_security_view_aggregates_backend_and_mode(tmp_path: Path) -> None:
     (overly permissive). The brief is explicit: a 0o755 home must not
     coexist with an all-green banner."""
     import os
+
     from krellbot.ui import trust
 
     server = _start_server(tmp_path)
@@ -308,10 +303,7 @@ def test_security_view_aggregates_backend_and_mode(tmp_path: Path) -> None:
         assert status == 200
         lower = _visible(body).lower()
         # The posture must mention the over-permissive mode.
-        assert "0o755" in lower, (
-            "security view must report the actual home mode (0o755), not "
-            "hide it"
-        )
+        assert "0o755" in lower, "security view must report the actual home mode (0o755), not hide it"
         # The posture must not be all-green; it must say something is wrong.
         assert (
             "0o700" in lower
@@ -321,10 +313,7 @@ def test_security_view_aggregates_backend_and_mode(tmp_path: Path) -> None:
             or "not private" in lower
         ), "security view must flag the non-0o700 home as a posture issue"
         # The fail-closed diagnostic must name the CLI.
-        assert "krellbot doctor" in lower, (
-            "failing posture must name `krellbot doctor` as the next CLI "
-            "action"
-        )
+        assert "krellbot doctor" in lower, "failing posture must name `krellbot doctor` as the next CLI action"
         # And the snapshot must still report the backend honestly even
         # when the overall posture is failing.
         snap = trust.trust_snapshot(tmp_path)
@@ -348,12 +337,9 @@ def test_security_view_unknown_mode_is_not_green(tmp_path: Path) -> None:
             assert status == 200
             lower = _visible(body).lower()
             # The "Home mode" row must say something is unknown, not green.
-            assert (
-                "unknown" in lower
-                or "could not read" in lower
-                or "n/a" in lower
-                or "not readable" in lower
-            ), "unknown home mode must surface as unknown, not as a green check"
+            assert "unknown" in lower or "could not read" in lower or "n/a" in lower or "not readable" in lower, (
+                "unknown home mode must surface as unknown, not as a green check"
+            )
         finally:
             trust._home_mode_or_none = original  # type: ignore[assignment]
     finally:
@@ -365,6 +351,7 @@ def test_security_view_backend_detected_separate_from_overall(tmp_path: Path) ->
     overall posture row. A persistent backend does not imply the
     overall posture is green — the home mode is still checked."""
     import os
+
     from krellbot.ui import trust
 
     server = _start_server(tmp_path)
@@ -406,10 +393,7 @@ def test_security_view_key_permissions_is_a_requirement_not_validated(tmp_path: 
             or "must" in lower
             or "never probed" in lower
             or "not validated" in lower
-        ), (
-            "key-permissions line must be labelled a REQUIREMENT, not a "
-            "validated connection"
-        )
+        ), "key-permissions line must be labelled a REQUIREMENT, not a validated connection"
     finally:
         server.stop()
 
@@ -420,6 +404,7 @@ def test_trust_snapshot_carries_overall_posture(tmp_path: Path) -> None:
     honestly render 'backend detected' AND 'overall posture has X
     issue' as separate rows."""
     import os
+
     from krellbot.ui import trust
 
     os.chmod(tmp_path, 0o755)
@@ -431,9 +416,7 @@ def test_trust_snapshot_carries_overall_posture(tmp_path: Path) -> None:
     assert "keychain_ok" in keys
     # And an overall posture field must exist.
     posture_fields = {"posture_ok", "posture_warning", "home_mode_ok"}
-    assert keys & posture_fields, (
-        f"trust_snapshot must expose an overall-posture field; got {keys}"
-    )
+    assert keys & posture_fields, f"trust_snapshot must expose an overall-posture field; got {keys}"
 
 
 # ---- visual contrast & dead selectors ------------------------------------
@@ -468,28 +451,28 @@ def test_input_border_contrast_meets_3_to_1(tmp_path: Path) -> None:
         border_hex = token_m.group(1).lstrip("#")
     else:
         bm_match = _re.search(r"border:\s*1px solid\s*(#[0-9a-fA-F]+)", body)
-        assert bm_match, (
-            f"input rule has no `border: 1px solid #xxxxxx` or "
-            f"`border: 1px solid var(--border)`: {body!r}"
-        )
+        assert bm_match, f"input rule has no `border: 1px solid #xxxxxx` or `border: 1px solid var(--border)`: {body!r}"
         border_hex = bm_match.group(1).lstrip("#")
     br, bg, bb = int(border_hex[0:2], 16), int(border_hex[2:4], 16), int(border_hex[4:6], 16)
+
     # Compute the contrast ratio against #0d1117 (canvas-elev) and #07090d (canvas).
     def luminance(r, g, b):
         def c(x):
             x = x / 255.0
             return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+
         return 0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b)
+
     def ratio(c1, c2):
         l1, l2 = luminance(*c1), luminance(*c2)
         if l1 < l2:
             l1, l2 = l2, l1
         return (l1 + 0.05) / (l2 + 0.05)
+
     for canvas in (((13, 17, 23), "#0d1117"), ((7, 9, 13), "#07090d")):
         r = ratio((br, bg, bb), canvas[0])
         assert r >= 3.0, (
-            f"input border (resolved {bm_match.group(1)}) contrast "
-            f"against {canvas[1]} is {r:.2f}:1, must be >= 3:1"
+            f"input border (resolved {bm_match.group(1)}) contrast against {canvas[1]} is {r:.2f}:1, must be >= 3:1"
         )
 
 
@@ -507,19 +490,13 @@ def test_focus_visible_uses_cyan_signal_token(tmp_path: Path) -> None:
     # token's value from :root.
     root_m = re.search(r":root\s*\{([^}]*)\}", css, flags=re.DOTALL)
     assert root_m, ":root block missing"
-    focus_ring_m = re.search(
-        r"--focus-ring:\s*(#[0-9a-fA-F]+)", root_m.group(1)
-    )
-    assert focus_ring_m, (
-        "--focus-ring token missing from :root — focus ring color is "
-        "undefined"
-    )
+    focus_ring_m = re.search(r"--focus-ring:\s*(#[0-9a-fA-F]+)", root_m.group(1))
+    assert focus_ring_m, "--focus-ring token missing from :root — focus ring color is undefined"
     color = focus_ring_m.group(1).lower()
     # Must be cyan (high blue + high green).
-    rr, gg, bb = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+    gg, bb = int(color[3:5], 16), int(color[5:7], 16)
     assert gg > 200 and bb > 200, (
-        f"--focus-ring {color} is not cyan — focus ring will not stand "
-        "out against the dark canvas"
+        f"--focus-ring {color} is not cyan — focus ring will not stand out against the dark canvas"
     )
 
 
@@ -530,8 +507,7 @@ def test_no_dead_stop_all_selector(tmp_path: Path) -> None:
     carry this dead rule."""
     css = (Path("src/krellbot/ui/static") / "style.css").read_text()
     assert 'button[type=submit][value="Stop all"]' not in css, (
-        "dead selector `button[type=submit][value=\"Stop all\"]` is "
-        "still in style.css — remove it"
+        'dead selector `button[type=submit][value="Stop all"]` is still in style.css — remove it'
     )
 
 
@@ -548,22 +524,25 @@ def test_dashboard_card_border_visible(tmp_path: Path) -> None:
     assert border_m, "--border token missing from :root"
     border_hex = border_m.group(1).lstrip("#")
     br, bg, bb = int(border_hex[0:2], 16), int(border_hex[2:4], 16), int(border_hex[4:6], 16)
+
     def luminance(r, g, b):
         def c(x):
             x = x / 255.0
             return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+
         return 0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b)
+
     def ratio(c1, c2):
         l1, l2 = luminance(*c1), luminance(*c2)
         if l1 < l2:
             l1, l2 = l2, l1
         return (l1 + 0.05) / (l2 + 0.05)
+
     # Card sits on canvas-elev or canvas depending on context.
     for canvas in (((13, 17, 23), "#0d1117"), ((7, 9, 13), "#07090d")):
         r = ratio((br, bg, bb), canvas[0])
         assert r >= 3.0, (
-            f"--border {border_m.group(1)} (used by .card) contrast "
-            f"against {canvas[1]} is {r:.2f}:1, must be >= 3:1"
+            f"--border {border_m.group(1)} (used by .card) contrast against {canvas[1]} is {r:.2f}:1, must be >= 3:1"
         )
 
 
@@ -590,8 +569,7 @@ def test_wizard_renders_visible_progress_stepper(tmp_path: Path) -> None:
             or re.search(r'<ul[^>]*class="[^"]*stepper', body) is not None
         )
         assert has_stepper, (
-            "wizard must expose a visible progress stepper element, not "
-            "just the text 'Progress: 1 of 3'"
+            "wizard must expose a visible progress stepper element, not just the text 'Progress: 1 of 3'"
         )
     finally:
         server.stop()
@@ -624,9 +602,6 @@ def test_dashboard_status_section_is_a_card(tmp_path: Path) -> None:
             or "elevated" in attrs
             or "card-primary" in attrs
             or "primary-card" in attrs
-        ), (
-            "dashboard status section must signal visual primacy so "
-            "users see it first"
-        )
+        ), "dashboard status section must signal visual primacy so users see it first"
     finally:
         server.stop()

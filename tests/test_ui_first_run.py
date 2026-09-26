@@ -104,14 +104,14 @@ def test_unreadable_preference_is_not_visited(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "raw",
     [
-        '{"visited_dashboard": 1}',                # truthy non-bool
-        '{"visited_dashboard": "true"}',          # truthy string
-        '{"visited_dashboard": "yes"}',           # truthy string
-        '{"visited_dashboard": 0.1}',              # truthy float
-        '{"visited_dashboard": [true]}',          # truthy list
-        '{"visited_dashboard": null}',             # missing/falsy
-        '{"visited_dashboard": false}',           # explicit false
-        '{}',                                      # missing key
+        '{"visited_dashboard": 1}',  # truthy non-bool
+        '{"visited_dashboard": "true"}',  # truthy string
+        '{"visited_dashboard": "yes"}',  # truthy string
+        '{"visited_dashboard": 0.1}',  # truthy float
+        '{"visited_dashboard": [true]}',  # truthy list
+        '{"visited_dashboard": null}',  # missing/falsy
+        '{"visited_dashboard": false}',  # explicit false
+        "{}",  # missing key
     ],
 )
 def test_has_visited_dashboard_strict_bool(tmp_path: Path, raw: str) -> None:
@@ -207,9 +207,7 @@ def test_ensure_home_is_0o700_under_zero_umask(tmp_path: Path, zero_umask) -> No
 
     assert missing.is_dir()
     home_mode = missing.stat().st_mode & 0o777
-    assert home_mode == 0o700, (
-        f"newly created home must be 0o700 under zero umask, got {oct(home_mode)}"
-    )
+    assert home_mode == 0o700, f"newly created home must be 0o700 under zero umask, got {oct(home_mode)}"
     pref_mode = (missing / "ui-preferences.json").stat().st_mode & 0o777
     assert pref_mode == 0o600
 
@@ -230,9 +228,7 @@ def test_ensure_home_is_0o700_under_other_nonstandard_umask(tmp_path: Path, cust
 
     assert missing.is_dir()
     home_mode = missing.stat().st_mode & 0o777
-    assert home_mode == 0o700, (
-        f"newly created home must be 0o700 under umask 0o077, got {oct(home_mode)}"
-    )
+    assert home_mode == 0o700, f"newly created home must be 0o700 under umask 0o077, got {oct(home_mode)}"
 
 
 # --- trust_snapshot ---------------------------------------------------------
@@ -308,9 +304,7 @@ def test_trust_snapshot_reports_unreadable_home_mode(tmp_path: Path, monkeypatch
     """If stat() raises OSError, home_mode must be None (not raise)."""
     from krellbot.ui import trust
 
-    real_stat = Path.stat
-
-    def fake_stat(self, *args, **kwargs):  # noqa: ANN001
+    def fake_stat(self, *args, **kwargs):
         raise OSError("permission denied")
 
     monkeypatch.setattr(Path, "stat", fake_stat)
@@ -613,7 +607,10 @@ def test_wizard_links_resolve_under_token_and_fetch(tmp_path: Path) -> None:
                 resolved = urljoin(page_url, href)
                 path = resolved.split("://", 1)[1].split("/", 1)[1]
                 assert path.startswith(f"{token}/"), (
-                    page, href, resolved, path,
+                    page,
+                    href,
+                    resolved,
+                    path,
                 )
                 # No token-less path (this is the B2 bug class).
                 assert not path.startswith("static/"), (page, href, path)
@@ -713,9 +710,7 @@ def test_foreign_host_gets_403_with_no_set_cookie(tmp_path: Path) -> None:
         try:
             sock.connect(("127.0.0.1", server.bound_port))
             request = (
-                f"GET /{server.token}/welcome HTTP/1.1\r\n"
-                "Host: evil.example.com\r\n"
-                "Connection: close\r\n\r\n"
+                f"GET /{server.token}/welcome HTTP/1.1\r\nHost: evil.example.com\r\nConnection: close\r\n\r\n"
             ).encode("ascii")
             sock.sendall(request)
             data = b""
@@ -752,9 +747,7 @@ def test_wizard_html_keeps_journal_injection_escaped(tmp_path: Path, monkeypatch
     journal_dir = Path(tmp_path) / "journal"
     journal_dir.mkdir(parents=True, exist_ok=True)
     payload = "</script><script>alert(1)</script>"
-    (journal_dir / "2099-01.jsonl").write_text(
-        json.dumps({"detail": payload}) + "\n", encoding="utf-8"
-    )
+    (journal_dir / "2099-01.jsonl").write_text(json.dumps({"detail": payload}) + "\n", encoding="utf-8")
 
     server = _start_server(tmp_path)
     try:
@@ -836,9 +829,7 @@ def test_security_view_renders_backend_and_home_server_side(tmp_path: Path, monk
                 "not just in window.__KB_VIEW__ (JS-only hydration is not "
                 "a no-JS fallback)"
             )
-            assert str(tmp_path) in visible, (
-                "security view must render resolved home in visible HTML"
-            )
+            assert str(tmp_path) in visible, "security view must render resolved home in visible HTML"
         finally:
             conn.close()
     finally:
@@ -885,8 +876,7 @@ def test_security_view_surfaces_fail_closed_diagnostic_on_null_backend(
             # next-action diagnostic — not a green checkmark.
             assert "null" in lower, "failing backend name must be visible"
             assert "doctor" in lower or "krellbot doctor" in lower, (
-                "failing backend must point the user at `krellbot doctor` "
-                "(or equivalent CLI diagnostic)"
+                "failing backend must point the user at `krellbot doctor` (or equivalent CLI diagnostic)"
             )
             honest = (
                 "not persistent" in lower
@@ -933,9 +923,7 @@ def test_welcome_view_serves_three_truthful_statements(tmp_path: Path) -> None:
             assert "open-source" in lower or "open source" in lower or "free" in lower, (
                 "welcome must declare the engine is free / open-source"
             )
-            assert "stay" in lower and "machine" in lower, (
-                "welcome must say keys stay on this machine"
-            )
+            assert "stay" in lower and "machine" in lower, "welcome must say keys stay on this machine"
             assert "pack" in lower and ("optional" in lower or "recommended" in lower), (
                 "welcome must label official packs as optional / recommended"
             )
@@ -977,12 +965,9 @@ def test_next_view_marks_exchange_and_pack_flows_as_future(tmp_path: Path) -> No
                 or "next slice" in lower
                 or "next slices" in lower
             ), "next must mark exchange / pack flows as future slices"
-            assert (
-                "krellbot ui" in lower
-                or "free path" in lower
-                or "cli" in lower
-                or "command line" in lower
-            ), "next must allow the CLI / free path"
+            assert "krellbot ui" in lower or "free path" in lower or "cli" in lower or "command line" in lower, (
+                "next must allow the CLI / free path"
+            )
         finally:
             conn.close()
     finally:

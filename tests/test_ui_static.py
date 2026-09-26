@@ -27,8 +27,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "krellbot" / "ui" / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
 STYLE_CSS = STATIC_DIR / "style.css"
@@ -97,8 +95,7 @@ def test_static_only_allowlisted_external_links():
 
 def test_css_prefers_reduced_motion():
     assert "prefers-reduced-motion" in _read(STYLE_CSS), (
-        "style.css must respect prefers-reduced-motion for the "
-        "no-looping-effects requirement"
+        "style.css must respect prefers-reduced-motion for the no-looping-effects requirement"
     )
 
 
@@ -125,13 +122,9 @@ def test_css_color_tokens_use_cyan_canvas():
     """
     text = _read(STYLE_CSS)
     # Canvas: near-black, lowercase hex.
-    assert "#07090d" in text.lower() or "07090d" in text, (
-        "style.css must use the approved near-black canvas token"
-    )
+    assert "#07090d" in text.lower() or "07090d" in text, "style.css must use the approved near-black canvas token"
     # Cyan: precise #5ce1ff.
-    assert "#5ce1ff" in text.lower() or "5ce1ff" in text, (
-        "style.css must use the approved precise cyan primary"
-    )
+    assert "#5ce1ff" in text.lower() or "5ce1ff" in text, "style.css must use the approved precise cyan primary"
 
 
 def test_css_does_not_invent_second_brand():
@@ -144,9 +137,7 @@ def test_css_does_not_invent_second_brand():
     # Common "second brand" mistakes: hot pink, brand orange, vivid purple.
     forbidden = ("#ff00ff", "#ff1493", "#ff4500", "#8a2be2")
     for hex_ in forbidden:
-        assert hex_ not in text, (
-            f"style.css must not introduce a second brand palette ({hex_})"
-        )
+        assert hex_ not in text, f"style.css must not introduce a second brand palette ({hex_})"
 
 
 # ---- dashboard's static shell: existing forms / fields preserved ---------
@@ -203,10 +194,7 @@ def test_every_form_has_csrf_hidden_field():
     forms = re.findall(r"<form\b[^>]*>(.*?)</form>", text, flags=re.DOTALL)
     assert forms, "no forms found in index.html"
     for form in forms:
-        assert (
-            'name="csrf"' in form
-            or "name='csrf'" in form
-        ), f"form missing csrf hidden field: {form[:120]!r}"
+        assert 'name="csrf"' in form or "name='csrf'" in form, f"form missing csrf hidden field: {form[:120]!r}"
 
 
 # ---- dashboard: live action absent, no fake ROI, status states ------------
@@ -241,9 +229,7 @@ def test_dashboard_does_not_claim_fake_roi():
         # Allow "no ROI claim" type safety rails.
         # We require that the phrase does not appear as a positive claim.
         # The simplest correct guard is to forbid the phrase entirely.
-        assert phrase not in text, (
-            f"dashboard must not advertise ROI / guaranteed returns ({phrase!r})"
-        )
+        assert phrase not in text, f"dashboard must not advertise ROI / guaranteed returns ({phrase!r})"
 
 
 # ---- no-JS fallback ------------------------------------------------------
@@ -266,8 +252,7 @@ def test_no_js_route_fallback_via_static_html():
     text = _read(INDEX_HTML)
     # Dashboard shell: resume-setup affordance back to welcome.
     assert re.search(r'<a[^>]+href="welcome"', text), (
-        "dashboard shell must offer a 'resume setup' link back to "
-        "the welcome route (sibling-relative)"
+        "dashboard shell must offer a 'resume setup' link back to the welcome route (sibling-relative)"
     )
 
     # Wizard shell: verify the nav exposes each wizard target. The
@@ -275,23 +260,15 @@ def test_no_js_route_fallback_via_static_html():
     # four sibling-relative links. The round-1 refactor moves the
     # attribute assembly into a helper, so we accept either a literal
     # `<a … href="X"` or the helper call that emits it.
-    server_py = (
-        Path(__file__).resolve().parents[1]
-        / "src"
-        / "krellbot"
-        / "ui"
-        / "server.py"
-    )
+    server_py = Path(__file__).resolve().parents[1] / "src" / "krellbot" / "ui" / "server.py"
     src = server_py.read_text(encoding="utf-8")
     for target in ("welcome", "security", "next", "dashboard"):
         pattern = (
             rf'<a[^>]+href="{re.escape(target)}"'
             rf'|href="{re.escape(target)}"'
-            rf'|_nav_link\(\s*"{re.escape(target)}"'
+            rf"|_nav_link\(\s*['\"]{re.escape(target)}['\"]"
         )
-        assert re.search(pattern, src), (
-            f"wizard shell in server.py must expose {target!r} as a plain <a> link"
-        )
+        assert re.search(pattern, src), f"wizard shell in server.py must expose {target!r} as a plain <a> link"
 
 
 def test_no_external_static_script_or_font():
@@ -302,9 +279,7 @@ def test_no_external_static_script_or_font():
     text = _read(INDEX_HTML)
     for match in re.finditer(r'<(?:script|link)[^>]+(?:src|href)\s*=\s*["\']([^"\']+)["\']', text):
         url = match.group(1)
-        assert not url.startswith(("http://", "https://", "//")), (
-            f"no external static asset allowed: {url}"
-        )
+        assert not url.startswith(("http://", "https://", "//")), f"no external static asset allowed: {url}"
         # Local hrefs must be relative (no leading slash + scheme).
         assert "://" not in url, f"unexpected absolute URL in static markup: {url}"
 
@@ -319,6 +294,4 @@ def test_all_static_files_use_dark_color_scheme():
     the stylesheet loads.
     """
     text = _read(STYLE_CSS)
-    assert "color-scheme: dark" in text or "color-scheme:dark" in text, (
-        "style.css must declare color-scheme: dark"
-    )
+    assert "color-scheme: dark" in text or "color-scheme:dark" in text, "style.css must declare color-scheme: dark"

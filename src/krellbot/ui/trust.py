@@ -71,22 +71,15 @@ def trust_snapshot(home: Path) -> dict[str, object]:
     if not backend_ok:
         # Trust snapshot must not invent a backend name; surface the
         # backend warning verbatim.
-        warnings.append(
-            backend_warn or "keychain backend unavailable"
-        )
+        warnings.append(backend_warn or "keychain backend unavailable")
     if home_mode is None:
         if _IS_WINDOWS:
-            warnings.append(
-                "home mode not checkable on Windows; review DACLs manually"
-            )
+            warnings.append("home mode not checkable on Windows; review DACLs manually")
         else:
-            warnings.append(
-                "home mode is unreadable; cannot confirm 0o700"
-            )
+            warnings.append("home mode is unreadable; cannot confirm 0o700")
     elif not home_mode_ok:
         warnings.append(
-            f"home mode is {home_mode}, expected {_HOME_MODE_PRIVATE} — "
-            "another local user may read this directory"
+            f"home mode is {home_mode}, expected {_HOME_MODE_PRIVATE} — another local user may read this directory"
         )
     posture_ok = not warnings
     posture_warning = None if posture_ok else "; ".join(warnings)
