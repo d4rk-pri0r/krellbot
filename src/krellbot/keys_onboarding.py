@@ -4,14 +4,24 @@
 key-add POST will use to (1) validate the inputs, (2) register redaction
 for the secrets immediately, (3) classify the keyring backend and refuse
 anything but a native OS keychain (unless tests opt in), (4) re-probe
-with the venue, (5) write the two-slot ``(key, secret)`` keyring pair
-only on an affirmative trade-only result, and (6) roll back on a partial
-write so the system is never left with a half-stored record.
+with the venue — only a genuine, validated ``KeyProbeResult`` from the
+canonical probe may authorize storage —, (5) write the two-slot
+``(key, secret)`` keyring pair only on an affirmative trade-only
+result, and (6) compensate on ANY partial write — including a
+first-slot write-then-raise — restoring the prior pair or deleting the
+partial new key, with the outcome PROVEN by a readback before it is
+reported.
 
-The function returns a ``KeyOnboardingResult`` whose payload is closed:
+The operation returns a ``KeyOnboardingResult`` whose payload is closed:
 a fixed enum status, a fixed safe message from a closed set, and the
 backend's display name. It NEVER carries the raw key, the raw secret,
-the raw venue error, or any internal exception text.
+the raw venue error, or any internal exception text. The safe
+``KeyProbeResult.reason`` produced by the venue probe is deliberately
+DISCARDED here (a conscious privacy tradeoff): the reason text is
+produced by venue/exception-derived strings on the CLI side, and echoing
+it into this result would let untrusted text reach the wizard UI. Fixed
+per-outcome safe messages are used instead — less specific, never
+reflective of untrusted text.
 
 CLI behaviour is preserved: ``krellbot keys check`` continues to read
 from the keyring and exit 0/1/2 as before; ``krellbot keys add`` keeps
@@ -301,8 +311,16 @@ def _run_probe(
 
     The CLI's ``_probe`` is the canonical authority for the trade-only
     claim. We route everything through it so wizard and CLI cannot drift.
+
+    Only a GENUINE, validated ``KeyProbeResult`` instance may authorize
+    storage (review I1). The outcome attribute is read only after an
+    ``isinstance`` gate: a duck-typed object with ``outcome ==
+    'trade_only'``, a dict, a forged ``validated`` object, or any other
+    shape is refused as malformed before its attributes are trusted. We
+    never accept a caller-supplied outcome/reason/validated value.
     """
     from krellbot.cli_keys import _probe as cli_probe
+    from krellbot.venues.base import KeyProbeResult
 
     if callable(probe):
         # Test/diagnostic shape. An injected probe callable is untrusted:
@@ -315,7 +333,11 @@ def _run_probe(
         # The canonical real path: the CLI's _probe is the single
         # authority for the trade-only claim.
         result = cli_probe(venue, key, secret, transport=probe)
-    outcome = getattr(result, "outcome", None)
+    if not isinstance(result, KeyProbeResult):
+        # Not the canonical typed result: no attribute of an untrusted
+        # object — not outcome, not reason, not 'validated' — is read.
+        return Status.REFUSED_MALFORMED, _MSG_FOR[Status.REFUSED_MALFORMED]
+    outcome = result.outcome
     if outcome == "trade_only":
         return Status.STORED, _MSG_FOR[Status.STORED]
     if outcome == "withdraw_capable":
@@ -438,10 +460,12 @@ def _write_pair(
 ) -> tuple[bool, str]:
     """Write the (key, secret) pair, then read back. Returns (ok, msg).
 
-    The two-slot write is NOT atomic. On any failure between slots we
-    compensate: return the keyring to the prior state (restore the prior
-    pair, or remove the partial new record). Every compensation claim is
-    PROVEN by a re-read before it is reported — 'prior pair restored'
+    The two-slot write is NOT atomic. On ANY failure between slots —
+    including a first-slot ``set_password`` that wrote the NEW key and
+    then raised (write-then-raise) — we compensate: return the keyring
+    to the prior state (restore the prior pair, or remove the partial
+    new record when there was no prior pair). Every compensation claim
+    is PROVEN by a re-read before it is reported — 'prior pair restored'
     means the keyring actually holds the prior pair again, and 'no prior
     pair was present' means both slots read back absent. A compensation
     that raises, silently does not persist, or cannot be re-read is
@@ -459,13 +483,18 @@ def _write_pair(
         # state must never be rotated away as 'no prior pair'.
         return False, "prior keyring state could not be read; nothing was written"
 
-    # Write slot 1 (key).
+    # Write slot 1 (key). A raising backend call proves nothing about
+    # what persisted — the backend may have durably written the NEW key
+    # before raising (write-then-raise). The failure is compensated and
+    # PROVEN by readback inside ``_compensate``: restore the prior pair
+    # (rotation) or delete the partial new key (first onboarding), so a
+    # half-pair or an orphaned new key cannot block a later retry. Only
+    # when the compensation itself cannot be proven does the result fall
+    # back to the safe 'rollback is uncertain' message.
     try:
         _set_slot(keyring_backend, venue, "key", key)
     except _KeyringFailureError:
-        # Slot 1 itself failed. We cannot know whether the backend wrote
-        # anything, so disclose uncertainty rather than claim a clean state.
-        return False, "keyring write failed and rollback is uncertain"
+        return False, _compensate(keyring_backend, venue, prior_k, prior_s, touched=("key",))
 
     # Write slot 2 (secret). Non-atomic: a failure here leaves the new
     # key slot (and possibly a half-overwritten secret slot) on disk
@@ -583,10 +612,11 @@ def probe_and_store(
             backend_label=_backend_label(keyring_backend),
         )
 
-    # 5. Two-slot keyring write. Non-atomic; on any failure we compensate
-    #    (restore prior pair or remove partial new records) and prove the
-    #    compensation by re-reading, disclosing uncertainty when the proof
-    #    cannot be established.
+    # 5. Two-slot keyring write. Non-atomic; on ANY failure — including a
+    #    first-slot write-then-raise — we compensate (restore prior pair
+    #    or remove partial new records) and prove the compensation by
+    #    re-reading, disclosing uncertainty when the proof cannot be
+    #    established.
     ok, store_msg = _write_pair(keyring_backend, venue, key, secret)
     if not ok:
         return KeyOnboardingResult(

@@ -168,7 +168,7 @@ def _coinbase_invalid_transport() -> FakeCoinbaseTransport:
 # ===========================================================================
 
 
-def test_unsupported_venue_returns_invalid_argument(isolated_home, fresh_keyring, capsys):
+def test_unsupported_venue_returns_invalid_argument(isolated_home, fresh_keyring):
     """An unknown venue name must be rejected before any probe runs."""
     _install_fake_keyring(fresh_keyring)
 
@@ -180,6 +180,7 @@ def test_unsupported_venue_returns_invalid_argument(isolated_home, fresh_keyring
         allow_injected_fake_backend=True,
     )
     assert result.status == keys_onboarding.Status.INVALID_ARGUMENT
+    assert result.message in keys_onboarding.SAFE_MESSAGES
     assert "gemini" not in result.message  # never echo the venue name back
     assert "FAKEKEY" not in result.message
     assert "FAKESECRET" not in result.message
@@ -1458,3 +1459,312 @@ def test_refusal_path_leaves_no_credential_bytes_in_home(isolated_home, fresh_ke
             data = path.read_bytes()
             assert b"NONCEKEY-f6b" not in data, path
             assert b"kQH5HW" not in data, path
+
+
+# ===========================================================================
+# 15. Review C1 — first-slot write-then-raise MUST be compensated
+# ===========================================================================
+
+
+class _KeySlotWriteThenRaise(FakeKeyring):
+    """C1 backend: the FIRST ``set_password(key)`` persists the NEW key,
+    then raises — once. Subsequent key-slot writes succeed.
+
+    A backend call can raise after durably writing — the raise alone
+    proves nothing about what persisted. This one-shot variant models a
+    transient failure that still accepts a compensation write, so the
+    write path can restore the prior pair (or delete the partial new
+    key) and PROVE it by reading back. The always-failing variant lives
+    in ``_KeySlotAlwaysFails`` below.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._failed_once = False
+
+    def set_password(self, service, username, password):
+        if username == "key" and not self._failed_once:
+            self._failed_once = True
+            super().set_password(service, username, password)
+            raise RuntimeError("simulated first-slot write-then-raise")
+        return super().set_password(service, username, password)
+
+
+class _KeySlotAlwaysFails(FakeKeyring):
+    """C1 backend: EVERY key-slot ``set_password`` persists then raises.
+
+    Compensation through a key-slot rewrite is impossible by
+    construction; the write path must return the safe 'rollback is
+    uncertain' message rather than guess."""
+
+    def set_password(self, service, username, password):
+        if username == "key":
+            super().set_password(service, username, password)
+            raise RuntimeError("simulated persistent first-slot failure")
+        return super().set_password(service, username, password)
+
+
+def test_slot1_write_then_raise_with_no_prior_pair_compensates_to_empty(isolated_home):
+    """C1: no prior pair + first-slot write-then-raise → the partial new
+    key must be deleted, the deletion PROVEN by readback, and the result
+    must say the exact safe message — never green."""
+    backend = _KeySlotWriteThenRaise()
+    _keyring.set_keyring(backend)
+
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "NEWKEY-c1a",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=backend,
+        probe=_kraken_trade_only_transport(),
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.STORE_FAILED
+    assert result.message == "keyring write failed; no prior pair was present"
+    assert result.message in keys_onboarding.SAFE_MESSAGES
+    # Compensation proven: both slots read back absent (no half-pair, no
+    # orphaned new key that would block a later retry).
+    assert backend.get_password("krellbot:kraken", "key") is None
+    assert backend.get_password("krellbot:kraken", "secret") is None
+
+
+def test_slot1_write_then_raise_with_prior_pair_restores_prior(isolated_home):
+    """C1: prior pair + first-slot write-then-raise → the prior pair must
+    be restored and PROVEN by readback, not left as a half-rotated mix."""
+    backend = _KeySlotWriteThenRaise()
+    backend._store[("krellbot:kraken", "key")] = "OLDKEY-c1b"
+    backend._store[("krellbot:kraken", "secret")] = "OLDSECRET-c1b"
+    _keyring.set_keyring(backend)
+
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "NEWKEY-c1b",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=backend,
+        probe=_kraken_trade_only_transport(),
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.STORE_FAILED
+    assert result.message == "keyring write failed; prior pair restored"
+    assert backend.get_password("krellbot:kraken", "key") == "OLDKEY-c1b"
+    assert backend.get_password("krellbot:kraken", "secret") == "OLDSECRET-c1b"
+
+
+def test_slot1_write_then_raise_with_silent_restore_reports_uncertain(isolated_home):
+    """C1: compensation that silently does not persist is detected by the
+    readback proof and reported as 'rollback is uncertain' — never
+    'restored' / 'no prior pair was present'."""
+
+    class _LyingKeyRestore(_KeySlotWriteThenRaise):
+        def __init__(self):
+            super().__init__()
+            self._lie = False
+
+        def set_password(self, service, username, password):
+            if username == "key":
+                super().set_password(service, username, password)  # persists
+                self._lie = True
+                raise RuntimeError("simulated first-slot write-then-raise")
+            return super().set_password(service, username, password)
+
+        def get_password(self, service, username):
+            if self._lie and username == "key":
+                return "STALE-NOT-RESTORED"
+            return super().get_password(service, username)
+
+    backend = _LyingKeyRestore()
+    backend._store[("krellbot:kraken", "key")] = "OLDKEY-c1c"
+    backend._store[("krellbot:kraken", "secret")] = "OLDSECRET-c1c"
+    _keyring.set_keyring(backend)
+
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "NEWKEY-c1c",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=backend,
+        probe=_kraken_trade_only_transport(),
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.STORE_FAILED
+    assert result.message == "keyring write failed and rollback is uncertain"
+    assert "restored" not in result.message
+    assert "no prior pair" not in result.message
+
+
+def test_slot1_write_then_raise_then_clean_retry_succeeds(isolated_home):
+    """C1: 'permanently blocking subsequent onboarding' — after a
+    compensated first-slot failure, a later retry against a healthy
+    backend must succeed, proving the compensation left no half-pair."""
+    failing = _KeySlotWriteThenRaise()
+    _keyring.set_keyring(failing)
+
+    first = keys_onboarding.probe_and_store(
+        "kraken",
+        "RETRYKEY-c1d",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=failing,
+        probe=_kraken_trade_only_transport(),
+        allow_injected_fake_backend=True,
+    )
+    assert first.status == keys_onboarding.Status.STORE_FAILED
+    assert failing.get_password("krellbot:kraken", "key") is None
+
+    # The retry: fresh healthy backend, same venue, new probe run.
+    healthy = FakeKeyring()
+    _keyring.set_keyring(healthy)
+
+    second = keys_onboarding.probe_and_store(
+        "kraken",
+        "RETRYKEY-c1d",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=healthy,
+        probe=_kraken_trade_only_transport(),
+        allow_injected_fake_backend=True,
+    )
+    assert second.status == keys_onboarding.Status.STORED
+    assert healthy.get_password("krellbot:kraken", "key") == "RETRYKEY-c1d"
+    assert healthy.get_password("krellbot:kraken", "secret") == KRAKEN_TEST_SECRET_B64
+
+
+def test_slot1_persistent_failure_reports_uncertain_never_green(isolated_home):
+    """C1: when compensation itself is impossible (every key-slot write
+    persists then raises, so the prior pair cannot be rewritten), the
+    existing safe 'rollback is uncertain' message must be returned —
+    never green, never a fabricated 'restored'."""
+    backend = _KeySlotAlwaysFails()
+    backend._store[("krellbot:kraken", "key")] = "OLDKEY-c1e"
+    backend._store[("krellbot:kraken", "secret")] = "OLDSECRET-c1e"
+    _keyring.set_keyring(backend)
+
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "NEWKEY-c1e",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=backend,
+        probe=_kraken_trade_only_transport(),
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.STORE_FAILED
+    assert result.message == "keyring write failed and rollback is uncertain"
+    assert result.message in keys_onboarding.SAFE_MESSAGES
+    # Never green on a store failure.
+    assert result.status != keys_onboarding.Status.STORED
+
+
+# ===========================================================================
+# 16. Review I1 — only a genuine KeyProbeResult may authorize storage
+# ===========================================================================
+
+
+def test_duck_typed_trade_only_object_never_authorizes_storage(isolated_home, fresh_keyring):
+    """I1: a duck-typed object with ``outcome == 'trade_only'`` returned by
+    a probe callable is not a KeyProbeResult. It must be rejected as
+    malformed and must NEVER reach the keyring write path."""
+    from krellbot.venues.base import KeyProbeOutcome
+
+    class DuckProbe:
+        outcome = "trade_only"
+        reason = "totally legit"
+
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "FAKEKEY",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=fresh_keyring,
+        probe=lambda v, k, s: DuckProbe(),
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.REFUSED_MALFORMED
+    assert result.message in keys_onboarding.SAFE_MESSAGES
+    # Nothing was stored.
+    assert fresh_keyring.get_password("krellbot:kraken", "key") is None
+    assert fresh_keyring.get_password("krellbot:kraken", "secret") is None
+    # Mapping parity with a genuine result: same outcome, different verdict.
+    assert KeyProbeOutcome.TRADE_ONLY == "trade_only"
+
+
+def test_dict_probe_result_never_authorizes_storage(isolated_home, fresh_keyring):
+    """I1: a plain dict — even one carrying forged 'validated' /
+    'outcome' keys — must be refused as malformed."""
+    forged = {
+        "outcome": "trade_only",
+        "reason": "totally legit",
+        "validated": True,
+    }
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "FAKEKEY",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=fresh_keyring,
+        probe=lambda v, k, s: forged,
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.REFUSED_MALFORMED
+    assert fresh_keyring.get_password("krellbot:kraken", "key") is None
+    assert fresh_keyring.get_password("krellbot:kraken", "secret") is None
+
+
+def test_forged_validated_object_never_authorizes_storage(isolated_home, fresh_keyring):
+    """I1: a duck-typed object whose only signal is ``validated = True``
+    (no genuine outcome) must be refused as malformed."""
+
+    class _ForgedValidated:
+        validated = True
+
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "FAKEKEY",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=fresh_keyring,
+        probe=lambda v, k, s: _ForgedValidated(),
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.REFUSED_MALFORMED
+    assert fresh_keyring.get_password("krellbot:kraken", "key") is None
+
+
+def test_genuine_result_with_junk_outcome_is_refused(isolated_home, fresh_keyring):
+    """I1: a real KeyProbeResult with an out-of-taxonomy outcome string is
+    rejected by the constructor itself; either refusal is safe — never
+    STORED."""
+    with pytest.raises(ValueError):
+        KeyProbeResult(outcome="definitely_trade_only", reason="x")
+
+    class _JunkOutcomeResult:
+        """Malformed 'result' whose outcome is junk. Safe refusal
+        required — never a crash, never a store."""
+
+        outcome = "definitely_trade_only_and_validated"
+
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "FAKEKEY",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=fresh_keyring,
+        probe=lambda v, k, s: _JunkOutcomeResult(),
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.REFUSED_MALFORMED
+    assert fresh_keyring.get_password("krellbot:kraken", "key") is None
+
+
+def test_injected_probe_with_genuine_trade_only_result_stores(isolated_home, fresh_keyring):
+    """I1 guardrail: the isinstance gate must not break the legitimate
+    test/diagnostic path — a probe callable returning a GENUINE
+    KeyProbeResult(outcome=TRADE_ONLY) still stores."""
+    _install_fake_keyring(fresh_keyring)
+
+    result = keys_onboarding.probe_and_store(
+        "kraken",
+        "FAKEKEY",
+        KRAKEN_TEST_SECRET_B64,
+        keyring_backend=fresh_keyring,
+        probe=lambda v, k, s: KeyProbeResult(
+            outcome=KeyProbeOutcome.TRADE_ONLY,
+            reason="trade on, withdraw off",
+        ),
+        allow_injected_fake_backend=True,
+    )
+    assert result.status == keys_onboarding.Status.STORED
+    assert fresh_keyring.get_password("krellbot:kraken", "key") == "FAKEKEY"
+    assert fresh_keyring.get_password("krellbot:kraken", "secret") == KRAKEN_TEST_SECRET_B64
