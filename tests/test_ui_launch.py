@@ -222,10 +222,31 @@ def _wait_for_dashboard_line(proc: subprocess.Popen, timeout: float = 10.0) -> s
         time.sleep(0.05)
     if line_holder:
         return line_holder[0]
-    stderr = proc.stderr.read() if proc.stderr else ""
     if exited:
+        stderr = proc.stderr.read() if proc.stderr else ""
         pytest.fail(f"cmd_ui exited before printing the URL line: rc={exited[0]} stderr={stderr!r}")
+    # A live child keeps stderr open. Reading to EOF here would block forever
+    # and defeat the deadline; the caller tears down the child in finally.
     pytest.fail(f"timed out after {timeout}s waiting for the Dashboard URL line")
+
+
+def test_dashboard_readiness_timeout_does_not_block_on_live_stderr():
+    """A live child with no URL must fail at the deadline, not wait for EOF."""
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(2)"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    started = time.monotonic()
+    try:
+        with pytest.raises(pytest.fail.Exception, match="timed out"):
+            _wait_for_dashboard_line(proc, timeout=0.1)
+        assert time.monotonic() - started < 1.0
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.communicate(timeout=5)
 
 
 def test_cmd_ui_without_open_does_not_call_browser(tmp_path):
