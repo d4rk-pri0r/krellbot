@@ -13,6 +13,16 @@ from typing import Callable
 from krellbot.ui.server import DashboardServer
 
 
+def token_url(server: DashboardServer) -> str:
+    """Build the gated loopback URL for a started `server`.
+
+    Pure helper — no I/O, no side effects. Shared by the `--open`
+    launcher path and the plain-print path so the URL format lives in
+    exactly one place.
+    """
+    return f"http://127.0.0.1:{server.bound_port}/{server.token}/"
+
+
 def open_url(server: DashboardServer, opener: Callable[[str], bool]) -> str:
     """Build the gated URL for `server` and hand it to `opener`.
 
@@ -25,7 +35,7 @@ def open_url(server: DashboardServer, opener: Callable[[str], bool]) -> str:
     The token is part of the URL the opener receives, but no other side
     channel persists it.
     """
-    url = f"http://127.0.0.1:{server.bound_port}/{server.token}/"
+    url = token_url(server)
     try:
         opener(url)
     except (OSError, RuntimeError):

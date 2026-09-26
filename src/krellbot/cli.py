@@ -1489,9 +1489,8 @@ def cmd_ui(args):
     Host header and never opens a socket to a venue.
     """
     import signal
-    import webbrowser
 
-    from krellbot.ui.launch import open_url
+    from krellbot.ui.launch import open_url, token_url
     from krellbot.ui.server import DashboardServer
 
     port = 0
@@ -1517,9 +1516,12 @@ def cmd_ui(args):
     server = DashboardServer(home=kb_paths.home(), port=port)
     server.start()
 
-    url = open_url(server, webbrowser.open) if do_open else (
-        f"http://127.0.0.1:{server.bound_port}/{server.token}/"
-    )
+    if do_open:
+        import webbrowser  # only needed when the user asked to launch
+
+        url = open_url(server, webbrowser.open)
+    else:
+        url = token_url(server)
     print(f"Dashboard running at {url}")
     print("Open it in your browser. Ctrl-C to stop.")
     print("Bound to 127.0.0.1 only. Token in URL is also the session cookie.")

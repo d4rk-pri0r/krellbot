@@ -8,19 +8,36 @@ no on-disk copy, no env-var side channel.
 
 from __future__ import annotations
 
-import ast
 import os
 import signal
 import subprocess
 import sys
+import textwrap
+import threading
 import time
 from pathlib import Path
 
 import pytest
 
-from krellbot import cli as kb_cli
-from krellbot.ui.launch import open_url
+from krellbot.ui.launch import open_url, token_url
 from krellbot.ui.server import DashboardServer
+
+
+# ---- token_url ---------------------------------------------------------
+
+
+def test_token_url_matches_gated_format(tmp_path):
+    """`token_url` builds the same `http://127.0.0.1:{port}/{token}/`
+    string the launcher uses, with no side effects."""
+    server = DashboardServer(home=tmp_path, port=0)
+    server.start()
+    try:
+        assert token_url(server) == f"http://127.0.0.1:{server.bound_port}/{server.token}/"
+    finally:
+        server.stop()
+
+
+# ---- open_url ----------------------------------------------------------
 
 
 def test_open_url_uses_current_server_token(tmp_path):
@@ -31,7 +48,7 @@ def test_open_url_uses_current_server_token(tmp_path):
         seen: list[str] = []
         url = open_url(server, lambda value: seen.append(value) or True)
         assert seen == [url]
-        assert url == f"http://127.0.0.1:{server.bound_port}/{server.token}/"
+        assert url == token_url(server)
     finally:
         server.stop()
 
@@ -57,12 +74,12 @@ def test_open_url_swallows_opener_oserror(tmp_path):
             raise OSError("no display")
 
         url = open_url(server, boom)
-        assert url == f"http://127.0.0.1:{server.bound_port}/{server.token}/"
+        assert url == token_url(server)
     finally:
         server.stop()
 
 
-# ---- CLI flag tests -------------------------------------------------------
+# ---- CLI flag tests ------------------------------------------------------
 
 
 def _run_cli(home: Path, *args: str) -> subprocess.CompletedProcess:
@@ -89,97 +106,178 @@ def test_cmd_ui_rejects_unknown_host_flag(tmp_path):
     assert "Unknown argument: --host" in r.stderr
 
 
-def test_cmd_ui_without_open_does_not_call_browser(tmp_path):
-    """`krellbot ui` without `--open` must not invoke any browser opener.
-
-    Spawn the CLI as a subprocess, send SIGINT to let `cmd_ui` exit 0,
-    and assert the URL line is still printed. The behavioral check is
-    complemented by a structural AST check on `cli.py` that the only
-    call to `webbrowser.open` lives inside the `if do_open` branch of
-    `cmd_ui`, so the no-`--open` path is structurally incapable of
-    opening a browser.
+# ---- Behavioral BROWSER-marker test -------------------------------------
+#
+# Strategy: write a tiny Python "browser" script that records every URL it
+# is handed to a marker file, then point `BROWSER` at it and run the CLI
+# as a subprocess. Python's stdlib `webbrowser` module honours `BROWSER`
+# and instantiates a `GenericBrowser` whose command template includes
+# `%s` for the URL. If `cmd_ui` calls `webbrowser.open`, the marker
+# script runs and writes the URL to the marker file. If `cmd_ui` does
+# NOT call it, the marker file is never created. Readiness is
+# deterministic: the test waits on the `Dashboard running at ...`
+# stdout line (which is emitted after the server binds and the URL is
+# printed) before signalling the process — no sleep-only polling.
+_MARKER_SCRIPT = textwrap.dedent(
+    """\
+    import pathlib, sys
+    out = pathlib.Path(sys.argv[1])
+    out.write_text(sys.argv[2] if len(sys.argv) > 2 else "", encoding="utf-8")
     """
+)
+
+
+def _spawn_ui_with_browser_marker(
+    home: Path,
+    marker_path: Path,
+    marker_script: Path,
+    *args: str,
+) -> subprocess.Popen:
     env = {k: v for k, v in os.environ.items() if not k.startswith("KRELLBOT_")}
-    env["HOME"] = str(tmp_path)
-    env["USERPROFILE"] = str(tmp_path)
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
     env["KRELLBOT_API"] = "http://127.0.0.1:9"
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "krellbot.cli", "ui"],
+    # GenericBrowser substitutes %s with the URL when launching. Passing
+    # %1$s first lets the marker script receive the marker-path and
+    # URL as separate argv entries; the trailing %s is the URL
+    # substitution webbrowser performs.
+    env["BROWSER"] = (
+        f'"{sys.executable}" "{marker_script}" "{marker_path}" %s'
+    )
+    # Flush stdout line-by-line so the parent's reader sees the
+    # readiness signal as soon as cmd_ui prints it. Without this,
+    # Python's block-buffered stdout keeps the URL line sitting in
+    # the child's buffer until the process exits.
+    env["PYTHONUNBUFFERED"] = "1"
+    return subprocess.Popen(
+        [sys.executable, "-m", "krellbot.cli", *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         env=env,
     )
+
+
+def _wait_for_dashboard_line(proc: subprocess.Popen, timeout: float = 10.0) -> str:
+    """Block until `Dashboard running at ...` appears on the child's
+    stdout, then return the line. Raises on timeout. This is a
+    deterministic readiness signal (the URL line is printed only after
+    the server is bound and the URL has been built) — no sleep-only
+    polling on process startup."""
+    assert proc.stdout is not None
+    line_holder: list[str] = []
+    exited: list[int | None] = []
+
+    def _reader() -> None:
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            line = raw.rstrip("\n")
+            if line.startswith("Dashboard running at "):
+                line_holder.append(line)
+                return
+
+    reader = threading.Thread(target=_reader, daemon=True)
+    reader.start()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if line_holder:
+            return line_holder[0]
+        rc = proc.poll()
+        if rc is not None:
+            exited.append(rc)
+            break
+        time.sleep(0.05)
+    if line_holder:
+        return line_holder[0]
+    stderr = proc.stderr.read() if proc.stderr else ""
+    if exited:
+        pytest.fail(
+            f"cmd_ui exited before printing the URL line: "
+            f"rc={exited[0]} stderr={stderr!r}"
+        )
+    pytest.fail(f"timed out after {timeout}s waiting for the Dashboard URL line")
+
+
+def test_cmd_ui_without_open_does_not_call_browser(tmp_path):
+    """`krellbot ui` without `--open` must not invoke any browser opener.
+
+    Behavioral proof, not structural: a tiny marker "browser" is
+    pointed at via the `BROWSER` env var (Python's stdlib `webbrowser`
+    honours it and instantiates a `GenericBrowser` whose command
+    template substitutes `%s` with the URL). After the subprocess
+    exits, the marker file must NOT exist — i.e. the real stdlib
+    `webbrowser.open` was never reached.
+    """
+    marker = tmp_path / "browser_marker.txt"
+    script = tmp_path / "_marker_browser.py"
+    script.write_text(_MARKER_SCRIPT, encoding="utf-8")
+    proc = _spawn_ui_with_browser_marker(tmp_path, marker, script, "ui")
     try:
-        time.sleep(1.0)
+        line = _wait_for_dashboard_line(proc, timeout=10.0)
+        assert line.startswith("Dashboard running at http://127.0.0.1:")
         proc.send_signal(signal.SIGINT)
         try:
             stdout, stderr = proc.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, stderr = proc.communicate()
-            pytest.fail(f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}")
+            pytest.fail(
+                f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}"
+            )
     finally:
         if proc.poll() is None:
             proc.kill()
             proc.communicate()
-    assert proc.returncode == 0, f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
-    assert "Dashboard running at http://127.0.0.1:" in stdout
+    assert proc.returncode == 0, (
+        f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
+    )
+    assert not marker.exists(), (
+        "webbrowser.open was invoked even though --open was not passed; "
+        f"marker contents: {marker.read_text(encoding='utf-8')!r}"
+    )
 
-    # Structural check: every reference to `webbrowser.open` in cli.py
-    # must sit inside cmd_ui's `if do_open` branch. We catch both
-    # attribute accesses (the call is open_url(server, webbrowser.open))
-    # and Call nodes (defensive — would catch any direct invocation).
-    cli_src = Path(kb_cli.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(cli_src)
-    refs: list[ast.AST] = []
 
-    class _Visitor(ast.NodeVisitor):
-        def visit_Call(self, node: ast.Call) -> None:
-            func = node.func
-            if (
-                isinstance(func, ast.Attribute)
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "webbrowser"
-                and func.attr == "open"
-            ):
-                refs.append(node)
-            self.generic_visit(node)
-
-        def visit_Attribute(self, node: ast.Attribute) -> None:
-            if (
-                isinstance(node.value, ast.Name)
-                and node.value.id == "webbrowser"
-                and node.attr == "open"
-            ):
-                refs.append(node)
-            self.generic_visit(node)
-
-    _Visitor().visit(tree)
-    assert refs, "no webbrowser.open reference found in cli.py — the --open wiring is missing"
-
-    parent_map: dict[int, ast.AST] = {}
-    for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            parent_map[id(child)] = parent
-
-    def _under_do_open(node: ast.AST) -> bool:
-        # Walk the ancestor chain; allow `ast.If` (statement) or
-        # `ast.IfExp` (ternary `... if do_open else ...`) as gates.
-        current: ast.AST | None = node
-        while current is not None:
-            current = parent_map.get(id(current))  # type: ignore[assignment]
-            if current is None:
-                return False
-            if isinstance(current, (ast.If, ast.IfExp)):
-                test = current.test
-                if isinstance(test, ast.Name) and test.id == "do_open":
-                    return True
-        return False
-
-    for r in refs:
-        assert _under_do_open(r), (
-            "webbrowser.open is referenced outside the `if do_open:` gate in cmd_ui"
-        )
-
+def test_cmd_ui_with_open_invokes_browser(tmp_path):
+    """Positive control: `krellbot ui --open` MUST invoke the browser
+    opener (here, the marker script), writing the URL to the marker
+    file. Pairs with `test_cmd_ui_without_open_does_not_call_browser`
+    to prove the BROWSER-marker wiring actually observes what we
+    expect it to observe — without this, a silent failure of the
+    marker mechanism could make the negative test pass trivially."""
+    marker = tmp_path / "browser_marker.txt"
+    script = tmp_path / "_marker_browser.py"
+    script.write_text(_MARKER_SCRIPT, encoding="utf-8")
+    proc = _spawn_ui_with_browser_marker(tmp_path, marker, script, "ui", "--open")
+    try:
+        line = _wait_for_dashboard_line(proc, timeout=10.0)
+        assert line.startswith("Dashboard running at http://127.0.0.1:")
+        # The URL line is printed AFTER open_url returns. Inside open_url
+        # the GenericBrowser spawns our marker script as a child
+        # process; that child's write to disk races against our SIGINT
+        # of the parent. Bounded poll on the marker file, not a
+        # sleep-on-launch — we KNOW the child has been spawned.
+        deadline = time.monotonic() + 5.0
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        proc.send_signal(signal.SIGINT)
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            pytest.fail(
+                f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}"
+            )
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+    assert proc.returncode == 0, (
+        f"rc={proc.returncode} stdout={stdout!r} stderr={stderr!r}"
+    )
+    assert marker.exists(), (
+        "marker file not written — webbrowser.open did not run with --open"
+    )
+    recorded = marker.read_text(encoding="utf-8")
+    assert recorded.startswith("http://127.0.0.1:"), recorded
