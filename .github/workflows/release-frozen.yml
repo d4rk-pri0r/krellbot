@@ -2,6 +2,16 @@ name: release-frozen
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/release-frozen.yml"
+      - "scripts/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tests/test_release_archive.py"
+      - "tests/test_frozen_main.py"
+      - "tests/test_ci_smoke_ui.py"
   push:
     tags: ["v*"]
 
@@ -174,6 +184,7 @@ jobs:
             --log ui_smoke.log
 
       - name: "Verify immutable release base URL is configured"
+        if: github.event_name != 'pull_request'
         # The manifest URL is built from $KRELLBOT_RELEASE_BASE_URL +
         # version + archive_name. CI fails closed if the base URL is
         # missing or doesn't end with a slash; release automation must
@@ -196,6 +207,7 @@ jobs:
           echo "release_base=$KRELLBOT_RELEASE_BASE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Build immutable archive and manifest
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           KRELLBOT_VERSION: ${{ env.KRELLBOT_VERSION }}
@@ -225,6 +237,7 @@ jobs:
           " | tee "artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json"
 
       - name: Upload archive and manifest
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: krellbot-${{ matrix.platform_tag }}-${{ matrix.arch }}
