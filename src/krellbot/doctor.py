@@ -310,8 +310,13 @@ def run(
     warnings: list[str] = []
 
     home_mode_ok = _home_mode_ok(home)
+    home_is_dir = home.is_dir()
     if home_mode_ok is False:
         warnings.append("home directory is missing or mode is not 0o700")
+    elif not home_is_dir:
+        # Windows does not model DACLs (home_mode_ok is None), but a
+        # missing/non-directory home cannot be an install-ready data home.
+        warnings.append("home directory is missing or not a directory")
 
     backend_name, backend_warn = _keychain_backend()
     if backend_warn is not None:
@@ -351,7 +356,7 @@ def run(
     # tick AND at least one probed key with trade=True AND withdraw=False.
     # `_keys_status` only emits `trade`/`withdraw` after a real permission
     # probe ran, so a present key with no probe is fail-closed.
-    install_ready = home_mode_ok is not False and backend_warn is None and _ui_bind_available()
+    install_ready = home_is_dir and home_mode_ok is not False and backend_warn is None and _ui_bind_available()
     has_trade_only_key = any(
         info.get("present") and info.get("trade") is True and info.get("withdraw") is False for info in keys.values()
     )

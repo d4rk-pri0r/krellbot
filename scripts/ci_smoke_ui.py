@@ -45,6 +45,7 @@ _TOKEN_RE = re.compile(r"http://127\.0\.0\.1:(\d+)/([0-9a-f]{64})/")
 # Windows; on POSIX we simply don't pass it.
 try:
     import subprocess as _sp
+
     _CREATE_NEW_PROCESS_GROUP = _sp.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
 except AttributeError:  # pragma: no cover — POSIX
     _CREATE_NEW_PROCESS_GROUP = 0
@@ -242,6 +243,30 @@ def capture_url_from_subprocess(
     return url, cap.proc
 
 
+def _resolve_binary_argv(binary: str) -> str | list[str]:
+    """Return the first argv token(s) for launching ``binary``.
+
+    The production smoke runs a frozen ``.exe`` (or POSIX binary) so the
+    return value is the path itself. Tests fake the binary with a tiny
+    Python script (shebang + ``print`` + sleep). On Windows, ``CreateProcess``
+    cannot exec a shebang script directly — only a real PE image — so the
+    helper would fail with ``OSError: [WinError 193] %1 is not a valid
+    Win32 application`` when handed ``fake-krellbot.py``.
+
+    Detect that case by file extension: if ``binary`` ends in ``.py`` and
+    exists as a regular file, return ``[sys.executable, binary]`` so the
+    interpreter is launched directly. Otherwise return ``binary``
+    unchanged — production ``.exe``/POSIX binaries keep working.
+    """
+    if binary.lower().endswith(".py"):
+        try:
+            if Path(binary).is_file():
+                return [sys.executable, binary]
+        except OSError:
+            pass
+    return binary
+
+
 def _stop_capture(proc: subprocess.Popen) -> None:
     cap = getattr(proc, "_ci_smoke_capture", None)
     if cap is not None:
@@ -290,15 +315,19 @@ def main(argv: list[str] | None = None) -> int:
     if log_path.exists():
         log_path.unlink()
 
-    cmd = [args.binary, "ui", "--port", str(args.port)]
+    binary_argv = _resolve_binary_argv(args.binary)
+    cmd = [
+        *(binary_argv if isinstance(binary_argv, list) else [binary_argv]),
+        "ui",
+        "--port",
+        str(args.port),
+    ]
     # Portable pipe-based URL capture: replaces the previous pty (POSIX) /
     # winpty (Windows) split that depended on a third-party tool not
     # installed on GitHub Actions Windows runners. The CLI prints the URL
     # with ``flush=True`` (see ``cmd_ui``), so the bytes reach the pipe
     # immediately even on Windows.
-    url, proc = capture_url_from_subprocess(
-        cmd, env=env, log_path=log_path, deadline_s=10.0
-    )
+    url, proc = capture_url_from_subprocess(cmd, env=env, log_path=log_path, deadline_s=10.0)
     try:
         if not url:
             print(
@@ -323,8 +352,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if index_proc.returncode != 0 or index_proc.stdout != "200":
             print(
-                f"::error::index GET returned {index_proc.stdout!r} "
-                f"(curl rc={index_proc.returncode}); body:",
+                f"::error::index GET returned {index_proc.stdout!r} (curl rc={index_proc.returncode}); body:",
                 file=sys.stderr,
             )
             try:
@@ -352,8 +380,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if asset_proc.returncode != 0 or asset_proc.stdout != "200":
             print(
-                f"::error::static asset GET returned {asset_proc.stdout!r} "
-                f"(curl rc={asset_proc.returncode}); body:",
+                f"::error::static asset GET returned {asset_proc.stdout!r} (curl rc={asset_proc.returncode}); body:",
                 file=sys.stderr,
             )
             try:
@@ -391,9 +418,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     finally:
         # Stop the dashboard process cleanly.
+        # On Windows, ``Popen.send_signal(signal.SIGINT)`` raises
+        # ``ValueError: Unsupported signal: 2`` because Python's
+        # subprocess only accepts SIGTERM, CTRL_C_EVENT, and
+        # CTRL_BREAK_EVENT on Windows. CTRL_C_EVENT cannot be
+        # delivered to a process group, so we use CTRL_BREAK_EVENT
+        # (the child was launched with CREATE_NEW_PROCESS_GROUP, so
+        # this is scoped to the dashboard and does not take down the
+        # runner). On POSIX, SIGINT is the right cleanup signal.
+        if sys.platform == "win32":
+            stop_signal: int = signal.CTRL_BREAK_EVENT
+        else:
+            stop_signal = signal.SIGINT
         try:
-            proc.send_signal(signal.SIGINT)
-        except (ProcessLookupError, OSError):
+            proc.send_signal(stop_signal)
+        except (ProcessLookupError, OSError, ValueError):
             pass
         try:
             proc.wait(timeout=10)

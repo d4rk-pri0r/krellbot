@@ -292,6 +292,10 @@ def test_trust_snapshot_reports_missing_home_mode(tmp_path: Path) -> None:
     assert snap["home_mode"] is None
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="home_mode is None on Windows (DACLs not modeled); see trust._home_mode_or_none",
+)
 def test_trust_snapshot_reports_home_mode(tmp_path: Path) -> None:
     from krellbot.ui import trust
 

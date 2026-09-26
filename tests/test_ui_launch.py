@@ -147,14 +147,40 @@ def _spawn_ui_with_browser_marker(
     # Python's block-buffered stdout keeps the URL line sitting in
     # the child's buffer until the process exits.
     env["PYTHONUNBUFFERED"] = "1"
-    return subprocess.Popen(
-        [sys.executable, "-m", "krellbot.cli", *args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        env=env,
-    )
+    popen_kwargs: dict[str, object] = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+        "encoding": "utf-8",
+        "env": env,
+    }
+    # On Windows, ``Popen.send_signal(signal.SIGINT)`` raises
+    # ``ValueError: Unsupported signal: 2``. The portable cleanup
+    # signal is ``CTRL_BREAK_EVENT``, which only works when the
+    # child was launched with ``CREATE_NEW_PROCESS_GROUP``. POSIX
+    # doesn't need this flag (it has its own process group model).
+    if sys.platform == "win32":
+        import subprocess as _sp  # local import: CREATE_NEW_PROCESS_GROUP only on Windows
+
+        popen_kwargs["creationflags"] = _sp.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+    return subprocess.Popen([sys.executable, "-m", "krellbot.cli", *args], **popen_kwargs)  # type: ignore[arg-type]
+
+
+def _stop_dashboard_proc(proc: subprocess.Popen) -> None:
+    """Send the platform-appropriate cleanup signal to a dashboard child.
+
+    On POSIX, ``SIGINT`` is the natural stop signal (matches how a
+    user hits Ctrl-C in a terminal). On Windows, ``Popen.send_signal``
+    refuses ``SIGINT`` with ``ValueError: Unsupported signal: 2``;
+    only ``SIGTERM``, ``CTRL_C_EVENT``, and ``CTRL_BREAK_EVENT`` are
+    accepted. ``CTRL_BREAK_EVENT`` is the right choice for a child
+    launched with ``CREATE_NEW_PROCESS_GROUP`` (the dashboard child):
+    it terminates the group without taking down the test runner.
+    """
+    if sys.platform == "win32":
+        proc.send_signal(signal.CTRL_BREAK_EVENT)
+    else:
+        proc.send_signal(signal.SIGINT)
 
 
 def _wait_for_dashboard_line(proc: subprocess.Popen, timeout: float = 10.0) -> str:
@@ -211,13 +237,13 @@ def test_cmd_ui_without_open_does_not_call_browser(tmp_path):
     try:
         line = _wait_for_dashboard_line(proc, timeout=10.0)
         assert line.startswith("Dashboard running at http://127.0.0.1:")
-        proc.send_signal(signal.SIGINT)
+        _stop_dashboard_proc(proc)
         try:
             stdout, stderr = proc.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, stderr = proc.communicate()
-            pytest.fail(f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}")
+            pytest.fail(f"cmd_ui did not exit on stop signal; stdout={stdout!r} stderr={stderr!r}")
     finally:
         if proc.poll() is None:
             proc.kill()
@@ -245,19 +271,20 @@ def test_cmd_ui_with_open_invokes_browser(tmp_path):
         assert line.startswith("Dashboard running at http://127.0.0.1:")
         # The URL line is printed AFTER open_url returns. Inside open_url
         # the GenericBrowser spawns our marker script as a child
-        # process; that child's write to disk races against our SIGINT
-        # of the parent. Bounded poll on the marker file, not a
-        # sleep-on-launch — we KNOW the child has been spawned.
+        # process; that child's write to disk races against our
+        # stop signal of the parent. Bounded poll on the marker
+        # file, not a sleep-on-launch — we KNOW the child has been
+        # spawned.
         deadline = time.monotonic() + 5.0
         while not marker.exists() and time.monotonic() < deadline:
             time.sleep(0.05)
-        proc.send_signal(signal.SIGINT)
+        _stop_dashboard_proc(proc)
         try:
             stdout, stderr = proc.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, stderr = proc.communicate()
-            pytest.fail(f"cmd_ui did not exit on SIGINT; stdout={stdout!r} stderr={stderr!r}")
+            pytest.fail(f"cmd_ui did not exit on stop signal; stdout={stdout!r} stderr={stderr!r}")
     finally:
         if proc.poll() is None:
             proc.kill()

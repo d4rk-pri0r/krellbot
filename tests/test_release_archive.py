@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import sys
 import zipfile
 from pathlib import Path
 
@@ -360,14 +361,22 @@ def test_filename_field_equals_output_basename(tmp_path):
 # ---------- POSIX executable mode preservation ----------
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX external_attr is masked to 0o644 on Windows")
 def test_posix_executable_mode_preserved_in_zip(tmp_path):
-    """A 0o755 fake executable round-trips through the zip as 0o755.
+    """A 0o755 fake executable round-trips through the zip as 0o755 on POSIX.
 
     PyInstaller 6.x produces a launcher executable on POSIX with mode
     0o755. The archive must preserve that mode (top 16 bits of
     `external_attr` carry the unix mode). Without preservation, the
     extracted `krellbot` member is non-executable and the site installer
     has to chmod it after extraction.
+
+    On Windows there is no st_mode, so `release_archive._write_zip`
+    deliberately masks every member to 0o644 (the .exe marker is kept
+    by ZipInfo itself, not by external_attr). The site installer chmods
+    the extracted `krellbot.exe` after trusted extraction. POSIX
+    coverage is preserved here; Windows-mode masking is covered by
+    `test_windows_archive_masks_modes_to_0o644` below.
     """
     import stat
     import zipfile
@@ -420,6 +429,42 @@ def test_static_member_is_not_executable_in_zip(tmp_path):
     with zipfile.ZipFile(out) as zf:
         mode = (zf.getinfo("static/index.html").external_attr >> 16) & 0o7777
     assert mode == 0o644, f"static asset should not be executable; got {oct(mode)}"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific external_attr contract")
+def test_windows_archive_masks_modes_to_0o644(tmp_path):
+    """On Windows, ``release_archive._write_zip`` deliberately masks every
+    member's external_attr upper 16 bits to 0o644 (the platform has no
+    st_mode concept for archive members; the .exe marker is preserved
+    by ZipInfo itself, not by external_attr). The site installer is
+    responsible for chmod-ing the extracted ``krellbot.exe`` after a
+    trusted extraction.
+
+    This pins the actual Windows contract so a future change that
+    leaks the host st_mode into the archive would fail loudly on a
+    Windows runner. POSIX coverage stays in
+    ``test_posix_executable_mode_preserved_in_zip``.
+    """
+    import zipfile
+
+    dist = tmp_path / "dist"
+    _fake_dist_one_dir(dist)
+    (dist / _WINDOWS_EXE_NAME).write_bytes(b"x")
+
+    out = tmp_path / "out.zip"
+    build_archive(
+        dist,
+        out,
+        version="0.9.1",
+        platform_tag="windows",
+        arch="x86_64",
+        url="https://example.com/out.zip",
+    )
+
+    with zipfile.ZipFile(out) as zf:
+        for name in zf.namelist():
+            mode = (zf.getinfo(name).external_attr >> 16) & 0o7777
+            assert mode == 0o644, f"Windows archive member {name!r} must have external_attr mode 0o644, got {oct(mode)}"
 
 
 # ---------- url validation (fails closed) ----------

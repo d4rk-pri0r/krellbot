@@ -23,9 +23,12 @@ from __future__ import annotations
 import datetime
 import json
 import socket
+import sys
 import urllib.request
 from decimal import Decimal
 from pathlib import Path
+
+import pytest
 
 
 def _write_tick_journal(home: Path, ts: int) -> None:
@@ -192,8 +195,21 @@ def test_doctor_reads_can_withdraw(home, fresh_keyring):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows policy deliberately returns None for home_mode_ok (DACLs not modeled); see _home_mode_ok",
+)
 def test_doctor_missing_explicit_home_warns_and_is_not_install_ready(tmp_path, fresh_keyring, monkeypatch):
-    """A nonexistent data home is a failing posture, not a crash or green check."""
+    """A nonexistent data home is a failing posture, not a crash or green check.
+
+    On POSIX, ``_home_mode_ok`` returns False for a missing home (the
+    directory does not exist), which is what the rest of the doctor
+    treats as a failing posture. On Windows, ``_home_mode_ok`` always
+    returns None (DACLs are not modeled in this version), so the
+    missing-home path is covered by the parallel
+    ``test_doctor_missing_explicit_home_warns_and_is_not_install_ready_on_windows``
+    test below.
+    """
     from krellbot import doctor
 
     missing = tmp_path / "never-created"
@@ -202,6 +218,40 @@ def test_doctor_missing_explicit_home_warns_and_is_not_install_ready(tmp_path, f
     report = json.loads(body)
     assert not missing.exists()
     assert report["home_mode_ok"] is False
+    assert report["install_ready"] is False
+    assert report["trading_ready"] is False
+    assert any("home directory" in warning for warning in report["warnings"])
+
+
+def test_doctor_missing_home_with_unknown_mode_is_not_install_ready(tmp_path, fresh_keyring, monkeypatch):
+    """Windows mode is unknown, but a missing data home must not pass readiness."""
+    from krellbot import doctor
+
+    missing = tmp_path / "never-created"
+    monkeypatch.setattr(doctor, "_home_mode_ok", lambda _home: None)
+    monkeypatch.setattr(doctor, "_keychain_backend", lambda: ("OS Keychain (test stub)", None))
+    _rc, body = doctor.run(home=missing, write_root=tmp_path, as_json=True)
+    report = json.loads(body)
+    assert report["home_mode_ok"] is None
+    assert report["install_ready"] is False
+    assert report["trading_ready"] is False
+    assert any("home directory" in warning for warning in report["warnings"])
+    assert not missing.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific doctor contract")
+def test_doctor_missing_explicit_home_warns_and_is_not_install_ready_on_windows(tmp_path, fresh_keyring, monkeypatch):
+    """Windows mode remains unknown, but missing home still fails readiness."""
+    from krellbot import doctor
+
+    missing = tmp_path / "never-created"
+    monkeypatch.setattr(doctor, "_keychain_backend", lambda: ("OS Keychain (test stub)", None))
+    _rc, body = doctor.run(home=missing, write_root=tmp_path, as_json=True)
+    report = json.loads(body)
+    assert not missing.exists()
+    # Windows policy: home_mode_ok is None (not False, not True) because
+    # DACLs are deliberately not modeled.
+    assert report["home_mode_ok"] is None
     assert report["install_ready"] is False
     assert report["trading_ready"] is False
     assert any("home directory" in warning for warning in report["warnings"])

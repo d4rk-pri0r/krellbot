@@ -29,7 +29,10 @@ from __future__ import annotations
 
 import http.client
 import re
+import sys
 from pathlib import Path
+
+import pytest
 
 # ---- helpers --------------------------------------------------------------
 
@@ -287,11 +290,22 @@ def test_dashboard_nav_does_not_mark_active_for_wizard(tmp_path: Path) -> None:
 # ---- trust posture honesty -----------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="home_mode is None on Windows (DACLs not modeled); rendered text is 'unknown on this OS'",
+)
 def test_security_view_aggregates_backend_and_mode(tmp_path: Path) -> None:
     """The security view must distinguish backend detected vs overall
     posture, and must NOT show 'all green' when the home mode is 0o755
     (overly permissive). The brief is explicit: a 0o755 home must not
-    coexist with an all-green banner."""
+    coexist with an all-green banner.
+
+    POSIX only: ``_home_mode_or_none`` deliberately returns None on
+    Windows because DACLs are not modeled in this version, so the
+    renderer shows 'unknown on this OS' rather than a numeric mode.
+    The Windows posture contract is covered by
+    ``test_security_view_unknown_mode_is_not_green`` below.
+    """
     import os
 
     from krellbot.ui import trust

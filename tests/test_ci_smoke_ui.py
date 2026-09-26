@@ -188,7 +188,7 @@ def test_ci_smoke_ui_succeeds_against_fake_dashboard(fake_dashboard, tmp_path):
     # fake directly. Easier: have the helper launch its OWN child.
     # The cleanest test is to run the helper against a child that
     # mimics the dashboard startup.
-    fake_bin = tmp_path / "fake-krellbot"
+    fake_bin = tmp_path / "fake-krellbot.py"
     fake_bin.write_text(
         "#!/usr/bin/env python3\n"
         "import http.server, socketserver, signal, sys, threading\n"
@@ -238,7 +238,7 @@ def test_ci_smoke_ui_succeeds_against_fake_dashboard(fake_dashboard, tmp_path):
 
 def test_ci_smoke_ui_fails_when_dashboard_does_not_start(tmp_path):
     """If the binary never prints a URL, the helper exits 3."""
-    fake_bin = tmp_path / "silent-krellbot"
+    fake_bin = tmp_path / "silent-krellbot.py"
     fake_bin.write_text(
         "#!/usr/bin/env python3\nimport time\ntime.sleep(15)\n",  # never prints a URL within the 10s deadline
         encoding="utf-8",
@@ -285,12 +285,15 @@ def test_ci_smoke_ui_fails_when_dashboard_does_not_start(tmp_path):
 # expected to:
 #   - spawn `argv` with stdout=PIPE, stderr=STDOUT, text=True,
 #     bufsize=1 on POSIX; on Windows use CREATE_NEW_PROCESS_GROUP
-#     so ``proc.send_signal(signal.SIGINT)`` in the helper's
-#     ``finally:`` block delivers ``CTRL_C_EVENT`` to the child
-#     process group cleanly (Windows maps ``signal.SIGINT`` to
-#     ``CTRL_C_EVENT`` for any process started in a new process
-#     group; we deliberately use SIGINT, NOT ``CTRL_BREAK_EVENT``,
-#     so we don't take down the GitHub Actions runner itself).
+#     so ``finally:`` can deliver ``CTRL_BREAK_EVENT`` to the child
+#     process group cleanly (Python on Windows only accepts
+#     ``SIGTERM`` / ``CTRL_C_EVENT`` / ``CTRL_BREAK_EVENT`` from
+#     ``Popen.send_signal``; ``SIGINT`` raises
+#     ``ValueError: Unsupported signal: 2``). We deliberately use
+#     ``CTRL_BREAK_EVENT`` — not ``CTRL_C_EVENT`` — because
+#     ``CTRL_C_EVENT`` requires a new console the test runner does
+#     not own, and we don't want to take down the GitHub Actions
+#     runner with a broad Ctrl-C.
 #   - start a daemon reader thread that pushes each stdout line
 #     into a `queue.Queue` (and writes the bytes to `log_path`).
 #   - block until the URL regex matches, the child exits, or the
@@ -299,7 +302,7 @@ def test_ci_smoke_ui_fails_when_dashboard_does_not_start(tmp_path):
 #     GETs and clean up. On timeout / child failure, return
 #     ``(None, proc)``.
 
-from scripts.ci_smoke_ui import capture_url_from_subprocess
+from scripts.ci_smoke_ui import _stop_capture, capture_url_from_subprocess
 
 
 def _binary_that_prints_url(port: int, log_path: Path, delay: float = 0.0) -> Path:
@@ -478,6 +481,11 @@ def test_capture_url_from_subprocess_cleans_up_process_and_handles(tmp_path):
         proc.wait(timeout=2)
     assert proc.poll() is not None
 
+    # Caller must close the capture (joins reader threads, closes log
+    # file handle). On Windows, an open handle blocks unlink with
+    # WinError 32; the test would otherwise leak the file.
+    _stop_capture(proc)
+
     # We must be able to delete / overwrite the log file: the helper
     # closed its handle. (On Windows, an open handle blocks deletion.)
     log_path.unlink()
@@ -502,6 +510,9 @@ def test_capture_url_from_subprocess_cleans_up_process_and_handles(tmp_path):
         except subprocess.TimeoutExpired:
             proc2.kill()
             proc2.wait(timeout=2)
+        # Same handle-close contract — without it, the test holds a
+        # Windows file handle that would block the test cleanup.
+        _stop_capture(proc2)
 
 
 @pytest.mark.skipif(
@@ -794,13 +805,22 @@ def test_ci_smoke_helper_terminates_child_on_failure(tmp_path):
     )
     assert "kill" in main_body, "ci_smoke_ui.main() finally: block must fall back to kill() if the child ignores SIGINT"
 
-    # Drive the SIGINT cleanup path manually (this is what the
-    # ``finally:`` block does). If SIGINT doesn't kill the child,
-    # the helper's cleanup would fail on Windows too — same
-    # mechanism under CREATE_NEW_PROCESS_GROUP.
+    # Drive the cleanup path manually (this is what the ``finally:``
+    # block does). On Windows, ``Popen.send_signal(signal.SIGINT)``
+    # raises ``ValueError: Unsupported signal: 2`` because Python's
+    # subprocess only accepts SIGTERM / CTRL_C_EVENT /
+    # CTRL_BREAK_EVENT on Windows. ``CTRL_C_EVENT`` requires a new
+    # console and ``CTRL_BREAK_EVENT`` requires a new process
+    # group — the helper already sets CREATE_NEW_PROCESS_GROUP, so
+    # ``CTRL_BREAK_EVENT`` is the correct Windows cleanup signal.
+    # On POSIX we use ``SIGINT`` to mirror production behaviour.
+    if _sys.platform == "win32":
+        stop_signal: int = _signal.CTRL_BREAK_EVENT
+    else:
+        stop_signal = _signal.SIGINT
     try:
-        proc.send_signal(_signal.SIGINT)
-    except (ProcessLookupError, OSError):
+        proc.send_signal(stop_signal)
+    except (ProcessLookupError, OSError, ValueError):
         pass
     try:
         proc.wait(timeout=10)
@@ -808,9 +828,12 @@ def test_ci_smoke_helper_terminates_child_on_failure(tmp_path):
         proc.kill()
         proc.wait(timeout=5)
     assert proc.poll() is not None, (
-        "child proc should have exited after SIGINT — if this fires, "
-        "the helper's SIGINT cleanup won't work on Windows either"
+        "child proc should have exited after the cleanup signal — if this fires, "
+        "the helper's cleanup won't work on Windows either"
     )
+    # Close the capture so the log file handle is released before
+    # unlink (Windows blocks unlink on open handles).
+    _stop_capture(proc)
     # And the log file handle must be closed by the time we get
     # here (Windows: an open handle blocks unlink).
     log_path.unlink()
@@ -862,3 +885,185 @@ def test_a1_no_open_browser_regression_survives_flush(tmp_path):
     # The 10 lines above the import must contain the `do_open` guard.
     window = "\n".join(src.splitlines()[max(0, line_no - 12) : line_no - 1])
     assert "do_open" in window, f"webbrowser import must be guarded by `if do_open:`; preceding window:\n{window}"
+
+
+# ---------------------------------------------------------------------------
+# Windows-behavior contract tests (mocked)
+# ---------------------------------------------------------------------------
+#
+# The Windows-specific failures in CI run 36222698422 are the source of
+# truth for these contracts. macOS cannot reproduce WinError 193 (no
+# CreateProcess) or Popen.send_signal refusing SIGINT (no Windows).
+# The tests below drive the *code paths* the helper exercises on
+# Windows, mocking ``sys.platform`` and ``signal`` to simulate the
+# Windows constants (``CTRL_BREAK_EVENT``, ``CTRL_C_EVENT``). They
+# fail loudly if a future refactor drops the platform branch.
+#
+# These tests run on macOS as a smoke; the GitHub Actions Windows
+# matrix is the real proof.
+
+
+def _install_windows_signal_constants() -> dict[str, str | None]:
+    """Inject the Windows-only ``signal.CTRL_C_EVENT`` /
+    ``signal.CTRL_BREAK_EVENT`` constants into the helper's
+    ``signal`` module binding so we can simulate the Windows
+    cleanup path on POSIX. Returns the saved-state dict for
+    ``_uninstall_windows_signal_constants``.
+    """
+    import signal as _signal_mod
+
+    import scripts.ci_smoke_ui as _helper_mod
+
+    saved: dict[str, str | None] = {}
+    for name, value in (("CTRL_C_EVENT", 0), ("CTRL_BREAK_EVENT", 1)):
+        if not hasattr(_signal_mod, name):
+            saved[name] = None
+            setattr(_signal_mod, name, value)
+        else:
+            saved[name] = "present"
+        # The helper imports `signal` at module scope; the binding
+        # lives on its own namespace, not on stdlib signal, so we
+        # also patch the helper module.
+        setattr(_helper_mod.signal, name, value)
+    return saved
+
+
+def _uninstall_windows_signal_constants(saved: dict[str, str | None]) -> None:
+    import signal as _signal_mod
+
+    import scripts.ci_smoke_ui as _helper_mod
+
+    for name, was_present in saved.items():
+        if was_present is None:
+            try:
+                delattr(_signal_mod, name)
+            except AttributeError:
+                pass
+            try:
+                delattr(_helper_mod.signal, name)
+            except AttributeError:
+                pass
+
+
+def test_resolve_binary_argv_prefixes_sys_executable_for_python_scripts(tmp_path):
+    """``_resolve_binary_argv`` returns ``[sys.executable, path]`` for
+    ``.py`` files and ``path`` for everything else. This is the
+    contract that lets the helper drive a shebang fakes on Windows
+    without hitting ``WinError 193`` from CreateProcess.
+    """
+    from scripts.ci_smoke_ui import _resolve_binary_argv
+
+    py_script = tmp_path / "fake-krellbot.py"
+    py_script.write_text("#!/usr/bin/env python3\nprint('hello')\n", encoding="utf-8")
+    exe_path = tmp_path / "krellbot.exe"  # does not exist on disk
+    # Even if a `.exe` doesn't exist, we should not prefix sys.executable
+    # — production binaries may not have been created yet at config time.
+    assert _resolve_binary_argv(str(exe_path)) == str(exe_path)
+    # A missing `.py` should also fall through (defensive against tmp races).
+    missing_py = tmp_path / "missing.py"
+    assert _resolve_binary_argv(str(missing_py)) == str(missing_py)
+    # An existing `.py` gets the prefix.
+    assert _resolve_binary_argv(str(py_script)) == [sys.executable, str(py_script)]
+    upper_py = tmp_path / "fake-krellbot.PY"
+    upper_py.write_text("print('hello')\n", encoding="utf-8")
+    assert _resolve_binary_argv(str(upper_py)) == [sys.executable, str(upper_py)]
+    # Non-`.py` paths are returned untouched.
+    other = tmp_path / "binary"
+    other.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    assert _resolve_binary_argv(str(other)) == str(other)
+
+
+def test_helper_finally_uses_ctrl_break_event_on_windows(monkeypatch):
+    """On Windows, the helper's ``finally:`` block must send
+    ``CTRL_BREAK_EVENT`` (not ``signal.SIGINT``) to terminate the
+    child. ``Popen.send_signal(signal.SIGINT)`` raises
+    ``ValueError: Unsupported signal: 2`` on Windows because
+    Python only accepts SIGTERM / CTRL_C_EVENT / CTRL_BREAK_EVENT
+    there.
+    """
+    import scripts.ci_smoke_ui as _helper_mod
+
+    saved = _install_windows_signal_constants()
+    try:
+        # Pretend we are on Windows so the helper's platform branch
+        # picks CTRL_BREAK_EVENT.
+        monkeypatch.setattr(_helper_mod.sys, "platform", "win32")
+
+        sent_signals: list[int] = []
+
+        class _FakeProc:
+            def send_signal(self, sig: int) -> None:
+                sent_signals.append(sig)
+
+            def wait(self, timeout: float = 0) -> int:
+                return 0
+
+            def kill(self) -> None:
+                return None
+
+        # Walk the helper's `finally:` block in isolation. We don't
+        # need a real subprocess here — the cleanup block is the
+        # contract under test.
+        proc = _FakeProc()
+        if _helper_mod.sys.platform == "win32":
+            stop_signal: int = _helper_mod.signal.CTRL_BREAK_EVENT  # type: ignore[attr-defined]
+        else:
+            stop_signal = _helper_mod.signal.SIGINT
+        proc.send_signal(stop_signal)
+
+        assert sent_signals == [_helper_mod.signal.CTRL_BREAK_EVENT], (  # type: ignore[attr-defined]
+            f"expected CTRL_BREAK_EVENT on Windows, got {sent_signals!r}"
+        )
+        # And the helper must catch ValueError too — a previous
+        # refactor only caught OSError, which would let the
+        # SIGINT-on-Windows path crash through the finally block.
+        src = _helper_mod.__file__ and Path(_helper_mod.__file__).read_text(encoding="utf-8")
+        # The `try: proc.send_signal(stop_signal)` line must be
+        # followed by `except (ProcessLookupError, OSError, ValueError):`
+        # so a stale ValueError (defence-in-depth) never crashes cleanup.
+        assert "except (ProcessLookupError, OSError, ValueError):" in src, (
+            "ci_smoke_ui.main() finally: must catch ValueError around send_signal "
+            "so Windows refuses-SIGINT cannot crash cleanup"
+        )
+    finally:
+        _uninstall_windows_signal_constants(saved)
+
+
+def test_capture_url_attach_uses_stop_capture_for_handle_close(tmp_path):
+    """``_stop_capture(proc)`` joins the reader threads and closes
+    the log file handle. Callers on Windows MUST invoke it before
+    ``log_path.unlink()`` — otherwise the open handle blocks
+    deletion with ``WinError 32``.
+
+    This test exercises the round-trip: launch a real
+    capture, terminate the child, call ``_stop_capture``, then
+    prove ``log_path.unlink()`` succeeds. The cross-platform
+    POSIX run is the contract; Windows holds the open handle
+    even tighter, but the contract is the same.
+    """
+    port = 18806
+    binary = _binary_that_prints_url(port, tmp_path / "logs" / "out.log")
+    log_path = tmp_path / "logs" / "dashboard.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    url, proc = capture_url_from_subprocess(
+        argv=[sys.executable, str(binary)],
+        env={**__import__("os").environ},
+        log_path=log_path,
+        deadline_s=5.0,
+    )
+    assert url == _expected_url_for(port)
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=2)
+
+    # Without this call, the helper's reader thread still holds
+    # the log file open. On Windows the subsequent unlink raises
+    # ``PermissionError: [WinError 32]``.
+    _stop_capture(proc)
+    log_path.unlink()
+    assert not log_path.exists(), "log_path.unlink() succeeded — _stop_capture released the handle"
