@@ -19,13 +19,101 @@ Coinbase is not ready. Do not make a Coinbase key for this client yet.
 
 ## Install the free client
 
-On a Mac:
+The site installer downloads a per-user, one-directory frozen release,
+verifies its SHA-256 digest before staging anything, and writes the
+launcher next to your shell's `PATH`.
 
-```
+On macOS or Linux:
+
+```sh
 curl -fsSL https://krellbot.dev/api/install?os=mac | sh
+# or
+curl -fsSL https://krellbot.dev/api/install?os=linux | sh
 ```
 
-On Windows, Python is required. The install command is on the home page.
+On Windows (PowerShell):
+
+```powershell
+irm https://krellbot.dev/api/install?os=win | iex
+```
+
+The first install also opens the local dashboard in your default
+browser. Subsequent runs:
+
+```sh
+krellbot ui            # print the gated URL; do not open a browser
+krellbot ui --open     # print the URL and hand it to the default browser
+krellbot ui --port N   # bind a fixed loopback port instead of a random one
+```
+
+### What gets written
+
+| What | POSIX | Windows |
+| --- | --- | --- |
+| Launcher | `~/.local/bin/krellbot` | `%LOCALAPPDATA%\Krellbot\bin\krellbot.cmd` |
+| Frozen binary | `~/.local/share/krellbot/versions/<ver>/krellbot` | `%LOCALAPPDATA%\Krellbot\versions\<ver>\krellbot.exe` |
+| Data home (default `$KRELLBOT_HOME`) | `~/.krellbot/` | `%USERPROFILE%\.krellbot\` |
+
+The installer does not touch the data home. Your keys, paper state,
+journal, and receipts survive install, update, and uninstall.
+
+### Code-signing / notarization status
+
+The downloaded artifact is verified against an HTTPS-pinned SHA-256
+manifest **before** extraction. The artifact itself is **not**
+code-signed and **not** notarized in this release:
+
+- macOS Gatekeeper may show a first-run warning.
+- Windows SmartScreen may show a first-run warning.
+- Linux has no `gpg`/`minisign` publisher signature today.
+
+Code signing, notarization, and signed publisher releases are a future
+hardening step; the SHA-256 check is the integrity guarantee today.
+
+### PATH check
+
+If the launcher is not on your `PATH`:
+
+- POSIX: add `~/.local/bin` to your shell's `PATH`. The installer's
+  README prints the exact line for `bash`, `zsh`, and `fish`.
+- Windows: add `%LOCALAPPDATA%\Krellbot\bin` to your user PATH
+  (`Settings → System → About → Advanced system settings →
+  Environment Variables`).
+
+### Uninstall
+
+```sh
+# POSIX
+~/.local/bin/krellbot uninstall
+
+# Windows
+krellbot uninstall
+```
+
+Removes only the managed launcher and the staged version directory
+for the version you ran with. The data home is retained; pass
+`--purge-data` to remove it too.
+
+## Is the install ready?
+
+```sh
+krellbot doctor --json
+```
+
+`install_ready` is `True` when the runtime can serve the local UI:
+home permissions are `0o700`, the keychain backend is a real persistent
+one, and a loopback bind probe succeeds. It does not require keys, a
+tick, or the scheduler unit.
+
+`trading_ready` is the stricter gate: it also needs a fresh tick in
+the journal and at least one stored key whose permissions were probed
+with `trade=True` AND `withdraw=False`. Unknown permissions are
+fail-closed; a present key with no probe never satisfies
+`trading_ready`.
+
+A fresh install is `install_ready=True` and `trading_ready=False`
+until you add a key and the scheduler runs a tick. See
+[docs/service.md](service.md) for the full field list.
 
 ## What a pack is
 

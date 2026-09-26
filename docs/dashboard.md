@@ -12,9 +12,10 @@ same token becomes the `krellbot_session` cookie on the first GET. There
 is no DNS, no public bind, no remote call: the only thing the dashboard
 talks to is the disk under `$KRELLBOT_HOME`.
 
-```
-krellbot ui             # random port, prints URL
+```sh
+krellbot ui             # random port, prints URL, no browser launch
 krellbot ui --port 8080 # fixed port (still loopback)
+krellbot ui --open      # random port + open the URL in your default browser
 ```
 
 `Ctrl-C` stops the server and returns 0.
@@ -45,6 +46,14 @@ POSTs require:
 3. A `csrf` form field whose value matches the `krellbot_csrf` cookie.
 
 Any of those three failing is `403` and changes no state.
+
+## Where the dashboard talks
+
+The dashboard reads only from disk under `$KRELLBOT_HOME`. It does
+**not** call Kraken, Coinbase, or `krellbot.dev` at any point. The
+gate token is the URL the CLI prints and the matching
+`krellbot_session` cookie; it is never written to disk and never
+sent over the network.
 
 ## Views
 
@@ -112,3 +121,7 @@ thread with `port=0`, reads the bound port back, talks to it over
   the loopback origin.
 * Live arm from the page is forbidden by construction. The CLI's typed
   `LIVE` confirmation stays the only path to a live-armed pack.
+* `krellbot doctor --json` reports `install_ready` and `trading_ready`.
+  `trading_ready` only goes true when an exchange key was probed with
+  `trade=True` AND `withdraw=False`. The dashboard cannot bypass this
+  check; live arm POSTs are 403 before any state change.
