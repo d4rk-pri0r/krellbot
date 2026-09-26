@@ -21,15 +21,18 @@ its existing plaintext-file path. ``probe_and_store`` is the wizard path.
 from __future__ import annotations
 
 import dataclasses
+import sys
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 from krellbot import sanitize
 
-
 # Hard limits. Values above these are rejected before any network or
 # keyring work so a hostile wizard cannot make us shovel megabytes into
-# a keychain backend.
+# a keychain backend. They also bound what may be registered for
+# redaction (per argument), so gigantic strings never enter the
+# redaction set.
 MAX_KEY_LEN = 256
 MAX_SECRET_LEN = 4096
 
@@ -37,31 +40,58 @@ MAX_SECRET_LEN = 4096
 # Backend classification ---------------------------------------------------------
 
 
-# Whitelist of native OS keychain backends. Anything else (including the
-# ``FakeKeyring`` used in unit tests) is rejected by the production code
-# path. The whitelist is keyed on the backend class's fully-qualified
-# module path so a plugin cannot pass inspection by setting ``name`` to a
-# friendly string.
-_NATIVE_BACKEND_MODULE_PATHS: frozenset[str] = frozenset(
-    {
-        "keyring.backends.macos",
-        "keyring.backends.macOS",
-        "keyring.backends.secretstorage",
-        "keyring.backends.SecretService",
-        "keyring.backends.Windows",
-        "keyring.backends.kwallet",
-        "keyring.backends.kwallet5",
-    }
+# Whitelist of native OS keychain backend modules. Anything else (including
+# the ``FakeKeyring`` used in unit tests) is rejected by the production code
+# path. Acceptance is keyed on identity — the class must be an attribute of
+# the allowlisted module — so a forged class or an attacker-defined subclass
+# that merely sets ``__module__`` to an allowlisted path does not pass.
+_NATIVE_BACKEND_MODULES: tuple[str, ...] = (
+    "keyring.backends.macos",
+    "keyring.backends.macOS",
+    "keyring.backends.secretstorage",
+    "keyring.backends.SecretService",
+    "keyring.backends.Windows",
+    "keyring.backends.kwallet",
+    "keyring.backends.kwallet5",
 )
 
-# Module paths that identify the always-reject backends. These are not
-# native OS keychains even when they round-trip.
-_NON_PERSISTENT_MODULE_PATHS: frozenset[str] = frozenset(
-    {
-        "keyring.backends.null",
-        "keyring.backends.fail",
-    }
+# Fixed display labels for recognized native backends. Never derived from
+# backend attributes (the ``name`` attribute and class names are untrusted
+# and could carry attacker-controlled text into the wizard UI).
+_FIXED_BACKEND_LABELS: dict[str, str] = {
+    "keyring.backends.macos": "macOS Keychain",
+    "keyring.backends.macOS": "macOS Keychain",
+    "keyring.backends.secretstorage": "Secret Service (Linux)",
+    "keyring.backends.SecretService": "Secret Service (Linux)",
+    "keyring.backends.Windows": "Windows Credential Manager",
+    "keyring.backends.kwallet": "KDE Wallet",
+    "keyring.backends.kwallet5": "KDE Wallet",
+}
+
+# Module-path markers that identify always-reject backends regardless of
+# any other signal. Substring-checked (case-insensitive) so a class
+# relabelled into a marker module cannot dodge them; they apply even
+# when the test-injection flag is set, because the opt-in only ever
+# admits the in-tree fake from the tests package.
+_REJECT_MODULE_MARKERS: tuple[str, ...] = (
+    "null",
+    "fail",
+    "plaintext",
+    "chainer",
 )
+
+
+class _KeyringFailureError(Exception):
+    """Internal typed choke point: a keyring operation failed or its
+    outcome could not be proven. Converted to a fixed safe result at the
+    boundary; the original exception (which may embed untrusted text)
+    never leaves this module."""
+
+
+class _ProbeFailureError(Exception):
+    """Internal typed choke point: an injected probe callable raised.
+    Mapped to the safe REFUSED_UNREACHABLE result at the boundary; the
+    probe's exception text never leaves this module."""
 
 
 # Status + closed safe-message set ----------------------------------------------
@@ -111,6 +141,7 @@ SAFE_MESSAGES: frozenset[str] = frozenset(
         "keyring write failed and rollback is uncertain",
         "keyring write failed; prior pair restored",
         "keyring write failed; no prior pair was present",
+        "prior keyring state could not be read; nothing was written",
     }
 )
 
@@ -172,56 +203,87 @@ def _validate_inputs(venue: str, key: str, secret: str) -> Status | None:
     return None
 
 
+def _register_secret_guarded(*values: tuple[str, int]) -> None:
+    """Register values for redaction, refusing to record gigantic strings.
+
+    Each value carries its own store limit: an overlimit key (>256) or
+    secret (>4096) is rejected input that will never be stored or
+    echoed, so masking it is pointless — and a megabyte-sized value
+    would otherwise live in the redaction set for the process lifetime
+    and slow every redact() pass. Short values (<4 chars) are dropped by
+    ``sanitize.register_secret`` itself.
+    """
+    for value, limit in values:
+        if isinstance(value, str) and 4 <= len(value) <= limit:
+            sanitize.register_secret(value)
+
+
+def _native_module_for(cls: type) -> str | None:
+    """Return the allowlisted native module a class genuinely belongs to.
+
+    A class belongs to the module only if the module object actually
+    holds that exact class as an attribute (``getattr(module,
+    cls.__name__) is cls``). Merely carrying ``__module__ ==
+    "keyring.backends.macOS"`` is not acceptance — a forged class or an
+    attacker-defined subclass relabelled into the allowlisted namespace
+    is rejected.
+    """
+    module_path = getattr(cls, "__module__", None)
+    if not isinstance(module_path, str) or not module_path:
+        return None
+    if module_path not in _NATIVE_BACKEND_MODULES:
+        return None
+    module = sys.modules.get(module_path)
+    if module is None:
+        # Not imported: cannot prove membership; fail closed.
+        return None
+    return module_path if getattr(module, cls.__name__, None) is cls else None
+
+
 def _classify_backend(backend: Any, allow_injected_fake_backend: bool) -> bool:
     """Return True iff ``backend`` is acceptable for a real key write.
 
-    Native OS keychain backends always pass. The in-memory ``FakeKeyring``
-    used by unit tests passes only when ``allow_injected_fake_backend`` is
-    True (it is False by default so a wizard that accidentally uses the
-    test backend in production fails closed).
+    Native OS keychain classes (verified by identity against the
+    allowlisted module) always pass. The in-memory ``FakeKeyring`` used
+    by unit tests passes only when ``allow_injected_fake_backend`` is
+    True. Marked modules (null/fail/plaintext/chainer) are rejected even
+    when the flag is set: the opt-in only ever admits the in-tree fake
+    from the tests package.
     """
     if backend is None:
         return False
     cls = type(backend)
-    module_path = (cls.__module__ or "").lower()
-    cls_name = (cls.__name__ or "").lower()
-    if module_path in _NON_PERSISTENT_MODULE_PATHS:
-        return False
-    # Native OS keychain classes live under a small set of well-known
-    # module paths. We accept the module on a case-insensitive suffix
-    # match so ``macOS`` and ``macos`` are both recognised.
-    for native in _NATIVE_BACKEND_MODULE_PATHS:
-        if module_path == native.lower():
-            return True
-    # Plaintext / file-style backends are explicitly rejected.
-    if "plaintext" in module_path or ("file" in module_path and "keyrings.alt" in module_path):
-        return False
+    module_path = (getattr(cls, "__module__", "") or "").lower()
+    # Always-reject markers, substring-checked (case-insensitive).
+    for marker in _REJECT_MODULE_MARKERS:
+        if marker in module_path:
+            return False
+    if _native_module_for(cls) is not None:
+        return True
     # The injected fake used by unit tests must opt in explicitly. The
-    # check tolerates test subclasses whose ``__module__`` is the test
-    # module (pytest re-parents subclasses) by walking the MRO and
-    # looking for ``FakeKeyring`` from the tests package.
+    # check walks the MRO and looks for ``FakeKeyring`` genuinely defined
+    # in the tests fakes package (pytest re-parents subclasses into the
+    # test module, so the defining module is checked via MRO).
     if allow_injected_fake_backend:
         for klass in cls.__mro__:
             mod = (klass.__module__ or "").lower()
             if klass.__name__ == "FakeKeyring" and mod.endswith("fakes.fake_keyring"):
                 return True
-        # Plain ``FakeKeyring`` / classes whose name embeds ``fake``.
-        if "fake" in cls_name and "fake" in module_path:
-            return True
     return False
 
 
 def _backend_label(backend: Any) -> str | None:
-    """Return a fixed display name for the backend, or None if unknown.
+    """Return a fixed display label for the backend, or None.
 
-    The wizard UI renders this label; it is not a free-form attribute.
+    The label is ONLY ever a fixed string from ``_FIXED_BACKEND_LABELS``
+    (or None). It is never derived from the backend's ``name`` attribute,
+    class name, qualname, or repr — those are untrusted and could carry
+    attacker-controlled text into the wizard UI.
     """
-    cls = type(backend)
-    cls_name = cls.__name__
-    name_attr = getattr(backend, "name", None)
-    if isinstance(name_attr, str) and name_attr:
-        return name_attr
-    return cls_name
+    native = _native_module_for(type(backend))
+    if native is None:
+        return None
+    return _FIXED_BACKEND_LABELS.get(native)
 
 
 def _run_probe(
@@ -243,11 +305,15 @@ def _run_probe(
     from krellbot.cli_keys import _probe as cli_probe
 
     if callable(probe):
-        # Tests inject a probe callable that returns the result directly.
-        result = probe(venue, key, secret)
+        # Test/diagnostic shape. An injected probe callable is untrusted:
+        # it must not crash the operation nor leak its exception text.
+        try:
+            result = probe(venue, key, secret)
+        except Exception as exc:
+            raise _ProbeFailureError from exc
     else:
-        # The wizard passes a transport; the CLI's _probe composes the
-        # venue object from venue + key + secret + transport.
+        # The canonical real path: the CLI's _probe is the single
+        # authority for the trade-only claim.
         result = cli_probe(venue, key, secret, transport=probe)
     outcome = getattr(result, "outcome", None)
     if outcome == "trade_only":
@@ -270,32 +336,98 @@ def _service(venue: str) -> str:
 
 
 def _read_existing_pair(keyring_backend: Any, venue: str) -> tuple[str | None, str | None]:
-    """Return (existing_key, existing_secret) prior to a write attempt.
+    """Read the prior pair. Raises ``_KeyringFailureError`` when unreadable.
 
-    Used by the rollback path to know what to restore if the new write
-    fails partway.
+    A half-present prior pair (key without secret or vice versa) is
+    corrupt and also raises: an unknown or corrupt prior state must
+    block the write, never be treated as 'no prior pair', because
+    rotation would otherwise overwrite credentials we could not see.
     """
     try:
         k = keyring_backend.get_password(_service(venue), "key")
         s = keyring_backend.get_password(_service(venue), "secret")
+        if (k is None) != (s is None):
+            raise ValueError("prior pair is corrupt (half present)")
         return k, s
-    except Exception:
-        # A read failure before we even started must not leak as a key
-        # value. Treat it as "no prior pair".
-        return None, None
+    except _KeyringFailureError:
+        raise
+    except Exception as exc:
+        raise _KeyringFailureError from exc
 
 
-def _delete_pair(keyring_backend: Any, venue: str) -> bool:
-    """Delete both slots if present. Return True iff both deletions
-    completed without raising.
+def _read_slot(keyring_backend: Any, venue: str, username: str) -> str | None:
+    """Read one slot. Raises ``_KeyringFailureError`` when unreadable."""
+    try:
+        return keyring_backend.get_password(_service(venue), username)
+    except _KeyringFailureError:
+        raise
+    except Exception as exc:
+        raise _KeyringFailureError from exc
+
+
+def _set_slot(keyring_backend: Any, venue: str, username: str, value: str) -> None:
+    """Write one slot. Raises ``_KeyringFailureError`` on any failure."""
+    try:
+        keyring_backend.set_password(_service(venue), username, value)
+    except _KeyringFailureError:
+        raise
+    except Exception as exc:
+        raise _KeyringFailureError from exc
+
+
+def _delete_slot(keyring_backend: Any, venue: str, username: str) -> None:
+    """Delete one slot. Raises ``_KeyringFailureError`` on any failure."""
+    try:
+        keyring_backend.delete_password(_service(venue), username)
+    except _KeyringFailureError:
+        raise
+    except Exception as exc:
+        raise _KeyringFailureError from exc
+
+
+def _compensate(
+    keyring_backend: Any, venue: str, prior_k: str | None, prior_s: str | None, touched: tuple[str, ...]
+) -> str:
+    """Return the keyring to its prior state after a failed write.
+
+    ``touched`` names the slots our write path actually modified; only
+    those are rewritten directly. The FULL prior state (both slots) is
+    then proven by a re-read, because a backend call that raised may
+    still have partially persisted: if an untouched slot drifted, it is
+    repaired too and the proof is repeated.
+
+    Returns the safe message describing the provable outcome: prior
+    pair restored, no prior pair present, or rollback-is-uncertain when
+    the compensation failed, silently did not persist, or could not be
+    re-read. A silent non-persist is detected by the re-read and
+    reported as uncertain — never as a clean rollback.
     """
-    ok = True
-    for username in ("key", "secret"):
-        try:
-            keyring_backend.delete_password(_service(venue), username)
-        except Exception:
-            ok = False
-    return ok
+
+    def _restore(username: str, prior: str | None) -> None:
+        if prior is not None:
+            _set_slot(keyring_backend, venue, username, prior)
+        else:
+            _delete_slot(keyring_backend, venue, username)
+
+    try:
+        for username in touched:
+            _restore(username, prior_k if username == "key" else prior_s)
+        now_k = _read_slot(keyring_backend, venue, "key")
+        now_s = _read_slot(keyring_backend, venue, "secret")
+        if now_k != prior_k or now_s != prior_s:
+            # An untouched slot drifted (a raising call that partially
+            # wrote). Repair both slots and re-prove.
+            _restore("key", prior_k)
+            _restore("secret", prior_s)
+            now_k = _read_slot(keyring_backend, venue, "key")
+            now_s = _read_slot(keyring_backend, venue, "secret")
+    except _KeyringFailureError:
+        return "keyring write failed and rollback is uncertain"
+    if now_k != prior_k or now_s != prior_s:
+        return "keyring write failed and rollback is uncertain"
+    if prior_k is not None:
+        return "keyring write failed; prior pair restored"
+    return "keyring write failed; no prior pair was present"
 
 
 def _write_pair(
@@ -306,77 +438,58 @@ def _write_pair(
 ) -> tuple[bool, str]:
     """Write the (key, secret) pair, then read back. Returns (ok, msg).
 
-    On any failure between slots, attempts rollback:
-      * if a prior pair existed, restore it;
-      * otherwise remove any partial new record.
+    The two-slot write is NOT atomic. On any failure between slots we
+    compensate: return the keyring to the prior state (restore the prior
+    pair, or remove the partial new record). Every compensation claim is
+    PROVEN by a re-read before it is reported — 'prior pair restored'
+    means the keyring actually holds the prior pair again, and 'no prior
+    pair was present' means both slots read back absent. A compensation
+    that raises, silently does not persist, or cannot be re-read is
+    reported as 'rollback is uncertain'.
 
-    The ``msg`` is always from ``SAFE_MESSAGES``. We never echo the
-    raw exception text.
+    Compensation itself cannot be guaranteed (the backend may be failing
+    generally): in that case partial state may remain and the result
+    says so. The pre-existing reader (``secrets.get``) detects a
+    half-present pair and fails closed rather than trading on it.
     """
-    prior_k, prior_s = _read_existing_pair(keyring_backend, venue)
+    try:
+        prior_k, prior_s = _read_existing_pair(keyring_backend, venue)
+    except _KeyringFailureError:
+        # Fail closed BEFORE any write: an unreadable or corrupt prior
+        # state must never be rotated away as 'no prior pair'.
+        return False, "prior keyring state could not be read; nothing was written"
 
     # Write slot 1 (key).
     try:
-        keyring_backend.set_password(_service(venue), "key", key)
-    except Exception:
-        # Slot 1 itself failed; nothing to roll back. Disclose uncertainty
-        # because we cannot confirm the partial state.
+        _set_slot(keyring_backend, venue, "key", key)
+    except _KeyringFailureError:
+        # Slot 1 itself failed. We cannot know whether the backend wrote
+        # anything, so disclose uncertainty rather than claim a clean state.
         return False, "keyring write failed and rollback is uncertain"
 
-    # Write slot 2 (secret). If this fails we must roll back slot 1.
+    # Write slot 2 (secret). Non-atomic: a failure here leaves the new
+    # key slot (and possibly a half-overwritten secret slot) on disk
+    # until compensated below.
     try:
-        keyring_backend.set_password(_service(venue), "secret", secret)
-    except Exception:
-        # Try to undo slot 1.
-        try:
-            keyring_backend.delete_password(_service(venue), "key")
-        except Exception:
-            # Rollback itself failed: partial new state is on disk.
-            return False, "keyring write failed and rollback is uncertain"
-        # If there was a prior pair, restore it.
-        if prior_k is not None and prior_s is not None:
-            try:
-                keyring_backend.set_password(_service(venue), "key", prior_k)
-                keyring_backend.set_password(_service(venue), "secret", prior_s)
-                return False, "keyring write failed; prior pair restored"
-            except Exception:
-                return False, "keyring write failed and rollback is uncertain"
-        return False, "keyring write failed; no prior pair was present"
+        _set_slot(keyring_backend, venue, "secret", secret)
+    except _KeyringFailureError:
+        # Only slot 1 was modified by us; the proof inside _compensate
+        # covers a secret slot that drifted anyway (write-then-raise).
+        return False, _compensate(keyring_backend, venue, prior_k, prior_s, touched=("key",))
 
     # Read back both slots to confirm the backend actually persisted.
     try:
-        rb_k = keyring_backend.get_password(_service(venue), "key")
-        rb_s = keyring_backend.get_password(_service(venue), "secret")
-    except Exception:
-        # Read-back failed; we cannot trust the state. Attempt rollback.
-        if prior_k is not None and prior_s is not None:
-            try:
-                keyring_backend.set_password(_service(venue), "key", prior_k)
-                keyring_backend.set_password(_service(venue), "secret", prior_s)
-                return False, "keyring write failed; prior pair restored"
-            except Exception:
-                return False, "keyring write failed and rollback is uncertain"
-        else:
-            cleaned = _delete_pair(keyring_backend, venue)
-            if cleaned:
-                return False, "keyring write failed; no prior pair was present"
-            return False, "keyring write failed and rollback is uncertain"
-
+        rb_k = _read_slot(keyring_backend, venue, "key")
+        rb_s = _read_slot(keyring_backend, venue, "secret")
+    except _KeyringFailureError:
+        # Unreadable after a reported-success write: treat as not
+        # persisted and compensate; the compensation's own proof decides
+        # the reported outcome.
+        return False, _compensate(keyring_backend, venue, prior_k, prior_s, touched=("key", "secret"))
     if rb_k != key or rb_s != secret:
-        # Read-back mismatch: backend reported success but stored nothing.
-        # Restore prior or remove partial.
-        if prior_k is not None and prior_s is not None:
-            try:
-                keyring_backend.set_password(_service(venue), "key", prior_k)
-                keyring_backend.set_password(_service(venue), "secret", prior_s)
-                return False, "keyring write failed; prior pair restored"
-            except Exception:
-                return False, "keyring write failed and rollback is uncertain"
-        cleaned = _delete_pair(keyring_backend, venue)
-        if cleaned:
-            return False, "keyring write failed; no prior pair was present"
-        return False, "keyring write failed and rollback is uncertain"
-
+        # Read-back mismatch: the backend reported success but did not
+        # persist what we wrote. Compensate to the prior state.
+        return False, _compensate(keyring_backend, venue, prior_k, prior_s, touched=("key", "secret"))
     return True, _MSG_FOR[Status.STORED]
 
 
@@ -422,9 +535,19 @@ def probe_and_store(
         A frozen dataclass with ``status``, ``message``, and
         ``backend_label``. The message is always from ``SAFE_MESSAGES``.
     """
-    # 1. Input validation. We do this BEFORE registering redaction so we
-    # never pollute the redaction set with a value that was never going
-    # to be stored.
+    # 1. Register redaction as the FIRST handling of the credential
+    #    input — before validation. Well-formed values that end up
+    #    rejected (bad venue) were still handled and must be masked; the
+    #    per-argument length gate keeps overlimit/gigantic strings out of
+    #    the redaction set entirely. The venue name is not secret
+    #    material and is deliberately not registered (it is legitimately
+    #    echoed in CLI output).
+    _register_secret_guarded(
+        (key if isinstance(key, str) else "", MAX_KEY_LEN),
+        (secret if isinstance(secret, str) else "", MAX_SECRET_LEN),
+    )
+
+    # 2. Validate. Rejected inputs are never echoed back to the caller.
     refusal = _validate_inputs(venue, key, secret)
     if refusal is not None:
         return KeyOnboardingResult(
@@ -433,13 +556,8 @@ def probe_and_store(
             backend_label=None,
         )
 
-    # 2. Register redaction immediately. This is the first thing we do
-    # with the live values so any incidental echo is masked at the print
-    # boundary by ``sanitize.redact``.
-    sanitize.register_secret(key, secret)
-
     # 3. Backend classification. Must be a native OS keychain; null/fail/
-    # plaintext/unrecognized are rejected even when they round-trip.
+    #    plaintext/unrecognized are rejected even when they round-trip.
     if not _classify_backend(keyring_backend, allow_injected_fake_backend):
         return KeyOnboardingResult(
             status=Status.UNSUPPORTED_BACKEND,
@@ -448,8 +566,16 @@ def probe_and_store(
         )
 
     # 4. Re-probe. The probe is the only authority; we do NOT honour any
-    # client-supplied ``validated=True`` (no such parameter exists).
-    probe_status, probe_msg = _run_probe(venue, key, secret, probe)
+    #    client-supplied ``validated=True`` (no such parameter exists).
+    try:
+        probe_status, probe_msg = _run_probe(venue, key, secret, probe)
+    except _ProbeFailureError:
+        # An injected probe callable raised: safe refusal, no raw text.
+        return KeyOnboardingResult(
+            status=Status.REFUSED_UNREACHABLE,
+            message=_MSG_FOR[Status.REFUSED_UNREACHABLE],
+            backend_label=_backend_label(keyring_backend),
+        )
     if probe_status != Status.STORED:
         return KeyOnboardingResult(
             status=probe_status,
@@ -457,9 +583,10 @@ def probe_and_store(
             backend_label=_backend_label(keyring_backend),
         )
 
-    # 5. Two-slot keyring write. Non-atomic; on any failure we attempt
-    # rollback (restore prior pair or remove partial new records) and
-    # disclose uncertainty if rollback itself cannot be confirmed.
+    # 5. Two-slot keyring write. Non-atomic; on any failure we compensate
+    #    (restore prior pair or remove partial new records) and prove the
+    #    compensation by re-reading, disclosing uncertainty when the proof
+    #    cannot be established.
     ok, store_msg = _write_pair(keyring_backend, venue, key, secret)
     if not ok:
         return KeyOnboardingResult(
