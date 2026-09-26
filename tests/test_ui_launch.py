@@ -225,22 +225,27 @@ def _wait_for_dashboard_line(proc: subprocess.Popen, timeout: float = 10.0) -> s
     if exited:
         stderr = proc.stderr.read() if proc.stderr else ""
         pytest.fail(f"cmd_ui exited before printing the URL line: rc={exited[0]} stderr={stderr!r}")
-    # A live child keeps stderr open. Reading to EOF here would block forever
-    # and defeat the deadline; the caller tears down the child in finally.
-    pytest.fail(f"timed out after {timeout}s waiting for the Dashboard URL line")
+    # A live child keeps stderr open. Stop it before collecting diagnostics;
+    # reading to EOF first would block forever and defeat the deadline.
+    proc.kill()
+    try:
+        stdout, stderr = proc.communicate(timeout=2)
+    except subprocess.TimeoutExpired:
+        stdout, stderr = "", "child pipes stayed open after kill"
+    pytest.fail(f"timed out after {timeout}s waiting for the Dashboard URL line; stdout={stdout!r} stderr={stderr!r}")
 
 
 def test_dashboard_readiness_timeout_does_not_block_on_live_stderr():
     """A live child with no URL must fail at the deadline, not wait for EOF."""
     proc = subprocess.Popen(
-        [sys.executable, "-c", "import time; time.sleep(2)"],
+        [sys.executable, "-c", "import sys,time; print('BOOT_DIAG', file=sys.stderr, flush=True); time.sleep(2)"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
     started = time.monotonic()
     try:
-        with pytest.raises(pytest.fail.Exception, match="timed out"):
+        with pytest.raises(pytest.fail.Exception, match="timed out.*BOOT_DIAG"):
             _wait_for_dashboard_line(proc, timeout=0.1)
         assert time.monotonic() - started < 1.0
     finally:
