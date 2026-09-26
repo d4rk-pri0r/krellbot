@@ -45,7 +45,7 @@ def test_manifest_includes_digest_and_platform(tmp_path):
     dist = tmp_path / "dist"
     _fake_dist_one_dir(dist)
     out = tmp_path / "out.zip"
-    url = "https://example.com/releases/0.9.1/linux-x86_64.zip"
+    url = "https://example.com/out.zip"
 
     result = build_archive(
         dist,
@@ -76,14 +76,13 @@ def test_zip_is_deterministic_and_size_matches(tmp_path):
     _fake_dist_one_dir(dist_b, exe_bytes=b"deterministic bytes")
     out_b = tmp_path / "out_b.zip"
 
-    common = {
+    base = {
         "version": "0.9.1",
         "platform_tag": "macos",
         "arch": "arm64",
-        "url": "https://example.com/releases/0.9.1/macos-arm64.zip",
     }
-    res_a = build_archive(dist_a, out_a, **common)
-    res_b = build_archive(dist_b, out_b, **common)
+    res_a = build_archive(dist_a, out_a, url="https://example.com/out_a.zip", **base)
+    res_b = build_archive(dist_b, out_b, url="https://example.com/out_b.zip", **base)
 
     # Deterministic: identical inputs give identical SHA-256.
     assert res_a["sha256"] == res_b["sha256"]
@@ -103,7 +102,7 @@ def test_zip_contains_payload(tmp_path):
         version="0.9.1",
         platform_tag="linux",
         arch="x86_64",
-        url="https://example.com/x.zip",
+        url="https://example.com/out.zip",
     )
 
     with zipfile.ZipFile(out) as zf:
@@ -125,14 +124,14 @@ def test_returned_manifest_shape(tmp_path):
         version="0.9.1",
         platform_tag="windows",
         arch="x86_64",
-        url="https://example.com/releases/0.9.1/windows-x86_64.zip",
+        url="https://example.com/out.zip",
     )
     expected_keys = {"url", "filename", "size", "os", "arch", "version", "sha256"}
     assert expected_keys.issubset(result.keys())
     assert result["os"] == "windows"
     assert result["arch"] == "x86_64"
     assert result["version"] == "0.9.1"
-    assert isinstance(result["url"], str) and result["url"].endswith("windows-x86_64.zip")
+    assert isinstance(result["url"], str) and result["url"].endswith("out.zip")
     assert isinstance(result["size"], int) and result["size"] > 0
 
 
@@ -153,7 +152,7 @@ def test_missing_executable_is_refused(tmp_path):
             version="0.9.1",
             platform_tag="linux",
             arch="x86_64",
-            url="https://example.com/x.zip",
+            url="https://example.com/out.zip",
         )
     assert not out.exists(), "no archive should be written when the dist is invalid"
 
@@ -171,7 +170,7 @@ def test_missing_static_index_is_refused(tmp_path):
             version="0.9.1",
             platform_tag="linux",
             arch="x86_64",
-            url="https://example.com/x.zip",
+            url="https://example.com/out.zip",
         )
 
 
@@ -190,7 +189,7 @@ def test_unknown_os_is_refused(tmp_path):
             version="0.9.1",
             platform_tag="darwin",  # canonical is "macos", not "darwin"
             arch="x86_64",
-            url="https://example.com/x.zip",
+            url="https://example.com/out.zip",
         )
 
 
@@ -209,7 +208,7 @@ def test_canonical_os_tags_are_accepted(tmp_path):
             version="0.9.1",
             platform_tag=os_tag,
             arch="x86_64",
-            url=f"https://example.com/{os_tag}.zip",
+            url=f"https://example.com/out_{os_tag}.zip",
         )
         assert out.exists()
 
@@ -227,7 +226,7 @@ def test_unknown_arch_is_refused(tmp_path, arch):
             version="0.9.1",
             platform_tag="linux",
             arch=arch,
-            url="https://example.com/x.zip",
+            url="https://example.com/out.zip",
         )
 
 
@@ -247,7 +246,7 @@ def test_windows_requires_dotexe_executable(tmp_path):
             version="0.9.1",
             platform_tag="windows",
             arch="x86_64",
-            url="https://example.com/x.zip",
+            url="https://example.com/out.zip",
         )
 
 
@@ -265,7 +264,7 @@ def test_windows_accepts_dotexe_executable(tmp_path):
         version="0.9.1",
         platform_tag="windows",
         arch="x86_64",
-        url="https://example.com/x.zip",
+        url="https://example.com/out.zip",
     )
     assert result["os"] == "windows"
 
@@ -293,7 +292,7 @@ def test_escaping_symlink_is_refused(tmp_path):
             version="0.9.1",
             platform_tag="linux",
             arch="x86_64",
-            url="https://example.com/x.zip",
+            url="https://example.com/out.zip",
         )
 
 
@@ -315,7 +314,7 @@ def test_dangling_symlink_is_refused(tmp_path):
             version="0.9.1",
             platform_tag="linux",
             arch="x86_64",
-            url="https://example.com/x.zip",
+            url="https://example.com/out.zip",
         )
 
 
@@ -327,7 +326,7 @@ def test_url_is_taken_verbatim_from_parameter(tmp_path):
     dist = tmp_path / "dist"
     _fake_dist_one_dir(dist)
     out = tmp_path / "out.zip"
-    url = "https://cdn.example.com/krellbot/0.9.1/linux-x86_64.zip?dl=1"
+    url = "https://cdn.example.com/krellbot/0.9.1/out.zip?dl=1"
     result = build_archive(
         dist,
         out,
@@ -353,6 +352,166 @@ def test_filename_field_equals_output_basename(tmp_path):
         version="0.9.1",
         platform_tag="linux",
         arch="x86_64",
-        url="https://example.com/x.zip",
+        url="https://example.com/krellbot-0.9.1-linux-x86_64.zip",
     )
     assert result["filename"] == "krellbot-0.9.1-linux-x86_64.zip"
+
+
+# ---------- POSIX executable mode preservation ----------
+
+
+def test_posix_executable_mode_preserved_in_zip(tmp_path):
+    """A 0o755 fake executable round-trips through the zip as 0o755.
+
+    PyInstaller 6.x produces a launcher executable on POSIX with mode
+    0o755. The archive must preserve that mode (top 16 bits of
+    `external_attr` carry the unix mode). Without preservation, the
+    extracted `krellbot` member is non-executable and the site installer
+    has to chmod it after extraction.
+    """
+    import stat
+    import zipfile
+
+    dist = tmp_path / "dist"
+    _fake_dist_one_dir(dist)
+    exe = dist / _EXE_NAME
+    exe.chmod(0o755)
+    # Sanity: the fake dist's executable is actually 0o755 on disk.
+    assert stat.S_IMODE(exe.stat().st_mode) == 0o755
+
+    out = tmp_path / "out.zip"
+    build_archive(
+        dist,
+        out,
+        version="0.9.1",
+        platform_tag="linux",
+        arch="x86_64",
+        url="https://example.com/out.zip",
+    )
+
+    with zipfile.ZipFile(out) as zf:
+        info = zf.getinfo(_EXE_NAME)
+        # Top 16 bits of external_attr hold the unix mode.
+        mode = (info.external_attr >> 16) & 0o7777
+    assert mode == 0o755, f"expected 0o755, got {oct(mode)}; external_attr=0x{info.external_attr:x}"
+
+
+def test_static_member_is_not_executable_in_zip(tmp_path):
+    """A bundled static asset does NOT inherit 0o755 by accident."""
+    import zipfile
+
+    dist = tmp_path / "dist"
+    _fake_dist_one_dir(dist)
+    # Make the executable correct.
+    (dist / _EXE_NAME).chmod(0o755)
+    # Static file is world-readable but not executable.
+    (dist / "static" / "index.html").chmod(0o644)
+
+    out = tmp_path / "out.zip"
+    build_archive(
+        dist,
+        out,
+        version="0.9.1",
+        platform_tag="linux",
+        arch="x86_64",
+        url="https://example.com/out.zip",
+    )
+
+    with zipfile.ZipFile(out) as zf:
+        mode = (zf.getinfo("static/index.html").external_attr >> 16) & 0o7777
+    assert mode == 0o644, f"static asset should not be executable; got {oct(mode)}"
+
+
+# ---------- url validation (fails closed) ----------
+
+
+def test_empty_url_is_refused(tmp_path):
+    """An empty url is refused; no archive is written."""
+    dist = tmp_path / "dist"
+    _fake_dist_one_dir(dist)
+    out = tmp_path / "out.zip"
+    with pytest.raises(ValueError):
+        build_archive(
+            dist,
+            out,
+            version="0.9.1",
+            platform_tag="linux",
+            arch="x86_64",
+            url="",
+        )
+    assert not out.exists()
+
+
+def test_whitespace_url_is_refused(tmp_path):
+    """Whitespace-only url is refused; no archive is written."""
+    dist = tmp_path / "dist"
+    _fake_dist_one_dir(dist)
+    out = tmp_path / "out.zip"
+    with pytest.raises(ValueError):
+        build_archive(
+            dist,
+            out,
+            version="0.9.1",
+            platform_tag="linux",
+            arch="x86_64",
+            url="   ",
+        )
+    assert not out.exists()
+
+
+def test_invalid_url_scheme_is_refused(tmp_path):
+    """A url without http(s) scheme is refused; no archive is written."""
+    dist = tmp_path / "dist"
+    _fake_dist_one_dir(dist)
+    out = tmp_path / "out.zip"
+    with pytest.raises(ValueError):
+        build_archive(
+            dist,
+            out,
+            version="0.9.1",
+            platform_tag="linux",
+            arch="x86_64",
+            url="not-a-url/releases/0.9.1/linux-x86_64.zip",
+        )
+    assert not out.exists()
+
+
+def test_url_basename_must_equal_archive_filename(tmp_path):
+    """A url whose basename differs from the archive filename is refused.
+
+    The site installer downloads `manifest['url']` and expects the
+    resulting Content-Disposition / final filename to match the archive
+    filename the manifest was built for. Allowing basename drift opens
+    a class of cache-poisoning / wrong-version errors.
+    """
+    dist = tmp_path / "dist"
+    _fake_dist_one_dir(dist)
+    out = tmp_path / "krellbot-linux-x86_64.zip"
+    # The url's basename is wrong — should be `krellbot-linux-x86_64.zip`.
+    with pytest.raises(ValueError):
+        build_archive(
+            dist,
+            out,
+            version="0.9.1",
+            platform_tag="linux",
+            arch="x86_64",
+            url="https://example.com/releases/0.9.1/something-else.zip",
+        )
+    assert not out.exists()
+
+
+def test_url_basename_with_query_string_still_must_match(tmp_path):
+    """Even a url with a query string must end with the archive filename."""
+    dist = tmp_path / "dist"
+    _fake_dist_one_dir(dist)
+    out = tmp_path / "krellbot-linux-x86_64.zip"
+    # Trailing slash + correct basename + query string is OK.
+    result = build_archive(
+        dist,
+        out,
+        version="0.9.1",
+        platform_tag="linux",
+        arch="x86_64",
+        url="https://cdn.example.com/krellbot/0.9.1/krellbot-linux-x86_64.zip?dl=1",
+    )
+    assert result["filename"] == "krellbot-linux-x86_64.zip"

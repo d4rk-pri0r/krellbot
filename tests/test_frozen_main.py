@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 FROZEN_MAIN = Path(__file__).resolve().parent.parent / "scripts" / "frozen_main.py"
 
 
@@ -50,43 +52,66 @@ def test_frozen_main_invokes_entry_when_run_as_main(monkeypatch):
     monkeypatch.setitem(sys.modules, "krellbot.cli", fake_cli)
     monkeypatch.setitem(sys.modules, "krellbot", mock.MagicMock())
 
-    runpy.run_path(str(FROZEN_MAIN), run_name="__main__")
+    # frozen_main.py does `sys.exit(entry())` to propagate the CLI's
+    # exit code; catch the SystemExit so the test process doesn't
+    # actually exit. We then assert the entry was called and the
+    # SystemExit code matches entry()'s return value.
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_path(str(FROZEN_MAIN), run_name="__main__")
 
     recorder.assert_called_once_with()
+    assert exc_info.value.code == 0, (
+        f"entry() returned 0; expected SystemExit(0); got {exc_info.value.code!r}"
+    )
 
 
 def test_frozen_main_subprocess_runs_entry(tmp_path):
     """End-to-end: `python scripts/frozen_main.py` reaches and uses krellbot.cli.entry.
 
-    We replace krellbot.cli.entry with a sentinel and assert the
-    subprocess exit code is what entry() returned. This proves the
+    We replace krellbot.cli.entry with a sentinel whose return_value is
+    42 and assert the subprocess exit code is exactly 42. Proves the
     binary entry-point is wired correctly end-to-end without spinning
-    up the real CLI.
+    up the real CLI, AND that the return value of entry() actually
+    propagates through to sys.exit (so a non-zero entry failure is
+    visible to CI, not silently swallowed).
+
+    Mechanism: a `sitecustomize.py` shim module on `PYTHONPATH`
+    installs the mock `krellbot.cli.entry` before the script imports
+    it. The script's `sys.exit(entry())` then propagates 42 as the
+    subprocess exit code.
     """
+    import os
     import subprocess
 
-    sentinel_code = (
-        "import sys, runpy, unittest.mock as m\n"
-        "rec = m.MagicMock(return_value=42)\n"
-        "fake_cli = m.MagicMock()\n"
-        "fake_cli.entry = rec\n"
-        "sys.modules['krellbot.cli'] = fake_cli\n"
-        "sys.modules['krellbot'] = m.MagicMock()\n"
-        "sys.argv = ['scripts/frozen_main.py']\n"
-        "runpy.run_path('scripts/frozen_main.py', run_name='__main__')\n"
-        "assert rec.called, 'entry was not called'\n"
-        "sys.exit(0)\n"
+    sentinel_dir = tmp_path / "sentinel"
+    sentinel_dir.mkdir()
+    (sentinel_dir / "sitecustomize.py").write_text(
+        "import sys\n"
+        "from unittest.mock import MagicMock\n"
+        "_rec = MagicMock(return_value=42)\n"
+        "_fake_cli = MagicMock()\n"
+        "_fake_cli.entry = _rec\n"
+        "sys.modules.setdefault('krellbot', MagicMock())\n"
+        "sys.modules['krellbot.cli'] = _fake_cli\n",
+        encoding="utf-8",
     )
-    shim = tmp_path / "shim.py"
-    shim.write_text(sentinel_code, encoding="utf-8")
 
+    env = dict(os.environ)
+    # PYTHONPATH must include the sentinel dir *before* the project
+    # venv's site-packages so our sitecustomize runs first.
+    env["PYTHONPATH"] = str(sentinel_dir) + os.pathsep + env.get("PYTHONPATH", "")
     proc = subprocess.run(
-        [sys.executable, str(shim)],
+        [sys.executable, "scripts/frozen_main.py"],
         capture_output=True,
         text=True,
         check=False,
         cwd=str(FROZEN_MAIN.parent.parent),
+        env=env,
     )
-    assert proc.returncode == 0, (
-        f"expected exit 0; got {proc.returncode}; stderr={proc.stderr!r}"
+    assert proc.returncode == 42, (
+        f"entry() returned 42; expected exit 42; got {proc.returncode}; "
+        f"stderr={proc.stderr!r}"
     )
+    # The mock call count assertion (entry was actually called when
+    # run as __main__) is covered by
+    # test_frozen_main_invokes_entry_when_run_as_main above.

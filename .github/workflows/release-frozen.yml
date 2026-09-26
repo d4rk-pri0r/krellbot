@@ -28,6 +28,8 @@ jobs:
             platform_tag: windows
             archive_name: krellbot-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
+    env:
+      KRELLBOT_VERSION: "0.9.1"
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +41,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run unit tests
-        run: uv run pytest -q tests/test_release_archive.py tests/test_frozen_main.py
+        run: uv run pytest -q tests/test_release_archive.py tests/test_frozen_main.py tests/test_ci_smoke_ui.py
         env:
           PYTHONUTF8: "1"
 
@@ -51,14 +53,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BUNDLE="dist/krellbot"
-          if [ ! -d "$BUNDLE" ]; then
-            echo "::error::bundle directory missing: $BUNDLE"
-            exit 1
-          fi
-          STATIC="$BUNDLE/krellbot/ui/static/index.html"
-          if [ ! -f "$STATIC" ]; then
-            echo "::error::bundled static file missing: $STATIC"
+          # PyInstaller 6.x puts the Python runtime + data files under
+          # `_internal/` inside the bundle. The launcher executable is
+          # `dist/krellbot/krellbot` (POSIX) or `dist/krellbot/krellbot.exe`
+          # (Windows); the bundled static directory lives at
+          # `dist/krellbot/_internal/krellbot/ui/static/`. We accept both
+          # the PyInstaller 6.x layout and the legacy root layout.
+          CANDIDATES=(
+            "dist/krellbot/_internal/krellbot/ui/static/index.html"
+            "dist/krellbot/krellbot/ui/static/index.html"
+          )
+          STATIC=""
+          for cand in "${CANDIDATES[@]}"; do
+            if [ -f "$cand" ]; then
+              STATIC="$cand"
+              break
+            fi
+          done
+          if [ -z "$STATIC" ]; then
+            echo "::error::bundled static file missing under any known layout (tried: ${CANDIDATES[*]})"
             exit 1
           fi
           echo "static=$STATIC" >> "$GITHUB_OUTPUT"
@@ -100,29 +113,87 @@ jobs:
           # `list` exits 0 whether or not packs exist; we just confirm
           # the bundled binary can launch its CLI loop.
 
+      - name: "Smoke test bundled token-gated dashboard"
+        # Spin up the bundled binary's `ui` command on a known port,
+        # parse the printed `http://127.0.0.1:PORT/<token>/` URL,
+        # and hit the gated index + a bundled static asset. A 403
+        # from any path proves the bundle is serving from the
+        # bundled static directory, not the checkout. A 200 with
+        # bytes proves the bundled UI assets actually shipped.
+        # Windows runs this through bash too because the workflow
+        # uses Git Bash; `start` / detached process not needed.
+        # The frozen binary's stdout is block-buffered (PyInstaller
+        # bootloader doesn't propagate PYTHONUNBUFFERED), so the
+        # helper uses a pty (POSIX) or winpty (Windows) to capture
+        # the printed token URL.
+        shell: bash
+        env:
+          KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
+          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            BIN="dist/krellbot/krellbot.exe"
+          else
+            BIN="dist/krellbot/krellbot"
+          fi
+          PORT=18889
+          uv run python scripts/ci_smoke_ui.py \
+            --binary "$BIN" \
+            --port "$PORT" \
+            --home "${{ runner.temp }}/krellbot-home" \
+            --log ui_smoke.log
+
+      - name: "Verify immutable release base URL is configured"
+        # The manifest URL is built from $KRELLBOT_RELEASE_BASE_URL +
+        # version + archive_name. CI fails closed if the base URL is
+        # missing or doesn't end with a slash; release automation must
+        # pin the immutable release CDN (or equivalent) per matrix.
+        id: release_base
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${KRELLBOT_RELEASE_BASE_URL:-}" ]; then
+            echo "::error::KRELLBOT_RELEASE_BASE_URL is not set; refusing to emit manifest"
+            echo "hint: configure the immutable release base URL (e.g. https://releases.example.com/krellbot) in the workflow env or repo settings"
+            exit 1
+          fi
+          # Must be http(s) and end with a slash so we can append
+          # `<version>/<archive_name>` deterministically.
+          case "$KRELLBOT_RELEASE_BASE_URL" in
+            http://*/|https://*/) ;;
+            *) echo "::error::KRELLBOT_RELEASE_BASE_URL must be http(s) and end with a slash: $KRELLBOT_RELEASE_BASE_URL"; exit 1 ;;
+          esac
+          echo "release_base=$KRELLBOT_RELEASE_BASE_URL" >> "$GITHUB_OUTPUT"
+
       - name: Build immutable archive and manifest
         shell: bash
         env:
-          KRELLBOT_VERSION: "0.9.1"
+          KRELLBOT_VERSION: ${{ env.KRELLBOT_VERSION }}
+          KRELLBOT_RELEASE_BASE_URL: ${{ steps.release_base.outputs.release_base }}
         run: |
           set -euo pipefail
           mkdir -p artifacts
           ARCHIVE="artifacts/${{ matrix.archive_name }}"
-          URL="https://example.com/releases/${KRELLBOT_VERSION}/${{ matrix.archive_name }}"
+          # build_archive enforces that the URL's basename equals the
+          # archive filename, so this concatenation is safe — if
+          # ${{ matrix.archive_name }} ever drifts from the URL
+          # basename, the build aborts here.
+          URL="${KRELLBOT_RELEASE_BASE_URL}${KRELLBOT_VERSION}/${{ matrix.archive_name }}"
           uv run python -c "
           import json
           from pathlib import Path
           from scripts.release_archive import build_archive
           m = build_archive(
               Path('dist/krellbot'),
-              Path('$ARCHIVE'),
+              Path('${ARCHIVE}'),
               version='${KRELLBOT_VERSION}',
               platform_tag='${{ matrix.platform_tag }}',
               arch='${{ matrix.arch }}',
               url='${URL}',
           )
           print(json.dumps(m, indent=2, sort_keys=True))
-          " | tee artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json
+          " | tee "artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json"
 
       - name: Upload archive and manifest
         uses: actions/upload-artifact@v4

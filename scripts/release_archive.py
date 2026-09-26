@@ -27,6 +27,11 @@ Safety guarantees:
 * `os` / `arch` are validated against a fixed allowlist.
 * The `url` is taken verbatim from the caller's parameter; we never
   infer it from a branch tip, a CI ref, or environment state.
+* The `url` is required to be non-empty, http(s)://, and its
+  basename must equal the archive filename (the site installer
+  downloads `manifest['url']` and expects the resulting file to
+  match the manifest's `filename`; basename drift opens a class of
+  cache-poisoning / wrong-version errors).
 
 Determinism:
 
@@ -36,6 +41,18 @@ Determinism:
 * SHA-256 is computed over `output.read_bytes()` AFTER `zip.close()`,
   so the digest reflects the bytes actually written.
 * `size` is `output.stat().st_size` after the write.
+
+POSIX modes:
+
+* Each member's external_attr upper 16 bits are set to the source
+  file's st_mode so the archive round-trips 0o755 for executables
+  and 0o644 for static assets on POSIX.
+* Python's `zipfile.extract` and `unzip` on POSIX do NOT honor
+  external_attr by default — the site installer (Task A3) is
+  responsible for chmod-ing the extracted `krellbot` member to
+  0o755 after a trusted extraction. We record this as a
+  documented caveat in the README/installer rather than relying on
+  extraction-time mode restoration.
 """
 
 from __future__ import annotations
@@ -44,6 +61,7 @@ import hashlib
 import sys
 import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Canonical platform/arch tags. Anything outside these is a typo and
 # is refused — the site installer keys off these exact strings.
@@ -67,6 +85,10 @@ _ZIP_DETERMINISTIC_DATE = (1980, 1, 1, 0, 0, 0)
 
 # Buffer size for hashing the archive after writing.
 _HASH_CHUNK = 1 << 20  # 1 MiB
+
+# Accepted URL schemes for `manifest['url']`. Anything else is refused
+# — the site installer only fetches over http(s).
+_URL_SCHEMES = frozenset({"http", "https"})
 
 
 def _validate_dist(dist: Path, *, os_tag: str) -> None:
@@ -108,7 +130,7 @@ def _validate_dist(dist: Path, *, os_tag: str) -> None:
         dist / "_internal" / "krellbot" / "ui" / _STATIC_REL,
     ]
     if not any(p.is_file() for p in candidates):
-        searched = ", ".join(str(p.relative_to(dist)) for p in candidates if True)
+        searched = ", ".join(str(p.relative_to(dist)) for p in candidates)
         raise FileNotFoundError(
             f"required payload missing: {_STATIC_REL.as_posix()} "
             f"(looked under: {searched})"
@@ -156,6 +178,34 @@ def _validate_tags(*, os_tag: str, arch: str) -> None:
         )
 
 
+def _validate_url(url: str, *, filename: str) -> None:
+    """Refuse a manifest url that is empty, malformed, or basename-mismatched.
+
+    The site installer fetches `manifest['url']` over http(s); anything
+    else is a contract violation. The url's basename must equal the
+    archive filename so the installer can rely on `manifest['filename']`
+    to verify the download — basename drift lets a redirected or
+    misconfigured CDN serve the wrong artifact under the right URL.
+    """
+    if not url or not url.strip():
+        raise ValueError(
+            "manifest url is empty; release automation must pin a configured release base URL"
+        )
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in _URL_SCHEMES:
+        raise ValueError(
+            f"manifest url has invalid scheme {parsed.scheme!r}; expected one of {sorted(_URL_SCHEMES)}"
+        )
+    if not parsed.netloc:
+        raise ValueError(f"manifest url is missing a host: {url!r}")
+    url_basename = Path(parsed.path).name
+    if url_basename != filename:
+        raise ValueError(
+            f"manifest url basename {url_basename!r} does not match archive "
+            f"filename {filename!r}; refusing"
+        )
+
+
 def _iter_archive_members(dist: Path) -> list[tuple[Path, str]]:
     """Return sorted `(absolute_path, archive_member_name)` pairs.
 
@@ -174,15 +224,27 @@ def _iter_archive_members(dist: Path) -> list[tuple[Path, str]]:
 def _write_zip(dist: Path, output: Path) -> None:
     """Write a deterministic zip of the dist tree to `output`.
 
-    Uses ZIP_DEFLATED, a fixed timestamp, and sorted entries. Creates
-    `output.parent` if needed. Caller is responsible for hashing after.
+    Uses ZIP_DEFLATED, a fixed timestamp, and sorted entries. Each
+    member's external_attr upper 16 bits carry the source file's
+    POSIX st_mode so the archive round-trips executable bits (the
+    PyInstaller launcher is 0o755; static assets are 0o644). On
+    Windows there is no st_mode concept, so the source's high bits
+    are masked to a safe default of 0o644 — the site installer
+    chmods the extracted `krellbot` member to 0o755 after trusted
+    extraction anyway, since Python's `zipfile.extract` does not
+    honor external_attr on POSIX.
+
+    Creates `output.parent` if needed. Caller is responsible for
+    hashing after.
     """
     output.parent.mkdir(parents=True, exist_ok=True)
     # Ensure the destination is absent so we never append to a stale file.
     if output.exists():
         output.unlink()
 
-    # Manual entry writing (not writeall) so we control timestamps.
+    is_windows = sys.platform == "win32"
+
+    # Manual entry writing (not writeall) so we control timestamps and modes.
     with zipfile.ZipFile(
         output,
         mode="w",
@@ -193,7 +255,14 @@ def _write_zip(dist: Path, output: Path) -> None:
             data = src.read_bytes()
             info = zipfile.ZipInfo(filename=member_name, date_time=_ZIP_DETERMINISTIC_DATE)
             info.compress_type = zipfile.ZIP_DEFLATED
-            info.external_attr = (0o644 & 0xFFFF) << 16
+            if is_windows:
+                # No st_mode on Windows; default to 0o644 for archive
+                # members. The .exe marker is preserved by ZipInfo
+                # itself, not by external_attr.
+                mode = 0o644
+            else:
+                mode = src.stat().st_mode & 0o7777
+            info.external_attr = (mode & 0xFFFF) << 16
             zf.writestr(info, data)
 
 
@@ -222,6 +291,10 @@ def build_archive(
     """
     _validate_tags(os_tag=platform_tag, arch=arch)
     _validate_dist(dist, os_tag=platform_tag)
+    # Validate url BEFORE we touch the filesystem for any write —
+    # refuses empty/invalid/mismatched urls without leaving a
+    # half-built archive on disk.
+    _validate_url(url, filename=output.name)
 
     # Manifest url is taken verbatim — release automation pins this and
     # the site installer expects exactly what it was given.
