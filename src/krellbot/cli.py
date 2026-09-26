@@ -1522,9 +1522,15 @@ def cmd_ui(args):
         url = open_url(server, webbrowser.open)
     else:
         url = token_url(server)
-    print(f"Dashboard running at {url}")
-    print("Open it in your browser. Ctrl-C to stop.")
-    print("Bound to 127.0.0.1 only. Token in URL is also the session cookie.")
+    # ``flush=True`` so the dashboard URL reaches the parent pipe
+    # immediately — the CI smoke helper captures the URL from a real
+    # ``subprocess.PIPE`` (no pty, no winpty). Without this, a block-
+    # buffered child (notably a PyInstaller-frozen binary whose
+    # bootloader doesn't propagate ``PYTHONUNBUFFERED``) would never
+    # flush the URL line and the smoke helper would hang.
+    print(f"Dashboard running at {url}", flush=True)
+    print("Open it in your browser. Ctrl-C to stop.", flush=True)
+    print("Bound to 127.0.0.1 only. Token in URL is also the session cookie.", flush=True)
 
     stopped = threading.Event()
 

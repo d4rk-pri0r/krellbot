@@ -5,13 +5,16 @@ PyInstaller-frozen binary actually serves the bundled UI assets
 (token-gated GET returns 200 with bundled bytes), not just that
 the binary exists and `list` exits 0.
 
-The frozen binary's stdout is NOT line-buffered by default
-(PyInstaller bootloader doesn't propagate `PYTHONUNBUFFERED` to
-the embedded interpreter the way a normal `python` invocation
-does). To capture the printed `http://127.0.0.1:PORT/<token>/`
-URL, we run the binary under a pseudo-tty via the stdlib `pty`
-module on POSIX, or via `winpty` on Windows. The token URL is
-parsed from the captured output, then we:
+The CLI prints the dashboard URL with ``flush=True`` (see
+``krellbot.cli.cmd_ui``), so the URL reaches the child stdout pipe
+immediately — even on Windows where a tty is not available and
+``winpty`` is not pre-installed on GitHub Actions Windows runners.
+To capture the printed ``http://127.0.0.1:PORT/<token>/`` URL we
+therefore use a portable ``subprocess.PIPE`` + reader-thread +
+``queue.Queue`` helper (``capture_url_from_subprocess``) on every
+platform. No pty, no winpty, no third-party dependency.
+
+The token URL is parsed from the captured output, then we:
 
   1. GET the index `/<token>/` — expect 200, body contains
      the bundled dashboard marker (`krellbot`).
@@ -27,104 +30,237 @@ from __future__ import annotations
 
 import argparse
 import os
+import queue
 import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 _TOKEN_RE = re.compile(r"http://127\.0\.0\.1:(\d+)/([0-9a-f]{64})/")
 
+# Windows creation flag — ``subprocess`` exposes this only on
+# Windows; on POSIX we simply don't pass it.
+try:
+    import subprocess as _sp
+    _CREATE_NEW_PROCESS_GROUP = _sp.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+except AttributeError:  # pragma: no cover — POSIX
+    _CREATE_NEW_PROCESS_GROUP = 0
 
-def _run_under_pty(argv: list[str], env: dict[str, str], log_path: Path) -> subprocess.Popen:
-    """Run the binary attached to a pseudo-tty so its stdout is line-buffered.
 
-    POSIX only. Windows uses the `winpty` fallback below.
+class _SubprocessUrlCapture:
+    """Portable URL capture over ``subprocess.PIPE``.
+
+    The child writes its stdout into a pipe (``stderr`` merged into
+    stdout). A daemon reader thread pulls lines off the pipe, writes
+    them to ``log_path``, and pushes each line into ``line_queue``.
+    The public ``wait_for_url`` polls the queue plus the process
+    exit state until the URL regex matches, the child exits, or the
+    deadline passes.
+
+    No pty, no winpty — works on Windows, macOS, and Linux.
+
+    Cleanup contract: ``stop()`` joins the reader thread and closes
+    the log file handle. The caller is responsible for terminating
+    the ``proc`` (we surface ``proc`` via ``self.proc``).
     """
-    import fcntl
-    import pty
 
-    master_fd, slave_fd = pty.openpty()
+    def __init__(
+        self,
+        argv: list[str],
+        env: dict[str, str],
+        log_path: Path,
+        *,
+        deadline_s: float,
+    ) -> None:
+        self.log_path = log_path
+        self.deadline = time.monotonic() + deadline_s
+        self.line_queue: queue.Queue[str] = queue.Queue()
+        self.url: str | None = None
+        self._log_fh = log_path.open("wb")
+        self._stop_event = threading.Event()
+        self._reader_thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
+        self._stderr_queue: queue.Queue[str] = queue.Queue()
 
-    # Make master non-blocking so the reader loop can poll.
-    flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-    fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        popen_kwargs: dict[str, object] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "env": env,
+            "close_fds": True,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "bufsize": 1,  # line-buffered on POSIX
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP
+        else:
+            # POSIX: put the child in its own process group so a
+            # SIGINT to the parent doesn't cascade.
+            popen_kwargs["preexec_fn"] = os.setsid
 
-    proc = subprocess.Popen(
-        argv,
-        stdin=slave_fd,
-        stdout=slave_fd,
-        stderr=slave_fd,
-        env=env,
-        close_fds=True,
-        # Put the child in its own process group so SIGINT to the
-        # parent doesn't cascade to the dashboard binary.
-        preexec_fn=os.setsid,  # noqa: PLW1509 — intentional in this single-threaded caller
-    )
-    os.close(slave_fd)
-
-    log_fh = log_path.open("wb")
-
-    captured = bytearray()
-
-    def _drain(deadline: float) -> bytes:
-        while time.time() < deadline:
-            try:
-                chunk = os.read(master_fd, 4096)
-            except BlockingIOError:
-                time.sleep(0.02)
-                continue
-            except OSError:
-                break
-            if not chunk:
-                break
-            captured.extend(chunk)
-            log_fh.write(chunk)
-            log_fh.flush()
-        return bytes(captured)
-
-    proc._smoke_drain = _drain  # type: ignore[attr-defined]
-    proc._smoke_log_fh = log_fh  # type: ignore[attr-defined]
-    proc._smoke_master_fd = master_fd  # type: ignore[attr-defined]
-    return proc
-
-
-def _run_under_winpty(argv: list[str], env: dict[str, str], log_path: Path) -> subprocess.Popen:
-    """Windows fallback: spawn via `winpty` if available, else fail."""
-    import shutil
-
-    winpty = shutil.which("winpty") or shutil.which("winpty.exe")
-    if winpty is None:
-        raise RuntimeError(
-            "winpty is required on Windows to run the frozen dashboard smoke; "
-            "install it via 'choco install winpty' or skip this step on Windows"
+        # ``popen_kwargs`` is built as ``dict[str, object]`` so the
+        # Windows / POSIX branches can populate it without ceremony.
+        # ``subprocess.Popen`` accepts exactly the keys we set, so the
+        # cast is safe and lets Pyright see the call without complaining
+        # about the heterogeneous dict literal.
+        self.proc = subprocess.Popen(argv, **popen_kwargs)  # type: ignore[arg-type]
+        self._stdout = self.proc.stdout
+        self._stderr = self.proc.stderr
+        self._reader_thread = threading.Thread(
+            target=self._read_stream,
+            args=(self._stdout, self.line_queue, False),
+            name="ci-smoke-stdout-reader",
+            daemon=True,
         )
-    log_fh = log_path.open("wb")
-    proc = subprocess.Popen(
-        [winpty, *argv],
-        stdout=log_fh,
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    proc._smoke_log_fh = log_fh  # type: ignore[attr-defined]
-    return proc
+        self._reader_thread.start()
+        self._stderr_thread = threading.Thread(
+            target=self._read_stream,
+            args=(self._stderr, self._stderr_queue, True),
+            name="ci-smoke-stderr-reader",
+            daemon=True,
+        )
+        self._stderr_thread.start()
+
+    def _read_stream(
+        self,
+        stream,
+        out_queue: queue.Queue[str],
+        is_stderr: bool,
+    ) -> None:
+        assert stream is not None
+        try:
+            for raw in stream:
+                if not raw:
+                    continue
+                # Write raw bytes to the log so we don't lose ordering
+                # between stdout and stderr.
+                try:
+                    self._log_fh.write(raw.encode("utf-8", errors="replace"))
+                    self._log_fh.flush()
+                except (OSError, ValueError):
+                    pass
+                # Echo stderr lines to the parent's stderr too — CI
+                # surfaces them in the run log.
+                if is_stderr:
+                    try:
+                        sys.stderr.write(raw)
+                        sys.stderr.flush()
+                    except (OSError, ValueError):
+                        pass
+                for line in raw.splitlines():
+                    out_queue.put(line)
+        except (OSError, ValueError):
+            # Pipe closed / file handle closed during shutdown.
+            pass
+        finally:
+            out_queue.put("")  # sentinel — wake any blocked consumer
+
+    def wait_for_url(self) -> str | None:
+        """Block until URL appears, child exits, or deadline passes.
+
+        Returns the matched URL on success, else ``None``.
+        """
+        while time.monotonic() < self.deadline:
+            # Drain anything currently buffered in the line queue.
+            while True:
+                try:
+                    line = self.line_queue.get_nowait()
+                except queue.Empty:
+                    break
+                if not line:
+                    continue
+                m = _TOKEN_RE.search(line)
+                if m:
+                    self.url = m.group(0)
+                    return self.url
+
+            # If the child has exited, drain one final time and stop.
+            if self.proc.poll() is not None:
+                while True:
+                    try:
+                        line = self.line_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    if not line:
+                        continue
+                    m = _TOKEN_RE.search(line)
+                    if m:
+                        self.url = m.group(0)
+                        return self.url
+                return self.url
+
+            time.sleep(0.05)
+
+        return self.url
+
+    def stop(self) -> None:
+        """Join reader threads and close the log file handle.
+
+        Idempotent. Safe to call multiple times.
+        """
+        if self._reader_thread is not None and self._reader_thread.is_alive():
+            self._reader_thread.join(timeout=2.0)
+        if self._stderr_thread is not None and self._stderr_thread.is_alive():
+            self._stderr_thread.join(timeout=2.0)
+        try:
+            self._log_fh.flush()
+            self._log_fh.close()
+        except (OSError, ValueError):
+            pass
+
+
+def capture_url_from_subprocess(
+    argv: list[str],
+    *,
+    env: dict[str, str],
+    log_path: Path,
+    deadline_s: float,
+) -> tuple[str | None, subprocess.Popen]:
+    """Spawn ``argv`` and capture the dashboard URL from its stdout pipe.
+
+    Returns ``(url, proc)``. ``url`` is the first ``http://127.0.0.1:PORT/<token>/``
+    the child prints, or ``None`` if the deadline passes / the child
+    exits before printing it. ``proc`` is the running ``Popen``;
+    the caller owns cleanup (terminate, wait, etc.).
+
+    The capture is portable: a single ``subprocess.PIPE`` +
+    reader-thread implementation, plus ``flush=True`` on the CLI
+    print site, replaces the previous pty (POSIX) / winpty
+    (Windows) split that depended on a third-party tool not
+    installed on GitHub Actions Windows runners.
+    """
+    cap = _SubprocessUrlCapture(argv, env, log_path, deadline_s=deadline_s)
+    url = cap.wait_for_url()
+    # Attach the capture so the caller can stop() us after the smoke
+    # GETs run (keeps the log file handle owned by one place).
+    cap.proc._ci_smoke_capture = cap  # type: ignore[attr-defined]
+    return url, cap.proc
+
+
+def _stop_capture(proc: subprocess.Popen) -> None:
+    cap = getattr(proc, "_ci_smoke_capture", None)
+    if cap is not None:
+        cap.stop()
 
 
 def _wait_for_url(proc: subprocess.Popen, deadline: float) -> str | None:
-    """Poll the captured output until we see the dashboard URL or hit the deadline."""
-    while time.time() < deadline:
-        if hasattr(proc, "_smoke_drain"):
-            captured = proc._smoke_drain(min(deadline, time.time() + 0.1))  # type: ignore[attr-defined]
-            m = _TOKEN_RE.search(captured.decode(errors="replace"))
-            if m:
-                return m.group(0)
-        else:
-            # winpty path: just tail the log file
-            time.sleep(0.05)
-        if proc.poll() is not None:
-            break
-    return None
+    """Backward-compatible wrapper used by ``main``.
+
+    New code should call ``capture_url_from_subprocess`` directly;
+    this wrapper exists so any future caller still using the old
+    API gets the same behaviour.
+    """
+    cap = getattr(proc, "_ci_smoke_capture", None)
+    if cap is None:
+        return None
+    # Reset the deadline relative to ``deadline`` (monotonic).
+    cap.deadline = min(cap.deadline, deadline)
+    return cap.wait_for_url()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -155,12 +291,14 @@ def main(argv: list[str] | None = None) -> int:
         log_path.unlink()
 
     cmd = [args.binary, "ui", "--port", str(args.port)]
-    if sys.platform == "win32":
-        proc = _run_under_winpty(cmd, env, log_path)
-    else:
-        proc = _run_under_pty(cmd, env, log_path)
-
-    url = _wait_for_url(proc, time.time() + 10.0)
+    # Portable pipe-based URL capture: replaces the previous pty (POSIX) /
+    # winpty (Windows) split that depended on a third-party tool not
+    # installed on GitHub Actions Windows runners. The CLI prints the URL
+    # with ``flush=True`` (see ``cmd_ui``), so the bytes reach the pipe
+    # immediately even on Windows.
+    url, proc = capture_url_from_subprocess(
+        cmd, env=env, log_path=log_path, deadline_s=10.0
+    )
     try:
         if not url:
             print(
@@ -262,13 +400,8 @@ def main(argv: list[str] | None = None) -> int:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=5)
-        if hasattr(proc, "_smoke_log_fh"):
-            proc._smoke_log_fh.close()  # type: ignore[attr-defined]
-        if hasattr(proc, "_smoke_master_fd"):
-            try:
-                os.close(proc._smoke_master_fd)  # type: ignore[attr-defined]
-            except OSError:
-                pass
+        # Close the capture (joins reader threads, closes log handle).
+        _stop_capture(proc)
 
 
 if __name__ == "__main__":

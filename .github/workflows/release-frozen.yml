@@ -30,6 +30,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       KRELLBOT_VERSION: "0.9.1"
+      # Pass the immutable release base URL through from the repo
+      # variable explicitly so the fail-closed verification step
+      # always has the variable available. If the repo variable is
+      # not configured, ``vars.KRELLBOT_RELEASE_BASE_URL`` expands
+      # to the empty string and the downstream
+      # ``Verify immutable release base URL is configured`` step
+      # fails the run closed with a clear error message — release
+      # automation must pin the CDN per matrix.
+      KRELLBOT_RELEASE_BASE_URL: ${{ vars.KRELLBOT_RELEASE_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -122,10 +131,12 @@ jobs:
         # bytes proves the bundled UI assets actually shipped.
         # Windows runs this through bash too because the workflow
         # uses Git Bash; `start` / detached process not needed.
-        # The frozen binary's stdout is block-buffered (PyInstaller
-        # bootloader doesn't propagate PYTHONUNBUFFERED), so the
-        # helper uses a pty (POSIX) or winpty (Windows) to capture
-        # the printed token URL.
+        # The CLI prints the URL with `flush=True` so the helper
+        # can capture it from a real `subprocess.PIPE` on every
+        # platform — no tty, no winpty, no third-party dependency.
+        # Earlier reviews flagged the previous pty/winpty split
+        # because Windows GitHub Actions runners ship without
+        # winpty; the new path uses stdlib only.
         shell: bash
         env:
           KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
@@ -137,7 +148,17 @@ jobs:
           else
             BIN="dist/krellbot/krellbot"
           fi
-          PORT=18889
+          # Pick a free loopback port so the smoke can always
+          # bind even if the previous default (18889) is already
+          # taken. The dashboard's --port flag accepts any port;
+          # we don't pin a specific value. Inline python avoids
+          # needing a separate helper script.
+          PORT="$(uv run python -c 'import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(("'"'"'127.0.0.1'"'"', 0)); print(s.getsockname()[1])')"
+          echo "dashboard port = $PORT"
+          # Cleanup trap: best-effort kill any leftover dashboard
+          # child in case the helper exits non-zero (curl failure,
+          # etc.). Ensures CI doesn't leak processes between runs.
+          trap 'echo "smoke: cleanup trap — best-effort kill of leftover dashboard"; pkill -f "krellbot ui --port $PORT" 2>/dev/null || true' EXIT
           uv run python scripts/ci_smoke_ui.py \
             --binary "$BIN" \
             --port "$PORT" \
