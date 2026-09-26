@@ -211,6 +211,14 @@ def test_live_arm_with_trade_only_key_places_entry_and_dedupes(home, fresh_keyri
             {"result": {"txid": ["TX-2"]}},
         ],
         asset_pairs=_asset_pairs_for("SUIUSD"),
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+            ]
+        },
     )
 
     rc1 = cmd_tick(["--venue", "kraken"], fetch=_fake_fetch(candles), transport=transport)
@@ -380,6 +388,14 @@ def test_lapsed_license_blocks_entry_but_allows_exit(home, fresh_keyring, monkey
         responses=[{"result": {"txid": ["TX-EXIT"]}}],
         asset_pairs=_asset_pairs_for("SUIUSD"),
         open_orders={"error": [], "result": open_orders},
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+            ]
+        },
     )
 
     # Two candles that drive close from above to below sma2.
