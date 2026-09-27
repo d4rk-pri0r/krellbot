@@ -38,6 +38,7 @@ import http.server
 import json
 import secrets
 import socketserver
+import sys
 import threading
 import time
 import urllib.parse
@@ -400,9 +401,9 @@ def _install_readiness(home: Path) -> dict:
     elif home_mode is None:
         rows.append(
             {
-                "label": "data home mode 0o700",
-                "ok": False,
-                "why": "not checkable on this OS",
+                "label": "data home",
+                "ok": home.is_dir() and sys.platform == "win32",
+                "why": "DACL not checked on Windows" if sys.platform == "win32" else "home mode not checkable",
             }
         )
     else:
@@ -436,7 +437,9 @@ def _install_readiness(home: Path) -> dict:
             "why": "ok" if bind_ok else "bind refused",
         }
     )
-    install_ready = all(r["ok"] for r in rows)
+    # Doctor permits an existing Windows home even though POSIX modes do
+    # not model Windows DACLs. Preserve that distinction in this summary.
+    install_ready = home.is_dir() and all(r["ok"] for r in rows)
     return {"install_ready": install_ready, "rows": rows}
 
 

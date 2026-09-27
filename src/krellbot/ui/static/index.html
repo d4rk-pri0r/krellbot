@@ -67,7 +67,7 @@
       <div class="overview-head">
         <h2>Overview</h2>
         <p class="muted scope-note" id="scope-note">
-          Local view. GET reads metadata only. Action disclosure: <code>POST /keys/add</code> contacts the selected venue once; <code>POST /paper-arm</code> persists a local pack config; <code>POST /stop_all</code> flattens paper balances.
+          Local view. GET reads metadata only. <code>POST /keys/add</code> checks permissions with the selected venue. <code>POST /activate</code> sends your activation key to krellbot.dev. <code>POST /paper-arm</code> and <code>POST /stop_all</code> change local paper state.
         </p>
       </div>
 
@@ -75,12 +75,12 @@
         <!-- Server-rendered skeleton; JS fills the values from window.__KB_VIEW__. -->
         <article class="metric" data-metric="armed">
           <h3>Armed packs</h3>
-          <p class="metric-value mono" data-bind="armed_count">(loading)</p>
+          <p class="metric-value mono" data-bind="armed_value">(loading)</p>
           <p class="metric-sub muted" data-bind="armed_sub">—</p>
         </article>
         <article class="metric" data-metric="paper">
-          <h3>Paper positions</h3>
-          <p class="metric-value mono" data-bind="paper_count">(loading)</p>
+          <h3>Paper open orders</h3>
+          <p class="metric-value mono" data-bind="paper_value">(loading)</p>
           <p class="metric-sub muted" data-bind="paper_sub">—</p>
         </article>
         <article class="metric" data-metric="tick">
@@ -280,7 +280,7 @@
   <footer>
     <p class="muted">
       Static assets are local. No CDN, no Google font, no external script.
-      GET endpoints read local metadata only; POST endpoints in the table above are the only paths that contact a venue or persist state.
+      Dashboard GET reads local metadata only. Explicit actions may contact a selected venue or the license service; see the security docs.
     </p>
   </footer>
 

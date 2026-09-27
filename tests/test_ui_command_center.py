@@ -41,7 +41,7 @@ from pathlib import Path
 from krellbot import config as kb_config
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
-from krellbot.ui import first_run, keys_status
+from krellbot.ui import first_run, keys_status, server as ui_server
 from krellbot.ui.server import DashboardServer
 
 
@@ -141,6 +141,7 @@ def _arm_one_pack(home: Path) -> None:
 
 def _write_tick_journal(home: Path, *, ts: int | None = None, age_seconds: int = 30) -> None:
     import time as _time
+
     if ts is None:
         ts = int(_time.time()) - age_seconds
     journal_dir = home / "journal"
@@ -206,6 +207,15 @@ def test_dashboard_has_distinct_operational_and_setup_navs() -> None:
     assert "#status-section" not in setup_links
 
 
+def test_overview_metric_bindings_match_js_renderer() -> None:
+    """Each summary tile hydrates instead of leaving '(loading)' behind."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    js = APP_JS.read_text(encoding="utf-8")
+    for name in ("armed", "paper", "tick", "ready"):
+        assert f'data-bind="{name}_value"' in html
+        assert f'setBind("{name}",' in js
+
+
 # ---- 2. closed view fields on the empty dashboard ------------------------
 
 
@@ -255,6 +265,29 @@ def test_empty_dashboard_view_carries_command_center_fields(home) -> None:
 
 
 # ---- 3. populated dashboard: armed + tick + license + paper --------------
+
+
+def test_windows_install_readiness_does_not_require_posix_mode(home, monkeypatch) -> None:
+    """Windows DACLs are not POSIX modes; match doctor without claiming DACLs were checked."""
+    monkeypatch.setattr(ui_server.sys, "platform", "win32")
+    monkeypatch.setattr(
+        ui_server.trust,
+        "trust_snapshot",
+        lambda _home: {
+            "home_mode": None,
+            "home_mode_ok": False,
+            "keychain_backend": "Windows Credential Manager",
+            "keychain_ok": True,
+        },
+    )
+    result = ui_server._install_readiness(home)
+    assert result["install_ready"] is True
+    assert result["rows"][0] == {
+        "label": "data home",
+        "ok": True,
+        "why": "DACL not checked on Windows",
+    }
+    assert ui_server._install_readiness(home / "missing")["install_ready"] is False
 
 
 def test_populated_dashboard_reads_local_records_only(home) -> None:
@@ -522,5 +555,6 @@ def test_no_js_shell_renders_honest_action_disclosure(home) -> None:
     assert "GET reads metadata only" in text
     # POST disclosure must name every action that contacts a venue
     # or persists state.
-    for action in ("POST /keys/add", "POST /paper-arm", "POST /stop_all"):
+    for action in ("POST /keys/add", "POST /activate", "POST /paper-arm", "POST /stop_all"):
         assert action in text, f"missing action disclosure: {action}"
+    assert "contacts the selected venue once" not in text

@@ -81,7 +81,7 @@
   // The dashboard does not refresh on a timer; a manual reload is the
   // only way to update it.
   if (asOf && el("as-of-value")) {
-    el("as-of-value").textContent = asOf + " UTC";
+    el("as-of-value").textContent = asOf;
   }
   if (trust && typeof trust.home === "string" && el("home-value")) {
     el("home-value").textContent = trust.home;
@@ -109,8 +109,8 @@
     setText(document.querySelector('[data-metric="armed"]'), '[data-bind="armed_sub"]', subParts.join(" · ") || "—");
   })();
 
-  // Paper metric: count of venues with on-disk state, plus positions
-  // (open orders) summed across venues. The dashboard never invents a
+  // Paper metric: count of venues with on-disk state, plus open orders
+  // summed across venues. The dashboard never invents a
   // live venue balance; if there is no paper-<venue>.json file, the
   // venue is absent from the view.
   (function renderPaperMetric() {
@@ -139,8 +139,8 @@
   // explicitly. A tick older than 2 hours is rendered as stale.
   (function renderTickMetric() {
     if (!tickState || !tickState.present) {
-      setBind("tick", "stopped", "is-empty");
-      setText(document.querySelector('[data-metric="tick"]'), '[data-bind="tick_sub"]', "no tick journal entry; not measured locally");
+      setBind("tick", "no record", "is-empty");
+      setText(document.querySelector('[data-metric="tick"]'), '[data-bind="tick_sub"]', "no tick journal entry; current process state unknown");
       return;
     }
     var age = tickState.age_seconds;
