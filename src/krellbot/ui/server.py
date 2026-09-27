@@ -38,6 +38,7 @@ import http.server
 import json
 import secrets
 import socketserver
+import sys
 import threading
 import time
 import urllib.parse
@@ -53,6 +54,19 @@ from krellbot import paths as kb_paths
 from . import activate as kb_activate
 from . import first_run, keys_status, trust
 from . import packs as ui_packs
+
+# ---- dashboard view layer -------------------------------------------------
+#
+# The command-center overview builds a single read-only snapshot of the local
+# posture: install readiness (no permission probe, no clock probe, no venue
+# probe), per-venue key verification from the durable metadata only, license
+# cache summary (not raw JSON), scheduler installation flag from the local
+# service-unit directory, paper state, armed packs, journal tail, receipts,
+# and installed packs.
+#
+# Every field is presentation-only. No keyring read on GET. No invented
+# performance, balances, equity, sparklines. As-of timestamps are the
+# dashboard render time so the page can show "snapshot at …" honestly.
 
 # ---- constants -----------------------------------------------------------
 
@@ -208,7 +222,16 @@ def _read_journal_tail(home: Path, n: int = 20) -> list[dict]:
 
 
 def _view_snapshot(home: Path) -> dict:
-    """Build the dashboard view: armed packs, paper state, license, journal."""
+    """Build the dashboard view: armed packs, paper state, license, journal.
+
+    The command-center overview adds a small, closed set of derived fields
+    on top of the slice-D view so the top-level page can show real
+    readiness, real key-verification metadata (no keyring read), real
+    license summary, and real scheduler state. Every derivation reads
+    only local metadata; nothing here probes a venue or reads a
+    credential. ``as_of`` is the dashboard render time so a no-JS user
+    still sees when the snapshot was taken.
+    """
     home = Path(home)
     config = kb_config.load_config(home)
     armed_view: list[dict] = []
@@ -226,7 +249,9 @@ def _view_snapshot(home: Path) -> dict:
                 "stop": str(a.stop),
                 "mode": a.mode,
                 "owned_qty": str(a.owned_qty),
+                "starting_cash": str(a.starting_cash) if a.starting_cash is not None else None,
                 "requires_license": a.requires_license,
+                "armed_at_ts": int(a.armed_at_ts),
             }
         )
     paper_by_venue: dict[str, dict] = {}
@@ -237,10 +262,19 @@ def _view_snapshot(home: Path) -> dict:
     # show the actual backend name. The snapshot is presentation-only;
     # no secrets are read.
     snap = trust.trust_snapshot(home)
+    # Closed-shape view block. Every key here is documented; new fields
+    # must be added explicitly and the static-asset tests updated to
+    # reflect the change. The dashboard renders ONLY these keys.
     return {
+        # Slice-D core view (preserved verbatim so existing tests stay
+        # green). ``license`` here is sanitized to the canonical
+        # three-key shape so a stale cache with extra fields cannot
+        # leak through the bootstrap JSON; the new ``license_summary``
+        # below exposes the same three scalars in a stricter closed
+        # form for the command-center renderer.
         "armed": armed_view,
         "paper": paper_by_venue,
-        "license": license_cache,
+        "license": _sanitize_license_cache(license_cache),
         "journal_tail": _read_journal_tail(home),
         "receipts": _read_receipts(home),
         "trust": snap,
@@ -250,7 +284,66 @@ def _view_snapshot(home: Path) -> dict:
         # ``runnable: false`` so the dashboard's arm affordance stays
         # hidden for them. The arm route refuses them with 403 anyway.
         "packs": ui_packs.list_installed(home),
+        # ---- command-center additions ----
+        # ``as_of`` is the dashboard render time. Pages do not claim a
+        # live probe happened on GET; the as-of timestamp is the only
+        # honesty a no-JS user gets about when the snapshot was taken.
+        "as_of": _now_iso_seconds(),
+        # Install readiness: the runtime can serve the local UI. Derived
+        # locally without a permission probe, clock probe, or venue
+        # probe. Trading readiness is the stricter gate (it requires a
+        # real permission probe, which a GET never runs); we report
+        # "not evaluated on this page" for trading so the user is not
+        # misled by an unverified claim.
+        "readiness": _install_readiness(home),
+        "trading_readiness": "not evaluated on this page; run `krellbot doctor`",
+        # Per-venue key status, derived from durable metadata only.
+        # The values are exactly what ``keys_status.read_status``
+        # produces: a historical "last stored at <ts>; current presence
+        # not checked" row, or "unknown; not currently verified" if no
+        # row exists. No keyring read on GET.
+        "keys_status": keys_status.read_status(home),
+        # License summary: closed shape, three scalars only. We never
+        # expose raw license-cache JSON to the dashboard so a stale or
+        # unexpected field cannot leak through the renderer.
+        "license_summary": _license_summary(license_cache),
+        # Whether the OS scheduler unit exists for this platform. The
+        # dashboard never installs one; it only reports what is on disk
+        # under the user's write root. ``None`` means the platform is
+        # unsupported (no recognisable scheduler unit), ``False`` means
+        # the unit is absent, ``True`` means the unit file is present.
+        "scheduler_installed": _scheduler_installed(home),
+        # Whether a tick journal record exists at all. The dashboard
+        # does not invent "running"; the page shows a static "stopped"
+        # / "never started" state until a real tick lands.
+        "tick_state": _tick_state(home),
     }
+
+
+def _sanitize_license_cache(cache: object) -> dict | None:
+    """Return the canonical three-key license cache, or None.
+
+    ``license_cache`` is read from disk; a stale or seeded file could
+    carry extra keys (``secret_token``, ``admin_url``, etc.) that must
+    not reach the dashboard bootstrap. We hand-pick the closed
+    three-key shape here so the renderer sees only the canonical
+    fields. Invalid values fall back to ``None`` so the dashboard
+    reports "missing" honestly rather than echoing a stale fragment.
+    """
+    if not isinstance(cache, dict):
+        return None
+    raw_status = cache.get("status")
+    if not isinstance(raw_status, str) or not raw_status:
+        return None
+    try:
+        period_end = int(cache.get("period_end", 0))
+    except (TypeError, ValueError):
+        return None
+    try:
+        grace_until = int(cache.get("grace_until", 0))
+    except (TypeError, ValueError):
+        return None
+    return {"status": raw_status, "period_end": period_end, "grace_until": grace_until}
 
 
 def _render_dashboard(home: Path, csrf: str) -> bytes:
@@ -265,6 +358,212 @@ def _render_dashboard(home: Path, csrf: str) -> bytes:
     rendered = rendered.replace("__PACK_LIST__", _render_pack_forms(view.get("packs") or [], csrf))
     rendered = rendered.replace('name="csrf"', f'name="csrf" value="{csrf}"')
     return rendered.encode("utf-8")
+
+
+# ---- command-center view helpers -----------------------------------------
+#
+# Every helper here is a closed, presentation-only derivation. None of
+# them touch a credential, the network, or the live process tree.
+
+
+def _now_iso_seconds() -> str:
+    """Return the dashboard render time as a strict ISO-8601 UTC timestamp.
+
+    Matches the shape ``keys_status._now_iso`` writes, so the same
+    validation rules apply if the renderer ever feeds it back into a
+    parser. Microseconds are dropped so the renderer shows a stable
+    string; the dashboard never relies on sub-second precision.
+    """
+    import datetime as _dt
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    return now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _install_readiness(home: Path) -> dict:
+    """Compute install readiness from local metadata only.
+
+    Mirrors the same fields ``krellbot doctor`` checks for install
+    readiness WITHOUT performing a permission probe, clock probe, or
+    venue probe. The result is a closed dict the dashboard renders
+    directly: each row has ``label``, ``ok``, and a one-line ``why``.
+    The dashboard never claims "trading ready" here; that is the
+    ``trading_readiness`` field, which is always "not evaluated on this
+    page" for a GET.
+    """
+    snap = trust.trust_snapshot(home)
+    rows: list[dict] = []
+    home_mode = snap.get("home_mode")
+    home_mode_ok = bool(snap.get("home_mode_ok"))
+    if home_mode_ok:
+        rows.append({"label": "data home mode 0o700", "ok": True, "why": str(home_mode)})
+    elif home_mode is None:
+        rows.append(
+            {
+                "label": "data home",
+                "ok": home.is_dir() and sys.platform == "win32",
+                "why": "DACL not checked on Windows" if sys.platform == "win32" else "home mode not checkable",
+            }
+        )
+    else:
+        rows.append(
+            {
+                "label": "data home mode 0o700",
+                "ok": False,
+                "why": f"home mode is {home_mode}",
+            }
+        )
+    backend = snap.get("keychain_backend")
+    backend_ok = bool(snap.get("keychain_ok"))
+    if backend_ok:
+        rows.append({"label": "keychain backend", "ok": True, "why": str(backend)})
+    else:
+        rows.append(
+            {
+                "label": "keychain backend",
+                "ok": False,
+                "why": str(backend) if backend else "no persistent backend detected",
+            }
+        )
+    # Bind availability: a one-shot loopback bind probe on 127.0.0.1:0.
+    # No remote address is ever touched. The probe is local to the
+    # dashboard render so a no-network box still gets a real answer.
+    bind_ok = _loopback_bind_available()
+    rows.append(
+        {
+            "label": "loopback bind 127.0.0.1",
+            "ok": bind_ok,
+            "why": "ok" if bind_ok else "bind refused",
+        }
+    )
+    # Doctor permits an existing Windows home even though POSIX modes do
+    # not model Windows DACLs. Preserve that distinction in this summary.
+    install_ready = home.is_dir() and all(r["ok"] for r in rows)
+    return {"install_ready": install_ready, "rows": rows}
+
+
+def _loopback_bind_available() -> bool:
+    """Return True when a loopback bind probe succeeds.
+
+    Same shape as ``doctor._ui_bind_available`` but kept here so the
+    dashboard module does not depend on the doctor module. The
+    function opens ``127.0.0.1:0`` (kernel-assigned ephemeral port),
+    closes the socket, and returns the result. No remote address is
+    touched.
+    """
+    import socket as _socket
+
+    sock = None
+    try:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        return True
+    except OSError:
+        return False
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+
+def _license_summary(cache: dict | None) -> dict:
+    """Return a closed, presentation-only license summary.
+
+    The dashboard never exposes the raw ``license-cache.json`` shape;
+    a stale or unexpected field cannot leak through the renderer
+    because we hand-pick three scalars: ``status``, ``period_end``,
+    ``grace_until``. Each scalar is type-coerced and dropped on
+    invalid input. A missing cache becomes ``status == "missing"``.
+    """
+    if not isinstance(cache, dict):
+        return {"status": "missing", "period_end": None, "grace_until": None}
+    raw_status = cache.get("status")
+    if not isinstance(raw_status, str) or not raw_status:
+        return {"status": "missing", "period_end": None, "grace_until": None}
+    try:
+        period_end = int(cache.get("period_end", 0))
+    except (TypeError, ValueError):
+        period_end = None
+    try:
+        grace_until = int(cache.get("grace_until", 0))
+    except (TypeError, ValueError):
+        grace_until = None
+    return {"status": raw_status, "period_end": period_end, "grace_until": grace_until}
+
+
+def _scheduler_installed(home: Path) -> bool | None:
+    """Report whether the OS scheduler unit exists for this platform.
+
+    The dashboard never installs a unit; it only reports what is on
+    disk under ``<home>`` (the same root the user sees in the wizard).
+    ``None`` means the platform has no recognisable scheduler
+    primitive; ``False`` means the unit is absent; ``True`` means the
+    unit file is present.
+    """
+    import sys as _sys
+
+    if _sys.platform == "darwin":
+        target = home / "Library" / "LaunchAgents" / "dev.krellbot.tick.plist"
+        return target.exists()
+    if _sys.platform.startswith("linux"):
+        d = home / ".config" / "systemd" / "user"
+        return (d / "krellbot-tick.timer").exists() and (d / "krellbot-tick.service").exists()
+    if _sys.platform == "win32":
+        target = home / "Tasks" / "krellbot-tick.xml"
+        return target.exists()
+    return None
+
+
+def _tick_state(home: Path) -> dict:
+    """Return a closed, honest tick state derived from the journal.
+
+    The dashboard does not invent a "running" indicator. It reports the
+    presence (or absence) of any ``kind=tick`` record in the journal
+    directory, plus the most-recent tick timestamp if one exists. No
+    field here is invented: a missing journal is ``present=False``;
+    a journal without a tick is the same.
+    """
+    import json as _json
+
+    journal_dir = home / "journal"
+    if not journal_dir.is_dir():
+        return {"present": False, "last_ts": None, "age_seconds": None}
+    latest_ts = 0
+    found = False
+    for path in sorted(journal_dir.glob("*.jsonl")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            if rec.get("kind") == "tick":
+                found = True
+                try:
+                    ts = int(rec.get("ts", 0) or 0)
+                except (TypeError, ValueError):
+                    continue
+                latest_ts = max(latest_ts, ts)
+    if not found or latest_ts <= 0:
+        return {"present": False, "last_ts": None, "age_seconds": None}
+    import time as _time
+
+    now = int(_time.time())
+    return {
+        "present": True,
+        "last_ts": latest_ts,
+        "age_seconds": max(0, now - latest_ts),
+    }
 
 
 def _render_pack_forms(packs: list, csrf: str) -> str:

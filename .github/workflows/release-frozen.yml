@@ -39,7 +39,7 @@ jobs:
             archive_name: krellbot-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
     env:
-      KRELLBOT_VERSION: "0.9.3"
+      KRELLBOT_VERSION: "0.9.4"
       # Pass the immutable release base URL through from the repo
       # variable explicitly so the fail-closed verification step
       # always has the variable available. If the repo variable is
