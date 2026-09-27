@@ -11,37 +11,120 @@
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header>
-    <h1>krellbot dashboard</h1>
-    <p class="muted">Local dashboard on loopback. Submitting the Exchange form contacts only the selected venue.</p>
-    <nav class="wizard-nav" aria-label="Wizard steps">
-      <a href="welcome" data-step="welcome">Welcome</a>
-      <a href="security" data-step="security">Security</a>
-      <a href="next" data-step="next">Next</a>
-      <a href="dashboard" data-step="dashboard" aria-current="page">Dashboard</a>
-      <a href="out/docs">Docs</a>
-      <a href="out/source">Source</a>
+    <div class="header-row">
+      <h1>krellbot command center</h1>
+      <p class="header-meta muted" id="as-of-row">
+        <span class="label">snapshot</span>
+        <span class="value" id="as-of-value">(loading)</span>
+        <span class="dot">·</span>
+        <span class="label">data home</span>
+        <span class="value mono" id="home-value">(loading)</span>
+      </p>
+    </div>
+
+    <!-- Operational dashboard navigation. This nav stays in the dashboard
+         only; the wizard has its own nav in the wizard shell. Two distinct
+         nav systems so an operator on the dashboard does not have to read
+         past setup links to reach operational state. -->
+    <nav class="ops-nav" aria-label="Operational sections">
+      <a href="#status-section" data-ops="overview" aria-current="true">Overview</a>
+      <a href="#armed-section" data-ops="armed">Armed</a>
+      <a href="#paper-section" data-ops="paper">Paper</a>
+      <a href="#journal-section" data-ops="journal">Journal</a>
+      <a href="#trust-section" data-ops="trust">Trust</a>
+      <a href="#actions-section" data-ops="actions">Actions</a>
     </nav>
-    <p class="muted resume-setup">
-      <a href="welcome">Resume setup</a> &middot; reopen the first-run wizard.
-    </p>
+
+    <!-- Setup wizard navigation: separate, collapsible, only for users who
+         still need first-run setup. Hidden when there is nothing to resume
+         so it does not steal viewport at 560px. -->
+    <details class="setup-nav" id="setup-nav">
+      <summary>Setup wizard</summary>
+      <nav aria-label="Wizard steps">
+        <a href="welcome" data-step="welcome">Welcome</a>
+        <a href="security" data-step="security">Security</a>
+        <a href="next" data-step="next">Activate</a>
+        <a href="keys" data-step="keys">Exchange</a>
+        <a href="out/docs">Docs</a>
+        <a href="out/source">Source</a>
+      </nav>
+      <p class="muted setup-nav-resume">
+        Resume the first-run wizard. Operational sections above are independent of setup.
+      </p>
+    </details>
   </header>
 
   <main id="main">
-    <section id="status-section" class="primary-card" aria-label="Local status">
-      <h2>Local status</h2>
-      <dl class="status-grid">
-        <dt>Backend</dt>
-        <dd id="status-backend">(loading)</dd>
-        <dt>Bind</dt>
-        <dd>127.0.0.1 (loopback only)</dd>
-        <dt>Live arm from the UI</dt>
-        <dd>Refused. CLI only.</dd>
-      </dl>
-      <p class="muted" id="status-note">Read-only. No keys, no balances, no orders leave the box.</p>
+
+    <!-- Section 1: operational overview. This is what the operator wants to
+         see first: is anything armed, are any trades open, did the last
+         tick land. Above the fold at 560px. The section keeps its
+         legacy id="status-section" so slice-B tests that grep for it
+         continue to pass, and an inner span with id="overview-section"
+         acts as the scroll anchor for the operational nav. -->
+    <section id="status-section" class="primary-card" aria-label="Operational overview">
+      <span id="overview-section" hidden></span>
+      <div class="overview-head">
+        <h2>Overview</h2>
+        <p class="muted scope-note" id="scope-note">
+          Local view. GET reads metadata only. Action disclosure: <code>POST /keys/add</code> contacts the selected venue once; <code>POST /paper-arm</code> persists a local pack config; <code>POST /stop_all</code> flattens paper balances.
+        </p>
+      </div>
+
+      <div class="metric-grid" id="overview-metrics" aria-label="Top-level metrics">
+        <!-- Server-rendered skeleton; JS fills the values from window.__KB_VIEW__. -->
+        <article class="metric" data-metric="armed">
+          <h3>Armed packs</h3>
+          <p class="metric-value mono" data-bind="armed_count">(loading)</p>
+          <p class="metric-sub muted" data-bind="armed_sub">—</p>
+        </article>
+        <article class="metric" data-metric="paper">
+          <h3>Paper positions</h3>
+          <p class="metric-value mono" data-bind="paper_count">(loading)</p>
+          <p class="metric-sub muted" data-bind="paper_sub">—</p>
+        </article>
+        <article class="metric" data-metric="tick">
+          <h3>Last tick</h3>
+          <p class="metric-value mono" data-bind="tick_value">(loading)</p>
+          <p class="metric-sub muted" data-bind="tick_sub">—</p>
+        </article>
+        <article class="metric" data-metric="ready">
+          <h3>Install readiness</h3>
+          <p class="metric-value mono" data-bind="ready_value">(loading)</p>
+          <p class="metric-sub muted" data-bind="ready_sub">—</p>
+        </article>
+      </div>
+
+      <div class="overview-detail">
+        <div class="detail-block">
+          <h3>Readiness</h3>
+          <ul class="readiness-list" id="readiness-list" aria-label="Install readiness checks">
+            <li class="muted">(loading)</li>
+          </ul>
+        </div>
+        <div class="detail-block">
+          <h3>Key verification</h3>
+          <p class="muted">
+            Historical metadata only. Current keyring presence is not checked on GET.
+          </p>
+          <dl class="key-status" id="key-status-list" aria-label="Per-venue key verification">
+            <dt>Kraken</dt><dd data-venue="kraken">(loading)</dd>
+            <dt>Coinbase</dt><dd data-venue="coinbase">(loading)</dd>
+          </dl>
+        </div>
+        <div class="detail-block">
+          <h3>License</h3>
+          <p class="muted license-readout mono" id="license-readout">(loading)</p>
+        </div>
+      </div>
     </section>
 
-    <section id="armed-section">
-      <h2>Armed packs</h2>
+    <!-- Section 2: armed packs (per-pack detail) -->
+    <section id="armed-section" aria-label="Armed packs">
+      <header class="section-head">
+        <h2>Armed packs</h2>
+        <p class="muted section-note">Paper vs. live is read from <code>config.json</code>. Live arm is CLI-only; the UI refuses <code>POST /arm</code> with 403 unless <code>mode=paper</code>.</p>
+      </header>
       <div id="armed-empty" class="muted" hidden>No armed packs.</div>
       <table id="armed-table" hidden>
         <thead>
@@ -55,6 +138,7 @@
             <th scope="col">Cap</th>
             <th scope="col">Stop</th>
             <th scope="col">Owned</th>
+            <th scope="col">Armed at</th>
             <th scope="col">Actions</th>
           </tr>
         </thead>
@@ -62,39 +146,80 @@
       </table>
     </section>
 
-    <section id="paper-section">
-      <h2>Paper state</h2>
-      <div id="paper-empty" class="muted" hidden>No paper venue state on disk.</div>
+    <!-- Section 3: paper state. Honest empty states only. -->
+    <section id="paper-section" aria-label="Paper state">
+      <header class="section-head">
+        <h2>Paper state</h2>
+        <p class="muted section-note">Per-venue state from <code>run/paper-&lt;venue&gt;.json</code>. No live venue balance is fetched.</p>
+      </header>
+      <div id="paper-empty" class="muted" hidden>No paper venue state on disk. Paper-arm a pack to seed a venue file.</div>
       <div id="paper-blocks"></div>
     </section>
 
-    <section id="installed-packs">
-      <h2>Installed packs</h2>
+    <!-- Section 4: installed packs (paper-arm forms). -->
+    <section id="installed-packs" aria-label="Installed packs">
+      <header class="section-head">
+        <h2>Installed packs</h2>
+        <p class="muted section-note">Local metadata only. Legacy packs (no <code>schema_version</code>) render as not runnable; the arm route refuses them with 403.</p>
+      </header>
       __PACK_LIST__
     </section>
 
-    <section id="journal-section">
-      <h2>Journal tail</h2>
+    <!-- Section 5: journal tail. Readable rows, not raw JSON. -->
+    <section id="journal-section" aria-label="Journal tail">
+      <header class="section-head">
+        <h2>Journal tail</h2>
+        <p class="muted section-note">Most recent 20 records from <code>journal/*.jsonl</code>. Each row decoded with the closed journal-record schema; unparseable lines are skipped, never invented.</p>
+      </header>
       <div id="journal-empty" class="muted" hidden>No journal records.</div>
-      <pre id="journal-pre" hidden></pre>
+      <table id="journal-table" hidden>
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Kind</th>
+            <th scope="col">Venue</th>
+            <th scope="col">Pack</th>
+            <th scope="col">Detail</th>
+          </tr>
+        </thead>
+        <tbody id="journal-body"></tbody>
+      </table>
     </section>
 
-    <section id="license-section">
-      <h2>License cache</h2>
-      <pre id="license-pre">missing</pre>
+    <!-- Section 6: trust posture + scheduler + tick state. -->
+    <section id="trust-section" aria-label="Trust posture">
+      <header class="section-head">
+        <h2>Trust posture</h2>
+        <p class="muted section-note">Local metadata only. The dashboard never reads a credential or probes a venue on this page.</p>
+      </header>
+      <div class="trust-grid">
+        <dl class="status-grid">
+          <dt>Backend</dt><dd id="status-backend">(loading)</dd>
+          <dt>Data home</dt><dd id="status-home">(loading)</dd>
+          <dt>Home mode</dt><dd id="status-home-mode">(loading)</dd>
+          <dt>Bind</dt><dd>127.0.0.1 (loopback only)</dd>
+          <dt>Live arm from the UI</dt><dd>Refused. CLI only.</dd>
+        </dl>
+        <dl class="status-grid">
+          <dt>Scheduler</dt><dd id="status-scheduler">(loading)</dd>
+          <dt>Tick journal</dt><dd id="status-tick">(loading)</dd>
+          <dt>License</dt><dd id="status-license">(loading)</dd>
+          <dt>Trading readiness</dt><dd id="status-trading">not evaluated on this page; run <code>krellbot doctor</code></dd>
+        </dl>
+      </div>
+      <p id="status-diagnostic" class="muted">(diagnostic loads from trust snapshot)</p>
     </section>
 
-    <section id="receipts-section">
-      <h2>Receipts</h2>
-      <div id="receipts-empty" class="muted" hidden>No receipts.</div>
-      <ul id="receipts-list"></ul>
-    </section>
-
-    <section id="actions-section">
-      <h2>Actions</h2>
+    <!-- Section 7: actions. Same forms as before, kept verbatim so existing
+         contract tests stay green. -->
+    <section id="actions-section" aria-label="Actions">
+      <header class="section-head">
+        <h2>Actions</h2>
+        <p class="muted section-note">Forms below mutate local state only. Live arm remains CLI-only; the UI's <code>/arm</code> POST refuses anything other than <code>mode=paper</code> with 403.</p>
+      </header>
 
       <form id="form-arm" action="arm" method="POST" class="card">
-        <h3>Arm paper pack</h3>
+        <h3>Arm paper pack (file path)</h3>
         <p class="muted">Live arm from the page is refused. Use the CLI.</p>
         <label for="arm-pack-path">Pack file path
           <input id="arm-pack-path" type="text" name="pack_path" placeholder="$KRELLBOT_HOME/packs/your-pack.json" required>
@@ -137,6 +262,15 @@
       </form>
     </section>
 
+    <section id="receipts-section" aria-label="Receipts">
+      <header class="section-head">
+        <h2>Receipts</h2>
+        <p class="muted section-note">Files under <code>receipts/</code>; the dashboard never reads their contents.</p>
+      </header>
+      <div id="receipts-empty" class="muted" hidden>No receipts.</div>
+      <ul id="receipts-list"></ul>
+    </section>
+
     <section id="flash-section" aria-live="polite">
       <h2>Result</h2>
       <pre id="flash-pre"></pre>
@@ -144,7 +278,10 @@
   </main>
 
   <footer>
-    <p class="muted">Static assets are local. No CDN, no Google font, no external script.</p>
+    <p class="muted">
+      Static assets are local. No CDN, no Google font, no external script.
+      GET endpoints read local metadata only; POST endpoints in the table above are the only paths that contact a venue or persist state.
+    </p>
   </footer>
 
   <script>window.__KB_VIEW__ = __VIEW_JSON__;</script>

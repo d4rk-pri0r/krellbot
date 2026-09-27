@@ -9,11 +9,10 @@
  * No second brand. No CDN fonts. No looping effects. Reduced-motion
  * support is mandatory (a release check, not a nice-to-have).
  *
- * Tabular numeric figures, monospaced IDs, responsive density, and a
- * visible focus ring on every interactive element are required for
- * release. Focus contrast is achieved with a 2px cyan outline + 3px
- * offset; the offset keeps the outline visible against the dark
- * canvas without relying on colour alone.
+ * The dashboard command-center layout adds an operational overview
+ * section that is reachable in the first viewport at 560px, and
+ * separates the setup-wizard nav from the operational nav so an
+ * operator does not have to read past setup links to reach state.
  */
 
 :root {
@@ -71,15 +70,15 @@ main {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  max-width: 1100px;
+  max-width: 1180px;
   width: 100%;
   margin: 0 auto;
 }
 
 header {
-  max-width: 1100px;
+  max-width: 1180px;
   width: 100%;
-  margin: 1.25rem auto 0;
+  margin: 1rem auto 0;
   display: flex;
   flex-direction: column;
   gap: .35rem;
@@ -87,9 +86,43 @@ header {
 
 header h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 600;
   letter-spacing: -.01em;
+}
+
+.header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .5rem 1rem;
+}
+
+.header-meta {
+  margin: 0;
+  font-size: .8rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .55rem;
+  align-items: baseline;
+}
+
+.header-meta .label {
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: .7rem;
+}
+
+.header-meta .value {
+  color: var(--ink);
+}
+
+.header-meta .dot {
+  color: var(--border-soft);
+}
+
+.mono, code {
+  font-family: var(--font-mono);
 }
 
 .muted { color: var(--muted); }
@@ -111,6 +144,7 @@ header h1 {
   top: 1rem;
 }
 
+/* ---- wizard nav (legacy + setup-only; the dashboard uses .ops-nav) ---- */
 .wizard-nav {
   font-size: .9rem;
   margin-top: .25rem;
@@ -134,6 +168,77 @@ header h1 {
 .wizard-nav a:hover {
   border-bottom-color: var(--signal);
   color: var(--ink);
+}
+
+/* ---- operational nav (dashboard only) -------------------------------- */
+.ops-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  padding: .35rem 0;
+  margin-top: .25rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.ops-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: .35rem .7rem;
+  border-radius: 3px;
+  font-size: .9rem;
+  border-bottom: 1px dashed transparent;
+}
+.ops-nav a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+.ops-nav a[aria-current="true"] {
+  color: var(--signal);
+  border-bottom-color: var(--signal);
+  font-weight: 600;
+}
+
+/* ---- setup wizard nav: collapsible details, lives below ops-nav ------ */
+.setup-nav {
+  margin: 0;
+  font-size: .85rem;
+}
+.setup-nav > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: .25rem 0;
+  color: var(--muted);
+  width: max-content;
+}
+.setup-nav > summary::-webkit-details-marker { display: none; }
+.setup-nav > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 1em;
+  transition: transform .12s linear;
+  color: var(--muted);
+}
+.setup-nav[open] > summary::before { transform: rotate(90deg); }
+.setup-nav nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  padding: .25rem 0;
+}
+.setup-nav nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: .2rem .5rem;
+  border-radius: 3px;
+  border-bottom: 1px dashed transparent;
+}
+.setup-nav nav a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+.setup-nav-resume {
+  margin: .15rem 0 0;
+  font-size: .8rem;
 }
 
 /* Primary CTA — used by Enter dashboard and the future-slice free
@@ -167,16 +272,34 @@ section {
 }
 
 section h2 {
-  margin: 0 0 .6rem;
-  font-size: 1.1rem;
+  margin: 0 0 .5rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--ink);
 }
 
 section h3 {
   margin: 0 0 .4rem;
-  font-size: 1rem;
+  font-size: .95rem;
   font-weight: 600;
+}
+
+.section-head {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  margin-bottom: .6rem;
+}
+
+.section-note {
+  margin: 0;
+  font-size: .8rem;
+}
+
+.scope-note {
+  margin: 0;
+  font-size: .8rem;
+  line-height: 1.5;
 }
 
 dl {
@@ -192,7 +315,7 @@ dl > dt {
 dl > dt:first-child { margin-top: 0; }
 dl > dd {
   margin: .15rem 0 0;
-  font-size: .95rem;
+  font-size: .9rem;
   color: var(--ink);
   font-family: var(--font-mono);
   word-break: break-all;
@@ -228,8 +351,7 @@ dl > dd[aria-invalid="true"] {
 .future-list li { padding-left: .25rem; }
 
 code {
-  font-family: var(--font-mono);
-  font-size: .92em;
+  font-size: .9em;
   background: var(--canvas-elev);
   border: 1px solid var(--border);
   padding: 0 .25rem;
@@ -246,7 +368,7 @@ th, td {
   padding: .35rem .5rem;
   border-bottom: 1px solid var(--border);
   text-align: left;
-  font-size: .9rem;
+  font-size: .85rem;
   vertical-align: top;
 }
 th {
@@ -260,6 +382,136 @@ td button {
   font-family: var(--font-sans);
 }
 
+/* ---- overview section: metric tiles + detail blocks ------------------- */
+.overview-head {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  margin-bottom: .65rem;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.metric {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .55rem .7rem;
+  background: var(--canvas-elev);
+}
+.metric h3 {
+  margin: 0 0 .2rem;
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+}
+.metric-value {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.metric-sub {
+  margin: .15rem 0 0;
+  font-size: .75rem;
+  line-height: 1.35;
+}
+.metric-value.is-zero,
+.metric-value.is-empty { color: var(--muted); }
+.metric-value.is-stale { color: var(--warn); }
+.metric-value.is-ok { color: var(--signal); }
+.metric-value.is-fail { color: var(--fail-text); }
+
+.overview-detail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .55rem;
+  margin-top: .75rem;
+}
+.detail-block {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .55rem .7rem;
+  background: var(--canvas-elev);
+}
+
+.readiness-list {
+  margin: .25rem 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  font-size: .85rem;
+}
+.readiness-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .5rem;
+  align-items: baseline;
+  padding: .15rem 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.readiness-list li:last-child { border-bottom: none; }
+.readiness-list .pill {
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  padding: .05rem .4rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.readiness-list .pill.ok {
+  color: var(--ok-text);
+  border-color: rgba(185, 243, 212, .35);
+  background: var(--ok-bg);
+}
+.readiness-list .pill.fail {
+  color: var(--fail-text);
+  border-color: rgba(255, 122, 122, .5);
+  background: var(--fail-bg);
+}
+
+.key-status {
+  margin: .25rem 0 0;
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) 1fr;
+  gap: .15rem .6rem;
+  font-size: .85rem;
+}
+.key-status dt {
+  margin-top: 0;
+  font-size: .8rem;
+}
+.key-status dd {
+  margin: 0;
+  font-size: .85rem;
+}
+
+.license-readout {
+  margin: .25rem 0 0;
+  font-size: .85rem;
+  white-space: pre-wrap;
+}
+
+/* ---- trust posture: two-column grid for compactness ------------------- */
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+#status-diagnostic {
+  margin: .65rem 0 0;
+  font-size: .85rem;
+}
+
+/* ---- card containers (paper, arm, etc.) ------------------------------- */
 .card {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -272,25 +524,16 @@ td button {
   background: var(--danger-bg);
 }
 
-/* Dashboard hero card: the Local status block is the most important
+/* Dashboard hero card: the Overview section is the most important
  * block on the page. We give it a slightly thicker border and a
  * subtle gradient lift so the eye lands there first. */
-.card-primary,
-section.primary-card,
-section#status-section.primary-card {
+section.primary-card {
   border: 2px solid var(--signal);
   background: linear-gradient(180deg, var(--canvas-elev), var(--canvas));
   box-shadow: 0 0 0 1px rgba(92, 225, 255, .12);
 }
-section#status-section.primary-card h2 {
+section.primary-card h2 {
   color: var(--signal-strong);
-}
-section#status-section.primary-card dt {
-  color: var(--muted);
-}
-section#status-section.primary-card dd {
-  font-size: 1rem;
-  color: var(--ink);
 }
 
 /* Wizard stepper — 3 numbered dots above the nav. The current step
@@ -324,9 +567,6 @@ section#status-section.primary-card dd {
   color: var(--step-current);
   box-shadow: 0 0 0 3px rgba(92, 225, 255, .12);
 }
-/* The previous steps turn cyan when the user advances past them.
- * JS-free: the server tags which step is past when it knows the
- * route; without JS, only the current step is highlighted. */
 .stepper-step[data-past="true"] {
   background: var(--step-past);
   color: var(--canvas);
@@ -391,12 +631,12 @@ pre {
 }
 
 footer {
-  max-width: 1100px;
+  max-width: 1180px;
   width: 100%;
   margin: 0 auto;
   text-align: center;
   color: var(--muted);
-  font-size: .85rem;
+  font-size: .8rem;
 }
 
 /* Trust diagnostics: visible in the visible body. The server fills
@@ -429,7 +669,8 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+summary:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
@@ -447,13 +688,24 @@ textarea:focus-visible {
   }
 }
 
-/* Narrow viewport: cards stack vertically, tables become scrollable
- * to keep numeric columns aligned. */
+/* ---- responsive: 560px and below ---------------------------------------
+ * The overview metric grid collapses to two columns at 720px and a
+ * single column at 560px so a phone-width viewport still reads the
+ * four tiles vertically. Tables switch to horizontally scrollable
+ * blocks (the existing slice-B contract) so numeric columns stay
+ * aligned. The ops-nav stays a single wrap row.
+ */
 @media (max-width: 720px) {
   body { padding: 0 .75rem 2rem; }
   header { padding: 0 .25rem; }
   section { padding: .85rem .9rem; }
-  .status-grid {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .overview-detail {
+    grid-template-columns: 1fr;
+  }
+  .trust-grid {
     grid-template-columns: 1fr;
   }
   table {
@@ -461,4 +713,15 @@ textarea:focus-visible {
     overflow-x: auto;
     white-space: nowrap;
   }
+}
+
+@media (max-width: 560px) {
+  body { padding: 0 .6rem 1.5rem; gap: .9rem; }
+  header { gap: .25rem; }
+  header h1 { font-size: 1.2rem; }
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+  .metric-value { font-size: 1.2rem; }
+  section { padding: .75rem .8rem; }
 }
