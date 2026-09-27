@@ -8,9 +8,10 @@ Dashboard running at http://127.0.0.1:53182/264a3861588691fc018fb24d303ce081530f
 ```
 
 The 64-hex-char path is a 32-byte token from `secrets.token_hex(32)`. The
-same token becomes the `krellbot_session` cookie on the first GET. There
-is no DNS, no public bind, no remote call: the only thing the dashboard
-talks to is the disk under `$KRELLBOT_HOME`.
+same token becomes the `krellbot_session` cookie on the first GET. The
+dashboard is not publicly bound. GET status is read from local metadata;
+submitting the Exchange form triggers an authenticated HTTPS permission
+request to the selected Kraken or Coinbase venue, not to krellbot.dev.
 
 ```sh
 krellbot ui             # random port, prints URL, no browser launch
@@ -49,15 +50,23 @@ Any of those three failing is `403` and changes no state.
 
 ## Where the dashboard talks
 
-The dashboard reads only from disk under `$KRELLBOT_HOME`. It does
-**not** call Kraken, Coinbase, or `krellbot.dev` at any point. The
-gate token is the URL the CLI prints and the matching
-`krellbot_session` cookie; it is never written to disk and never
-sent over the network.
+The browser sends the Exchange form over loopback to `/<token>/keys/add`.
+The server then sends an authenticated HTTPS permission request to the
+selected Kraken or Coinbase venue before storing the pair in a native OS
+keychain. It does not send exchange credentials to `krellbot.dev`.
+GET status does not read exchange credentials or probe the venue: it only
+shows historical, nonsecret metadata from the last wizard submission.
+When the engine loads a venue key, credential-source precedence is a complete
+`KRELLBOT_<VEN>_KEY` and `KRELLBOT_<VEN>_SECRET` environment pair, then
+the keyring, then an explicitly configured `KRELLBOT_<VEN>_KEYFILE` if the
+keyring has no pair. A partial environment pair is an error. The wizard's
+historical status cannot prove which credential a later trade will use.
+The gate token is the URL the CLI prints and the matching
+`krellbot_session` cookie; it is never written to disk or sent to a venue.
 
 ## Views
 
-The dashboard reads only from disk under `$KRELLBOT_HOME`:
+The dashboard's read-only views use local data under `$KRELLBOT_HOME`:
 
 * Armed packs — `config.json`, with mode, cap, version, pending version,
   resting stop, and owned qty.
@@ -66,8 +75,10 @@ The dashboard reads only from disk under `$KRELLBOT_HOME`:
 * Journal tail — `journal/*.jsonl`, the most-recent 20 records.
 * License cache — `catalog/license-cache.json`, or `missing`.
 * Receipts — file listing of `receipts/`.
+* Exchange status — a nonsecret, historical timestamp from
+  `keys-onboarding-status.json`; not proof of current key presence or connectivity.
 
-No call to Kraken, Coinbase, or krellbot.dev happens at any point.
+These GET views do not contact Kraken, Coinbase, or krellbot.dev.
 
 The dashboard also surfaces a read-only **Local status** card at the
 top of the page: the detected keychain backend, the bind address
@@ -90,27 +101,29 @@ server-side from `trust_snapshot()` and never include raw credentials.
 * **Adopt pending** — moves `pending_version` into `pack_version`. Refused
   while the pack still owns quantity.
 
-Every action submits to a relative URL (`arm`, `disarm`, `stop_all`,
-`adopt`) and the server reads the form body itself. There is no external
-HTTP, no JSON-only path, no third-party CDN, and no Google font.
+Those actions submit to relative URLs (`arm`, `disarm`, `stop_all`,
+`adopt`) and the server reads the form body itself. The Exchange POST
+described above is the credentialed venue-probe exception. There is no
+third-party CDN or Google font.
 
 ## First-run wizard
 
 A fresh install renders the wizard at `/<token>/welcome` instead of the
-dashboard. The wizard has three steps: Welcome, Security, Next. Each
+dashboard. The wizard has four steps: Welcome, Security, Exchange, Next. Each
 step is a plain HTML page with sibling-relative `<a>` links, so a
 browser with JavaScript disabled can still navigate the wizard by
 following the links. A visible `<ol class="stepper">` shows the user
 where they are; the active step is `aria-current="step"` and the
 active nav link is `aria-current="page"`. The body carries
-`data-route="welcome|security|next"` so the JS hydrator can set
+`data-route="welcome|security|keys|next"` so the JS hydrator can set
 highlights without rewriting hrefs.
 
-* **Welcome** states three truthful things: the engine is free and
-  open-source, exchange keys stay on this machine, and official packs
+* **Welcome** states three things: the engine is free and
+  open-source, exchange keys are stored on this machine rather than
+  sent to krellbot.dev, and official packs
   are optional and recommended. The page exposes only sibling-relative
   `<a href="security">` / `<a href="next">` links — there is **no
-  Continue button** that posts a preference. Step 1 of 3.
+  Continue button** that posts a preference. Step 1 of 4.
 * **Security** shows the local trust posture (keychain backend name,
   resolved data home, home mode, bind address, live-arm rail, key
   permissions) plus a fail-closed **aggregate** diagnostic. The
@@ -123,10 +136,14 @@ highlights without rewriting hrefs.
   permission required, withdraw permission never granted. No
   exchange key is probed from this page."), not a validated
   connection.
-* **Next** lists exchange connection (slice C) and pack adoption
-  (slice D) as **future slices**, not as completed steps. The free
-  path today is the CLI (`krellbot ui`) and `krellbot doctor`. Step
-  3 of 3 carries an explicit **Enter dashboard** button that POSTs
+* **Exchange** accepts a key and secret in a single browser POST to
+  the loopback server. The server makes an authenticated HTTPS permission
+  request to the selected Kraken or Coinbase venue and stores only a
+  verified trade-only pair in the native OS keychain. The page reports
+  a historical outcome, not a live connection. Step 3 of 4.
+* **Next** lists pack adoption (slice D) as a **future slice**, not
+  a completed step. The free path today includes the dashboard, the CLI,
+  and `krellbot doctor`. Step 4 of 4 carries an explicit **Enter dashboard** button that POSTs
   to `/<token>/enter-dashboard` through the existing
   token/session/CSRF/Origin gate; the server responds 303 to
   `/<token>/dashboard` (PRG). Until that POST happens, the

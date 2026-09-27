@@ -3,6 +3,14 @@
 Records every POST and GET. Private POST responses are queued. Public GETs
 return AssetPairs and Ticker shapes. OpenOrders and ClosedOrders do not
 consume the AddOrder queue.
+
+The `api_key_info` / `api_key_info_error` knobs stub the
+`GetApiKeyInfo` endpoint. `api_key_info=None` (the default) means the
+endpoint replies with `EAPI:Invalid key: Permission denied`, mirroring
+a key that cannot probe its own permissions. Anything truthy replaces
+the success body. `api_key_info_error` is a string surfaced in the
+`error` field; it overrides `api_key_info` when set so callers can
+exercise the "permission denied" branch directly.
 """
 
 from __future__ import annotations
@@ -31,7 +39,8 @@ class FakeKrakenTransport:
 
     `rate_limit_first_n` makes that many AddOrder posts return
     `EAPI:Rate limit exceeded`. `open_orders` / `closed_orders` are returned
-    whole for those endpoints.
+    whole for those endpoints. `api_key_info` / `api_key_info_error` cover
+    the GetApiKeyInfo endpoint.
     """
 
     def __init__(
@@ -45,6 +54,8 @@ class FakeKrakenTransport:
         ticker_last: str = "100000",
         open_orders: dict | None = None,
         closed_orders: dict | None = None,
+        api_key_info: object = None,
+        api_key_info_error: str | None = None,
     ) -> None:
         self._responses = list(responses or [])
         self._withdraw_methods = withdraw_methods
@@ -54,6 +65,8 @@ class FakeKrakenTransport:
         self._ticker_last = ticker_last
         self._open_orders = open_orders
         self._closed_orders = closed_orders
+        self._api_key_info = api_key_info
+        self._api_key_info_error = api_key_info_error
         self.calls: list[RecordedCall] = []
         self.gets: list[str] = []
 
@@ -84,6 +97,8 @@ class FakeKrakenTransport:
         if endpoint == "AddOrder" and self._rate_limit_first > 0:
             self._rate_limit_first -= 1
             return {"error": ["EAPI:Rate limit exceeded"]}
+        if endpoint == "GetApiKeyInfo":
+            return self._api_key_info_response()
         if endpoint == "WithdrawMethods":
             if self._withdraw_methods is None:
                 return {"error": ["EAPI:Invalid key: Permission denied"]}
@@ -93,6 +108,15 @@ class FakeKrakenTransport:
         if not self._responses:
             return {"error": [], "result": {}}
         return self._responses.pop(0)
+
+    def _api_key_info_response(self) -> dict:
+        if self._api_key_info_error is not None:
+            return {"error": [self._api_key_info_error], "result": {}}
+        if self._api_key_info is None:
+            # Permission denied is the historical default; matches the
+            # old WithdrawMethods behavior the fake emulated.
+            return {"error": ["EAPI:Invalid key: Permission denied"], "result": {}}
+        return {"error": [], "result": self._api_key_info}
 
 
 def _query_value(url: str, key: str) -> str:

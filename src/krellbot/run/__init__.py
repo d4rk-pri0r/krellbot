@@ -159,11 +159,16 @@ def arm_pack(
         except (OSError, RuntimeError, ValueError, TypeError):
             print(f"{venue}: key check failed", flush=True)
             return 1
-        if perms is None or not getattr(perms, "can_trade", False):
-            print(f"{venue}: trade is off", flush=True)
-            return 1
+        # Check `can_withdraw` BEFORE `can_trade` so a confirmed-withdraw
+        # key reports "withdraw is on" (the actual cause) instead of
+        # collapsing to the generic "trade is off" — without changing
+        # the engine's refusal contract: every non-`trade_only` outcome
+        # still returns 1.
         if getattr(perms, "can_withdraw", False):
             print(f"{venue}: withdraw is on; trade-only keys refused", flush=True)
+            return 1
+        if perms is None or not getattr(perms, "can_trade", False):
+            print(f"{venue}: trade is off", flush=True)
             return 1
         if stop <= Decimal(0):
             print("live arm requires a stop", flush=True)

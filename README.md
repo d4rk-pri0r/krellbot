@@ -140,8 +140,10 @@ exit code) are documented in [docs/service.md](docs/service.md).
 - The dashboard is `127.0.0.1` only; it refuses non-loopback `Host`
   headers and rejects live-arm POSTs. Live arm remains a CLI-only path
   that requires typing `LIVE` exactly.
-- The UI does not call any exchange, the catalog, or `krellbot.dev`
-  at any time. The server reads only from disk under `$KRELLBOT_HOME`.
+- GET status reads local metadata without probing an exchange. Submitting
+  the Exchange form makes an authenticated HTTPS permission request to
+  the selected Kraken or Coinbase venue before storing a trade-only key
+  in the native OS keychain. No exchange credentials go to `krellbot.dev`.
 - See [docs/live.md](docs/live.md) for the live arm flow and
   [docs/dashboard.md](docs/dashboard.md) for the dashboard.
 

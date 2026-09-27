@@ -38,7 +38,12 @@
         }
       }
       // Advance the stepper past the current step (visually).
-      var stepperOrder = ["welcome", "security", "next"];
+      // Order matches the server-side stepper in
+      // krellbot.ui.server._wizard_html: welcome → security → exchange
+      // (keys) → next. The server also sets aria-current directly so a
+      // no-JS user still sees the active step; this is just the visual
+      // "previous steps turn cyan" enhancement.
+      var stepperOrder = ["welcome", "security", "keys", "next"];
       var currentIdx = stepperOrder.indexOf(current);
       if (currentIdx > 0) {
         var stepperSteps = document.querySelectorAll(".stepper-step");

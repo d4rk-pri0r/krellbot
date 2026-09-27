@@ -805,7 +805,9 @@ def cmd_arm(args):
                 api_key, api_secret = kb_secrets_mod.get(venue_arg)
             except (FileNotFoundError, ValueError, PermissionError):
                 return None
-            return _probe(venue_arg, api_key, api_secret)
+            probe = _probe(venue_arg, api_key, api_secret)
+            # Narrow typed probe result back to engine's `KeyPerms` shape.
+            return probe.to_key_perms()
 
     rc = arm_pack(
         Path(pack_arg),

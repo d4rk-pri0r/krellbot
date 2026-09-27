@@ -213,10 +213,12 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           ARCHIVE="artifacts/${{ matrix.archive_name }}"
-          # build_archive enforces that the URL's basename equals the
-          # archive filename, so this concatenation is safe — if
-          # ${{ matrix.archive_name }} ever drifts from the URL
-          # basename, the build aborts here.
+          # A v* tag publishes to GitHub Releases. The download path is
+          # {base}{tag}/{archive}, so the manifest version is the tag,
+          # not the package version string.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            KRELLBOT_VERSION="${GITHUB_REF_NAME}"
+          fi
           URL="${KRELLBOT_RELEASE_BASE_URL}${KRELLBOT_VERSION}/${{ matrix.archive_name }}"
           uv run python -c "
           import json
@@ -242,3 +244,35 @@ jobs:
             artifacts/${{ matrix.archive_name }}
             artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json
           if-no-files-found: error
+
+  publish:
+    name: publish GitHub release assets
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: krellbot-*
+          merge-multiple: true
+      - name: Upload zips to the tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t zips < <(find release-assets -type f -name '*.zip' | sort)
+          if [ "${#zips[@]}" -eq 0 ]; then
+            echo "::error::no release zips downloaded"
+            exit 1
+          fi
+          if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${GITHUB_REF_NAME}" \
+              --prerelease \
+              --notes "Unsigned checksum-pinned build from ${GITHUB_SHA}. Not notarized. Not Authenticode-signed. SHA-256 is the integrity check."
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${zips[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
