@@ -314,6 +314,34 @@ def test_activate_refused_license_still_prg_with_closed_message(home, monkeypatc
         _stop(server)
 
 
+def test_cmd_setup_uses_signed_refresh_not_query_string(home, monkeypatch, capsys) -> None:
+    """`krellbot setup` must write the signed cache and must not put the key in a URL."""
+    from krellbot import cli as kb_cli
+    from krellbot.ui import activate as kb_activate
+
+    seen: list[str] = []
+
+    def fake_refresh(home_path, key, *, now, transport=None, url=None):
+        seen.append(key)
+        assert url is None or key not in url
+        from krellbot import license as kb_license
+
+        kb_license.write_cache(home_path, status="active", period_end=int(now) + 5, grace_until=int(now) + 5)
+        return {"status": "active", "period_end": int(now) + 5, "grace_until": int(now) + 5}
+
+    monkeypatch.setattr(kb_activate, "refresh_license", fake_refresh)
+    monkeypatch.setattr(kb_activate, "install_catalog", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        kb_cli, "download_catalog", lambda key: (_ for _ in ()).throw(AssertionError("key in URL helper"))
+    )
+    rc = kb_cli.cmd_setup("kb_setup_key")
+    assert rc == 0
+    assert seen == ["kb_setup_key"]
+    out = capsys.readouterr().out
+    assert "kb_setup_key" not in out
+    assert "license verified" in out
+
+
 def test_activate_missing_or_blank_key_is_400_without_echo(home, monkeypatch) -> None:
     """An empty activation key is rejected at the form boundary with 400."""
     from krellbot import cli as kb_cli
