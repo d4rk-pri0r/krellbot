@@ -33,11 +33,13 @@ Actions:
 from __future__ import annotations
 
 import hmac
+import html
 import http.server
 import json
 import secrets
 import socketserver
 import threading
+import time
 import urllib.parse
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
@@ -48,7 +50,9 @@ from krellbot import journal as kb_journal
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 
+from . import activate as kb_activate
 from . import first_run, keys_status, trust
+from . import packs as ui_packs
 
 # ---- constants -----------------------------------------------------------
 
@@ -240,6 +244,12 @@ def _view_snapshot(home: Path) -> dict:
         "journal_tail": _read_journal_tail(home),
         "receipts": _read_receipts(home),
         "trust": snap,
+        # Installed packs listing for the dashboard. Built from local
+        # metadata only: no invented performance numbers, no equity
+        # curves, no paid-catalog reads. Legacy packs render with
+        # ``runnable: false`` so the dashboard's arm affordance stays
+        # hidden for them. The arm route refuses them with 403 anyway.
+        "packs": ui_packs.list_installed(home),
     }
 
 
@@ -252,8 +262,40 @@ def _render_dashboard(home: Path, csrf: str) -> bytes:
         return b"<!doctype html><title>krellbot</title><p>Static assets missing.</p>"
     template = index.read_text(encoding="utf-8")
     rendered = template.replace("__VIEW_JSON__", payload)
+    rendered = rendered.replace("__PACK_LIST__", _render_pack_forms(view.get("packs") or [], csrf))
     rendered = rendered.replace('name="csrf"', f'name="csrf" value="{csrf}"')
     return rendered.encode("utf-8")
+
+
+def _render_pack_forms(packs: list, csrf: str) -> str:
+    """Server-render paper-arm forms. No pack path, no catalog stats."""
+    if not packs:
+        return '<p class="muted">No packs installed.</p>'
+    parts: list[str] = []
+    for pack in packs:
+        if not isinstance(pack, dict):
+            continue
+        label = html.escape(str(pack.get("label") or pack.get("public_label") or pack.get("id") or "pack"))
+        if not pack.get("runnable"):
+            reason = html.escape(str(pack.get("not_runnable_reason") or "not runnable"))
+            parts.append(f'<p>{label} <span class="muted">{reason}</span></p>')
+            continue
+        pack_id = html.escape(str(pack.get("id") or ""), quote=True)
+        parts.append(
+            '<form action="paper-arm" method="POST" class="card">'
+            f'<input type="hidden" name="pack_id" value="{pack_id}">'
+            f'<input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">'
+            '<label>Venue <select name="venue">'
+            '<option value="kraken">kraken</option>'
+            '<option value="coinbase">coinbase</option>'
+            "</select></label>"
+            "<label>Paper balance (USD) "
+            '<input type="number" name="paper_balance" step="any" min="1" value="1000" required>'
+            "</label>"
+            f'<button type="submit">Paper-arm {label}</button>'
+            "</form>"
+        )
+    return "\n".join(parts) or '<p class="muted">No packs installed.</p>'
 
 
 def _render_welcome(home: Path, csrf: str) -> bytes:
@@ -335,17 +377,8 @@ def _render_security(home: Path, csrf: str) -> bytes:
     return body.encode("utf-8")
 
 
-def _render_next(home: Path, csrf: str) -> bytes:
-    """Render the wizard Next-step shell — Exit Plan + Adopt.
-
-    The exit links point at the server's own fixed-exit routes
-    (/out/docs, /out/source), not at the external URLs, so the server
-    remains the only component that decides what may leave the box.
-
-    Slice C Exchange is available in the wizard; pack adoption (slice D)
-    remains a future slice. The CLI / free path is always exposed so the
-    user is not funnelled toward a fake-success button.
-    """
+def _render_next(home: Path, csrf: str, *, status_message: str | None = None) -> bytes:
+    """Render the wizard Next page, including the activation form."""
     snap = trust.trust_snapshot(home)
     view = {
         "view": "wizard.next",
@@ -353,8 +386,10 @@ def _render_next(home: Path, csrf: str) -> bytes:
         "exit_routes": {"docs": "out/docs", "source": "out/source"},
     }
     payload = _embed_json(view)
+    shown = status_message if status_message in kb_activate.SAFE_MESSAGES else ""
     body = _NEXT_TEMPLATE
     body = body.replace("__VIEW_JSON__", payload)
+    body = body.replace("__ACTIVATE_STATUS__", html.escape(shown))
     body = body.replace('name="csrf"', f'name="csrf" value="{csrf}"')
     return body.encode("utf-8")
 
@@ -599,10 +634,23 @@ _NEXT_TEMPLATE = _wizard_html(
     '      <input type="hidden" name="csrf">\n'
     '      <button type="submit">Enter dashboard</button>\n'
     "    </form>\n"
-    "    <h3>Future slices</h3>\n"
-    '    <p class="muted">The following belongs to a later slice and is NOT available in this release:</p>\n'
-    '    <ul class="future-list" aria-label="Future slices">\n'
-    "      <li><strong>Slice D &mdash; pack adoption.</strong> A guided pack picker / scheduler installer is a future slice; today you run <code>krellbot pack lint</code> and <code>krellbot arm</code> from the CLI.</li>\n"
+    "    <h3>Activation key</h3>\n"
+    '    <p id="activate-status">__ACTIVATE_STATUS__</p>\n'
+    '    <form id="form-activate" action="activate" method="POST">\n'
+    '      <label for="activation-key">Activation key\n'
+    '        <input id="activation-key" type="password" name="activation_key" autocomplete="off" required>\n'
+    "      </label>\n"
+    '      <input type="hidden" name="csrf">\n'
+    '      <button type="submit">Redeem key</button>\n'
+    "    </form>\n"
+    '    <p class="muted">Redeem sends the activation key in one HTTPS POST body to '
+    "krellbot.dev/api/license, then one more POST body to krellbot.dev/api/catalog "
+    "if the license verifies. The key is not placed in a URL. Exchange API keys "
+    "are not sent.</p>\n"
+    "    <h3>Not in this release</h3>\n"
+    '    <ul aria-label="What this release does not do">\n'
+    "      <li>An OS scheduler installer. Today, install the existing service unit with "
+    "<code>krellbot service install</code>. The dashboard does not schedule ticks.</li>\n"
     "    </ul>\n"
     "    <h3>The free path today</h3>\n"
     "    <ul>\n"
@@ -703,6 +751,20 @@ def _embed_json(view: dict) -> str:
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
     )
+
+
+def _activate_status_from_query(raw_query: str) -> str | None:
+    """Return an activation safe-message, or None. Never echoes a key."""
+    if not raw_query:
+        return None
+    pairs = urllib.parse.parse_qs(raw_query, keep_blank_values=False)
+    candidates = pairs.get("status") or []
+    if not candidates:
+        return None
+    candidate = candidates[0]
+    if candidate in kb_activate.SAFE_MESSAGES:
+        return candidate
+    return None
 
 
 def _status_from_query(raw_query: str) -> str | None:
@@ -1067,7 +1129,11 @@ def _make_handler(server_config: _ServerConfig):
             elif route == "security":
                 body = _render_security(home, csrf)
             elif route == "next":
-                body = _render_next(home, csrf)
+                body = _render_next(
+                    home,
+                    csrf,
+                    status_message=_activate_status_from_query(raw_query),
+                )
             elif route == "keys":
                 # The keys page may carry a closed `?status=<safe_message>`
                 # query after a 303 PRG. Parse it here; the renderer
@@ -1137,6 +1203,8 @@ def _make_handler(server_config: _ServerConfig):
         def _route_post(self, rest: str, form: dict) -> None:
             if rest == "arm":
                 self._do_arm(form)
+            elif rest == "paper-arm":
+                self._do_paper_arm(form)
             elif rest == "disarm":
                 self._do_disarm(form)
             elif rest == "stop_all":
@@ -1149,6 +1217,8 @@ def _make_handler(server_config: _ServerConfig):
                 self._do_enter_dashboard()
             elif rest == "keys/add":
                 self._do_keys_add(form)
+            elif rest == "activate":
+                self._do_activate(form)
             else:
                 self._send_status(404, "Not Found")
 
@@ -1356,6 +1426,142 @@ def _make_handler(server_config: _ServerConfig):
             for name, value in _HTML_SECURITY_HEADERS:
                 self.send_header(name, value)
             self.end_headers()
+
+        def _do_activate(self, form: dict) -> None:
+            """Token-gated activation-key redeem.
+
+            The cookie/CSRF/Origin/Host gate is enforced upstream in
+            ``_handle``; by the time we reach here the request is
+            already authenticated.
+
+            The flow is intentionally minimal:
+
+                1. Read ``activation_key`` once. A blank value is
+                   rejected with 400 (no PRG — the form is invalid).
+                2. Delegate to :func:`krellbot.ui.activate.redeem`,
+                   which composes ``cli.check_license`` and
+                   ``cli.download_catalog`` (no shelling out, no second
+                   license format). The key never appears in any
+                   helper exception message or local frame after the
+                   call returns.
+                3. 303 PRG to ``/<token>/next`` with a closed safe
+                   message in the query string. The key is NOT in the
+                   query string, NOT in any header value, and NOT in
+                   the (empty) response body.
+
+            On a blank key we 400 instead of 303 — the brief requires
+            the key not to be echoed, and a 400 makes the failure
+            surface unambiguous to the operator without a misleading
+            PRG to a status page.
+            """
+            activation_key = (form.get("activation_key") or [""])[0]
+            if not isinstance(activation_key, str) or not activation_key.strip():
+                self._send_status(400, "Bad Request")
+                return
+
+            outcome = kb_activate.redeem(
+                activation_key.strip(),
+                home=server_config.home,
+                now=int(time.time()),
+            )
+
+            # 303 PRG. The closed safe message rides in the query
+            # string; the renderer validates against SAFE_MESSAGES so
+            # an attacker-controlled value cannot reach the page.
+            location = f"/{server_config.token}/next?status={urllib.parse.quote(outcome.message)}"
+            self.send_response(303, "See Other")
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            for name, value in _HTML_SECURITY_HEADERS:
+                self.send_header(name, value)
+            self.end_headers()
+
+        def _do_paper_arm(self, form: dict) -> None:
+            """Paper-arm a pack from the dashboard.
+
+            The cookie/CSRF/Origin/Host gate is enforced upstream in
+            ``_handle``. This route:
+
+              * resolves ``pack_id`` to an on-disk pack path via the
+                local ``<home>/packs/`` tree (legacy packs are
+                refused with 403);
+              * rejects anything that is not paper (live arm from the
+                UI is a CLI-only gate, unchanged from slice B);
+              * delegates to :func:`krellbot.run.arm_pack`, which is
+                the single authority for cap/costmin checks and
+                config persistence. The dashboard does not have its
+                own arm logic — it MUST route through the engine so
+                every existing guarantee applies uniformly.
+
+            Missing/blank inputs are 400. The engine's own refusal
+            contract (cap cannot meet costmin, second pack on same
+            venue+pair) surfaces as 400 here because the engine prints
+            refusal prose to stdout; a 200 with engine prose in the
+            body would be a misleading happy path.
+
+            The brief is explicit: a missing license cache MUST NOT
+            block paper-arm of a local custom pack. We do not call
+            ``license.entries_allowed`` here, and we do not require a
+            key in ``state.json``. The engine's existing
+            ``requires_license`` flag is read from the pack on disk
+            and only enforced inside ``tick`` (where it gates
+            entries, not the arm itself).
+            """
+            pack_id = (form.get("pack_id") or [""])[0].strip()
+            venue = (form.get("venue") or [""])[0].strip().lower()
+            paper_balance_raw = (form.get("paper_balance") or [""])[0].strip()
+            if not pack_id or not venue or not paper_balance_raw:
+                self._send_status(400, "Bad Request")
+                return
+            if venue not in {"kraken", "coinbase"}:
+                self._send_status(400, "Bad Request")
+                return
+
+            pack_path = ui_packs.resolve_pack_path(server_config.home, pack_id)
+            if pack_path is None:
+                # Either the id has no on-disk match or it is a
+                # legacy pack. ``resolve_pack_path`` skips legacy
+                # packs by design; this also serves as the 404 for
+                # unknown ids.
+                self._send_status(404, "Not Found")
+                return
+
+            # Legacy-pack sanity: ``resolve_pack_path`` already skips
+            # them, but we defend the route against future schema
+            # changes by re-checking at the route boundary.
+            try:
+                peek = json.loads(pack_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                self._send_status(400, "Bad Request")
+                return
+            from krellbot.pack import lint as _pack_lint
+
+            if not isinstance(peek, dict) or _pack_lint.is_legacy(peek):
+                self._send_status(403, "Forbidden")
+                return
+
+            try:
+                paper_balance = Decimal(paper_balance_raw)
+            except (ValueError, ArithmeticError):
+                self._send_status(400, "Bad Request")
+                return
+
+            from krellbot.run import arm_pack as _arm_pack
+
+            rc = _arm_pack(
+                pack_path,
+                venue=venue,
+                mode="paper",
+                paper_balance=paper_balance,
+                home=server_config.home,
+            )
+            if rc == 0:
+                self._send_text(200, "armed")
+                return
+            # Engine refusal (costmin, second pack, etc.). 400 keeps
+            # the contract honest — the arm did not happen.
+            self._send_status(400, "Bad Request")
 
         # ---- response helpers -------------------------------------------
 

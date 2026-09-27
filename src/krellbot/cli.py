@@ -377,23 +377,24 @@ def download_catalog(key):
 
 
 def cmd_setup(license_key):
-    result = check_license(license_key)
-    if result.get("status") not in {"paid", "grace"}:
-        print(result.get("message") or DEAD, file=sys.stderr)
+    """Redeem an activation key into the signed license cache.
+
+    The key is POSTed in the JSON body to ``/api/license``. It is not
+    placed in a URL and it is not stored in ``state.json``. Exchange
+    API keys are not involved.
+    """
+    import time
+
+    from krellbot.ui.activate import redeem
+
+    outcome = redeem(str(license_key), home=kb_paths.home(), now=int(time.time()))
+    print(outcome.message)
+    if outcome.status not in {"paid", "grace"}:
         return 2
-    state = load_state()
-    state["license_key"] = license_key
-    state["license_status"] = result["status"]
-    save_state(state)
-    print(result.get("message") or "License stored.")
-    print(f"Stored in {STATE}")
-    print("Coinbase is not ready.")
-    if download_catalog(license_key):
+    if outcome.catalog_downloaded:
         print("Packs downloaded to this machine.")
     else:
-        print("License stored. Pack download failed. Run setup again when the site answers.")
-    if result["status"] == "grace":
-        print(GRACE)
+        print("License cache written. Pack download failed. Run setup again when the site answers.")
     return 0
 
 
