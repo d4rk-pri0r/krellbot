@@ -937,13 +937,8 @@ def test_welcome_view_serves_three_truthful_statements(tmp_path: Path) -> None:
         server.stop()
 
 
-def test_next_view_marks_exchange_and_pack_flows_as_future(tmp_path: Path) -> None:
-    """The Next view must clearly label exchange connection (C) and
-    pack adoption (D) as future slices, and must expose the CLI/free
-    path so the user is not funnelled toward a fake-success button.
-
-    The future / CLI labels must be visible HTML, not just JSON.
-    """
+def test_next_view_marks_unshipped_scheduler_and_exposes_activation(tmp_path: Path) -> None:
+    """Next ships activation. It must not call the scheduler done, and must keep the CLI path."""
     import re
 
     server = _start_server(tmp_path)
@@ -961,17 +956,11 @@ def test_next_view_marks_exchange_and_pack_flows_as_future(tmp_path: Path) -> No
                 flags=re.DOTALL,
             )
             lower = visible.lower()
-            assert (
-                "future" in lower
-                or "later" in lower
-                or "coming" in lower
-                or "upcoming" in lower
-                or "next slice" in lower
-                or "next slices" in lower
-            ), "next must mark exchange / pack flows as future slices"
-            assert "krellbot ui" in lower or "free path" in lower or "cli" in lower or "command line" in lower, (
-                "next must allow the CLI / free path"
-            )
+            assert 'action="activate"' in visible
+            assert "not in this release" in lower
+            assert "krellbot service install" in lower
+            assert "never leaves the box" not in lower
+            assert "krellbot ui" in lower or "free path" in lower
         finally:
             conn.close()
     finally:

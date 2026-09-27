@@ -155,31 +155,37 @@ def _legacy_pack() -> dict:
 # ---- 1. activation-key POST: reuse existing helpers, never echo key ------
 
 
-def test_activate_reuses_cli_check_license_and_downloads_catalog(home, monkeypatch) -> None:
-    """The wizard's activate POST must call cli.check_license + cli.download_catalog
-    (no shelling out, no second license format) and 303 PRG to /next with a
-    closed safe message.
-    """
+def test_activate_refreshes_signed_cache_and_does_not_echo_key(home, monkeypatch) -> None:
+    """Activate POSTs through license.refresh, not the legacy paid/grace helper."""
     from krellbot import cli as kb_cli
+    from krellbot import license as kb_license
+    from krellbot.ui import activate as kb_activate
 
-    calls = {"check": 0, "download": 0, "args": []}
+    calls: list[tuple[str, str]] = []
 
-    def fake_check(key):
-        calls["check"] += 1
-        calls["args"].append(("check", key))
-        return {"status": "paid", "message": "ok"}
+    def fake_refresh(home_path, key, *, now, transport=None, url=None):
+        calls.append(("refresh", key))
+        assert url is None or key not in url
+        kb_license.write_cache(
+            home_path,
+            status="active",
+            period_end=int(now) + 100,
+            grace_until=int(now) + 100,
+        )
+        return {"status": "active", "period_end": int(now) + 100, "grace_until": int(now) + 100}
 
-    def fake_download(key):
-        calls["download"] += 1
-        calls["args"].append(("download", key))
-        # Mirror cmd_setup behavior: write a tiny catalog file.
-        kb_paths.ensure_layout()
-        path = kb_paths.home() / "catalog.json"
-        path.write_text(json.dumps({"packs": []}))
+    def fake_install(home_path, key, *, transport=None, url=None):
+        calls.append(("catalog", key))
+        assert url is None or key not in url
         return True
 
-    monkeypatch.setattr(kb_cli, "check_license", fake_check)
-    monkeypatch.setattr(kb_cli, "download_catalog", fake_download)
+    def fail_check(*_args, **_kwargs):
+        raise AssertionError("legacy check_license must not run")
+
+    monkeypatch.setattr(kb_activate, "refresh_license", fake_refresh)
+    monkeypatch.setattr(kb_activate, "install_catalog", fake_install)
+    monkeypatch.setattr(kb_cli, "check_license", fail_check)
+    monkeypatch.setattr(kb_cli, "cmd_setup", fail_check)
 
     server, _port = _start(home)
     try:
@@ -193,59 +199,50 @@ def test_activate_reuses_cli_check_license_and_downloads_catalog(home, monkeypat
             origin=f"http://127.0.0.1:{server.bound_port}",
         )
         assert status == 303, (status, headers, body_bytes[:200])
-        # The same key string was passed to both helpers exactly once each.
-        assert calls["check"] == 1
-        assert calls["download"] == 1
-        for tag, key in calls["args"]:
-            assert key == "ACTIVATE-ME-NOW"
-        # No key bytes in the response body or any header value.
+        assert calls == [("refresh", "ACTIVATE-ME-NOW"), ("catalog", "ACTIVATE-ME-NOW")]
         for k, v in headers.items():
             assert "ACTIVATE-ME-NOW" not in v, (k, v)
         assert b"ACTIVATE-ME-NOW" not in body_bytes
-        # The 303 target is the closed-status list page (the wizard's Next view).
         loc = headers.get("location", "")
-        assert loc.startswith(f"/{server.token}/"), loc
-        assert "status=" in loc
+        assert loc.startswith(f"/{server.token}/")
+        assert "license+verified" in loc or "license%20verified" in loc
+        cache = kb_license.read_cache(home)
+        assert cache is not None
+        assert cache["status"] == "active"
     finally:
         _stop(server)
 
 
 def test_activate_does_not_shell_out_to_cli(home, monkeypatch) -> None:
-    """The activate POST must not shell out: it must not call
-    ``cmd_setup`` and must not spawn any subprocess. The contract is
-    that the two existing helpers — ``check_license`` and
-    ``download_catalog`` — are called in order, and that nothing
-    ``cli.cmd_setup``-shaped is ever reached.
-
-    A paid license is the only realistic shape — the catalog
-    download runs as a side effect of the existing CLI helpers, not
-    as a separate subprocess.
-    """
+    """The activate POST must not call cmd_setup or the legacy download helper."""
     from krellbot import cli as kb_cli
+    from krellbot.ui import activate as kb_activate
 
-    called: list[str] = []
-
-    def fail_cmd_setup(*args, **kwargs):
+    def fail_cmd_setup(*_args, **_kwargs):
         raise AssertionError("cmd_setup must not be called from the activate POST")
 
     monkeypatch.setattr(kb_cli, "cmd_setup", fail_cmd_setup)
-
-    def fake_check(key):
-        called.append("check")
-        return {"status": "paid", "message": "ok"}
-
-    def fake_download(key):
-        called.append("download")
-        return True
-
-    monkeypatch.setattr(kb_cli, "check_license", fake_check)
-    monkeypatch.setattr(kb_cli, "download_catalog", fake_download)
+    monkeypatch.setattr(kb_cli, "download_catalog", fail_cmd_setup)
+    monkeypatch.setattr(
+        kb_activate,
+        "refresh_license",
+        lambda home_path, key, *, now, transport=None, url=None: {
+            "status": "active",
+            "period_end": int(now) + 10,
+            "grace_until": int(now) + 10,
+        },
+    )
+    monkeypatch.setattr(
+        kb_activate,
+        "install_catalog",
+        lambda home_path, key, *, transport=None, url=None: False,
+    )
 
     server, _port = _start(home)
     try:
         cookies, csrf = _login(server, server.bound_port)
         body = f"csrf={csrf}&activation_key=ANYKEY"
-        status, _headers, _body = _post(
+        status, headers, _body = _post(
             server,
             f"/{server.token}/activate",
             body,
@@ -253,30 +250,47 @@ def test_activate_does_not_shell_out_to_cli(home, monkeypatch) -> None:
             origin=f"http://127.0.0.1:{server.bound_port}",
         )
         assert status == 303, status
-        # Order: check first, download second. ``cmd_setup`` is
-        # monkeypatched to raise; had anything invoked it the assertion
-        # would have failed.
-        assert called == ["check", "download"], called
+        assert "ANYKEY" not in headers.get("location", "")
     finally:
         _stop(server)
 
 
+def test_refresh_license_posts_key_in_body_not_url(home) -> None:
+    """The production refresh helper uses the signed-cache transport contract."""
+    from krellbot import license as kb_license
+    from krellbot.ui.activate import refresh_license
+
+    payload = b'{"grace_until":300,"issued_at":10,"period_end":40,"status":"active"}'
+    sig = "TTXgZ8bcSSDhJ8oH0ncnLf1POog_PL7jsj9uLM8mT_Qe5_iYRsfannXhTVq036_djL02pD7eCclP2zWPhLFLCw"
+    seen: list[dict] = []
+
+    class _Transport:
+        def post(self, url, body, headers):
+            seen.append({"url": url, "body": body})
+            return {"payload": payload.decode("utf-8"), "sig": sig}
+
+    key = "kb_test_key_not_in_url"
+    verified = refresh_license(home, key, now=10, transport=_Transport(), url="https://krellbot.dev/api/license")
+    assert verified["status"] == "active"
+    assert seen[0]["body"] == {"key": key}
+    assert key not in seen[0]["url"]
+    cache = kb_license.read_cache(home)
+    assert cache["status"] == "active"
+    assert cache["grace_until"] == 300
+
+
 def test_activate_refused_license_still_prg_with_closed_message(home, monkeypatch) -> None:
-    """A 'dead' license must NOT echo anything and must still 303 PRG with a
-    closed safe message in the query string (the GET then renders it).
-    """
-    from krellbot import cli as kb_cli
+    """A rejected signature still 303s with a closed message and does not install packs."""
+    from krellbot.ui import activate as kb_activate
 
-    monkeypatch.setattr(
-        kb_cli,
-        "check_license",
-        lambda key: {"status": "dead", "message": "Payment failed."},
-    )
+    def fail_refresh(*_args, **_kwargs):
+        raise ValueError("license signature rejected")
 
-    def no_download(key):  # pragma: no cover - guard
-        raise AssertionError("download_catalog must NOT run on a dead license")
+    def no_install(*_args, **_kwargs):
+        raise AssertionError("catalog install must not run when the license is refused")
 
-    monkeypatch.setattr(kb_cli, "download_catalog", no_download)
+    monkeypatch.setattr(kb_activate, "refresh_license", fail_refresh)
+    monkeypatch.setattr(kb_activate, "install_catalog", no_install)
 
     server, _port = _start(home)
     try:
@@ -294,12 +308,8 @@ def test_activate_refused_license_still_prg_with_closed_message(home, monkeypatc
         for k, v in headers.items():
             assert "KEY-WHATEVER" not in v, (k, v)
         loc = headers.get("location", "")
-        assert "status=" in loc
-        # Status query value must be from the closed safe-message set.
-        from krellbot.ui import activate as kb_activate
-
         q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(loc).query))
-        assert q.get("status") in kb_activate.SAFE_MESSAGES
+        assert q.get("status") == "license not accepted"
     finally:
         _stop(server)
 
@@ -654,8 +664,9 @@ def test_wizard_next_page_does_not_advertise_a_new_scheduler(home) -> None:
         body = body_bytes.decode("utf-8")
         # The recommended path is the existing CLI command.
         assert "krellbot service install" in body
-        # We must NOT advertise a UI form that promises to install a
-        # scheduler unit. There is no form action that says so.
+        assert "never leaves the box" not in body
+        assert 'action="activate"' in body
+        assert "krellbot.dev/api/license" in body
         assert 'action="install-scheduler"' not in body
         assert 'action="scheduler/install"' not in body
         assert 'action="install_scheduler"' not in body

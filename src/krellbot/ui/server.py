@@ -33,11 +33,13 @@ Actions:
 from __future__ import annotations
 
 import hmac
+import html
 import http.server
 import json
 import secrets
 import socketserver
 import threading
+import time
 import urllib.parse
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
@@ -260,8 +262,40 @@ def _render_dashboard(home: Path, csrf: str) -> bytes:
         return b"<!doctype html><title>krellbot</title><p>Static assets missing.</p>"
     template = index.read_text(encoding="utf-8")
     rendered = template.replace("__VIEW_JSON__", payload)
+    rendered = rendered.replace("__PACK_LIST__", _render_pack_forms(view.get("packs") or [], csrf))
     rendered = rendered.replace('name="csrf"', f'name="csrf" value="{csrf}"')
     return rendered.encode("utf-8")
+
+
+def _render_pack_forms(packs: list, csrf: str) -> str:
+    """Server-render paper-arm forms. No pack path, no catalog stats."""
+    if not packs:
+        return '<p class="muted">No packs installed.</p>'
+    parts: list[str] = []
+    for pack in packs:
+        if not isinstance(pack, dict):
+            continue
+        label = html.escape(str(pack.get("label") or pack.get("public_label") or pack.get("id") or "pack"))
+        if not pack.get("runnable"):
+            reason = html.escape(str(pack.get("not_runnable_reason") or "not runnable"))
+            parts.append(f'<p>{label} <span class="muted">{reason}</span></p>')
+            continue
+        pack_id = html.escape(str(pack.get("id") or ""), quote=True)
+        parts.append(
+            '<form action="paper-arm" method="POST" class="card">'
+            f'<input type="hidden" name="pack_id" value="{pack_id}">'
+            f'<input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">'
+            '<label>Venue <select name="venue">'
+            '<option value="kraken">kraken</option>'
+            '<option value="coinbase">coinbase</option>'
+            "</select></label>"
+            "<label>Paper balance (USD) "
+            '<input type="number" name="paper_balance" step="any" min="1" value="1000" required>'
+            "</label>"
+            f'<button type="submit">Paper-arm {label}</button>'
+            "</form>"
+        )
+    return "\n".join(parts) or '<p class="muted">No packs installed.</p>'
 
 
 def _render_welcome(home: Path, csrf: str) -> bytes:
@@ -343,17 +377,8 @@ def _render_security(home: Path, csrf: str) -> bytes:
     return body.encode("utf-8")
 
 
-def _render_next(home: Path, csrf: str) -> bytes:
-    """Render the wizard Next-step shell — Exit Plan + Adopt.
-
-    The exit links point at the server's own fixed-exit routes
-    (/out/docs, /out/source), not at the external URLs, so the server
-    remains the only component that decides what may leave the box.
-
-    Slice C Exchange is available in the wizard; pack adoption (slice D)
-    remains a future slice. The CLI / free path is always exposed so the
-    user is not funnelled toward a fake-success button.
-    """
+def _render_next(home: Path, csrf: str, *, status_message: str | None = None) -> bytes:
+    """Render the wizard Next page, including the activation form."""
     snap = trust.trust_snapshot(home)
     view = {
         "view": "wizard.next",
@@ -361,8 +386,10 @@ def _render_next(home: Path, csrf: str) -> bytes:
         "exit_routes": {"docs": "out/docs", "source": "out/source"},
     }
     payload = _embed_json(view)
+    shown = status_message if status_message in kb_activate.SAFE_MESSAGES else ""
     body = _NEXT_TEMPLATE
     body = body.replace("__VIEW_JSON__", payload)
+    body = body.replace("__ACTIVATE_STATUS__", html.escape(shown))
     body = body.replace('name="csrf"', f'name="csrf" value="{csrf}"')
     return body.encode("utf-8")
 
@@ -607,18 +634,23 @@ _NEXT_TEMPLATE = _wizard_html(
     '      <input type="hidden" name="csrf">\n'
     '      <button type="submit">Enter dashboard</button>\n'
     "    </form>\n"
-    "    <h3>Slice D in this release</h3>\n"
-    '    <ul aria-label="What slice D does">\n'
-    "      <li>The dashboard lists every pack installed under <code>$KRELLBOT_HOME/packs/</code>, "
-    "and paper-arms one. No invented numbers, no paid-catalog reads, no live arm.</li>\n"
-    "      <li>An activation-key POST redeems a license through the existing "
-    "<code>check_license</code> helper and downloads the catalog. The key never leaves the box.</li>\n"
-    "    </ul>\n"
+    "    <h3>Activation key</h3>\n"
+    '    <p id="activate-status">__ACTIVATE_STATUS__</p>\n'
+    '    <form id="form-activate" action="activate" method="POST">\n'
+    '      <label for="activation-key">Activation key\n'
+    '        <input id="activation-key" type="password" name="activation_key" autocomplete="off" required>\n'
+    "      </label>\n"
+    '      <input type="hidden" name="csrf">\n'
+    '      <button type="submit">Redeem key</button>\n'
+    "    </form>\n"
+    '    <p class="muted">Redeem sends the activation key in one HTTPS POST body to '
+    "krellbot.dev/api/license, then one more POST body to krellbot.dev/api/catalog "
+    "if the license verifies. The key is not placed in a URL. Exchange API keys "
+    "are not sent.</p>\n"
     "    <h3>Not in this release</h3>\n"
     '    <ul aria-label="What this release does not do">\n'
-    "      <li>An OS scheduler installer. The next slice will add one. Today: "
-    "install the existing service unit with <code>krellbot service install</code> (or your platform's "
-    "equivalent). The dashboard does not pretend to schedule ticks on its own.</li>\n"
+    "      <li>An OS scheduler installer. Today, install the existing service unit with "
+    "<code>krellbot service install</code>. The dashboard does not schedule ticks.</li>\n"
     "    </ul>\n"
     "    <h3>The free path today</h3>\n"
     "    <ul>\n"
@@ -719,6 +751,20 @@ def _embed_json(view: dict) -> str:
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
     )
+
+
+def _activate_status_from_query(raw_query: str) -> str | None:
+    """Return an activation safe-message, or None. Never echoes a key."""
+    if not raw_query:
+        return None
+    pairs = urllib.parse.parse_qs(raw_query, keep_blank_values=False)
+    candidates = pairs.get("status") or []
+    if not candidates:
+        return None
+    candidate = candidates[0]
+    if candidate in kb_activate.SAFE_MESSAGES:
+        return candidate
+    return None
 
 
 def _status_from_query(raw_query: str) -> str | None:
@@ -1083,7 +1129,11 @@ def _make_handler(server_config: _ServerConfig):
             elif route == "security":
                 body = _render_security(home, csrf)
             elif route == "next":
-                body = _render_next(home, csrf)
+                body = _render_next(
+                    home,
+                    csrf,
+                    status_message=_activate_status_from_query(raw_query),
+                )
             elif route == "keys":
                 # The keys page may carry a closed `?status=<safe_message>`
                 # query after a 303 PRG. Parse it here; the renderer
@@ -1409,13 +1459,10 @@ def _make_handler(server_config: _ServerConfig):
                 self._send_status(400, "Bad Request")
                 return
 
-            from krellbot import cli as kb_cli
-
             outcome = kb_activate.redeem(
                 activation_key.strip(),
-                home=kb_paths.home,
-                check_license=kb_cli.check_license,
-                download_catalog=kb_cli.download_catalog,
+                home=server_config.home,
+                now=int(time.time()),
             )
 
             # 303 PRG. The closed safe message rides in the query

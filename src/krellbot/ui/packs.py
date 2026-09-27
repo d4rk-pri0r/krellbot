@@ -62,13 +62,14 @@ def _summarize(path: Path, data: dict) -> dict[str, Any]:
     author = str(data.get("author", ""))
     timeframe = data.get("timeframe") or None
     markets = data.get("markets") or []
+    runnable = schema_version == 1
     return {
         "path": str(path),
         "id": pack_id,
         "public_label": label or pack_id,
         "schema_version": schema_version,
-        "runnable": True,
-        "not_runnable_reason": None,
+        "runnable": runnable,
+        "not_runnable_reason": None if runnable else "schema_version is not 1",
         "markets": markets if isinstance(markets, list) else [],
         "timeframe": timeframe,
         "label": label,
@@ -87,7 +88,7 @@ def list_installed(home: Path) -> list[dict[str, Any]]:
     ``lint`` command is the validation surface.
     """
     home = Path(home)
-    roots = [home / "packs", home / "packs" / "community"]
+    roots = [home / "packs", home / "packs" / "community", home / "packs" / "catalog"]
     out: list[dict[str, Any]] = []
     for root in roots:
         if not root.is_dir():
@@ -110,7 +111,7 @@ def resolve_pack_path(home: Path, pack_id: str) -> Path | None:
     if not isinstance(pack_id, str) or not pack_id:
         return None
     home = Path(home)
-    for root in (home / "packs", home / "packs" / "community"):
+    for root in (home / "packs", home / "packs" / "community", home / "packs" / "catalog"):
         if not root.is_dir():
             continue
         for path in sorted(root.glob("*.json")):
