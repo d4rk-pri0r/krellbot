@@ -35,15 +35,16 @@ from __future__ import annotations
 import http.client
 import json
 import re
+import sys
 from decimal import Decimal
 from pathlib import Path
 
 from krellbot import config as kb_config
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
-from krellbot.ui import first_run, keys_status, server as ui_server
+from krellbot.ui import first_run, keys_status
+from krellbot.ui import server as ui_server
 from krellbot.ui.server import DashboardServer
-
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "krellbot" / "ui" / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
@@ -126,13 +127,13 @@ def _arm_one_pack(home: Path) -> None:
             pack_version="1.0.0",
             venue="kraken",
             pair="SUIUSD",
-            cap=Decimal("25"),
-            stop=Decimal("5"),
+            cap=Decimal(25),
+            stop=Decimal(5),
             mode="paper",
-            starting_cash=Decimal("1000"),
+            starting_cash=Decimal(1000),
             requires_license=False,
             armed_at_ts=1700000000,
-            owned_qty=Decimal("0"),
+            owned_qty=Decimal(0),
             pending_version=None,
         )
     )
@@ -239,7 +240,7 @@ def test_empty_dashboard_view_carries_command_center_fields(home) -> None:
         assert isinstance(readiness.get("rows"), list) and readiness["rows"], readiness
         # Closed labels — every row has the closed shape.
         labels = [r.get("label") for r in readiness["rows"]]
-        assert "data home mode 0o700" in labels
+        assert ("data home" if sys.platform == "win32" else "data home mode 0o700") in labels
         assert "keychain backend" in labels
         assert "loopback bind 127.0.0.1" in labels
         # Trading readiness is the closed NOT-EVALUATED string.
@@ -371,7 +372,7 @@ def test_dashboard_renders_explicit_empty_blocks_for_missing_records(home) -> No
     first_run.mark_visited_dashboard(home)
     server = _start(home)
     try:
-        status, _hdr, body = _get(server, f"/{server.token}/dashboard")
+        _status, _hdr, body = _get(server, f"/{server.token}/dashboard")
         text = body.decode("utf-8")
         # Empty-state hooks present in markup so the JS hydrator can
         # flip them on when the corresponding array is empty.
@@ -419,7 +420,7 @@ def test_journal_string_with_script_tags_does_not_reach_html(home) -> None:
     first_run.mark_visited_dashboard(home)
     server = _start(home)
     try:
-        status, _hdr, body = _get(server, f"/{server.token}/dashboard")
+        _status, _hdr, body = _get(server, f"/{server.token}/dashboard")
         text = body.decode("utf-8")
         # The bootstrap JSON does contain the literal strings, but
         # they are escaped for inclusion in a <script> element by the
@@ -461,7 +462,7 @@ def test_get_does_not_read_keyring_or_emit_credential_bytes(home) -> None:
     first_run.mark_visited_dashboard(home)
     server = _start(home)
     try:
-        status, _hdr, body = _get(server, f"/{server.token}/dashboard")
+        _status, _hdr, body = _get(server, f"/{server.token}/dashboard")
         text = body.decode("utf-8")
         # Forbidden credential-shaped fragments. The dashboard never
         # emits these on a GET.
@@ -514,7 +515,7 @@ def test_license_summary_is_closed_three_scalar_shape(home) -> None:
     first_run.mark_visited_dashboard(home)
     server = _start(home)
     try:
-        status, _hdr, body = _get(server, f"/{server.token}/dashboard")
+        _status, _hdr, body = _get(server, f"/{server.token}/dashboard")
         text = body.decode("utf-8")
         # Closed license summary in bootstrap JSON has only three
         # allowed keys; the dashboard never reads raw junk fields.

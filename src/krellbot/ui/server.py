@@ -55,7 +55,6 @@ from . import activate as kb_activate
 from . import first_run, keys_status, trust
 from . import packs as ui_packs
 
-
 # ---- dashboard view layer -------------------------------------------------
 #
 # The command-center overview builds a single read-only snapshot of the local
