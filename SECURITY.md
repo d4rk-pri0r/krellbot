@@ -2,7 +2,8 @@
 
 The client is open so you can read what it does before you run it.
 
-- An exchange key is stored in the OS keychain when one is available. The file fallback is mode 0600 and stays on your machine.
+- The Exchange wizard requires a native OS keychain; it will not save a key to a plaintext file. The legacy CLI can read an explicitly configured `KRELLBOT_<VEN>_KEYFILE` when no keyring entry exists, subject to file-mode checks on POSIX (or an explicit acknowledgement on Windows). `keys add` itself writes to the keyring, not to that file.
+- Credential-source precedence when the engine loads a key is: a complete `KRELLBOT_<VEN>_KEY` and `KRELLBOT_<VEN>_SECRET` environment pair first, then the keyring (including a wizard-stored pair), then an explicitly configured `KRELLBOT_<VEN>_KEYFILE` if no keyring entry exists. A partial environment pair is an error. A successful wizard store does not override existing environment credentials; the live arm gate still probes the key it loads.
 - The key should have trade permission on and withdraw permission off.
 - krellbot.dev receives a license key if you add packs. It does not receive the exchange key.
 - This repository does not contain the paid packs.
@@ -38,23 +39,29 @@ verifier enforces.
 `krellbot doctor` only reports `trade` and `withdraw` after a real
 permission probe ran. Without a probe, the dashboard and the doctor
 treat the key's permissions as unknown and refuse to mark
-`trading_ready = True`. The key itself is still on disk; it just
-cannot satisfy a green readiness light until the probe runs.
+`trading_ready = True`. The key may be in the keyring or in an explicitly
+configured legacy keyfile; its presence alone cannot satisfy a green
+readiness light until the probe runs.
 
 ## Where the dashboard talks
 
 The dashboard (`krellbot ui`, `krellbot ui --open`, `krellbot ui
 --port N`) binds `127.0.0.1` only, refuses non-loopback `Host`
-headers, and reads only from disk under `$KRELLBOT_HOME`. It never
-calls Kraken, Coinbase, or `krellbot.dev`. The gate token is 32 bytes
-from `secrets.token_hex(32)` and lives only in the URL the CLI prints
+headers. GET status reads local, nonsecret metadata under `$KRELLBOT_HOME`;
+it does not probe a venue or read the exchange key. The Exchange form posts
+over loopback, then the handler sends an authenticated HTTPS permission
+request to the selected Kraken or Coinbase venue before a native-keychain
+store. No dashboard path sends exchange credentials to `krellbot.dev`.
+The gate token is 32 bytes from `secrets.token_hex(32)` and lives in the URL the CLI prints
 and the matching `krellbot_session` cookie.
 
 ## First-run wizard and trust screen
 
 A fresh install renders the wizard at `/<token>/welcome` instead of
-the dashboard. The wizard is read-only — it never accepts a key, a
-secret, or a license token in the browser. The Security step renders
+the dashboard. Welcome and Security are read-only; the Exchange step
+accepts a key and secret in one credential-bearing POST, probes the
+selected venue, then stores only a trade-only pair in the native keychain.
+No wizard page asks for a license token. The Security step renders
 the local trust posture from `trust_snapshot()`: the detected
 keychain backend class, the resolved `$KRELLBOT_HOME` path and
 POSIX mode, the loopback bind, the `live_arm_ui_allowed = False`
@@ -67,11 +74,12 @@ banner names `krellbot doctor` as the next CLI action. A null backend
 is never reported as a green check. The "Key permissions" line on
 the Security step is a REQUIREMENT statement ("Trade-only permission
 required, withdraw permission never granted. No exchange key is
-probed from this page."), not a validated connection — no key is
-probed from the UI.
+probed from this page."), not a validated connection — the Security
+page does not probe a key. The Exchange POST does.
 
 The wizard's Welcome page states three truthful things: the engine
-is free and open-source, exchange keys stay on this machine, and
+is free and open-source, exchange keys are stored locally and not sent to
+krellbot.dev, and
 official packs are optional and recommended. Welcome exposes only
 sibling-relative `<a href="security">` / `<a href="next">` links —
 there is no Continue button that posts a preference. Only Next's

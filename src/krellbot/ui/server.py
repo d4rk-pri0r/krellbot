@@ -6,8 +6,11 @@ access. The first page is `/{token}/`, which sets the session and CSRF
 cookies and renders the dashboard. POSTs are CSRF-protected via the
 `krellbot_csrf` cookie + form field plus an `Origin` check.
 
-Reads only from local disk under `$KRELLBOT_HOME`. No call to Kraken,
-Coinbase, or krellbot.dev.
+GET status reads only local metadata under `$KRELLBOT_HOME`, without a
+credential read or venue probe. The Exchange form POST makes an authenticated
+HTTPS permission request to the selected Kraken or Coinbase venue before
+storing a trade-only pair in the native OS keychain. No exchange credentials
+go to krellbot.dev.
 
 Views (read-only):
 
@@ -339,10 +342,9 @@ def _render_next(home: Path, csrf: str) -> bytes:
     (/out/docs, /out/source), not at the external URLs, so the server
     remains the only component that decides what may leave the box.
 
-    B3: the exchange (slice C) and pack adoption (slice D) flows are
-    explicitly labelled as future slices, never as completed. The CLI
-    / free path is always exposed so the user is not funnelled toward
-    a fake-success button.
+    Slice C Exchange is available in the wizard; pack adoption (slice D)
+    remains a future slice. The CLI / free path is always exposed so the
+    user is not funnelled toward a fake-success button.
     """
     snap = trust.trust_snapshot(home)
     view = {
@@ -528,7 +530,7 @@ def _wizard_html(wrapper: str, route: str = "") -> str:
         f"<body {body_attrs}>\n"
         "<header>\n"
         "  <h1>krellbot first-run wizard</h1>\n"
-        '  <p class="muted">loopback only. no call leaves this machine.</p>\n'
+        '  <p class="muted">Local dashboard on loopback. Submitting the Exchange form contacts only the selected venue.</p>\n'
         f"  {stepper_html}\n"
         "</header>\n"
         # Each link is sibling-relative so no-JS navigation works without
@@ -625,10 +627,15 @@ _KEYS_TEMPLATE = _wizard_html(
     "exchange (Kraken or Coinbase). <strong>Withdraw</strong> and "
     "<strong>transfer</strong> permissions must stay off.</li>\n"
     "      <li>Paste the API key and the API secret into the form below. "
-    "The key is sent over loopback only; nothing leaves this machine.</li>\n"
-    "      <li>The server runs a probe (a single credentialed request) and, "
-    "on success, stores the pair in your local OS keychain. The page never "
-    "echoes your secret back.</li>\n"
+    "The browser posts to this loopback dashboard. krellbot.dev never receives "
+    "your exchange credentials.</li>\n"
+    "      <li>The server sends an authenticated HTTPS request to the selected "
+    "venue (Kraken or Coinbase) to check trade-only permissions. On success, "
+    "it stores the pair in your local OS keychain. The page never echoes "
+    "your secret back.</li>\n"
+    "      <li>If a complete venue credential pair is also set in environment "
+    "variables, that pair takes precedence over the keychain when trading. "
+    "The live gate still checks the loaded key's permissions.</li>\n"
     "      <li>If the venue refuses (withdraw, trade-off, invalid, etc.), the "
     "keyring is left unchanged and the failure is shown below.</li>\n"
     "    </ol>\n"

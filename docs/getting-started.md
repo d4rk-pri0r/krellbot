@@ -49,24 +49,34 @@ krellbot ui --port N   # bind a fixed loopback port instead of a random one
 ### First-run wizard
 
 The first time the dashboard server is opened, the browser renders
-`/{token}/welcome` instead of the dashboard. The wizard has three
-steps: Welcome, Security, Next. Each step is a plain HTML page with
+`/{token}/welcome` instead of the dashboard. The wizard has four
+steps: Welcome, Security, Exchange, Next. Each step is a plain HTML page with
 sibling-relative `<a>` links, so a browser with JavaScript disabled
 can still navigate the wizard by following the links.
 
-* **Welcome** — three truthful statements (free and open-source,
-  keys stay on this machine, official packs are optional and
-  recommended) and a `Continue` button that POSTs to
-  `/visit-dashboard` to flip the local visit preference.
+* **Welcome** — free and open-source, exchange keys stored locally
+  rather than sent to krellbot.dev, official packs optional and recommended.
+  The Continue link navigates to Security; it does not change preferences.
 * **Security** — the local trust posture, server-rendered from
   `trust_snapshot()`: keychain backend name, resolved home path and
   POSIX mode, loopback bind, live-arm rail, and key permissions. A
   fail-closed diagnostic names `krellbot doctor` as the next CLI
   action when the keychain is not persistent.
-* **Next** — exchange connection (slice C) and pack adoption
-  (slice D) are labelled as future slices, not as completed steps.
-  The free path today is the dashboard, `krellbot ui`, and
-  `krellbot doctor`.
+* **Exchange** — the browser posts the key and secret to the loopback
+  dashboard; the handler sends an authenticated HTTPS permission request
+  to the selected Kraken or Coinbase venue, then stores only a verified
+  trade-only pair in the native OS keychain. GET status is historical,
+  not a current-key or connection check.
+* **Next** — pack adoption (slice D) is a future slice. Enter dashboard
+  is an explicit POST through the token/session/CSRF/Origin gate, followed
+  by a 303 redirect. The free path today includes the dashboard,
+  `krellbot ui`, and `krellbot doctor`.
+
+Credential-source precedence when the engine later loads a key is a complete
+`KRELLBOT_<VEN>_KEY` and `KRELLBOT_<VEN>_SECRET` environment pair, then
+the keyring, then an explicitly configured `KRELLBOT_<VEN>_KEYFILE` if no
+keyring pair exists. A partial environment pair is an error; wizard status
+does not show which credential a later trade will use.
 
 After the wizard is dismissed once, `/<token>/` renders the
 dashboard shell directly. A "Resume setup" link in the header
