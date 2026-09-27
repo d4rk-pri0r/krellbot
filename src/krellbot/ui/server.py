@@ -1334,7 +1334,7 @@ def _make_handler(server_config: _ServerConfig):
                 # OSError on record_outcome does NOT undo a successful
                 # store — the keyring is already authoritative. The
                 # status snapshot is presentation-only; a failure to
-                # write it surfaces as "no current verification" on the
+                # write it surfaces as "unknown; not currently verified" on the
                 # next GET, which is honest about the gap.
                 pass
 
