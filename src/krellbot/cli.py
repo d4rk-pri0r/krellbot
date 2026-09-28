@@ -560,21 +560,42 @@ def cmd_data_import_kraken_ohlcvt(args):
 
 
 def cmd_backtest(args):
-    """Run a backtest over a CSV (or fetched) candle series and print a receipt."""
-    from krellbot.backtest import Backtester
-    from krellbot.backtest.receipt import build_receipt
-    from krellbot.data import TF_MS, GapError, check_gaps
+    """Run a backtest over a CSV (or fetched) candle series and print a receipt.
 
-    pack_path = Path(args[0])
+    The CLI parses flags, resolves the home/cache, then delegates the
+    backtest to ``krellbot.application.research.ResearchService``. The
+    legacy stdout sentence, the ``--json`` receipt shape, and the exit
+    codes stay byte-identical for the cases the existing test suite
+    pins (``tests/test_backtest_cache.py``,
+    ``tests/test_legacy_cli.py``).
+    """
+    from krellbot.application.research import (
+        CODE_GAPPED_DATA,
+        CODE_INVALID_DATASET,
+        CODE_INVALID_PACK,
+        CODE_LEGACY_PACK_NOT_RUNNABLE,
+        CODE_MISSING_PACK,
+        CODE_PACK_HAS_NO_MARKET,
+        CODE_UNSUPPORTED_TIMEFRAME,
+        ResearchRequest,
+        ResearchService,
+    )
+    from krellbot.data import TF_MS
+
+    pack_arg = args[0] if args else None
+    if pack_arg is None:
+        print("Usage: krellbot backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json]", file=sys.stderr)
+        return 2
+    pack_path = Path(pack_arg)
     if not pack_path.exists():
         print(f"No such file: {pack_path}", file=sys.stderr)
         return 1
     try:
-        pack = json.loads(pack_path.read_text(encoding="utf-8"))
+        _pack_peek = json.loads(pack_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         print(f"invalid JSON: {exc}", file=sys.stderr)
         return 1
-    if not isinstance(pack, dict) or "schema_version" not in pack:
+    if not isinstance(_pack_peek, dict) or "schema_version" not in _pack_peek:
         print("pack must be a DSL pack JSON", file=sys.stderr)
         return 1
 
@@ -644,26 +665,23 @@ def cmd_backtest(args):
     if venue not in {"kraken", "coinbase"}:
         print("--venue must be kraken or coinbase", file=sys.stderr)
         return 1
-    tf = pack.get("timeframe")
+    tf = _pack_peek.get("timeframe")
     if tf not in TF_MS:
         print(f"pack timeframe unsupported: {tf}", file=sys.stderr)
         return 1
-    match = next((m for m in pack.get("markets") or [] if m.get("venue") == venue), None)
+    match = next((m for m in _pack_peek.get("markets") or [] if m.get("venue") == venue), None)
     pair = match.get("pair") if match else None
     if pair is None:
         print("pack has no markets", file=sys.stderr)
         return 1
 
-    if fee_bps is None:
-        fee_bps = 40 if venue == "kraken" else 120
-    if slippage_bps is None:
-        slippage_bps = 5
-    if slippage_mult is None:
-        slippage_mult = 1.0
-
     if data_csv is None:
-        # No CSV given: use the local candle cache, fetching public candles once if empty.
-        from krellbot.data import read_cache, write_cache
+        # No CSV given: prime the local candle cache before delegating. The
+        # legacy path prints the cache notice and refuses with the type-only
+        # message the existing test pins. We then pass the cache CSV path to
+        # the service as the dataset so the service reads exactly the bytes
+        # the cache holds (and records that sha256 in the receipt).
+        from krellbot.data import cache_path, read_cache, write_cache
 
         home = kb_paths.home()
         cached = read_cache(home, venue, pair, tf)
@@ -681,57 +699,61 @@ def cmd_backtest(args):
                 return 1
             write_cache(home, venue, pair, tf, fetched)
             print(f"fetched {len(fetched)} {tf} candles from {venue} public data (cached)", file=sys.stderr)
-            cached = read_cache(home, venue, pair, tf)
-        if cached is None:
-            print(f"candle cache unreadable for {venue} {pair} {tf}; pass --data <csv>", file=sys.stderr)
-            return 1
-        candles, digest = cached
+        dataset_csv = cache_path(home, venue, pair, tf)
     else:
-        csv_path = Path(data_csv)
-        if not csv_path.exists():
-            print(f"No such file: {csv_path}", file=sys.stderr)
+        dataset_csv = Path(data_csv)
+        if not dataset_csv.exists():
+            print(f"No such file: {dataset_csv}", file=sys.stderr)
             return 1
 
-        from krellbot.data.cache import _parse_csv, sha256_bytes
+    from datetime import datetime, timezone
 
-        body = csv_path.read_bytes()
-        candles = _parse_csv(body)
-        digest = sha256_bytes(body)
+    from_ms = None
+    to_ms = None
+    if from_date:
+        from_ms = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+    if to_date:
+        to_ms = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
 
-    try:
-        check_gaps(candles, tf, pair=pair, allow_gaps=allow_gaps)
-    except GapError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-
-    if from_date or to_date:
-        from datetime import datetime, timezone
-
-        if from_date:
-            fts = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
-            candles = [c for c in candles if c.ts_ms >= fts]
-        if to_date:
-            tts = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
-            candles = [c for c in candles if c.ts_ms <= tts]
-
-    if not candles:
-        print(f"No candles after filtering (pair={pair})", file=sys.stderr)
-        return 1
-
-    bt = Backtester(pack, candles, fee_bps=fee_bps, slippage_bps=slippage_bps, slippage_mult=slippage_mult)
-    records = bt.run()
-    receipt = build_receipt(
-        pack=pack,
-        records=records,
-        trade_count=bt.trade_count,
-        data_manifest_sha256=digest,
-        venue=venue,
-        pair=pair,
-        tf=tf,
-        fee_bps=fee_bps,
-        slippage_bps=slippage_bps,
-        slippage_mult=slippage_mult,
+    svc = ResearchService(home=kb_paths.home(), fetch=None)
+    result = svc.run(
+        ResearchRequest(
+            pack_path=pack_path,
+            dataset_csv=dataset_csv,
+            venue=venue,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+            slippage_mult=slippage_mult,
+            from_ms=from_ms,
+            to_ms=to_ms,
+            allow_gaps=allow_gaps,
+        )
     )
+
+    if not result.ok:
+        code = result.refusal["code"] if result.refusal else ""
+        msg = result.refusal["message"] if result.refusal else ""
+        if code == CODE_MISSING_PACK:
+            print(msg, file=sys.stderr)
+            return 1
+        if code in {CODE_INVALID_PACK, CODE_LEGACY_PACK_NOT_RUNNABLE, CODE_PACK_HAS_NO_MARKET}:
+            print(msg, file=sys.stderr)
+            return 1
+        if code == CODE_UNSUPPORTED_TIMEFRAME:
+            print(f"pack timeframe unsupported: {tf}", file=sys.stderr)
+            return 1
+        if code == CODE_GAPPED_DATA:
+            print(msg, file=sys.stderr)
+            return 1
+        if code == CODE_INVALID_DATASET:
+            print(f"No such file: {dataset_csv}", file=sys.stderr) if dataset_csv is not None else print(
+                msg, file=sys.stderr
+            )
+            return 1
+        print(msg or "backtest refused", file=sys.stderr)
+        return 1
+
+    receipt = result.legacy_receipt
     if as_json:
         print(json.dumps(receipt))
     else:
