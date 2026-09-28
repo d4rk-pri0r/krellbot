@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from krellbot import config as kb_config
 from krellbot.api.jobs import (
     JOB_ERROR_NOT_FOUND,
     JOB_ERROR_RESULT_UNAVAILABLE,
@@ -449,6 +450,46 @@ def create_app(
 
         headers = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
         return StreamingResponse(_emit(), media_type="text/event-stream", headers=headers)
+
+    @app.get("/api/v1/paper/status")
+    async def paper_status(request: Request) -> Response:
+        """Return the closed-shape paper status projection (NS10b).
+
+        The route uses the same session gate as ``GET /api/v1/jobs/{id}``
+        (``_gate_get``): session cookie + loopback Origin + loopback Host,
+        no CSRF required. The body never carries cash, quantity, stop,
+        cap, or the pack path. ``mode`` is always ``"paper"`` for an
+        armed record; the brief forbids a live-order control and
+        forbids ``mode: live`` over the wire.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        config = kb_config.load_config(s.home)
+        if not config.armed:
+            return JSONResponse(
+                {"schema_version": SCHEMA_VERSION, "armed": False},
+                status_code=200,
+            )
+
+        # The brief spells out a single armed-pack projection; the
+        # service guarantees one armed record per (venue, pair) but a
+        # workstation view reads one record. Take the first armed
+        # record for the closed-shape body.
+        armed = config.armed[0]
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "armed": True,
+            "venue": armed.venue,
+            "pair": armed.pair,
+            "entries_paused": bool(armed.entries_paused),
+            "mode": armed.mode,
+            "pack_id": armed.pack_id,
+        }
+        return JSONResponse(body, status_code=200)
 
     @app.get("/api/v1/capabilities")
     async def capabilities() -> Response:

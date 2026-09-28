@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState, type JSX } from "react";
+import type { PaperClient } from "../features/paper/client";
+import { StatusPanel } from "../features/paper/StatusPanel";
+import { createHttpClient as createPaperHttpClient } from "../features/paper/client";
 import { ResearchView } from "../features/research/ResearchView";
 import { createHttpClient as createResearchHttpClient } from "../features/research/client";
+import type { ResearchClient } from "../features/research/client";
 import { Editor } from "../features/strategies/Editor";
 import { createHttpClient } from "../features/strategies/client";
+import type { StrategyClient } from "../features/strategies/client";
 import { redeemBootstrap } from "../session";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
@@ -27,11 +32,31 @@ function consumeBootstrapToken(): string | null {
   return token;
 }
 
-export function WorkstationShell(): JSX.Element {
+export type WorkstationShellProps = {
+  paperClient?: PaperClient;
+  researchClient?: ResearchClient;
+  strategyClient?: StrategyClient;
+};
+
+export function WorkstationShell({
+  paperClient,
+  researchClient,
+  strategyClient,
+}: WorkstationShellProps = {}): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [active, setActive] = useState<View>("workstation");
-  const client = useMemo(() => createHttpClient(), []);
-  const researchClient = useMemo(() => createResearchHttpClient(), []);
+  const client = useMemo(
+    () => strategyClient ?? createHttpClient(),
+    [strategyClient],
+  );
+  const research = useMemo(
+    () => researchClient ?? createResearchHttpClient(),
+    [researchClient],
+  );
+  const paper = useMemo(
+    () => paperClient ?? createPaperHttpClient(),
+    [paperClient],
+  );
 
   useEffect(() => {
     const token = consumeBootstrapToken();
@@ -65,12 +90,13 @@ export function WorkstationShell(): JSX.Element {
         {active === "workstation" ? (
           <>
             <h1 className="kbot-shell__heading">Paper workstation</h1>
+            <StatusPanel client={paper} />
             <Inspector />
           </>
         ) : null}
         {active === "strategies" ? <Editor client={client} /> : null}
         {active === "research" ? (
-          <ResearchView client={researchClient} />
+          <ResearchView client={research} />
         ) : null}
       </main>
       <CommandPalette
