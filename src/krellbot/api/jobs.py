@@ -549,7 +549,16 @@ class JobManager:
                             message="runner returned no result_ref",
                         )
                 else:
-                    self._finalize_failed(internal, code=JOB_ERROR_JOB_FAILED, message="job failed")
+                    code = outcome.get("code") if isinstance(outcome, dict) else None
+                    message = outcome.get("message") if isinstance(outcome, dict) else None
+                    if isinstance(code, str) and code:
+                        self._finalize_failed(
+                            internal,
+                            code=code,
+                            message=str(message) if isinstance(message, str) else "job failed",
+                        )
+                    else:
+                        self._finalize_failed(internal, code=JOB_ERROR_JOB_FAILED, message="job failed")
 
                 if self._running_id == internal.id:
                     self._running_id = None
@@ -616,6 +625,8 @@ class JobManager:
         from_ms = request_payload.get("from_ms")
         to_ms = request_payload.get("to_ms")
         allow_gaps = bool(request_payload.get("allow_gaps", False))
+        holdout_from_ms_raw = request_payload.get("holdout_from_ms")
+        holdout_to_ms_raw = request_payload.get("holdout_to_ms")
 
         from decimal import Decimal
 
@@ -633,13 +644,22 @@ class JobManager:
             "to_ms": int(to_ms) if to_ms is not None else None,
             "allow_gaps": allow_gaps,
         }
+        if "holdout_from_ms" in request_payload:
+            kwargs["holdout_from_ms"] = holdout_from_ms_raw
+        if "holdout_to_ms" in request_payload:
+            kwargs["holdout_to_ms"] = holdout_to_ms_raw
         request = ResearchRequest(**kwargs)
         service = ResearchService(home=self._home)
         result = service.run(request)
         if not result.ok:
-            # On refusal, do not store a receipt. The job manager treats
-            # this as a failed job; the result route stays unavailable.
-            return {"ok": False}
+            refusal = result.refusal if isinstance(result.refusal, dict) else {}
+            code = refusal.get("code") if isinstance(refusal.get("code"), str) else None
+            message = refusal.get("message") if isinstance(refusal.get("message"), str) else "job failed"
+            payload: dict = {"ok": False}
+            if code is not None:
+                payload["code"] = code
+            payload["message"] = message
+            return payload
         correlation_id = str(request_payload.get("correlation_id") or "")
         job_id = str(request_payload.get("id") or "unknown")
         # Pass the receipt + trace back to the worker verbatim. The worker
