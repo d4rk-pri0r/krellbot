@@ -8,6 +8,11 @@ the adapter layer.
 
 from __future__ import annotations
 
+from .capabilities import (
+    PAPER,
+    stop_capability,
+    submit_if_supported,
+)
 from .records import (
     SCHEMA_VERSION,
     SPOT,
@@ -22,6 +27,7 @@ from .records import (
 )
 
 __all__ = [
+    "PAPER",
     "SCHEMA_VERSION",
     "SPOT",
     "STOP_EMULATED",
@@ -32,4 +38,6 @@ __all__ = [
     "UnsupportedStop",
     "make_instrument",
     "require_supported_stop",
+    "stop_capability",
+    "submit_if_supported",
 ]
