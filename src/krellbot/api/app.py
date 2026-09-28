@@ -52,6 +52,19 @@ def _state(app: FastAPI) -> _AppState:
     return app.state.krellbot
 
 
+def _resolve_dist_dir(dist_dir: Path | None) -> Path:
+    """Resolve the frontend ``dist`` directory.
+
+    The default walks up from this file to the repo root and points at
+    ``<repo>/frontend/dist``. Tests may inject a throwaway directory.
+    """
+
+    if dist_dir is not None:
+        return Path(dist_dir)
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    return repo_root / "frontend" / "dist"
+
+
 def _gate_state_change(request: Request, s: _AppState) -> Response | None:
     """Apply the session-cookie + CSRF + loopback-origin gate for state changes."""
 
@@ -109,6 +122,7 @@ def create_app(
     port: int,
     bootstrap_token: str,
     runner: Callable | None = None,
+    dist_dir: Path | None = None,
 ) -> FastAPI:
     state = _AppState(
         home=Path(home),
@@ -122,6 +136,10 @@ def create_app(
         version=SCHEMA_VERSION,
     )
     app.state.krellbot = state
+
+    from krellbot.api import static as _static
+
+    _static.register(app, _resolve_dist_dir(dist_dir))
 
     @app.middleware("http")
     async def _enforce_loopback_host(request: Request, call_next):
