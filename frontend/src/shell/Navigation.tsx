@@ -1,11 +1,12 @@
 import type { JSX } from "react";
 
-export type View = "workstation" | "strategies" | "research";
+export type View = "workstation" | "strategies" | "research" | "studio";
 
 const VIEWS: ReadonlyArray<{ id: View; label: string }> = [
   { id: "workstation", label: "Workstation" },
   { id: "strategies", label: "Strategies" },
   { id: "research", label: "Research" },
+  { id: "studio", label: "Studio" },
 ];
 
 type NavigationProps = {

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import type { Connection } from "@xyflow/react";
 import type { PaperClient } from "../features/paper/client";
 import { StatusPanel } from "../features/paper/StatusPanel";
 import { createHttpClient as createPaperHttpClient } from "../features/paper/client";
@@ -8,6 +9,10 @@ import type { ResearchClient } from "../features/research/client";
 import { Editor } from "../features/strategies/Editor";
 import { createHttpClient } from "../features/strategies/client";
 import type { StrategyClient } from "../features/strategies/client";
+import {
+  GraphCanvas,
+  type GraphCanvasNode,
+} from "../features/studio/GraphCanvas";
 import { redeemBootstrap } from "../session";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
@@ -16,6 +21,27 @@ import { Navigation, type View } from "./Navigation";
 import { StatusStrip } from "./StatusStrip";
 
 const BOOTSTRAP_META = "krellbot-bootstrap";
+
+const STUDIO_NODES: ReadonlyArray<GraphCanvasNode> = [
+  {
+    id: "n0",
+    type: "default",
+    position: { x: 0, y: 0 },
+    data: { timeframe: "1h" },
+  },
+  {
+    id: "n1",
+    type: "default",
+    position: { x: 0, y: 0 },
+    data: { timeframe: "4h" },
+  },
+  {
+    id: "n2",
+    type: "default",
+    position: { x: 0, y: 0 },
+    data: { timeframe: "1h" },
+  },
+];
 
 function consumeBootstrapToken(): string | null {
   if (typeof document === "undefined") {
@@ -45,6 +71,10 @@ export function WorkstationShell({
 }: WorkstationShellProps = {}): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [active, setActive] = useState<View>("workstation");
+  const [connections, setConnections] = useState<ReadonlyArray<Connection>>([]);
+  const handleAddConnection = useCallback((connection: Connection): void => {
+    setConnections((prev) => [...prev, connection]);
+  }, []);
   const client = useMemo(
     () => strategyClient ?? createHttpClient(),
     [strategyClient],
@@ -97,6 +127,18 @@ export function WorkstationShell({
         {active === "strategies" ? <Editor client={client} /> : null}
         {active === "research" ? (
           <ResearchView client={research} />
+        ) : null}
+        {active === "studio" ? (
+          <>
+            <GraphCanvas
+              nodes={STUDIO_NODES as GraphCanvasNode[]}
+              edges={[]}
+              onAddConnection={handleAddConnection}
+            />
+            <p data-testid="studio-connection-count">
+              Connections: {connections.length}
+            </p>
+          </>
         ) : null}
       </main>
       <CommandPalette
