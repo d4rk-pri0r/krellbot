@@ -33,13 +33,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 
 from krellbot.backtest.engine import Backtester
 from krellbot.backtest.receipt import build_receipt
 from krellbot.data import TF_MS, GapError, check_gaps
 from krellbot.data.cache import _parse_csv, sha256_bytes
-from krellbot.pack import evaluate as kb_evaluate
+from krellbot.domain.trace import shared_decision_trace
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle
 
@@ -253,7 +252,7 @@ class ResearchService:
             starting_cash=Decimal(request.starting_cash),
         )
 
-        trace = self._build_trace(pack, candles, timeframe)
+        trace = self._build_trace(pack, candles)
         detail = {
             "schema_version": SCHEMA_VERSION,
             "venue": request.venue,
@@ -362,176 +361,16 @@ class ResearchService:
 
     # ---- trace -----------------------------------------------------------
 
-    def _build_trace(self, pack: dict, candles: list[Candle], tf: str) -> list[dict]:
-        """Build the per-bar decision trace.
+    def _build_trace(self, pack: dict, candles: list[Candle]) -> list[dict]:
+        """Replay-mode trace builder. Delegates to the shared builder.
 
-        For every bar we emit one entry with: bar_ts, the closed candle
-        values used, the pack indicators at this bar, the entry/exit
-        condition outcomes, the per-bar Target, and whether the bar is
-        warmup. Indicator values that are still warming up are emitted
-        as `None`; condition outcomes whose operands include `None` are
-        emitted as the literal string `"unknown"` so they are distinct
-        from `false` and from numeric zero.
+        Replay and paper both call `shared_decision_trace(pack, candles)`
+        in `krellbot.domain.trace`; this method is a thin shim that
+        keeps the call site readable. The trace explains evaluator
+        output, not venue execution or fill certainty — see
+        `.superpowers/sdd/krellbot-2027/contracts/strategy-compatibility.md`.
         """
-        computed, _atr_series = kb_evaluate._compute_all(pack, candles)
-        targets = kb_evaluate.run_series(pack, candles)
-        used = kb_evaluate._used_indicators(pack.get("entry")) | kb_evaluate._used_indicators(pack.get("exit"))
-
-        out: list[dict] = []
-        for t, candle in enumerate(candles):
-            target = targets[t]
-            warmup = target.reason == "warmup"
-            entry_path = _condition_outcomes(pack.get("entry"), computed, candles, t)
-            exit_path = _condition_outcomes(pack.get("exit"), computed, candles, t)
-            conditions = [
-                {"path": f"entry{ep['path']}", "outcome": ep["outcome"], "operands": ep["operands"]}
-                for ep in entry_path
-            ]
-            conditions.extend(
-                {"path": f"exit{ep['path']}", "outcome": ep["outcome"], "operands": ep["operands"]} for ep in exit_path
-            )
-
-            indicators_map = {}
-            for name in sorted(used):
-                series = computed.get(name)
-                v = series[t] if series is not None else None
-                indicators_map[name] = v
-
-            out.append(
-                {
-                    "bar_ts": candle.ts_ms,
-                    "warmup": warmup,
-                    "input": {
-                        "ts_ms": candle.ts_ms,
-                        "open": float(candle.open),
-                        "high": float(candle.high),
-                        "low": float(candle.low),
-                        "close": float(candle.close),
-                        "volume": float(candle.volume),
-                    },
-                    "indicators": indicators_map,
-                    "conditions": conditions,
-                    "target": {
-                        "long": target.long,
-                        "stop_price": None if target.stop_price is None else float(target.stop_price),
-                        "reason": target.reason,
-                    },
-                }
-            )
-        return out
-
-
-def _condition_outcomes(condition: Any, computed: dict, candles: list[Candle], i: int) -> list[dict]:
-    """Walk a condition tree and return a flat list of {path, outcome, operands} per leaf.
-
-    Outcomes are `True`, `False`, or the literal string `"unknown"`. The
-    string marker is required so warmup/unavailable is distinct from
-    `false` and from numeric zero — see
-    `.superpowers/sdd/krellbot-2027/contracts/strategy-compatibility.md`.
-    """
-
-    out: list[dict] = []
-
-    def _walk(node: Any, path: str) -> None:
-        if isinstance(node, dict):
-            for key in ("all", "any"):
-                for j, sub in enumerate(node.get(key, [])):
-                    _walk(sub, f"{path}.{key}[{j}]")
-            return
-        if isinstance(node, list) and len(node) == 3:
-            left, op, right = node
-            lv = _operand_value(left, computed, candles, i)
-            rv = _operand_value(right, computed, candles, i)
-            outcome = _outcome_for(op, left, right, computed, candles, i, lv, rv)
-            out.append(
-                {
-                    "path": path,
-                    "outcome": outcome,
-                    "operands": {
-                        "left": _operand_token(left),
-                        "op": op,
-                        "right": _operand_token(right),
-                        "left_value": lv,
-                        "right_value": rv,
-                    },
-                }
-            )
-            return
-        out.append({"path": path, "outcome": "unknown", "operands": {}})
-
-    _walk(condition, "")
-    return out
-
-
-def _operand_token(token: Any) -> Any:
-    """Return a JSON-friendly token shape for an operand in a trace.
-
-    Strings are kept as strings; numeric literals are kept as numbers;
-    indicator references are the bare name. The shape is identical
-    between operands that resolve and operands that do not, so the
-    trace is uniform.
-    """
-    return token
-
-
-def _operand_value(token: Any, computed: dict, candles: list[Candle], i: int) -> float | None:
-    if isinstance(token, (int, float)):
-        return float(token)
-    if isinstance(token, str):
-        if token == "open":
-            return float(candles[i].open)
-        if token == "high":
-            return float(candles[i].high)
-        if token == "low":
-            return float(candles[i].low)
-        if token == "close":
-            return float(candles[i].close)
-        if token == "volume":
-            return float(candles[i].volume)
-        series = computed.get(token)
-        if series is None:
-            return None
-        return series[i]
-    return None
-
-
-def _outcome_for(
-    op: str,
-    left: Any,
-    right: Any,
-    computed: dict,
-    candles: list[Candle],
-    i: int,
-    lv: float | None,
-    rv: float | None,
-) -> bool | str:
-    if op == "crosses_above":
-        if i == 0 or lv is None or rv is None:
-            return "unknown" if lv is None or rv is None else False
-        l1 = _operand_value(left, computed, candles, i - 1)
-        r1 = _operand_value(right, computed, candles, i - 1)
-        if l1 is None or r1 is None:
-            return "unknown"
-        return l1 <= r1 and lv > rv
-    if op == "crosses_below":
-        if i == 0 or lv is None or rv is None:
-            return "unknown" if lv is None or rv is None else False
-        l1 = _operand_value(left, computed, candles, i - 1)
-        r1 = _operand_value(right, computed, candles, i - 1)
-        if l1 is None or r1 is None:
-            return "unknown"
-        return l1 >= r1 and lv < rv
-    if lv is None or rv is None:
-        return "unknown"
-    if op == ">":
-        return lv > rv
-    if op == "<":
-        return lv < rv
-    if op == ">=":
-        return lv >= rv
-    if op == "<=":
-        return lv <= rv
-    return "unknown"
+        return shared_decision_trace(pack, candles)
 
 
 def _candles_to_canonical_bytes(candles: list[Candle]) -> bytes:
