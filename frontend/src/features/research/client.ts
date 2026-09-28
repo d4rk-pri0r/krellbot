@@ -6,6 +6,8 @@ export type RunRequest = {
   fromMs: number;
   toMs: number;
   packPath?: string;
+  holdoutFromMs?: number;
+  holdoutToMs?: number;
 };
 
 export type ResearchJobSummary = {
@@ -70,6 +72,12 @@ export function createHttpClient(): ResearchClient {
       };
       if (request.packPath) {
         body.pack_path = request.packPath;
+      }
+      if (typeof request.holdoutFromMs === "number") {
+        body.holdout_from_ms = request.holdoutFromMs;
+      }
+      if (typeof request.holdoutToMs === "number") {
+        body.holdout_to_ms = request.holdoutToMs;
       }
       const raw = (await postJson("/api/v1/jobs", body)) as {
         id?: string;

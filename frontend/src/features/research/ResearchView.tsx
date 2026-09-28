@@ -33,6 +33,10 @@ function readStringField(value: string): string {
   return value;
 }
 
+function isIntegerString(value: string): boolean {
+  return /^-?\d+$/.test(value);
+}
+
 function formatMetric(value: unknown): string {
   if (value === null || value === undefined) {
     return "unavailable";
@@ -106,6 +110,8 @@ export function ResearchView({ client }: ResearchViewProps): JSX.Element {
   const [feeBps, setFeeBps] = useState("");
   const [fromMs, setFromMs] = useState("");
   const [toMs, setToMs] = useState("");
+  const [holdoutFrom, setHoldoutFrom] = useState("");
+  const [holdoutTo, setHoldoutTo] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
   const [storedResult, setStoredResult] = useState<StoredResult | null>(null);
   const [selectedBarTs, setSelectedBarTs] = useState<string | null>(null);
@@ -119,14 +125,37 @@ export function ResearchView({ client }: ResearchViewProps): JSX.Element {
     setSubmitError(null);
     setStoredResult(null);
     setSelectedBarTs(null);
+    const holdoutFromTrimmed = holdoutFrom.trim();
+    const holdoutToTrimmed = holdoutTo.trim();
+    const holdoutFromFilled = holdoutFromTrimmed !== "";
+    const holdoutToFilled = holdoutToTrimmed !== "";
+    if (holdoutFromFilled && !isIntegerString(holdoutFromTrimmed)) {
+      setSubmitError("holdout bound must be an integer");
+      return;
+    }
+    if (holdoutToFilled && !isIntegerString(holdoutToTrimmed)) {
+      setSubmitError("holdout bound must be an integer");
+      return;
+    }
+    if (holdoutFromFilled !== holdoutToFilled) {
+      setSubmitError("holdout bounds must both be set");
+      return;
+    }
     try {
-      const summary = await client.submitRun({
+      const request: Parameters<ResearchClient["submitRun"]>[0] = {
         datasetPath: readStringField(datasetPath),
         feeBps: readNumberField(feeBps),
         fromMs: readNumberField(fromMs),
         toMs: readNumberField(toMs),
         packPath: readStringField(packPath),
-      });
+      };
+      if (holdoutFromFilled) {
+        request.holdoutFromMs = Number(holdoutFromTrimmed);
+      }
+      if (holdoutToFilled) {
+        request.holdoutToMs = Number(holdoutToTrimmed);
+      }
+      const summary = await client.submitRun(request);
       setJobId(summary.id);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
@@ -222,6 +251,30 @@ export function ResearchView({ client }: ResearchViewProps): JSX.Element {
             type="text"
             value={toMs}
             onChange={(event) => setToMs(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="kbot-research__field" htmlFor="kbot-research-holdout-from">
+          <span className="kbot-research__field-label">Holdout from</span>
+          <input
+            id="kbot-research-holdout-from"
+            className="kbot-research__input"
+            type="text"
+            value={holdoutFrom}
+            onChange={(event) => setHoldoutFrom(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="kbot-research__field" htmlFor="kbot-research-holdout-to">
+          <span className="kbot-research__field-label">Holdout to</span>
+          <input
+            id="kbot-research-holdout-to"
+            className="kbot-research__input"
+            type="text"
+            value={holdoutTo}
+            onChange={(event) => setHoldoutTo(event.target.value)}
             autoComplete="off"
             spellCheck={false}
           />

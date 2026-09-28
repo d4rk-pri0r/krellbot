@@ -53,6 +53,48 @@ describe("createHttpClient submitRun", () => {
     expect(summary.id).toBe("job-abc");
   });
 
+  it("posts holdout_from_ms and holdout_to_ms when both are provided", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ id: "job-abc", state: "queued" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHttpClient().submitRun({
+      datasetPath: "fixtures/synthetic.csv",
+      feeBps: 40,
+      fromMs: 0,
+      toMs: 1000,
+      holdoutFromMs: 500,
+      holdoutToMs: 900,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body.holdout_from_ms).toBe(500);
+    expect(body.holdout_to_ms).toBe(900);
+  });
+
+  it("does not post holdout_from_ms or holdout_to_ms when omitted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ id: "job-abc", state: "queued" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHttpClient().submitRun({
+      datasetPath: "fixtures/synthetic.csv",
+      feeBps: 40,
+      fromMs: 0,
+      toMs: 1000,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body).not.toHaveProperty("holdout_from_ms");
+    expect(body).not.toHaveProperty("holdout_to_ms");
+  });
+
   it("does not write to localStorage when submitting", async () => {
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
     const fetchMock = vi.fn().mockResolvedValue(

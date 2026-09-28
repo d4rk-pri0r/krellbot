@@ -88,6 +88,8 @@ describe("ResearchView form", () => {
     expect(screen.getByLabelText(/fee basis points/i)).toBeDefined();
     expect(screen.getByLabelText(/^from$/i)).toBeDefined();
     expect(screen.getByLabelText(/^to$/i)).toBeDefined();
+    expect(screen.getByLabelText(/holdout from/i)).toBeDefined();
+    expect(screen.getByLabelText(/holdout to/i)).toBeDefined();
     expect(screen.getByRole("button", { name: /^run$/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /synthetic fixture/i })).toBeDefined();
   });
@@ -297,5 +299,78 @@ describe("ResearchView export", () => {
       "research-export",
     )) as HTMLElement;
     expect(exportPanel.textContent).toBe(JSON.stringify(sampleStored));
+  });
+});
+
+describe("ResearchView holdout bounds", () => {
+  it("with empty holdout fields, submitRun is called without holdoutFromMs or holdoutToMs", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+    });
+    const callArg = (
+      client.submitRun as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg).not.toHaveProperty("holdoutFromMs");
+    expect(callArg).not.toHaveProperty("holdoutToMs");
+  });
+
+  it("with integer holdout fields, submitRun receives holdoutFromMs and holdoutToMs as numbers", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/holdout from/i), {
+      target: { value: "500" },
+    });
+    fireEvent.change(screen.getByLabelText(/holdout to/i), {
+      target: { value: "900" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+    });
+    expect(client.submitRun).toHaveBeenCalledWith({
+      datasetPath: "fixtures/synthetic.csv",
+      feeBps: 40,
+      fromMs: 0,
+      toMs: 1000,
+      packPath: "",
+      holdoutFromMs: 500,
+      holdoutToMs: 900,
+    });
+  });
+
+  it("with one empty holdout field, does not submit and shows 'holdout bounds must both be set'", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/holdout from/i), {
+      target: { value: "500" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    expect(client.submitRun).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("holdout bounds must both be set"),
+    ).toBeDefined();
+  });
+
+  it("with 'true' in Holdout from, does not submit and shows 'holdout bound must be an integer'", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/holdout from/i), {
+      target: { value: "true" },
+    });
+    fireEvent.change(screen.getByLabelText(/holdout to/i), {
+      target: { value: "900" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    expect(client.submitRun).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("holdout bound must be an integer"),
+    ).toBeDefined();
   });
 });
