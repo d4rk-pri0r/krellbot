@@ -26,6 +26,12 @@ Contracts (`.superpowers/sdd/krellbot-2027/contracts/commands.md`):
   * Invalid venue, mode, pack, balance, stop, or a live command sent here
     refuses before any config byte changes. Refusals leave `revision_after`
     equal to `revision_before`.
+  * `disarm`, `pause_entries`, `resume_entries`, and `raise_stop` read the
+    stored armed record and refuse with `stored_mode_not_paper` when its
+    `mode` is not `paper`. The caller payload does not influence the
+    stored-mode check; a missing `mode` or a `mode: paper` payload still
+    refuses when the stored record is live. Live authority stays in the
+    legacy CLI path.
 """
 
 from __future__ import annotations
@@ -62,6 +68,7 @@ CODE_PACK_HAS_NO_MARKET = "pack_has_no_market"
 CODE_INVALID_BALANCE = "invalid_balance"
 CODE_INVALID_STOP = "invalid_stop"
 CODE_MINIMUM_NOT_MET = "minimum_not_met"
+CODE_STORED_MODE_NOT_PAPER = "stored_mode_not_paper"
 
 
 @dataclass(frozen=True)
@@ -309,10 +316,22 @@ class PaperService:
             )
 
         config = kb_config.load_config(self._home)
-        if kb_config.find_armed(config, venue, pair) is None:
+        armed = kb_config.find_armed(config, venue, pair)
+        if armed is None:
             return self._refusal(
                 CODE_NOT_ARMED,
                 f"not armed: {venue} {pair}",
+                correlation_id,
+                rev_before,
+            )
+
+        # F01: paper commands read the stored record's mode and refuse to
+        # mutate a non-paper target. The caller payload does not override
+        # this check; live authority stays in the legacy CLI path.
+        if armed.mode != "paper":
+            return self._refusal(
+                CODE_STORED_MODE_NOT_PAPER,
+                f"stored mode is {armed.mode!r}; paper service only mutates paper targets",
                 correlation_id,
                 rev_before,
             )
@@ -357,6 +376,16 @@ class PaperService:
             return self._refusal(
                 CODE_NOT_ARMED,
                 f"not armed: {venue} {pair}",
+                correlation_id,
+                rev_before,
+            )
+
+        # F01: refuse before any byte change. The caller payload does not
+        # override the stored-mode check.
+        if armed.mode != "paper":
+            return self._refusal(
+                CODE_STORED_MODE_NOT_PAPER,
+                f"stored mode is {armed.mode!r}; paper service only mutates paper targets",
                 correlation_id,
                 rev_before,
             )
@@ -423,6 +452,16 @@ class PaperService:
             return self._refusal(
                 CODE_NOT_ARMED,
                 f"not armed: {venue} {pair}",
+                correlation_id,
+                rev_before,
+            )
+
+        # F01: refuse before any byte change. The caller payload does not
+        # override the stored-mode check.
+        if armed.mode != "paper":
+            return self._refusal(
+                CODE_STORED_MODE_NOT_PAPER,
+                f"stored mode is {armed.mode!r}; paper service only mutates paper targets",
                 correlation_id,
                 rev_before,
             )
