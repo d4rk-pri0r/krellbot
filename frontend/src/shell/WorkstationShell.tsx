@@ -3,17 +3,42 @@ import { ResearchView } from "../features/research/ResearchView";
 import { createHttpClient as createResearchHttpClient } from "../features/research/client";
 import { Editor } from "../features/strategies/Editor";
 import { createHttpClient } from "../features/strategies/client";
+import { redeemBootstrap } from "../session";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
 import { JobsDrawer } from "./JobsDrawer";
 import { Navigation, type View } from "./Navigation";
 import { StatusStrip } from "./StatusStrip";
 
+const BOOTSTRAP_META = "krellbot-bootstrap";
+
+function consumeBootstrapToken(): string | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const meta = document.querySelector(
+    `meta[name="${BOOTSTRAP_META}"]`,
+  );
+  if (meta === null) {
+    return null;
+  }
+  const token = meta.getAttribute("content") ?? "";
+  meta.remove();
+  return token;
+}
+
 export function WorkstationShell(): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [active, setActive] = useState<View>("workstation");
   const client = useMemo(() => createHttpClient(), []);
   const researchClient = useMemo(() => createResearchHttpClient(), []);
+
+  useEffect(() => {
+    const token = consumeBootstrapToken();
+    if (token) {
+      void redeemBootstrap(token);
+    }
+  }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

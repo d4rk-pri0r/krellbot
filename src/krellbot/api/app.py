@@ -165,7 +165,11 @@ def create_app(
 
     from krellbot.api import static as _static
 
-    _static.register(app, _resolve_dist_dir(dist_dir))
+    _static.register(
+        app,
+        _resolve_dist_dir(dist_dir),
+        bootstrap_token=bootstrap_token,
+    )
 
     @app.middleware("http")
     async def _enforce_loopback_host(request: Request, call_next):

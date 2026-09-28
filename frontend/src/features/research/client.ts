@@ -1,3 +1,5 @@
+import { getCsrf } from "../../session";
+
 export type RunRequest = {
   datasetPath: string;
   feeBps: number;
@@ -22,21 +24,13 @@ export type ResearchClient = {
   getResult(jobId: string): Promise<StoredResult | null>;
 };
 
-function readCsrf(): string {
-  if (typeof document === "undefined") {
-    return "";
-  }
-  const match = document.cookie.match(/(?:^|;\s*)krellbot_csrf=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : "";
-}
-
 async function postJson(url: string, body: unknown): Promise<unknown> {
   const response = await fetch(url, {
     method: "POST",
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      "X-Krellbot-CSRF": readCsrf(),
+      "X-Krellbot-CSRF": getCsrf(),
     },
     body: JSON.stringify(body),
   });
@@ -51,7 +45,7 @@ async function getJson(url: string): Promise<unknown | null> {
     method: "GET",
     credentials: "include",
     headers: {
-      "X-Krellbot-CSRF": readCsrf(),
+      "X-Krellbot-CSRF": getCsrf(),
     },
   });
   if (response.status === 404) {

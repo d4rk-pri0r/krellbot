@@ -1,3 +1,5 @@
+import { getCsrf } from "../../session";
+
 export type ValidationError = {
   field?: string;
   message: string;
@@ -56,7 +58,7 @@ async function postJson(url: string, body: unknown): Promise<DraftSummary> {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      "X-Krellbot-CSRF": readCsrf(),
+      "X-Krellbot-CSRF": getCsrf(),
     },
     body: JSON.stringify(body),
   });
@@ -72,7 +74,7 @@ async function putJson(url: string, body: unknown): Promise<DraftSummary> {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      "X-Krellbot-CSRF": readCsrf(),
+      "X-Krellbot-CSRF": getCsrf(),
     },
     body: JSON.stringify(body),
   });
@@ -80,14 +82,6 @@ async function putJson(url: string, body: unknown): Promise<DraftSummary> {
     throw new Error(`request failed: ${response.status}`);
   }
   return adapt((await response.json()) as RawSummary);
-}
-
-function readCsrf(): string {
-  if (typeof document === "undefined") {
-    return "";
-  }
-  const match = document.cookie.match(/(?:^|;\s*)krellbot_csrf=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : "";
 }
 
 export function createHttpClient(): StrategyClient {
@@ -120,7 +114,7 @@ export function createHttpClient(): StrategyClient {
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "X-Krellbot-CSRF": readCsrf(),
+          "X-Krellbot-CSRF": getCsrf(),
         },
         body: JSON.stringify({
           schema_version: "1",
