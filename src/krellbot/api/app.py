@@ -24,6 +24,11 @@ from krellbot.api.security import (
     is_loopback_host,
     is_loopback_origin,
 )
+from krellbot.application.strategy import (
+    DraftNotRunnable,
+    RevisionNotFound,
+    StrategyDraftService,
+)
 
 SCHEMA_VERSION = "1"
 SESSION_COOKIE = "krellbot_session"
@@ -46,10 +51,30 @@ class _AppState:
     bootstrap_used: bool = False
     sessions: dict[str, str] = field(default_factory=dict)
     jobs: JobManager = field(default=None)  # type: ignore[assignment]
+    draft_service: object = field(default=None)  # StrategyDraftService singleton per home
+    paper_service: object = field(default=None)  # PaperService singleton per home
 
 
 def _state(app: FastAPI) -> _AppState:
     return app.state.krellbot
+
+
+def _draft_service(s: _AppState) -> StrategyDraftService:
+    """Lazily build the strategy-draft service bound to the app's home."""
+
+    if s.draft_service is None:
+        s.draft_service = StrategyDraftService(home=s.home)
+    return s.draft_service
+
+
+def _paper_service(s: _AppState):
+    """Lazily build the paper service bound to the app's home."""
+
+    if s.paper_service is None:
+        from krellbot.application.paper import PaperService
+
+        s.paper_service = PaperService(home=s.home)
+    return s.paper_service
 
 
 def _resolve_dist_dir(dist_dir: Path | None) -> Path:
@@ -211,18 +236,60 @@ def create_app(
         if command not in PAPER_COMMANDS:
             return JSONResponse({"detail": f"unknown command {command}"}, status_code=403)
 
-        from krellbot.application.paper import PaperService
-
-        service = PaperService(home=s.home)
+        service = _paper_service(s)
 
         if command == "paper.arm":
+            # ``paper.arm`` may be addressed by ``pack_path`` (legacy) or
+            # by ``revision_id`` for a draft (NS08a). Draft addressing
+            # resolves the on-disk draft bytes without rewriting the
+            # file. A non-runnable draft is refused before any config
+            # byte changes.
+            pack_path = inner.get("pack_path")
+            revision_id = inner.get("revision_id")
+            if not pack_path and not revision_id:
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            if revision_id:
+                try:
+                    draft = _draft_service(s)
+                    pack_path, _pack = draft.pack_for_arm(revision_id)
+                except RevisionNotFound:
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "draft_not_found",
+                            "ok": False,
+                            "message": f"draft {revision_id} not found",
+                            "effect": "refused",
+                            "revision_before": None,
+                            "revision_after": None,
+                        },
+                        status_code=404,
+                    )
+                except DraftNotRunnable as exc:
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "draft_not_runnable",
+                            "ok": False,
+                            "message": str(exc),
+                            "effect": "refused",
+                            "revision_before": None,
+                            "revision_after": None,
+                        },
+                        status_code=403,
+                    )
             result = service.arm(
-                Path(inner["pack_path"]),
+                Path(pack_path),
                 venue=inner["venue"],
                 mode=inner.get("mode", "paper"),
                 paper_balance=Decimal(inner["paper_balance"]),
                 correlation_id=correlation_id,
             )
+            if revision_id and result.ok:
+                try:
+                    _draft_service(s).mark_deployed(revision_id)
+                except (RevisionNotFound, DraftNotRunnable):
+                    pass
         elif command == "paper.disarm":
             result = service.disarm(
                 venue=inner["venue"],
@@ -363,5 +430,95 @@ def create_app(
             "live_orders": False,
         }
         return JSONResponse(body, status_code=200)
+
+    # ---- strategy drafts (NS08a) --------------------------------------
+
+    def _resolve_pack_field(payload: dict) -> tuple[dict | None, Response | None]:
+        """Return ``(pack, None)`` or ``(None, bad_request)``."""
+
+        if not isinstance(payload, dict):
+            return None, JSONResponse({"detail": "invalid body"}, status_code=400)
+        raw = payload.get("pack")
+        if not isinstance(raw, dict):
+            return None, JSONResponse({"detail": "invalid body"}, status_code=400)
+        return raw, None
+
+    @app.post("/api/v1/strategies/drafts")
+    async def create_draft(request: Request) -> Response:
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        pack, err = _resolve_pack_field(payload)
+        if err is not None:
+            return err
+
+        try:
+            summary = _draft_service(s).create(pack)
+        except ValueError as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=400)
+        return JSONResponse(summary, status_code=200)
+
+    @app.put("/api/v1/strategies/drafts/{revision_id}")
+    async def edit_draft(request: Request, revision_id: str) -> Response:
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        pack, err = _resolve_pack_field(payload)
+        if err is not None:
+            return err
+
+        try:
+            summary = _draft_service(s).edit(revision_id, pack)
+        except RevisionNotFound:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "draft_not_found",
+                    "message": f"draft {revision_id} not found",
+                },
+                status_code=404,
+            )
+        except ValueError as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=400)
+        return JSONResponse(summary, status_code=200)
+
+    @app.post("/api/v1/strategies/drafts/{revision_id}/validate")
+    async def validate_draft(request: Request, revision_id: str) -> Response:
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        # Body is optional. Eat it so a trailing JSON parse error does
+        # not 400 a valid request.
+        try:
+            await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            pass
+
+        try:
+            summary = _draft_service(s).validate(revision_id)
+        except RevisionNotFound:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "draft_not_found",
+                    "message": f"draft {revision_id} not found",
+                },
+                status_code=404,
+            )
+        return JSONResponse(summary, status_code=200)
 
     return app
