@@ -11,5 +11,6 @@ holds the IR types and the pure predicates that operate on them.
 from __future__ import annotations
 
 from .availability import FutureData, check_availability
+from .identity import execution_id
 
-__all__ = ["FutureData", "check_availability"]
+__all__ = ["FutureData", "check_availability", "execution_id"]
