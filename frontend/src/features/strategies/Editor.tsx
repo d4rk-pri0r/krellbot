@@ -1,4 +1,4 @@
-import { useMemo, useState, type JSX } from "react";
+import { useMemo, useState, type ChangeEvent, type JSX } from "react";
 import type {
   DraftState,
   DraftSummary,
@@ -115,6 +115,36 @@ export function Editor({ client, initial }: EditorProps): JSX.Element {
     setLastSummary(summary);
   };
 
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      const pack = parsePack(text);
+      if (!pack) {
+        setImportError("Invalid JSON");
+        return;
+      }
+      setImportError(null);
+      setRawJson(text);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExport = (): void => {
+    const blob = new Blob([rawJson], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "pack.json";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  };
+
   const handleArm = async (): Promise<void> => {
     if (!lastSummary || lastSummary.state !== "validated") {
       return;
@@ -187,6 +217,21 @@ export function Editor({ client, initial }: EditorProps): JSX.Element {
             rows={12}
           />
         </label>
+        <label
+          className="kbot-strategy-editor__field"
+          htmlFor="kbot-strategy-editor-file"
+        >
+          <span className="kbot-strategy-editor__field-label">
+            Import pack file
+          </span>
+          <input
+            id="kbot-strategy-editor-file"
+            className="kbot-strategy-editor__input"
+            type="file"
+            accept="application/json,.json"
+            onChange={handleFileChange}
+          />
+        </label>
         {importError !== null ? (
           <p
             className="kbot-strategy-editor__error"
@@ -215,6 +260,13 @@ export function Editor({ client, initial }: EditorProps): JSX.Element {
             onClick={handleImport}
           >
             Import
+          </button>
+          <button
+            type="button"
+            className="kbot-strategy-editor__action"
+            onClick={handleExport}
+          >
+            Export pack
           </button>
           <button
             type="button"

@@ -307,4 +307,81 @@ describe("Editor import", () => {
     expect(await screen.findByText(/invalid json/i)).toBeDefined();
     expect(client.create).not.toHaveBeenCalled();
   });
+
+  it("Importing a pack file with valid JSON fills the textarea and does not call save", async () => {
+    const client = makeClient();
+    render(<Editor client={client} />);
+    const file = new File(['{"label":"from-file"}'], "pack.json", {
+      type: "application/json",
+    });
+    const fileInput = screen.getByLabelText(/import pack file/i) as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText(/raw json/i) as HTMLTextAreaElement).value,
+      ).toBe('{"label":"from-file"}');
+    });
+    expect(client.create).not.toHaveBeenCalled();
+    expect(client.edit).not.toHaveBeenCalled();
+  });
+
+  it("Importing a pack file with invalid JSON shows 'Invalid JSON' and does not call save", async () => {
+    const client = makeClient();
+    render(<Editor client={client} />);
+    const file = new File(["not-json"], "pack.json", {
+      type: "application/json",
+    });
+    const fileInput = screen.getByLabelText(/import pack file/i) as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    expect(await screen.findByText(/invalid json/i)).toBeDefined();
+    expect(client.create).not.toHaveBeenCalled();
+    expect(client.edit).not.toHaveBeenCalled();
+  });
+});
+
+describe("Editor export", () => {
+  it("Export pack creates an object URL from the current textarea text and an anchor with download 'pack.json'", async () => {
+    const client = makeClient();
+    render(<Editor client={client} />);
+    const textarea = screen.getByLabelText(/raw json/i) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: validPackBytes } });
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test-url");
+    const revokeObjectURLSpy = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    const createElementSpy = vi.spyOn(document, "createElement");
+    const capturedAnchors: HTMLAnchorElement[] = [];
+    createElementSpy.mockImplementation(((tag: string) => {
+      const element = originalCreateElement(tag);
+      if (tag === "a" && element instanceof HTMLAnchorElement) {
+        capturedAnchors.push(element);
+      }
+      return element;
+    }) as typeof document.createElement);
+
+    fireEvent.click(screen.getByRole("button", { name: /^export pack$/i }));
+
+    expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
+    const blob = createObjectURLSpy.mock.calls[0][0] as Blob;
+    expect(blob).toBeInstanceOf(Blob);
+    expect(await blob.text()).toBe(validPackBytes);
+
+    const downloadAnchors = capturedAnchors.filter(
+      (a) => a.download === "pack.json",
+    );
+    expect(downloadAnchors.length).toBeGreaterThan(0);
+    expect(downloadAnchors[0].download).toBe("pack.json");
+
+    clickSpy.mockRestore();
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
+    createElementSpy.mockRestore();
+  });
 });
