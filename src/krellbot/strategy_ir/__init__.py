@@ -11,15 +11,19 @@ strips the pack, refuses future bars, and then hands the clean pack
 to a caller-supplied evaluator. NS19e contributes the v1 clock — the
 strict predicate that refuses a graph whose ``schema_version`` is
 not the integer ``1`` or whose ``timeframe`` is not exactly ``"1h"``,
-``"4h"``, or ``"1d"``. Other NS19 steps will own the rest of the
-compiler surface. This package does not own evaluation, venues, or
-runtime orchestration; it holds the IR types and the pure
+``"4h"``, or ``"1d"``. NS19f contributes the canonical serializer —
+the UTF-8 JSON document built from the stripped graph with sorted
+keys and ``(",", ":")`` separators, which is a fixed point under
+``parse ∘ canonical_bytes``. Other NS19 steps will own the rest of
+the compiler surface. This package does not own evaluation, venues,
+or runtime orchestration; it holds the IR types and the pure
 predicates that operate on them.
 """
 
 from __future__ import annotations
 
 from .availability import FutureData, check_availability
+from .canonical import canonical_bytes
 from .identity import execution_id
 from .units import InvalidGraph, require_v1_clock
 from .v1 import prepare_v1, strip_editor
@@ -27,6 +31,7 @@ from .v1 import prepare_v1, strip_editor
 __all__ = [
     "FutureData",
     "InvalidGraph",
+    "canonical_bytes",
     "check_availability",
     "execution_id",
     "prepare_v1",
