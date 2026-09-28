@@ -38,6 +38,7 @@ from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 from krellbot import secrets as kb_secrets
 from krellbot.data.instruments import InstrumentMetadataError
+from krellbot.domain import trace as kb_trace
 from krellbot.pack import evaluate as kb_evaluate
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle as Candle
@@ -406,6 +407,14 @@ def tick(
                 continue
 
             target = kb_evaluate.run(pack, candles)
+            trace_extra: dict = {}
+            if armed.mode == "paper":
+                paper_trace = kb_trace.paper_decision_trace(pack, candles)
+                trace_extra["decision_trace_bars"] = len(paper_trace)
+                if paper_trace:
+                    last_reason = paper_trace[-1]["target"]["reason"]
+                    if isinstance(last_reason, str):
+                        trace_extra["decision_reason"] = last_reason
             entry_qty = Decimal(0)
             exit_qty = Decimal(0)
             entry_coid_for_signal = ""
@@ -522,6 +531,7 @@ def tick(
                     "entry_coid": ensure_stop_entry or entry_coid_for_signal,
                     "no_double_order": bool(ensure_stop_entry),
                     "metadata_refusal": metadata_refusal,
+                    **trace_extra,
                 },
             )
 
