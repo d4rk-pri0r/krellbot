@@ -111,13 +111,27 @@ def _gate_state_change(request: Request, s: _AppState) -> Response | None:
 
 
 def _gate_get(request: Request, s: _AppState) -> Response | None:
-    """Apply the session-cookie + loopback-origin gate for read endpoints."""
+    """Apply the session-cookie + loopback-origin gate for read endpoints.
+
+    The cookie must be a key in ``s.sessions``: presence alone is not
+    sufficient. A missing or invented cookie, or one that has been
+    revoked (popped from the map) is 403 with body
+    ``{"detail": "session required"}``. Browsers do not send ``Origin``
+    on same-origin GET, so a missing ``Origin`` with a loopback ``Host``
+    is allowed; a present non-loopback ``Origin`` is still 403.
+
+    POST routes use ``_gate_state_change`` instead, which keeps the
+    loopback-Origin + cookie-present + CSRF triad unchanged.
+    """
 
     origin = request.headers.get("origin", "")
-    if not is_loopback_origin(origin, port=s.port):
+    if origin and not is_loopback_origin(origin, port=s.port):
+        # A missing Origin is accepted (same-origin GETs ship without
+        # one). A present non-loopback Origin is the only Origin case
+        # we refuse; a present loopback Origin still passes through.
         return JSONResponse({"detail": "origin not loopback"}, status_code=403)
     session_id = request.cookies.get(SESSION_COOKIE)
-    if not session_id:
+    if not session_id or session_id not in s.sessions:
         return JSONResponse({"detail": "session required"}, status_code=403)
     return None
 
