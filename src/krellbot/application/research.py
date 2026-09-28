@@ -41,6 +41,7 @@ from krellbot.data.cache import _parse_csv, sha256_bytes
 from krellbot.domain.trace import shared_decision_trace
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle
+from krellbot.research.holdout import HoldoutOverlap, assert_disjoint
 
 SCHEMA_VERSION = "1"
 
@@ -55,6 +56,8 @@ CODE_GAPPED_DATA = "gapped_data"
 CODE_EMPTY_DATASET = "empty_dataset"
 CODE_NO_DATASET_AND_NO_FETCH = "no_dataset_and_no_fetch"
 CODE_INVALID_DATASET = "invalid_dataset"
+CODE_INVALID_HOLDOUT = "invalid_holdout"
+CODE_HOLDOUT_OVERLAP = "holdout_overlap"
 
 
 FetchFn = Callable[[str, str, str], list[Candle]]
@@ -79,6 +82,8 @@ class ResearchRequest:
     slippage_mult: float | None = None
     from_ms: int | None = None
     to_ms: int | None = None
+    holdout_from_ms: int | None = None
+    holdout_to_ms: int | None = None
     allow_gaps: bool = False
 
 
@@ -228,6 +233,44 @@ class ResearchService:
                 detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
                 refusal=refusal,
             )
+
+        if request.holdout_from_ms is not None or request.holdout_to_ms is not None:
+            if (
+                request.holdout_from_ms is None
+                or request.holdout_to_ms is None
+                or type(request.holdout_from_ms) is not int
+                or type(request.holdout_to_ms) is not int
+            ):
+                refusal = {
+                    "code": CODE_INVALID_HOLDOUT,
+                    "message": "holdout bounds must be a pair of ints",
+                }
+                return ResearchResult(
+                    ok=False,
+                    legacy_receipt=None,
+                    detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
+                    refusal=refusal,
+                )
+            scored_from = candles[0].ts_ms
+            scored_to = candles[-1].ts_ms
+            try:
+                assert_disjoint(
+                    scored_from,
+                    scored_to,
+                    int(request.holdout_from_ms),
+                    int(request.holdout_to_ms),
+                )
+            except HoldoutOverlap:
+                refusal = {
+                    "code": CODE_HOLDOUT_OVERLAP,
+                    "message": "scored window overlaps the holdout window",
+                }
+                return ResearchResult(
+                    ok=False,
+                    legacy_receipt=None,
+                    detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
+                    refusal=refusal,
+                )
 
         bt = Backtester(
             pack,
