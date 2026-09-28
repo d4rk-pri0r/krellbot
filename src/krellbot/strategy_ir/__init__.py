@@ -18,10 +18,14 @@ keys and ``(",", ":")`` separators, which is a fixed point under
 predicate that refuses a v1 condition tree whose node count exceeds
 ``max_nodes`` or whose nesting depth exceeds ``max_depth``, walking
 stops the moment either bound is exceeded, and ``True`` / ``1.0`` are
-not legal bounds. Other NS19 steps will own the rest of the compiler
-surface. This package does not own evaluation, venues, or runtime
-orchestration; it holds the IR types and the pure predicates that
-operate on them.
+not legal bounds. NS19h contributes the checkpoint check — the
+predicate that refuses a stateful operator (``ema``, ``atr``, or
+``roofing_filter``) whose ``checkpoint`` is not a ``dict``; missing
+keys, ``None``, ``0``, ``0.0``, and ``True`` all raise
+``MissingCheckpoint``. Other NS19 steps will own the rest of the
+compiler surface. This package does not own evaluation, venues, or
+runtime orchestration; it holds the IR types and the pure predicates
+that operate on them.
 """
 
 from __future__ import annotations
@@ -29,19 +33,23 @@ from __future__ import annotations
 from .availability import FutureData, check_availability
 from .bounds import GraphTooLarge, check_bounds
 from .canonical import canonical_bytes
+from .checkpoint import STATEFUL_FNS, MissingCheckpoint, require_checkpoint
 from .identity import execution_id
 from .units import InvalidGraph, require_v1_clock
 from .v1 import prepare_v1, strip_editor
 
 __all__ = [
+    "STATEFUL_FNS",
     "FutureData",
     "GraphTooLarge",
     "InvalidGraph",
+    "MissingCheckpoint",
     "canonical_bytes",
     "check_availability",
     "check_bounds",
     "execution_id",
     "prepare_v1",
+    "require_checkpoint",
     "require_v1_clock",
     "strip_editor",
 ]
