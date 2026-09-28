@@ -772,7 +772,7 @@ def cmd_backtest(args):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall [--dry-run] [--root PATH] | doctor [--json] | ui [--port N] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall [--dry-run] [--root PATH] | doctor [--json] | ui [--port N] | workstation [--port N] [--dist PATH] [--open] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
         file=sys.stderr,
     )
     return 2
@@ -1736,6 +1736,79 @@ def cmd_ui(args):
     return 0
 
 
+def cmd_workstation(args):
+    """`krellbot workstation [--port N] [--dist PATH] [--open]`.
+
+    Bind the FastAPI workstation shell to 127.0.0.1 on a random port
+    (or the given ``--port``). Print the URL with no token; the bootstrap
+    token is delivered via the ``<meta name="krellbot-bootstrap">`` tag
+    the static layer injects at response time. With ``--open``, hand the
+    URL to the default browser once. SIGINT/SIGTERM stop the server and
+    return 0. The server never accepts a non-loopback Host header and
+    never opens a socket to a venue.
+
+    Unknown arguments, including ``--host``, exit 2 and do not start a
+    server. A non-integer ``--port`` exits 2. ``--open`` is the only path
+    that imports ``webbrowser``.
+    """
+    import signal
+
+    from krellbot.api.serve import WorkstationServer
+
+    port = 0
+    dist_dir: Path | None = None
+    do_open = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--port" and i + 1 < len(args):
+            try:
+                port = int(args[i + 1])
+            except ValueError:
+                print(f"invalid --port: {args[i + 1]}", file=sys.stderr)
+                return 2
+            i += 2
+            continue
+        if a == "--dist" and i + 1 < len(args):
+            dist_dir = Path(args[i + 1])
+            i += 2
+            continue
+        if a == "--open":
+            do_open = True
+            i += 1
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+
+    server = WorkstationServer(home=kb_paths.home(), port=port, dist_dir=dist_dir)
+    server.start()
+
+    if do_open:
+        import webbrowser  # only needed when the user asked to launch
+
+        try:
+            webbrowser.open(server.url)
+        except (OSError, RuntimeError):
+            pass
+
+    print(f"Workstation running at {server.url}", flush=True)
+
+    stopped = threading.Event()
+
+    def _on_signal(signum: int, frame: Any) -> None:
+        stopped.set()
+
+    signal.signal(signal.SIGINT, _on_signal)
+    signal.signal(signal.SIGTERM, _on_signal)
+
+    try:
+        stopped.wait()
+    finally:
+        server.stop()
+        print("Stopped.")
+    return 0
+
+
 # ---- community -------------------------------------------------------------
 
 
@@ -1890,6 +1963,8 @@ def main(argv):
         return cmd_doctor(argv[2:])
     if cmd == "ui" and len(argv) >= 2:
         return cmd_ui(argv[2:])
+    if cmd == "workstation" and len(argv) >= 2:
+        return cmd_workstation(argv[2:])
     if cmd == "community" and len(argv) >= 2:
         return cmd_community(argv[2:])
     if cmd == "telemetry" and len(argv) >= 2:
