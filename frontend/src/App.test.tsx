@@ -135,4 +135,30 @@ describe("App view routing", () => {
       screen.queryByRole("region", { name: /strategy editor/i }),
     ).toBeNull();
   });
+
+  it("choosing Research shows the research run form", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    expect(screen.getByLabelText(/dataset path/i)).toBeDefined();
+    expect(screen.getByLabelText(/fee basis points/i)).toBeDefined();
+    expect(screen.getByLabelText(/^from$/i)).toBeDefined();
+    expect(screen.getByLabelText(/^to$/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /^run$/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /synthetic fixture/i })).toBeDefined();
+  });
+
+  it("choosing Research hides the workstation heading", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    expect(screen.queryByText("Paper workstation")).toBeNull();
+  });
+
+  it("choosing Workstation after Research shows the paper workstation again", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    expect(screen.getByLabelText(/dataset path/i)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.queryByLabelText(/dataset path/i)).toBeNull();
+  });
 });
