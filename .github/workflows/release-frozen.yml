@@ -56,6 +56,30 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Pin Node 22 with actions/setup-node@v4 before the freeze step.
+      # The Vite build needs the dev toolchain (vite, @vitejs/plugin-react,
+      # typescript, vitest) on PATH. ``npm ci`` alone is NOT enough: the
+      # github-hosted runners export ``NODE_ENV=production`` by default and
+      # ``npm ci`` then skips ``devDependencies``. ``npm ci --include=dev``
+      # overrides that default. We run the build BEFORE the freeze step so
+      # ``frontend/dist/index.html`` exists when PyInstaller is invoked —
+      # ``scripts/freeze.freeze()`` refuses to start PyInstaller when the
+      # built index is missing.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install frontend toolchain (devDependencies included)
+        # Plain ``npm ci`` is wrong on hosts that export NODE_ENV=production
+        # (which most CI runners do); --include=dev overrides that skip.
+        run: npm ci --include=dev --prefix frontend
+
+      - name: Build the paper shell
+        # Produces ``frontend/dist/index.html``. ``scripts/freeze.freeze()``
+        # refuses to invoke PyInstaller when this file is missing; if you
+        # skip this step the release freezes closed with a clear error.
+        run: npm --prefix frontend run build
+
       - name: Sync dependencies
         run: uv sync --group dev
 

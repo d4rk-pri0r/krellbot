@@ -138,7 +138,9 @@ def freeze(*, repo_root: Path | None = None) -> Path:
 
     Returns the path to the bundle directory (ready for
     `scripts.release_archive.build_archive` to validate and zip).
-    Raises SystemExit if pyinstaller fails or the bundle is missing.
+    Raises SystemExit if the built paper shell is missing, the
+    entry script does not exist, pyinstaller fails, or the
+    bundle is missing.
     """
     repo_root = repo_root or Path(__file__).resolve().parents[1]
     entry, dist_root, work_root, spec_root = _resolve_paths(repo_root)
@@ -146,7 +148,24 @@ def freeze(*, repo_root: Path | None = None) -> Path:
     if not entry.is_file():
         raise SystemExit(f"entry script not found: {entry}")
 
+    # Refuse to invoke PyInstaller when the Vite build is missing.
+    # CI is expected to run ``npm --prefix frontend run build``
+    # before this script; if the operator forgot, the freeze
+    # would still succeed and the bundle would ship an empty
+    # ``frontend/dist``. The named command in the error message
+    # points at the right fix.
+    frontend_index = (repo_root / "frontend" / "dist" / "index.html").resolve()
+    if not frontend_index.is_file():
+        raise SystemExit(
+            "frontend paper shell is not built: "
+            f"{frontend_index} is missing. Run `npm --prefix frontend run build` "
+            "before `uv run python scripts/freeze.py`."
+        )
+
     # Clean previous build artifacts so the run is reproducible.
+    # We deliberately do NOT touch ``frontend/dist`` — the Vite
+    # artefact is the source of truth for the bundle and must
+    # survive every freeze run.
     for stale in (dist_root, work_root, spec_root):
         if stale.exists():
             shutil.rmtree(stale)
