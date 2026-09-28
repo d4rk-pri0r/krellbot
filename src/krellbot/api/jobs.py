@@ -45,6 +45,7 @@ JOB_ERROR_QUEUE_FULL = "queue_full"
 JOB_ERROR_JOB_FAILED = "job_failed"
 JOB_ERROR_MISSING_RESULT_REF = "missing_result_ref"
 JOB_ERROR_NOT_FOUND = "not_found"
+JOB_ERROR_RESULT_UNAVAILABLE = "result_unavailable"
 
 # Allowed concurrency per the brief: one running + up to four queued.
 MAX_RUNNING_JOBS = 1
@@ -119,6 +120,25 @@ def _now_iso() -> str:
 
 def _new_job_id() -> str:
     return secrets.token_urlsafe(12)
+
+
+def _extract_result(outcome: dict) -> dict:
+    """Build the stored result object from a successful runner outcome.
+
+    Returns a dict with ``legacy_receipt`` and ``trace`` keys. The bytes
+    are kept exactly as the runner returned them — no key injection, no
+    zero-substitution for missing fee / equity / drawdown values. The
+    contract is that the receipt is byte-identical to the runner's view.
+    """
+
+    receipt = outcome.get("legacy_receipt")
+    trace = outcome.get("trace")
+    out: dict = {}
+    if isinstance(receipt, dict):
+        out["legacy_receipt"] = receipt
+    if isinstance(trace, list):
+        out["trace"] = trace
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -223,12 +243,22 @@ class _InternalJob:
     request: dict = field(default_factory=dict)
     job: JobV1 = field(default_factory=lambda: JobV1(state=JOB_STATE_QUEUED))
     cancel_event: threading.Event = field(default_factory=threading.Event)
+    # Stored only on success. ``None`` for queued, running, cancelling,
+    # cancelled, and failed jobs. The result route reads this directly.
+    result: dict | None = None
 
     def snapshot(self) -> JobV1:
         return copy.deepcopy(self.job)
 
     def is_cancel_requested(self) -> bool:
         return self.cancel_event.is_set()
+
+    def result_snapshot(self) -> dict | None:
+        """Return a deep copy of the stored result, or ``None``."""
+
+        if self.result is None:
+            return None
+        return copy.deepcopy(self.result)
 
 
 class JobManager:
@@ -339,6 +369,23 @@ class JobManager:
             if internal is None:
                 return None
             return internal.snapshot()
+
+    def result_for(self, job_id: str) -> dict | None:
+        """Return the stored result for ``job_id`` or ``None``.
+
+        Returns ``None`` when the job is unknown, or when no result has
+        been stored yet (queued, running, cancelling, cancelled, failed).
+        The caller can distinguish those by combining this with
+        :meth:`get`: a known job with ``state == "succeeded"`` and a
+        ``None`` value indicates a missing receipt, which the contract
+        treats as a 500-class internal failure.
+        """
+
+        with self._lock:
+            internal = self._jobs.get(job_id)
+            if internal is None:
+                return None
+            return internal.result_snapshot()
 
     def cancel(self, job_id: str) -> JobV1 | None:
         """Cancel ``job_id`` if known and not already terminal. Idempotent.
@@ -487,6 +534,13 @@ class JobManager:
                     ref = outcome.get("result_ref")
                     if isinstance(ref, str) and ref:
                         internal.job.result_ref = ref
+                        # Store the receipt + trace exactly as the runner
+                        # returned them. We deliberately do not add keys
+                        # and do not coerce missing fields to ``0``. The
+                        # contract keeps the receipt bytes identical to
+                        # the runner's output. The result route reads
+                        # this object verbatim.
+                        internal.result = _extract_result(outcome)
                         self._finalize_state(internal, JOB_STATE_SUCCEEDED)
                     else:
                         self._finalize_failed(
@@ -583,7 +637,21 @@ class JobManager:
         service = ResearchService(home=self._home)
         result = service.run(request)
         if not result.ok:
+            # On refusal, do not store a receipt. The job manager treats
+            # this as a failed job; the result route stays unavailable.
             return {"ok": False}
         correlation_id = str(request_payload.get("correlation_id") or "")
         job_id = str(request_payload.get("id") or "unknown")
-        return {"ok": True, "result_ref": f"backtest:{correlation_id}:{job_id}"}
+        # Pass the receipt + trace back to the worker verbatim. The worker
+        # stores them under ``_InternalJob.result`` and the result route
+        # reads them back. We do not add keys and do not coerce missing
+        # fields to ``0``; the contract keeps the receipt bytes
+        # byte-identical to the runner's view.
+        detail = result.detail if isinstance(result.detail, dict) else {}
+        trace = detail.get("trace")
+        return {
+            "ok": True,
+            "result_ref": f"backtest:{correlation_id}:{job_id}",
+            "legacy_receipt": result.legacy_receipt,
+            "trace": trace,
+        }

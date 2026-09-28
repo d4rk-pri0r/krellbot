@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from krellbot.api.jobs import (
     JOB_ERROR_NOT_FOUND,
+    JOB_ERROR_RESULT_UNAVAILABLE,
     JOB_KIND_RESEARCH_BACKTEST,
     JobManager,
     QueueFull,
@@ -385,6 +386,30 @@ def create_app(
                 status_code=404,
             )
         return JSONResponse(snap.to_dict(), status_code=200)
+
+    @app.get("/api/v1/jobs/{job_id}/result")
+    async def get_job_result(request: Request, job_id: str) -> Response:
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        snap = s.jobs.get(job_id)
+        if snap is None:
+            return JSONResponse(
+                {"code": JOB_ERROR_NOT_FOUND, "message": "job not found"},
+                status_code=404,
+            )
+        result = s.jobs.result_for(job_id)
+        if result is None:
+            # The job is known and not succeeded: running, cancelling,
+            # cancelled, queued, or failed. Per the contract the result
+            # route is unavailable in those states.
+            return JSONResponse(
+                {"code": JOB_ERROR_RESULT_UNAVAILABLE},
+                status_code=404,
+            )
+        return JSONResponse(result, status_code=200)
 
     @app.get("/api/v1/events")
     async def events(request: Request) -> Response:
