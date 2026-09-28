@@ -1,0 +1,20 @@
+/* Krellbot frontend tokens — copied from src/krellbot/ui/static/style.css.
+ *
+ * Approved visual spec:
+ *   - near-black canvas:    #07090d
+ *   - precise cyan primary: #5ce1ff
+ *   - restrained lime:      #C6FF3D
+ *   - dark color-scheme so the browser does not flash a light theme
+ *
+ * No remote font. No CDN. This file is the only place the brand palette
+ * is duplicated; the legacy static style.css remains the wizard source
+ * of truth for now.
+ */
+
+:root {
+  color-scheme: dark;
+  --canvas: #07090d;
+  --signal: #5ce1ff;
+  --warn: #C6FF3D;
+  --ink: #e7f4f8;
+}
