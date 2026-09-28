@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -82,12 +83,24 @@ def _paper_service(s: _AppState):
 def _resolve_dist_dir(dist_dir: Path | None) -> Path:
     """Resolve the frontend ``dist`` directory.
 
-    The default walks up from this file to the repo root and points at
-    ``<repo>/frontend/dist``. Tests may inject a throwaway directory.
+    Resolution order:
+
+    1. An explicit ``dist_dir`` wins; callers (tests, operators) get
+       exactly what they passed.
+    2. A frozen process always resolves ``<sys._MEIPASS>/frontend/dist``.
+       A missing ``index.html`` stays missing so the static route returns
+       ``shell_not_built``. It does not fall back to a checkout, which
+       would hide a bundle that omitted the shell.
+    3. A non-frozen run returns the checkout ``<repo>/frontend/dist``.
+       A missing build is handled by the existing static route. The
+       resolver never synthesises HTML.
     """
 
     if dist_dir is not None:
         return Path(dist_dir)
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None) or ""
+        return Path(meipass) / "frontend" / "dist"
     repo_root = Path(__file__).resolve().parent.parent.parent.parent
     return repo_root / "frontend" / "dist"
 

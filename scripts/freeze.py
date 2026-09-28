@@ -48,38 +48,54 @@ def _build_args(*, entry: Path, dist_root: Path, work_root: Path, spec_root: Pat
     """Assemble the PyInstaller CLI args for our one-dir build."""
     static_src = (repo_root / "src" / "krellbot" / "ui" / "static").resolve()
     static_dest = Path("krellbot") / "ui" / "static"
+    frontend_dist_src = (repo_root / "frontend" / "dist").resolve()
+    frontend_dist_dest = Path("frontend") / "dist"
 
     args: list[str] = [
         "--noconfirm",
         "--clean",
         "--onedir",
-        "--name", "krellbot",
+        "--name",
+        "krellbot",
         # Where PyInstaller writes the bundle.
-        "--distpath", str(dist_root.resolve()),
+        "--distpath",
+        str(dist_root.resolve()),
         # Build scratch (hashed, regenerable; safe to delete).
-        "--workpath", str(work_root.resolve()),
+        "--workpath",
+        str(work_root.resolve()),
         # Spec files: don't litter the repo with .spec outputs.
-        "--specpath", str(spec_root.resolve()),
+        "--specpath",
+        str(spec_root.resolve()),
+        "--add-data",
+        f"{frontend_dist_src}{_SEP}{frontend_dist_dest}",
         # Static UI assets — same path inside the bundle as in the
         # source tree so `krellbot.ui.server._STATIC_DIR` resolves at
         # runtime to the bundled copy, not the checkout. Absolute source
         # path so PyInstaller resolves it regardless of cwd/specpath.
-        "--add-data", f"{static_src}{_SEP}{static_dest}",
+        "--add-data",
+        f"{static_src}{_SEP}{static_dest}",
         # keyring backend discovery: copies every backend's Python files
         # and metadata into the bundle so any platform's keyring works.
-        "--collect-all", "keyring",
+        "--collect-all",
+        "keyring",
         # The runtime imports these explicitly; collect their submodules
         # so PyInstaller's static analysis can't strip them.
-        "--collect-submodules", "cryptography",
-        "--collect-submodules", "jsonschema",
+        "--collect-submodules",
+        "cryptography",
+        "--collect-submodules",
+        "jsonschema",
         # Hidden imports that PyInstaller's static analysis misses.
-        "--hidden-import", "cryptography",
-        "--hidden-import", "jsonschema",
+        "--hidden-import",
+        "cryptography",
+        "--hidden-import",
+        "jsonschema",
         # `krellbot.cli` imports krellbot.ui.* lazily inside the `ui`
         # subcommand; PyInstaller's static analysis can't trace that,
         # so force them in.
-        "--hidden-import", "krellbot.ui.server",
-        "--hidden-import", "krellbot.ui.launch",
+        "--hidden-import",
+        "krellbot.ui.server",
+        "--hidden-import",
+        "krellbot.ui.launch",
         # The frozen entry point.
         str(entry.resolve()),
     ]
@@ -158,9 +174,7 @@ def freeze(*, repo_root: Path | None = None) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Build a PyInstaller one-dir frozen krellbot binary."
-    )
+    parser = argparse.ArgumentParser(description="Build a PyInstaller one-dir frozen krellbot binary.")
     parser.add_argument(
         "--repo-root",
         type=Path,
