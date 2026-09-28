@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import hmac
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from krellbot.api.jobs import (
+    JOB_ERROR_NOT_FOUND,
+    JOB_KIND_RESEARCH_BACKTEST,
+    JobManager,
+    QueueFull,
+)
 from krellbot.api.security import (
     generate_csrf_token,
     generate_session_token,
@@ -38,14 +45,77 @@ class _AppState:
     bootstrap_token: str
     bootstrap_used: bool = False
     sessions: dict[str, str] = field(default_factory=dict)
+    jobs: JobManager = field(default=None)  # type: ignore[assignment]
 
 
 def _state(app: FastAPI) -> _AppState:
     return app.state.krellbot
 
 
-def create_app(home: Path, *, port: int, bootstrap_token: str) -> FastAPI:
-    state = _AppState(home=Path(home), port=port, bootstrap_token=bootstrap_token)
+def _gate_state_change(request: Request, s: _AppState) -> Response | None:
+    """Apply the session-cookie + CSRF + loopback-origin gate for state changes."""
+
+    origin = request.headers.get("origin", "")
+    if not is_loopback_origin(origin, port=s.port):
+        return JSONResponse({"detail": "origin not loopback"}, status_code=403)
+
+    session_id = request.cookies.get(SESSION_COOKIE)
+    if not session_id:
+        return JSONResponse({"detail": "session required"}, status_code=403)
+    expected_csrf = s.sessions.get(session_id)
+    presented_csrf = request.headers.get(CSRF_HEADER, "")
+    if not expected_csrf or not hmac.compare_digest(expected_csrf, presented_csrf):
+        return JSONResponse({"detail": "csrf required"}, status_code=403)
+
+    return None
+
+
+def _gate_get(request: Request, s: _AppState) -> Response | None:
+    """Apply the session-cookie + loopback-origin gate for read endpoints."""
+
+    origin = request.headers.get("origin", "")
+    if not is_loopback_origin(origin, port=s.port):
+        return JSONResponse({"detail": "origin not loopback"}, status_code=403)
+    session_id = request.cookies.get(SESSION_COOKIE)
+    if not session_id:
+        return JSONResponse({"detail": "session required"}, status_code=403)
+    return None
+
+
+def _format_sse(event_id: str, event_name: str, data_payload: dict) -> bytes:
+    """Render a single SSE frame. JSON-encode the payload as ``data:``."""
+
+    data = json.dumps(data_payload, sort_keys=True, separators=(",", ":"))
+    lines = [
+        f"id: {event_id}",
+        f"event: {event_name}",
+        f"data: {data}",
+        "",
+        "",
+    ]
+    return ("\r\n".join(lines) + "\r\n").encode("utf-8")
+
+
+def _format_resync_marker(last_event_id: str) -> bytes:
+    """Render a ``resync_required`` SSE marker with no body."""
+
+    lines = ["event: resync_required", f"id: {last_event_id}", "data: ", "", ""]
+    return ("\r\n".join(lines) + "\r\n").encode("utf-8")
+
+
+def create_app(
+    home: Path,
+    *,
+    port: int,
+    bootstrap_token: str,
+    runner: Callable | None = None,
+) -> FastAPI:
+    state = _AppState(
+        home=Path(home),
+        port=port,
+        bootstrap_token=bootstrap_token,
+        jobs=JobManager(home=Path(home), runner=runner),
+    )
 
     app = FastAPI(
         title="krellbot.api",
@@ -99,17 +169,9 @@ def create_app(home: Path, *, port: int, bootstrap_token: str) -> FastAPI:
     @app.post("/api/v1/commands")
     async def commands(request: Request) -> Response:
         s = _state(request.app)
-        origin = request.headers.get("origin", "")
-        if not is_loopback_origin(origin, port=s.port):
-            return JSONResponse({"detail": "origin not loopback"}, status_code=403)
-
-        session_id = request.cookies.get(SESSION_COOKIE)
-        if not session_id:
-            return JSONResponse({"detail": "session required"}, status_code=403)
-        expected_csrf = s.sessions.get(session_id)
-        presented_csrf = request.headers.get(CSRF_HEADER, "")
-        if not expected_csrf or not hmac.compare_digest(expected_csrf, presented_csrf):
-            return JSONResponse({"detail": "csrf required"}, status_code=403)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
 
         try:
             payload = await request.json()
@@ -172,6 +234,107 @@ def create_app(home: Path, *, port: int, bootstrap_token: str) -> FastAPI:
             return JSONResponse({"detail": f"unknown command {command}"}, status_code=403)
 
         return JSONResponse(result.to_dict(), status_code=200)
+
+    @app.post("/api/v1/research/jobs")
+    async def research_jobs(request: Request) -> Response:
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        kind = payload.get("kind", JOB_KIND_RESEARCH_BACKTEST)
+        if not isinstance(kind, str):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        correlation_id = payload.get("correlation_id")
+        if not isinstance(correlation_id, str):
+            correlation_id = ""
+
+        try:
+            job = s.jobs.submit(kind=kind, correlation_id=correlation_id, request=payload)
+        except QueueFull as qf:
+            return JSONResponse(
+                {"code": qf.code, "message": qf.message, "schema_version": SCHEMA_VERSION},
+                status_code=429,
+            )
+
+        return JSONResponse(job.to_dict(), status_code=200)
+
+    @app.get("/api/v1/jobs/{job_id}")
+    async def get_job(request: Request, job_id: str) -> Response:
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        snap = s.jobs.get(job_id)
+        if snap is None:
+            return JSONResponse(
+                {"code": JOB_ERROR_NOT_FOUND, "message": "job not found"},
+                status_code=404,
+            )
+        return JSONResponse(snap.to_dict(), status_code=200)
+
+    @app.post("/api/v1/jobs/{job_id}/cancel")
+    async def cancel_job(request: Request, job_id: str) -> Response:
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            pass
+
+        snap = s.jobs.cancel(job_id)
+        if snap is None:
+            return JSONResponse(
+                {"code": JOB_ERROR_NOT_FOUND, "message": "job not found"},
+                status_code=404,
+            )
+        return JSONResponse(snap.to_dict(), status_code=200)
+
+    @app.get("/api/v1/events")
+    async def events(request: Request) -> Response:
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        buffer = s.jobs.event_buffer()
+        last_event_id_raw = request.headers.get("Last-Event-ID") or None
+        last_event_id: int | None
+        if last_event_id_raw is None:
+            last_event_id = None
+        else:
+            try:
+                last_event_id = int(last_event_id_raw)
+            except (TypeError, ValueError):
+                return JSONResponse({"detail": "bad last event id"}, status_code=400)
+
+        gap = last_event_id is not None and buffer.is_gap(last_event_id)
+        to_replay = [] if gap else buffer.replay(last_event_id)
+
+        async def _emit():
+            if gap:
+                yield _format_resync_marker(str(last_event_id))
+                return
+            for event in to_replay:
+                yield _format_sse(
+                    event_id=event.event_id,
+                    event_name=event.kind,
+                    data_payload=event.to_dict(),
+                )
+
+        headers = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
+        return StreamingResponse(_emit(), media_type="text/event-stream", headers=headers)
 
     @app.get("/api/v1/capabilities")
     async def capabilities() -> Response:
