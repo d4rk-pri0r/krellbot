@@ -95,3 +95,44 @@ describe("App command palette", () => {
     expect(document.activeElement).toBe(trigger);
   });
 });
+
+describe("App view routing", () => {
+  it("starts on Workstation and renders the inspector", () => {
+    render(<App />);
+    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(
+      screen.getByRole("region", { name: "Inspector" }),
+    ).toBeDefined();
+  });
+
+  it("does not render the strategy editor before Strategies is selected", () => {
+    render(<App />);
+    expect(
+      screen.queryByRole("region", { name: /strategy editor/i }),
+    ).toBeNull();
+  });
+
+  it("choosing Strategies shows the strategy editor and hides the workstation heading", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    const editor = screen.getByRole("region", { name: /strategy editor/i });
+    expect(editor).toBeDefined();
+    expect(editor.textContent).toMatch(/Label/);
+    expect(editor.textContent).toMatch(/Raw JSON/);
+    expect(screen.queryByText("Paper workstation")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Inspector" })).toBeNull();
+  });
+
+  it("choosing Workstation after Strategies shows the paper workstation again", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    expect(
+      screen.getByRole("region", { name: /strategy editor/i }),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(
+      screen.queryByRole("region", { name: /strategy editor/i }),
+    ).toBeNull();
+  });
+});

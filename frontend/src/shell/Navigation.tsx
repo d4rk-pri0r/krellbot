@@ -1,6 +1,6 @@
-import { useState, type JSX } from "react";
+import type { JSX } from "react";
 
-type View = "workstation" | "strategies" | "research";
+export type View = "workstation" | "strategies" | "research";
 
 const VIEWS: ReadonlyArray<{ id: View; label: string }> = [
   { id: "workstation", label: "Workstation" },
@@ -8,8 +8,12 @@ const VIEWS: ReadonlyArray<{ id: View; label: string }> = [
   { id: "research", label: "Research" },
 ];
 
-export function Navigation(): JSX.Element {
-  const [active, setActive] = useState<View>("workstation");
+type NavigationProps = {
+  active: View;
+  onChange: (view: View) => void;
+};
+
+export function Navigation({ active, onChange }: NavigationProps): JSX.Element {
   return (
     <nav
       className="kbot-nav"
@@ -26,7 +30,7 @@ export function Navigation(): JSX.Element {
           }
           aria-pressed={active === view.id}
           aria-current={active === view.id ? "page" : undefined}
-          onClick={() => setActive(view.id)}
+          onClick={() => onChange(view.id)}
         >
           {view.label}
         </button>
