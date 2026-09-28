@@ -756,9 +756,90 @@ def usage():
     return 2
 
 
+def _new_correlation_id() -> str:
+    """Return a short opaque correlation id for service calls."""
+    import secrets as _secrets
+
+    return _secrets.token_hex(9)
+
+
+def _render_paper_arm_cli(result, pack_arg: str) -> int:
+    """Translate a paper-arm service result to legacy CLI stdout and exit code.
+
+    Return codes: 0 success, 1 state refusal, 2 invalid input. The service
+    emits the legacy sentence in `result.message`; the community banner is
+    re-printed here for symmetry with the legacy live path.
+    """
+    from krellbot.application import paper as kb_paper
+
+    if result.code == kb_paper.CODE_ARMED:
+        print(result.message, flush=True)
+        if _is_community_path(Path(pack_arg).resolve()):
+            print(COMMUNITY_BANNER, flush=True)
+        return 0
+    if result.code == kb_paper.CODE_ALREADY_ARMED:
+        print(result.message, flush=True)
+        return 1
+    if result.code in (
+        kb_paper.CODE_UNKNOWN_VENUE,
+        kb_paper.CODE_INVALID_PACK,
+        kb_paper.CODE_LEGACY_PACK_NOT_RUNNABLE,
+        kb_paper.CODE_PACK_HAS_NO_MARKET,
+        kb_paper.CODE_INVALID_BALANCE,
+        kb_paper.CODE_INVALID_REQUEST,
+    ):
+        print(result.message, flush=True)
+        return 2
+    if result.code == kb_paper.CODE_MINIMUM_NOT_MET:
+        print(result.message, flush=True)
+        return 1
+    # Unknown refusal code — fail closed, message is already safe (no secrets).
+    print(result.message, flush=True)
+    return 2
+
+
+def _render_disarm_cli(result) -> int:
+    from krellbot.application import paper as kb_paper
+
+    if result.code == kb_paper.CODE_DISARMED:
+        print(result.message, flush=True)
+        return 0
+    if result.code == kb_paper.CODE_NOT_ARMED:
+        print(result.message, flush=True)
+        return 1
+    if result.code == kb_paper.CODE_UNKNOWN_VENUE:
+        print(result.message, flush=True)
+        return 2
+    print(result.message, flush=True)
+    return 2
+
+
+def _render_stop_cli(result) -> int:
+    from krellbot.application import paper as kb_paper
+
+    if result.code == kb_paper.CODE_STOP_RAISED:
+        print(result.message, flush=True)
+        return 0
+    if result.code in (kb_paper.CODE_NOT_ARMED, kb_paper.CODE_INVALID_STOP):
+        print(result.message, flush=True)
+        return 1
+    if result.code == kb_paper.CODE_UNKNOWN_VENUE:
+        print(result.message, flush=True)
+        return 2
+    print(result.message, flush=True)
+    return 2
+
+
 def cmd_arm(args):
-    """`krellbot arm <pack.json> --venue V --mode M [--paper-balance USD]`."""
+    """`krellbot arm <pack.json> --venue V --mode M [--paper-balance USD]`.
+
+    Paper mode delegates to the application service so validation, persistence,
+    and pause semantics share a single boundary. Live mode stays on the legacy
+    `run.arm_pack` path so the typed confirmation and key check remain a
+    CLI-only concern.
+    """
     from krellbot import secrets as kb_secrets_mod
+    from krellbot.application.paper import PaperService
     from krellbot.run import arm_pack
 
     if not args:
@@ -796,36 +877,73 @@ def cmd_arm(args):
         print("--venue and --mode are required", file=sys.stderr)
         return 2
 
-    key_check = None
+    if mode == "paper":
+        # Pre-check pack on disk so the CLI can print the legacy sentence.
+        if not Path(pack_arg).exists():
+            print(f"no such pack: {pack_arg}", flush=True)
+            return 2
+        try:
+            pack_data = json.loads(Path(pack_arg).read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            print(f"invalid JSON: {exc}", flush=True)
+            return 2
+        if not isinstance(pack_data, dict):
+            print("pack must be a JSON object", flush=True)
+            return 2
+        from krellbot.pack import lint as kb_pack_lint
+
+        if kb_pack_lint.is_legacy(pack_data):
+            print("legacy: not runnable", flush=True)
+            return 2
+        errors = kb_pack_lint.check(pack_data)
+        if errors:
+            for err in errors:
+                print(f"{err['field']}: {err['message']}", flush=True)
+            return 2
+        service = PaperService(home=kb_paths.home())
+        result = service.arm(
+            Path(pack_arg),
+            venue=venue,
+            mode=mode,
+            paper_balance=paper_balance,
+            correlation_id=_new_correlation_id(),
+        )
+        return _render_paper_arm_cli(result, pack_arg)
+
     if mode == "live":
         from krellbot.cli_keys import _probe
 
         def key_check(venue_arg):
-
             try:
                 api_key, api_secret = kb_secrets_mod.get(venue_arg)
             except (FileNotFoundError, ValueError, PermissionError):
                 return None
             probe = _probe(venue_arg, api_key, api_secret)
-            # Narrow typed probe result back to engine's `KeyPerms` shape.
             return probe.to_key_perms()
 
-    rc = arm_pack(
-        Path(pack_arg),
-        venue=venue,
-        mode=mode,
-        paper_balance=paper_balance,
-        confirm_fn=None,
-        key_check=key_check,
-    )
-    if rc == 0 and _is_community_path(Path(pack_arg).resolve()):
-        print(COMMUNITY_BANNER, flush=True)
-    return rc
+        rc = arm_pack(
+            Path(pack_arg),
+            venue=venue,
+            mode=mode,
+            paper_balance=paper_balance,
+            confirm_fn=None,
+            key_check=key_check,
+        )
+        if rc == 0 and _is_community_path(Path(pack_arg).resolve()):
+            print(COMMUNITY_BANNER, flush=True)
+        return rc
+
+    print(f"unknown mode: {mode}", flush=True)
+    return 2
 
 
 def cmd_disarm(args):
-    """`krellbot disarm --venue V --pair P`."""
-    from krellbot.run import disarm_pack
+    """`krellbot disarm --venue V --pair P`.
+
+    Paper and live disarms share the same config-only path; the service
+    owns the business outcome and the CLI renders the legacy sentence.
+    """
+    from krellbot.application.paper import PaperService
 
     venue = None
     pair = None
@@ -845,12 +963,14 @@ def cmd_disarm(args):
     if venue is None or pair is None:
         print("--venue and --pair are required", file=sys.stderr)
         return 2
-    return disarm_pack(venue=venue, pair=pair)
+    service = PaperService(home=kb_paths.home())
+    result = service.disarm(venue=venue, pair=pair, correlation_id=_new_correlation_id())
+    return _render_disarm_cli(result)
 
 
 def cmd_stop(args):
     """`krellbot stop --venue V --pair P --price N`."""
-    from krellbot.run import set_stop
+    from krellbot.application.paper import PaperService
 
     venue = None
     pair = None
@@ -879,7 +999,14 @@ def cmd_stop(args):
     if venue is None or pair is None or price is None:
         print("--venue, --pair, --price are required", file=sys.stderr)
         return 2
-    return set_stop(venue=venue, pair=pair, new_stop=price)
+    service = PaperService(home=kb_paths.home())
+    result = service.raise_stop(
+        venue=venue,
+        pair=pair,
+        new_stop=price,
+        correlation_id=_new_correlation_id(),
+    )
+    return _render_stop_cli(result)
 
 
 class CandleFetchError(RuntimeError):

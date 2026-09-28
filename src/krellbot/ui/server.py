@@ -50,6 +50,7 @@ from krellbot import config as kb_config
 from krellbot import journal as kb_journal
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
+from krellbot.application.paper import CODE_ARMED, CODE_DISARMED, PaperService
 
 from . import activate as kb_activate
 from . import first_run, keys_status, trust
@@ -1567,33 +1568,32 @@ def _make_handler(server_config: _ServerConfig):
             except (ValueError, ArithmeticError):
                 self._send_status(400, "Bad Request")
                 return
-            from krellbot.run import arm_pack
 
-            rc = arm_pack(
+            service = PaperService(home=server_config.home)
+            result = service.arm(
                 Path(pack_path),
                 venue=venue,
                 mode="paper",
                 paper_balance=paper_balance,
-                home=server_config.home,
+                correlation_id=secrets.token_hex(9),
             )
-            if rc == 0:
+            if result.ok and result.code == CODE_ARMED:
                 self._send_text(200, "armed")
-            else:
-                self._send_status(400, "Bad Request")
+                return
+            self._send_status(400, "Bad Request")
 
         def _do_disarm(self, form: dict) -> None:
-            from krellbot.run import disarm_pack
-
             venue = (form.get("venue") or [""])[0]
             pair = (form.get("pair") or [""])[0]
             if not venue or not pair:
                 self._send_status(400, "Bad Request")
                 return
-            rc = disarm_pack(venue=venue, pair=pair, home=server_config.home)
-            if rc == 0:
+            service = PaperService(home=server_config.home)
+            result = service.disarm(venue=venue, pair=pair, correlation_id=secrets.token_hex(9))
+            if result.ok and result.code == CODE_DISARMED:
                 self._send_text(200, "disarmed")
-            else:
-                self._send_status(400, "Bad Request")
+                return
+            self._send_status(400, "Bad Request")
 
         def _do_stop_all(self) -> None:
             summary = _stop_all(server_config.home)
@@ -1787,22 +1787,23 @@ def _make_handler(server_config: _ServerConfig):
                 refused with 403);
               * rejects anything that is not paper (live arm from the
                 UI is a CLI-only gate, unchanged from slice B);
-              * delegates to :func:`krellbot.run.arm_pack`, which is
-                the single authority for cap/costmin checks and
-                config persistence. The dashboard does not have its
-                own arm logic — it MUST route through the engine so
-                every existing guarantee applies uniformly.
+              * delegates to ``PaperService.arm``, which is the single
+                authority for validation, persistence, and pause
+                semantics. The dashboard does not have its own arm
+                logic — it MUST route through the service so every
+                existing guarantee applies uniformly.
 
-            Missing/blank inputs are 400. The engine's own refusal
+            Missing/blank inputs are 400. The service's refusal
             contract (cap cannot meet costmin, second pack on same
-            venue+pair) surfaces as 400 here because the engine prints
-            refusal prose to stdout; a 200 with engine prose in the
-            body would be a misleading happy path.
+            venue+pair) surfaces as 400 here because the service emits
+            refusal prose; a 200 with refusal prose in the body would
+            be a misleading happy path. Success returns the legacy
+            ``armed`` text so the form post and status text remain
+            unchanged.
 
             The brief is explicit: a missing license cache MUST NOT
-            block paper-arm of a local custom pack. We do not call
-            ``license.entries_allowed`` here, and we do not require a
-            key in ``state.json``. The engine's existing
+            block paper-arm of a local custom pack. The service does
+            not call ``license.entries_allowed`` here; the engine's
             ``requires_license`` flag is read from the pack on disk
             and only enforced inside ``tick`` (where it gates
             entries, not the arm itself).
@@ -1846,21 +1847,21 @@ def _make_handler(server_config: _ServerConfig):
                 self._send_status(400, "Bad Request")
                 return
 
-            from krellbot.run import arm_pack as _arm_pack
-
-            rc = _arm_pack(
+            service = PaperService(home=server_config.home)
+            result = service.arm(
                 pack_path,
                 venue=venue,
                 mode="paper",
                 paper_balance=paper_balance,
-                home=server_config.home,
+                correlation_id=secrets.token_hex(9),
             )
-            if rc == 0:
+            if result.ok and result.code == CODE_ARMED:
                 self._send_text(200, "armed")
                 return
-            # Engine refusal (costmin, second pack, etc.). 400 keeps
+            # Service refusal (costmin, second pack, etc.). 400 keeps
             # the contract honest — the arm did not happen.
             self._send_status(400, "Bad Request")
+            return  # unreachable, kept for symmetry with the send_status helpers
 
         # ---- response helpers -------------------------------------------
 

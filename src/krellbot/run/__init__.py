@@ -407,7 +407,19 @@ def tick(
             entry_qty = Decimal(0)
             exit_qty = Decimal(0)
             entry_coid_for_signal = ""
-            if not blocked and target.long and owned == Decimal(0) and target.stop_price is not None:
+            # `entries_paused` suppresses NEW entries only. Snapshot /
+            # reconciliation / existing-position protection / valid exits
+            # are unaffected — see contracts/commands.md §
+            # "Persistence and pause semantics". `blocked` covers the paid
+            # license lapse (entries off, exits on).
+            entries_suppressed = armed.entries_paused
+            if (
+                not blocked
+                and not entries_suppressed
+                and target.long
+                and owned == Decimal(0)
+                and target.stop_price is not None
+            ):
                 entry_coid_for_signal = coid_for(
                     pack_id=armed.pack_id,
                     pack_version=armed.pack_version,
@@ -496,6 +508,7 @@ def tick(
                     "stop_qty": "0",
                     "owned_qty_after": str(owned),
                     "entries_blocked": blocked,
+                    "entries_paused": entries_suppressed,
                     "ensure_stop_failed": ensure_stop_failed,
                     "entry_coid": ensure_stop_entry or entry_coid_for_signal,
                     "no_double_order": bool(ensure_stop_entry),

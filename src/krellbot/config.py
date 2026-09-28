@@ -17,6 +17,8 @@ An `ArmedPack` record has:
     armed_at_ts: int (unix seconds when armed)
     owned_qty: Decimal (per-pack filled - exited, from journal + paper state)
     pending_version: str | None (version to adopt when flat)
+    entries_paused: bool (tick stops placing new entries while true;
+        reconcile / existing-position protection still runs; persisted)
 """
 
 from __future__ import annotations
@@ -54,6 +56,7 @@ class ArmedPack:
     armed_at_ts: int
     owned_qty: Decimal = Decimal(0)
     pending_version: str | None = None
+    entries_paused: bool = False
 
 
 @dataclass
@@ -102,6 +105,7 @@ def load_config(home: Path) -> Config:
                         pending_version=(
                             str(entry["pending_version"]) if entry.get("pending_version") is not None else None
                         ),
+                        entries_paused=bool(entry.get("entries_paused", False)),
                     )
                 )
             except (KeyError, ValueError, TypeError):
