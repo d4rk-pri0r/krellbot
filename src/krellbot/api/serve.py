@@ -24,6 +24,7 @@ from __future__ import annotations
 import secrets
 import socket
 import threading
+import time
 from pathlib import Path
 
 import uvicorn
@@ -98,6 +99,7 @@ class WorkstationServer:
         # We own the socket now; uvicorn takes ownership once handed
         # the list. Mark it non-blocking only after the bind so the
         # server thread can loop on accept().
+        sock.listen(128)
         self._socket = sock
         self.bound_port = int(sock.getsockname()[1])
         self.url = f"http://{self.bound_host}:{self.bound_port}/"
@@ -128,6 +130,32 @@ class WorkstationServer:
         )
         self._thread = thread
         thread.start()
+        self._wait_until_http()
+
+    def _wait_until_http(self) -> None:
+        """Return only after the bound socket accepts an HTTP request.
+
+        The URL is printed by the CLI after ``start`` returns. A bound
+        socket that is not yet listening answers with connection refused.
+        """
+
+        deadline = time.monotonic() + 5
+        last_error: OSError | None = None
+        request = (f"GET / HTTP/1.1\r\nHost: {self.bound_host}:{self.bound_port}\r\nConnection: close\r\n\r\n").encode()
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(
+                    (self.bound_host, self.bound_port),
+                    timeout=0.2,
+                ) as conn:
+                    conn.sendall(request)
+                    data = conn.recv(12)
+                if data.startswith(b"HTTP/"):
+                    return
+            except OSError as exc:
+                last_error = exc
+                time.sleep(0.02)
+        raise RuntimeError(f"workstation did not accept on {self.url}: {last_error}")
 
     def stop(self) -> None:
         """Signal the uvicorn server to exit and join the thread.
