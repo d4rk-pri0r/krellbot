@@ -37,9 +37,11 @@ from krellbot import journal as kb_journal
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 from krellbot import secrets as kb_secrets
+from krellbot.data.instruments import InstrumentMetadataError
 from krellbot.pack import evaluate as kb_evaluate
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle as Candle
+from krellbot.venues.base import PairRules
 
 from .lock import TickLock
 
@@ -413,12 +415,19 @@ def tick(
             # "Persistence and pause semantics". `blocked` covers the paid
             # license lapse (entries off, exits on).
             entries_suppressed = armed.entries_paused
+            metadata_refusal: str | None = None
+            rules: PairRules | None = None
+            try:
+                rules = venue_obj.rules(armed.pair)
+            except InstrumentMetadataError as exc:
+                metadata_refusal = exc.code
             if (
                 not blocked
                 and not entries_suppressed
                 and target.long
                 and owned == Decimal(0)
                 and target.stop_price is not None
+                and rules is not None
             ):
                 entry_coid_for_signal = coid_for(
                     pack_id=armed.pack_id,
@@ -430,7 +439,7 @@ def tick(
                 )
                 if venue_obj.order_by_coid(entry_coid_for_signal) is None:
                     cash = _cash_for(venue_obj, armed.pair)
-                    rules = venue_obj.rules(armed.pair)
+                    assert rules is not None
                     close_price = Decimal(str(candles[-1].close))
                     cash_for_cap = cash * armed.cap / Decimal(100)
                     if cash_for_cap >= rules.costmin and close_price > 0:
@@ -512,6 +521,7 @@ def tick(
                     "ensure_stop_failed": ensure_stop_failed,
                     "entry_coid": ensure_stop_entry or entry_coid_for_signal,
                     "no_double_order": bool(ensure_stop_entry),
+                    "metadata_refusal": metadata_refusal,
                 },
             )
 

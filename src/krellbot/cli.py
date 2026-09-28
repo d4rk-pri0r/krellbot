@@ -1071,6 +1071,42 @@ def _key_present(venue: str) -> bool:
     return True
 
 
+def _build_paper_rules_provider(home, venue: str):
+    """Build the rules provider for `PaperVenue` so a verified snapshot wins.
+
+    Precedence:
+      1. A fresh persisted snapshot record for `(venue, pair)` →
+         derive `PairRules` from the `InstrumentRulesV1` via
+         `pairrules_from_instrument`.
+      2. Pair is `SUIUSD` → return the labeled `default_rules('SUIUSD')`
+         fixture so the existing engine tests keep passing.
+      3. Any other pair without a snapshot → raise
+         `InstrumentMetadataError(METADATA_UNAVAILABLE)`. `run.tick`
+         catches it and skips the new entry while letting ownership
+         protection run, so a non-SUI pair never silently inherits the
+         SUIUSD minima.
+    """
+    from krellbot.data.instruments import (
+        InstrumentMetadataError,
+        InstrumentRulesSnapshot,
+        pairrules_from_instrument,
+    )
+    from krellbot.venues.paper import default_rules
+
+    snap = InstrumentRulesSnapshot(home=home)
+
+    def provider(pair: str):
+        try:
+            record = snap.read_pair(venue, pair, offline=True)
+        except InstrumentMetadataError as exc:
+            if pair == "SUIUSD" and exc.code == "metadata_unavailable":
+                return default_rules(pair)
+            raise
+        return pairrules_from_instrument(record)
+
+    return provider
+
+
 def _build_fetch_reader(armed_list, *, fetch, transport):
     """Load the pack whose pair is being read, then call `fetch`.
 
@@ -1143,7 +1179,7 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
     from krellbot.venues.base import WithdrawCapableError
     from krellbot.venues.coinbase import CoinbaseVenue
     from krellbot.venues.kraken import KrakenVenue
-    from krellbot.venues.paper import PaperVenue, default_rules
+    from krellbot.venues.paper import PaperVenue
 
     armed = armed_list[0]
     reader = _build_fetch_reader(armed_list, fetch=fetch, transport=transport)
@@ -1155,7 +1191,7 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
         has_key = _key_present(armed.venue)
         venue_obj = PaperVenue(
             armed.venue,
-            rules_provider=lambda _p: default_rules(_p),
+            rules_provider=_build_paper_rules_provider(home, armed.venue),
             candle_reader=reader,
             home=home,
             starting_cash=armed.starting_cash,
@@ -1259,7 +1295,7 @@ def cmd_tick(args, *, fetch=None, transport=None):
     type name only, journaled, and the tick exits 1.
     """
     from krellbot.config import load_config
-    from krellbot.venues.paper import PaperVenue, default_rules
+    from krellbot.venues.paper import PaperVenue
 
     if fetch is None:
         fetch = _default_fetch
@@ -1303,7 +1339,7 @@ def cmd_tick(args, *, fetch=None, transport=None):
             has_key = _key_present(armed.venue)
             venue_obj = PaperVenue(
                 armed.venue,
-                rules_provider=lambda _p: default_rules(_p),
+                rules_provider=_build_paper_rules_provider(home, armed.venue),
                 candle_reader=reader,
                 home=home,
                 starting_cash=armed.starting_cash,
