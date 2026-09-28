@@ -204,6 +204,47 @@ jobs:
             --home "${{ runner.temp }}/krellbot-home" \
             --log ui_smoke.log
 
+      - name: "Smoke test bundled workstation shell"
+        # INT06 — smoke the workstation launcher alongside the
+        # legacy dashboard smoke. The frozen binary's
+        # ``workstation`` subcommand binds the FastAPI shell to a
+        # loopback socket and prints the URL with no token; the
+        # helper parses the URL, GETs ``/`` with the loopback
+        # ``Host`` header, and accepts either a 200 with
+        # ``krellbot-bootstrap`` (built dist) or a 404 with
+        # ``shell_not_built`` (no dist). The brief forbids
+        # replacing ``krellbot ui``; this step runs beside it on
+        # every matrix entry, proving both shells are bundled.
+        # The CLI prints the URL with ``flush=True`` so the
+        # helper captures it from a real ``subprocess.PIPE`` on
+        # every platform — no tty, no winpty, no third-party
+        # dependency. Cleanup: ``scripts/ci_smoke_workstation.py``
+        # owns the spawned child via its own ``finally:`` block
+        # (``CTRL_BREAK_EVENT`` on Windows / ``SIGINT`` on POSIX,
+        # plus a ``kill()`` fallback), so we do NOT install a
+        # bash ``trap`` here — the helper is the single source of
+        # truth for child cleanup on every platform. A
+        # workflow-side ``pkill`` trap would fail-closed on
+        # Windows Git Bash runners, which ship without the GNU
+        # ``procps`` tools. See
+        # ``tests/test_ci_smoke_workstation.py::test_workflow_workstation_smoke_step_*``.
+        shell: bash
+        env:
+          KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
+          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            BIN="dist/krellbot/krellbot.exe"
+          else
+            BIN="dist/krellbot/krellbot"
+          fi
+          uv run python scripts/ci_smoke_workstation.py \
+            --binary "$BIN" \
+            --port 0 \
+            --home "${{ runner.temp }}/krellbot-home" \
+            --log workstation_smoke.log
+
       - name: "Verify immutable release base URL is configured"
         if: github.event_name != 'pull_request'
         # The manifest URL is built from $KRELLBOT_RELEASE_BASE_URL +
