@@ -25,6 +25,7 @@ from .records import (
     make_instrument,
     require_supported_stop,
 )
+from .trace import DecisionTrace, decision_trace
 
 __all__ = [
     "PAPER",
@@ -33,9 +34,11 @@ __all__ = [
     "STOP_EMULATED",
     "STOP_NATIVE",
     "STOP_UNSUPPORTED",
+    "DecisionTrace",
     "InstrumentRecord",
     "UnsupportedAssetClass",
     "UnsupportedStop",
+    "decision_trace",
     "make_instrument",
     "require_supported_stop",
     "stop_capability",
