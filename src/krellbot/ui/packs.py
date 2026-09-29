@@ -16,6 +16,15 @@ Two public surfaces live here:
     (``UpdateRefused``) carrying a stable ``code`` and the two
     revision ids; no byte on disk is changed when the refusal fires.
 
+  * ``dashboard_packs(home)`` — the legacy dashboard view. Walks
+    ``<home>/packs``, ``<home>/packs/community`` and
+    ``<home>/packs/catalog`` and returns one presentational summary
+    row (``path``, ``id``, ``public_label``, ``schema_version``,
+    ``runnable``, ``not_runnable_reason``, ``markets``,
+    ``timeframe``, ``label``, ``version``, ``author``) per pack
+    file, with ``runnable: False`` for legacy packs so the arm
+    affordance stays hidden for them.
+
 The list is built from local metadata only — no network call, no
 invention of performance numbers, no live-marketplace JS. The cached
 catalog under ``<home>/catalog/catalog.json`` is read when present so
@@ -133,6 +142,30 @@ def _find_installed_pack_path(home: Path, pack_id: str) -> Path | None:
     return None
 
 
+def dashboard_packs(home: Path) -> list[dict[str, Any]]:
+    """Return a sorted summary of every pack file under ``<home>/packs/``.
+
+    This is the legacy dashboard view. Legacy packs are included with
+    ``runnable=False`` so the dashboard can render the "not runnable"
+    badge — but the arm route refuses them anyway. Files that fail IO
+    or JSON parsing are silently skipped: the dashboard is
+    presentation-only and the CLI's ``lint`` command is the
+    validation surface.
+    """
+    home = Path(home)
+    roots = [home / "packs", home / "packs" / "community", home / "packs" / "catalog"]
+    out: list[dict[str, Any]] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.glob("*.json")):
+            data = _read_one(path)
+            if data is None:
+                continue
+            out.append(_summarize(path, data))
+    return out
+
+
 def list_installed(home: Path) -> list[dict[str, Any]]:
     """Return every pack the dashboard should render, classified by bucket.
 
@@ -238,6 +271,7 @@ def update_pack(home: Path, pack_id: str, new_version: str) -> Path:
 
 __all__ = [
     "UpdateRefused",
+    "dashboard_packs",
     "list_installed",
     "resolve_pack_path",
     "update_pack",
