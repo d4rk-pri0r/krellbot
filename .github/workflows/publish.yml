@@ -1,9 +1,8 @@
 name: Publish
 
+# PyPI publication is undecided (decisions.md). Manual dispatch only; a v* tag must not queue a PyPI run.
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   id-token: write

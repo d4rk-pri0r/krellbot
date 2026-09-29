@@ -83,13 +83,13 @@ def test_list_skips_invalid_pack_files(home):
 def test_version_importable():
     import krellbot
 
-    assert krellbot.__version__ == "0.9.4"
+    assert krellbot.__version__ == "0.9.5"
 
 
 def test_version_flag_prints_package_version(home):
     result = run_cli(home, "--version")
     assert result.returncode == 0
-    assert result.stdout.strip() == "0.9.4"
+    assert result.stdout.strip() == "0.9.5"
 
 
 def _write_catalog(home: Path, extra: dict) -> None:
