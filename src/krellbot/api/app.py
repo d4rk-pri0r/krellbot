@@ -593,15 +593,16 @@ def create_app(
 
     @app.get("/api/v1/capabilities")
     async def capabilities(request: Request) -> Response:
-        s = _state(request.app)
+        # The bootstrap token reaches the shell only through the
+        # ``<meta name="krellbot-bootstrap">`` tag the static layer
+        # injects into the served index.html. It is never part of this
+        # (or any) JSON body.
         body = {
             "schema_version": SCHEMA_VERSION,
             "paper_commands": list(PAPER_COMMANDS),
             "research": True,
             "live_orders": False,
         }
-        if not s.bootstrap_used:
-            body["bootstrap_token"] = s.bootstrap_token
         return JSONResponse(body, status_code=200)
 
     # ---- strategy drafts (NS08a) --------------------------------------
@@ -802,13 +803,19 @@ def create_app(
     async def redeem_activation(request: Request) -> Response:
         """Delegate to ``krellbot.ui.activate.redeem``; never echoes a key.
 
-        The route runs the redeem pass against ``s.home`` and returns
-        the closed ``ActivateOutcome`` as JSON. Any ``OSError`` /
-        decode failure surfaces as the matching safe message; the key
-        never appears in the URL, body, header, or response.
+        The route is a state change (it can rewrite the license cache),
+        so it runs the same session-cookie + CSRF + loopback-origin
+        gate as every other POST before any body byte is read. The
+        redeem pass then runs against ``s.home`` and returns the closed
+        ``ActivateOutcome`` as JSON. Any ``OSError`` / decode failure
+        surfaces as the matching safe message; the key never appears
+        in the URL, body, header, or response.
         """
 
         s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
 
         try:
             payload = await request.json()

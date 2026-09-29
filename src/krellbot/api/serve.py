@@ -60,6 +60,12 @@ class WorkstationServer:
         once the port is known. The bootstrap token is intentionally
         absent from the URL — the shell retrieves it from the
         ``<meta name="krellbot-bootstrap">`` tag in the served HTML.
+    bootstrap_token:
+        ``""`` until :meth:`start` returns, then the same URL-safe
+        token handed to ``create_app``. A read-only, in-process
+        attribute for callers (tests, the CLI) that need to redeem a
+        session without parsing HTML. It is never printed, logged, or
+        placed in a URL, and :meth:`stop` clears it back to ``""``.
     """
 
     def __init__(
@@ -75,6 +81,7 @@ class WorkstationServer:
         self.bound_host: str = _BIND_HOST
         self.bound_port: int = 0
         self.url: str = ""
+        self.bootstrap_token: str = ""
         self._socket: socket.socket | None = None
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
@@ -113,6 +120,7 @@ class WorkstationServer:
             bootstrap_token=bootstrap_token,
             dist_dir=self._dist_dir,
         )
+        self.bootstrap_token = bootstrap_token
 
         config = uvicorn.Config(
             app,
@@ -189,3 +197,4 @@ class WorkstationServer:
             self._socket = None
         self.bound_port = 0
         self.url = ""
+        self.bootstrap_token = ""

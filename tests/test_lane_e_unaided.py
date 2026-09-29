@@ -407,11 +407,11 @@ def workstation(fresh_home: Path):
 @pytest.fixture
 def client(workstation: WorkstationServer) -> _LoopbackClient:
     cli = _LoopbackClient(workstation.bound_host, workstation.bound_port)
-    code, body = cli.get("/api/v1/capabilities")
-    assert code == 200, body
-    payload = json.loads(body)
-    token = payload.get("bootstrap_token")
-    assert isinstance(token, str) and token, payload
+    # The bootstrap token is an in-process attribute of the launcher;
+    # /api/v1/capabilities no longer carries it (it must reach the
+    # shell only through the served meta tag).
+    token = workstation.bootstrap_token
+    assert isinstance(token, str) and token, token
     code, body = cli.bootstrap(token)
     assert code == 200, body
     return cli
