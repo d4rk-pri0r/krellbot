@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import copy
 import datetime as _dt
+import hashlib
+import json
 import secrets
 import threading
 from collections.abc import Callable
@@ -27,6 +29,8 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = "1"
+
+DATASET_CATALOG_FILENAME = "datasets.json"
 
 JOB_KIND_RESEARCH_BACKTEST = "research.backtest"
 JOB_KIND_EXPORT_REPRODUCIBILITY = "export.reproducibility"
@@ -46,6 +50,9 @@ JOB_ERROR_JOB_FAILED = "job_failed"
 JOB_ERROR_MISSING_RESULT_REF = "missing_result_ref"
 JOB_ERROR_NOT_FOUND = "not_found"
 JOB_ERROR_RESULT_UNAVAILABLE = "result_unavailable"
+
+CODE_INVALID_DATASET = "invalid_dataset"
+CODE_NO_DATASET_AND_NO_FETCH = "no_dataset_and_no_fetch"
 
 # Allowed concurrency per the brief: one running + up to four queued.
 MAX_RUNNING_JOBS = 1
@@ -139,6 +146,62 @@ def _extract_result(outcome: dict) -> dict:
     if isinstance(trace, list):
         out["trace"] = trace
     return out
+
+
+def canonical_receipt_bytes(receipt: dict) -> bytes:
+    """Return the canonical UTF-8 bytes of a ``legacy_receipt`` dict.
+
+    The runner's result path uses this function to compute the
+    ``receipt_canonical_sha256`` digest that ships with the stored result.
+    The contract is that the bytes are byte-identical to
+    ``json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode("utf-8")``.
+    Missing keys stay absent; the runner never adds ``equity`` or
+    ``fill_price`` here.
+    """
+
+    return json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _resolve_dataset_id(home: Path, dataset_id: Any, dataset_csv: Any) -> tuple[Any, dict | None]:
+    """Resolve a ``dataset_id`` to its catalog fixture CSV path.
+
+    Returns ``(resolved_csv, refusal)``. ``refusal`` is ``None`` on a
+    successful resolution. A truthy non-string ``dataset_id`` is not
+    coerced into a path: it returns ``invalid_dataset``.
+    """
+
+    if dataset_id is None or (isinstance(dataset_id, str) and not dataset_id):
+        return dataset_csv, None
+    if not isinstance(dataset_id, str):
+        refusal = {"code": CODE_INVALID_DATASET, "message": "dataset_id must be a string"}
+        return None, refusal
+
+    catalog_path = home / DATASET_CATALOG_FILENAME
+    if not catalog_path.exists():
+        refusal = {"code": CODE_INVALID_DATASET, "message": "dataset catalog not found"}
+        return None, refusal
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        refusal = {"code": CODE_INVALID_DATASET, "message": "dataset catalog unreadable"}
+        return None, refusal
+    if not isinstance(catalog, dict):
+        refusal = {"code": CODE_INVALID_DATASET, "message": "dataset catalog malformed"}
+        return None, refusal
+
+    resolved = catalog.get(dataset_id)
+    if not isinstance(resolved, str) or not resolved:
+        refusal = {"code": CODE_INVALID_DATASET, "message": f"dataset_id {dataset_id!r} not in catalog"}
+        return None, refusal
+
+    if isinstance(dataset_csv, str) and dataset_csv and dataset_csv != resolved:
+        refusal = {
+            "code": CODE_INVALID_DATASET,
+            "message": "dataset_csv does not match the catalog fixture",
+        }
+        return None, refusal
+
+    return resolved, None
 
 
 # ---------------------------------------------------------------------------
@@ -637,7 +700,10 @@ class JobManager:
         venue = request_payload.get("venue") or "kraken"
         pair = request_payload.get("pair")
         timeframe = request_payload.get("timeframe")
-        dataset_csv = request_payload.get("dataset_csv")
+        dataset_id = request_payload.get("dataset_id")
+        dataset_csv, refusal = _resolve_dataset_id(self._home, dataset_id, request_payload.get("dataset_csv"))
+        if refusal is not None:
+            return {"ok": False, **refusal}
         starting_cash = request_payload.get("starting_cash")
         fee_bps = request_payload.get("fee_bps")
         slippage_bps = request_payload.get("slippage_bps")
@@ -691,9 +757,13 @@ class JobManager:
         # byte-identical to the runner's view.
         detail = result.detail if isinstance(result.detail, dict) else {}
         trace = detail.get("trace")
+        legacy_receipt = result.legacy_receipt if isinstance(result.legacy_receipt, dict) else {}
+        receipt_bytes = canonical_receipt_bytes(legacy_receipt)
+        receipt_digest = hashlib.sha256(receipt_bytes).hexdigest()
         return {
             "ok": True,
             "result_ref": f"backtest:{correlation_id}:{job_id}",
-            "legacy_receipt": result.legacy_receipt,
+            "legacy_receipt": legacy_receipt,
             "trace": trace,
+            "receipt_canonical_sha256": receipt_digest,
         }
