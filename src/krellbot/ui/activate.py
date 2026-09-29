@@ -41,7 +41,6 @@ SAFE_MESSAGES: frozenset[str] = frozenset(
         "license in grace period",
         "license not accepted",
         "license check unreachable",
-        "skipped: no paid account",
     }
 )
 
@@ -224,16 +223,6 @@ def redeem(
     if not isinstance(activation_key, str) or not activation_key.strip():
         return ActivateOutcome("dead", "license not accepted", catalog_downloaded=False)
     key = activation_key.strip()
-
-    # Fresh-install short-circuit: no license cache AND no catalog means
-    # no paid account; refuse without pinging the license endpoint.
-    cache_path = Path(home) / "catalog" / "license-cache.json"
-    catalog_dir = Path(home) / "packs" / "catalog"
-    has_cache = cache_path.is_file()
-    has_catalog = catalog_dir.is_dir() and any(catalog_dir.iterdir())
-    if not has_cache and not has_catalog:
-        return ActivateOutcome("dead", "skipped: no paid account", catalog_downloaded=False)
-
     try:
         verified = refresh_license(Path(home), key, now=int(now))
     except OSError:
