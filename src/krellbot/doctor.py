@@ -54,6 +54,7 @@ from krellbot import config as kb_config
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 from krellbot import secrets as kb_secrets
+from krellbot.storage import import_legacy
 
 TICK_STALE_SECONDS = 2 * 3600
 CLOCK_SKEW_WARN_SECONDS = 5
@@ -351,6 +352,10 @@ def run(
 
     ok = len(warnings) == 0
 
+    projection_status = import_legacy.compare_legacy_projection(home)
+    if projection_status == import_legacy.PROJECTION_MISMATCH:
+        warnings.append("legacy journal projection mismatch")
+
     # Readiness: install_ready means the runtime can serve the local UI.
     # trading_ready is the stricter gate: install_ready AND a non-stale
     # tick AND at least one probed key with trade=True AND withdraw=False.
@@ -374,6 +379,7 @@ def run(
         "clock_warn": clock_warn,
         "license_status": license_status,
         "armed": armed_status,
+        "projection_status": projection_status,
         "warnings": warnings,
         "install_ready": install_ready,
         "trading_ready": trading_ready,
