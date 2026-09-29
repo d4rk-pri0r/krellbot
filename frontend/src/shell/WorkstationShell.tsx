@@ -22,6 +22,19 @@ import { StatusStrip } from "./StatusStrip";
 
 const BOOTSTRAP_META = "krellbot-bootstrap";
 
+function workloadNodes(search: string): ReadonlyArray<GraphCanvasNode> | null {
+  const params = new URLSearchParams(search);
+  if (params.get("workload") !== "200") {
+    return null;
+  }
+  return Array.from({ length: 200 }, (_, index) => ({
+    id: `w${index}`,
+    type: "default",
+    position: { x: (index % 20) * 40, y: Math.floor(index / 20) * 40 },
+    data: { timeframe: index % 2 === 0 ? "1h" : "4h" },
+  }));
+}
+
 const STUDIO_NODES: ReadonlyArray<GraphCanvasNode> = [
   {
     id: "n0",
@@ -70,7 +83,10 @@ export function WorkstationShell({
   strategyClient,
 }: WorkstationShellProps = {}): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [active, setActive] = useState<View>("workstation");
+  const workload = workloadNodes(
+    typeof window === "undefined" ? "" : window.location.search,
+  );
+  const [active, setActive] = useState<View>(workload ? "studio" : "workstation");
   const [connections, setConnections] = useState<ReadonlyArray<Connection>>([]);
   const handleAddConnection = useCallback((connection: Connection): void => {
     setConnections((prev) => [...prev, connection]);
@@ -131,10 +147,11 @@ export function WorkstationShell({
         {active === "studio" ? (
           <>
             <GraphCanvas
-              nodes={STUDIO_NODES as GraphCanvasNode[]}
+              nodes={(workload ?? STUDIO_NODES) as GraphCanvasNode[]}
               edges={[]}
               onAddConnection={handleAddConnection}
             />
+            <p data-testid="studio-node-count">{(workload ?? STUDIO_NODES).length}</p>
             <p data-testid="studio-connection-count">
               Connections: {connections.length}
             </p>

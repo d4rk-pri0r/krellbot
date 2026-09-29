@@ -272,4 +272,12 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
       "timeframe mismatch",
     );
   });
+
+  it("workload=200 opens the studio with 200 nodes", () => {
+    window.history.pushState({}, "", "/?workload=200");
+    renderShell();
+    expect(screen.getByTestId("studio-node-count").textContent).toBe("200");
+    expect(getCaptured().nodes).toHaveLength(200);
+    window.history.pushState({}, "", "/");
+  });
 });
