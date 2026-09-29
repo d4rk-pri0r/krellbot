@@ -22,7 +22,6 @@ from krellbot import doctor, sanitize, telemetry
 from krellbot.storage import backup
 from krellbot.storage.database import OperationalStore
 
-
 # ---------------------------------------------------------------------------
 # Behavior 1: online backup uses the sqlite backup API. The copy can be
 # opened by a fresh OperationalStore and reads the same ledger rows.
@@ -141,9 +140,7 @@ def test_backup_round_trip_surfaces_mismatch_when_restored_ledger_differs(
     assert result["ok"] is False
 
 
-def test_doctor_run_calls_backup_round_trip_when_store_exists(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_doctor_run_calls_backup_round_trip_when_store_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """doctor.run, not just backup.py, must drive the round-trip when ops.sqlite is present."""
     monkeypatch.setattr("krellbot.doctor._ui_bind_available", lambda: True)
     os.chmod(tmp_path, 0o700)
@@ -158,9 +155,7 @@ def test_doctor_run_calls_backup_round_trip_when_store_exists(
     assert body["backup_checked"] is True
 
 
-def test_doctor_run_reports_backup_ok_none_when_no_store_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_doctor_run_reports_backup_ok_none_when_no_store_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """No store file → backup_ok is None (not False, not True)."""
     monkeypatch.setattr("krellbot.doctor._ui_bind_available", lambda: True)
     os.chmod(tmp_path, 0o700)
@@ -179,9 +174,7 @@ def test_doctor_run_reports_backup_ok_none_when_no_store_file(
 # ---------------------------------------------------------------------------
 
 
-def test_support_bundle_preview_redacts_registered_secret(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_support_bundle_preview_redacts_registered_secret(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A registered secret value embedded in a doctor field is replaced by *** in the bundle."""
     secret = "FAKESECRET_TOKEN_XYZ"
     sanitize.register_secret(secret)
@@ -232,9 +225,7 @@ class _SpyTransport:
         self.posts.append((url, body, headers))
 
 
-def test_disabled_telemetry_backup_path_makes_zero_posts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_disabled_telemetry_backup_path_makes_zero_posts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """No telemetry consent → backup.notify_backup must not call transport.post at all."""
     monkeypatch.setattr("krellbot.doctor._ui_bind_available", lambda: True)
     os.chmod(tmp_path, 0o700)
@@ -255,6 +246,7 @@ def test_backup_module_imports_telemetry() -> None:
     assert "telemetry" in source
     assert "is_enabled" in source
     import krellbot.telemetry as kb_telemetry
+
     assert kb_telemetry.is_enabled is telemetry.is_enabled
 
 
@@ -265,9 +257,7 @@ def test_backup_module_imports_telemetry() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_doctor_run_round_trip_does_not_flip_journal_append(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_doctor_run_round_trip_does_not_flip_journal_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A backup round-trip must not change the journal JSONL writer. The journal still writes files."""
     from krellbot import journal as kb_journal
 
