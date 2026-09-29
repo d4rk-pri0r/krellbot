@@ -5,8 +5,15 @@ install command fetches the upstream index, locates the requested id, and
 downloads the entry's URL. The URL is rejected unless the host is exactly
 `raw.githubusercontent.com` and the path begins with
 `/d4rk-pri0r/krellbot-community-packs/` so an entry cannot point at an
-attacker-controlled host. The downloaded bytes are written verbatim so the
-pack's `author` field is preserved unchanged.
+attacker-controlled host.
+
+The downloaded body is staged in a separate temp directory and only
+renamed into the install directory after the atomic install helper
+verifies it: bodies over `MAX_BODY_BYTES`, tar entries with traversal
+names, and tar entries with symlinks that escape the install directory
+are all refused with `InstallPayloadError` *before* the rename, so a
+previous installed file (if any) is left unchanged. JSON bodies are
+written verbatim so the pack's `author` field is preserved unchanged.
 """
 
 from __future__ import annotations
@@ -35,6 +42,18 @@ class ForeignUrlError(ValueError):
 
 class IndexError_(ValueError):
     """Raised when the upstream index is malformed or the id is missing."""
+
+
+class InstallPayloadError(ValueError):
+    """Raised when a community pack body fails install-time safety checks.
+
+    Covers archive traversal (a tar entry whose name escapes the
+    staging directory), symlink escape (a tar entry whose link target
+    resolves outside the install directory), and bodies over the
+    install size limit (`MAX_BODY_BYTES`). The refusal is raised before
+    the staged body is renamed into the install directory, so the
+    previous installed file (if any) is left unchanged.
+    """
 
 
 def list_installed(home: Path) -> list[tuple[Path, dict]]:
@@ -104,8 +123,8 @@ def install(
     _validate_url(url)
     body = transport.get(url)
     kb_paths.ensure_layout()
-    community_dir = home / "packs" / "community"
-    community_dir.mkdir(parents=True, exist_ok=True)
-    target = community_dir / f"{pack_id}.json"
-    kb_paths.atomic_write(target, body)
-    return target
+    from krellbot.extensions import install as kb_extensions_install
+
+    return kb_extensions_install.atomic_install(
+        home=home, pack_id=pack_id, body=body
+    )
