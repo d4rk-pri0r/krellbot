@@ -29,10 +29,19 @@ Three platforms, one body shape:
   `User=` line because user units run as the caller.
 - **Windows** — a task XML with
   `<StartWhenAvailable>true</StartWhenAvailable>` and a `CalendarTrigger`
-  that repeats every hour (`PT1H`) from minute 1. The `Exec` block carries
-  the executable as `<Command>` and `tick` as the single `<Arguments>`
-  entry. The macOS and Linux units also set `KRELLBOT_HOME` so the tick
-  writes to the same home the logs use.
+  that repeats every hour (`PT1H`) from minute 1. The Task XML schema has
+  no per-task environment-variable element, so the `Exec` block runs through
+  `cmd.exe` to set `KRELLBOT_HOME` for exactly the child tick:
+
+  ```
+  <Command>%SystemRoot%\System32\cmd.exe</Command>
+  <Arguments>/d /c set "KRELLBOT_HOME=<home>" &amp;&amp; "<executable>" tick</Arguments>
+  <WorkingDirectory><home></WorkingDirectory>
+  ```
+
+  A `<WorkingDirectory>` is set to the home so relative paths resolve
+  there too. All three platforms now set `KRELLBOT_HOME` in their unit so
+  the tick writes to the same home the logs use.
 
 ## Installing
 
