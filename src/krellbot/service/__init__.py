@@ -25,6 +25,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from krellbot import paths as kb_paths
+
 from . import render, runner  # noqa: F401 — runner must be importable at install-time
 
 LAUNCHD_LABEL = "dev.krellbot.tick"
@@ -93,29 +95,57 @@ def _render_owner(
 
 
 def install(
-    home: Path,
+    home: Path | None = None,
     *,
     executable: str | None = None,
     hour_interval: bool = True,
     write_root: Path | None = None,
+    dry_run: bool = False,
 ) -> int:
     """Install the supervised tick scheduler unit.
 
     Writes the platform unit under ``write_root`` (default: the user's
     home, where ``~/Library/LaunchAgents`` /
     ``~/.config/systemd/user`` / ``~/Tasks`` live) and the per-venue
-    owner file under ``home/service/owners/default.owner``.
+    owner file under ``home/service/owners/default.owner``. ``home``
+    defaults to ``krellbot.paths.home()`` (the ``KRELLBOT_HOME`` home).
+
+    With ``dry_run=True`` the unit is printed to stdout exactly as the
+    pre-NS15 install did (raw unit bytes on darwin/win32; on linux a
+    ``=== <name> ===`` header per unit followed by the body and a
+    blank line) and nothing is written — no unit file, no owner file,
+    no directories. A dry run is read-only: it does not consult or
+    refuse on an existing owner file.
 
     Returns ``0`` on success, ``2`` on an existing owner file for the
-    same venue (``owner_conflict`` on stderr, nothing is rewritten),
-    or ``1`` for an unsupported platform.
+    same venue (``owner_conflict`` on stderr, nothing is rewritten), or
+    ``1`` for an unsupported platform.
     """
-    home = Path(home)
+    home = Path(home) if home is not None else kb_paths.home()
     executable_path = _resolve_executable(executable)
     if write_root is None:
         write_root = Path.home()
     else:
         write_root = Path(write_root)
+
+    if dry_run:
+        if sys.platform == "darwin":
+            body = render.render_launchd(executable_path, home)
+            sys.stdout.buffer.write(body)
+            return 0
+        if sys.platform.startswith("linux"):
+            units = render.render_systemd(executable_path, home)
+            for name, body in units.items():
+                sys.stdout.buffer.write(b"=== " + name.encode("utf-8") + b" ===" + b"\n")
+                sys.stdout.buffer.write(body)
+                sys.stdout.buffer.write(b"\n")
+            return 0
+        if sys.platform == "win32":
+            body = render.render_windows(executable_path, home)
+            sys.stdout.buffer.write(body)
+            return 0
+        print(f"unsupported platform: {sys.platform}", file=sys.stderr)
+        return 1
 
     own = owner_path(home)
     if own.exists():
@@ -127,17 +157,20 @@ def install(
         target = write_root / "Library" / "LaunchAgents" / LAUNCHD_FILENAME
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
+        print(f"installed {target}")
     elif sys.platform.startswith("linux"):
         units = render.render_systemd(executable_path, home)
         d = write_root / ".config" / "systemd" / "user"
         d.mkdir(parents=True, exist_ok=True)
         for name, body in units.items():
             (d / name).write_bytes(body)
+        print(f"installed {d / 'krellbot-tick.timer'} and {d / 'krellbot-tick.service'}")
     elif sys.platform == "win32":
         body = render.render_windows(executable_path, home)
         target = write_root / "Tasks" / "krellbot-tick.xml"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
+        print(f"installed {target}")
     else:
         print(f"unsupported platform: {sys.platform}", file=sys.stderr)
         return 1
