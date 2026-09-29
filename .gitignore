@@ -21,3 +21,6 @@ key.txt
 .wrangler/
 graphify-out/
 pytestdebug.log
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/fixtures/
