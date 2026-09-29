@@ -53,7 +53,9 @@ from typing import Any
 from krellbot import config as kb_config
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
+from krellbot import sanitize as kb_sanitize
 from krellbot import secrets as kb_secrets
+from krellbot.storage import backup as kb_backup
 from krellbot.storage import import_legacy
 
 TICK_STALE_SECONDS = 2 * 3600
@@ -242,6 +244,73 @@ def _armed_check(armed: list) -> list[dict[str, Any]]:
     return out
 
 
+def _bundle_preview(report: dict[str, Any]) -> str:
+    """Render a redacted text preview of the doctor report.
+
+    Any string registered with ``sanitize.register_secret`` is replaced
+    by ``***``; privileged keys (``api_key``, ``password``, etc.) are
+    redacted regardless of registration. The preview is what an
+    operator would paste into a bug report — never contains a raw
+    secret that a key onboarding flow registered.
+    """
+    redacted = kb_sanitize.redact(_bundle_dict(report))
+    return _format_bundle_preview(redacted)
+
+
+def _bundle_dict(report: dict[str, Any]) -> dict[str, Any]:
+    """Strip the bundle-only fields from a report for redaction.
+
+    The redaction walk only needs the user-visible content; the
+    ``backup_ok`` / ``backup_checked`` flags are booleans and are kept.
+    """
+    out = dict(report)
+    out.pop("bundle_preview", None)
+    return out
+
+
+def _format_bundle_preview(redacted: dict[str, Any]) -> str:
+    """Format the redacted report as multi-line text."""
+    lines: list[str] = []
+    lines.append(f"ok: {redacted.get('ok')}")
+    lines.append(f"home_mode_ok: {redacted.get('home_mode_ok')}")
+    lines.append(f"keychain_backend: {redacted.get('keychain_backend')}")
+    keys = redacted.get("keys") or {}
+    for venue in sorted(keys):
+        info = keys[venue]
+        if not isinstance(info, dict):
+            lines.append(f"{venue}: present={info}")
+            continue
+        present = info.get("present")
+        if present and "trade" in info:
+            lines.append(
+                f"{venue}: present (trade={info.get('trade')}, withdraw={info.get('withdraw')})"
+            )
+        else:
+            lines.append(f"{venue}: present={present}")
+    lines.append(f"service_installed: {redacted.get('service_installed')}")
+    lines.append(f"last_tick_age_s: {redacted.get('last_tick_age_s')}")
+    lines.append(f"last_tick_stale: {redacted.get('last_tick_stale')}")
+    lines.append(f"clock_skew_s: {redacted.get('clock_skew_s')}")
+    lines.append(f"clock_warn: {redacted.get('clock_warn')}")
+    lines.append(f"license_status: {redacted.get('license_status')}")
+    armed = redacted.get("armed") or []
+    for entry in armed:
+        if not isinstance(entry, dict):
+            continue
+        lines.append(
+            f"armed: {entry.get('venue')} {entry.get('pair')} cap={entry.get('cap')} "
+            f"warning={entry.get('warning')}"
+        )
+    lines.append(f"projection_status: {redacted.get('projection_status')}")
+    lines.append(f"backup_ok: {redacted.get('backup_ok')}")
+    lines.append(f"backup_checked: {redacted.get('backup_checked')}")
+    lines.append(f"install_ready: {redacted.get('install_ready')}")
+    lines.append(f"trading_ready: {redacted.get('trading_ready')}")
+    warnings = redacted.get("warnings") or []
+    lines.append(f"warnings: {'; '.join(str(w) for w in warnings) if warnings else 'none'}")
+    return "\n".join(lines)
+
+
 def _render_text(report: dict[str, Any]) -> str:
     lines = []
     home_mode_ok = report["home_mode_ok"]
@@ -356,16 +425,34 @@ def run(
     if projection_status == import_legacy.PROJECTION_MISMATCH:
         warnings.append("legacy journal projection mismatch")
 
+    store_path = home / import_legacy.DEFAULT_STORE_FILENAME
+    backup_checked = store_path.exists()
+    if backup_checked:
+        backup_result = kb_backup.round_trip(store_path)
+        backup_ok = bool(backup_result["ok"])
+        if not backup_ok:
+            warnings.append("backup round-trip failed")
+    else:
+        backup_ok = None
+
     # Readiness: install_ready means the runtime can serve the local UI.
     # trading_ready is the stricter gate: install_ready AND a non-stale
     # tick AND at least one probed key with trade=True AND withdraw=False.
     # `_keys_status` only emits `trade`/`withdraw` after a real permission
-    # probe ran, so a present key with no probe is fail-closed.
-    install_ready = home_is_dir and home_mode_ok is not False and backend_warn is None and _ui_bind_available()
+    # probe ran, so a present key with no probe is fail-closed. A restored
+    # engine must not place a new entry until backup_ok is True AND the
+    # NS12 projection is match; trading_ready enforces both gates.
+    install_ready = (
+        home_is_dir
+        and home_mode_ok is not False
+        and backend_warn is None
+        and _ui_bind_available()
+    )
     has_trade_only_key = any(
         info.get("present") and info.get("trade") is True and info.get("withdraw") is False for info in keys.values()
     )
-    trading_ready = install_ready and not last_tick_stale and has_trade_only_key
+    backup_ready = backup_ok is not False and projection_status != import_legacy.PROJECTION_MISMATCH
+    trading_ready = install_ready and not last_tick_stale and has_trade_only_key and backup_ready
 
     report = {
         "ok": ok,
@@ -383,7 +470,11 @@ def run(
         "warnings": warnings,
         "install_ready": install_ready,
         "trading_ready": trading_ready,
+        "backup_ok": backup_ok,
+        "backup_checked": backup_checked,
     }
+
+    report["bundle_preview"] = _bundle_preview(report)
 
     if as_json:
         return (0 if ok else 1, json.dumps(report, sort_keys=True))

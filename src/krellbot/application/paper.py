@@ -134,25 +134,30 @@ def _resolve_pair(pack_path: Path, venue: str) -> str:
     return str(market.get("pair", ""))
 
 
-def _resolve_cap(pack_path: Path) -> str:
-    """Return the pack's `risk.max_account_pct` as a string.
+def _resolve_cap(pack_path: Path) -> Decimal | None:
+    """Return the pack's `risk.max_account_pct` as a Decimal.
 
-    Mirrors the engine's lookup in `run.arm_pack`. Returns an empty
-    string when the pack is missing or malformed; the caller is
-    responsible for mapping that to a refusal before persistence would
-    have happened.
+    Mirrors the engine's lookup in `run.arm_pack`. Returns None when
+    the pack is missing or malformed; the caller treats None as "skip
+    the over-reserve check" and lets the existing run.arm_pack
+    validation classify the input.
     """
     try:
         data = json.loads(pack_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return ""
+        return None
     if not isinstance(data, dict):
-        return ""
+        return None
     risk = data.get("risk") or {}
     if not isinstance(risk, dict):
-        return ""
-    raw = risk.get("max_account_pct", "")
-    return str(raw) if raw != "" else ""
+        return None
+    raw = risk.get("max_account_pct", None)
+    if raw is None:
+        return None
+    try:
+        return Decimal(str(raw))
+    except (ValueError, ArithmeticError):
+        return None
 
 
 def _classify_invalid_input(pack_path: Path, venue: str) -> tuple[str, str]:
@@ -256,7 +261,7 @@ class PaperService:
             )
 
         try:
-            cap = Decimal(str(_resolve_cap(pack_path)))
+            cap = _resolve_cap(pack_path)
         except (OSError, json.JSONDecodeError, KeyError, ValueError, TypeError):
             cap = None
 
