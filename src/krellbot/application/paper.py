@@ -48,6 +48,7 @@ from pathlib import Path
 
 from krellbot import config as kb_config
 from krellbot import secrets as kb_secrets
+from krellbot.execution import reservations
 from krellbot.pack import lint as kb_pack_lint
 
 SCHEMA_VERSION = "1"
@@ -72,6 +73,7 @@ CODE_INVALID_STOP = "invalid_stop"
 CODE_MINIMUM_NOT_MET = "minimum_not_met"
 CODE_STORED_MODE_NOT_PAPER = "stored_mode_not_paper"
 CODE_EXPORTED = "exported"
+CODE_OVER_RESERVED = reservations.CODE_OVER_RESERVED
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,32 @@ def _resolve_pair(pack_path: Path, venue: str) -> str:
     if market is None:
         return ""
     return str(market.get("pair", ""))
+
+
+def _resolve_cap(pack_path: Path) -> Decimal | None:
+    """Return the pack's `risk.max_account_pct` as a Decimal.
+
+    Mirrors the engine's lookup in `run.arm_pack`. Returns None when
+    the pack is missing or malformed; the caller treats None as "skip
+    the over-reserve check" and lets the existing run.arm_pack
+    validation classify the input.
+    """
+    try:
+        data = json.loads(pack_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    risk = data.get("risk") or {}
+    if not isinstance(risk, dict):
+        return None
+    raw = risk.get("max_account_pct", None)
+    if raw is None:
+        return None
+    try:
+        return Decimal(str(raw))
+    except (ValueError, ArithmeticError):
+        return None
 
 
 def _classify_invalid_input(pack_path: Path, venue: str) -> tuple[str, str]:
@@ -239,6 +267,23 @@ class PaperService:
             return self._refusal(
                 CODE_INVALID_BALANCE,
                 "paper-balance must be positive",
+                correlation_id,
+                rev_before,
+            )
+
+        try:
+            cap = _resolve_cap(pack_path)
+        except (OSError, json.JSONDecodeError, KeyError, ValueError, TypeError):
+            cap = None
+
+        if cap is not None and cap > Decimal(0) and reservations.would_over_reserve(
+            self._home,
+            new_starting_cash=paper_balance,
+            new_cap=cap,
+        ):
+            return self._refusal(
+                CODE_OVER_RESERVED,
+                "combined paper reservation would exceed account cash",
                 correlation_id,
                 rev_before,
             )
