@@ -42,6 +42,7 @@ from krellbot.domain import trace as kb_trace
 from krellbot.pack import evaluate as kb_evaluate
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle as Candle
+from krellbot.storage.outbox import Outbox
 from krellbot.venues.base import PairRules
 
 from .lock import TickLock
@@ -547,6 +548,8 @@ def tick(
                 armed.pending_version = None
         kb_config.save_config(home, config)
 
+        _commit_outbox_rows(home=home, fill_context=fill_context)
+
         _emit_telemetry(
             venue=venue,
             venue_obj=venue_obj,
@@ -658,6 +661,43 @@ def _fee_bps_for_venue(venue: str) -> int:
     if venue == "coinbase":
         return 120
     return 0
+
+
+def _outbox_store_path(home: Path) -> Path:
+    return Path(home) / "run" / "store.db"
+
+
+def _commit_outbox_rows(*, home: Path, fill_context: dict[str, dict]) -> None:
+    """Write one outbox ledger row per coid in ``fill_context``.
+
+    The OperationalStore is one-writer and lives under ``<home>/run/store.db``.
+    A lock-acquire failure or a corrupt store is silent here so the tick
+    does not regress the journal path; the journal is the source of
+    truth and the ledger is a derived record. Rows are tagged
+    ``kind="outbox"`` so an auditor can read them with the same shape
+    the live tick already records. The ``send`` callable is a no-op:
+    the venue object already simulated the send, and the row records
+    the intent the engine would have committed before a live send.
+    """
+
+    if not fill_context:
+        return
+    from krellbot.storage.database import OperationalStore, StoreBusy, StoreCorrupt
+
+    store_path = _outbox_store_path(home)
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    outbox = Outbox(OperationalStore(store_path))
+
+    def _noop_send(_coid: str, _body: str) -> None:
+        return None
+
+    for coid, fill in fill_context.items():
+        body = json.dumps(fill, sort_keys=True, separators=(",", ":"))
+        try:
+            outbox.dispatch(coid, body, send=_noop_send)
+        except (StoreBusy, StoreCorrupt, OSError, ValueError, TypeError, json.JSONDecodeError):
+            # ledger write failure is derived state; do not block the journal
+            continue
 
 
 def _emit_telemetry(

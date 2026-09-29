@@ -5,6 +5,7 @@ from __future__ import annotations
 import hmac
 import json
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -37,12 +38,18 @@ SCHEMA_VERSION = "1"
 SESSION_COOKIE = "krellbot_session"
 CSRF_HEADER = "X-Krellbot-CSRF"
 
+
+def _now_seconds() -> int:
+    return int(time.time())
+
+
 PAPER_COMMANDS = (
     "paper.arm",
     "paper.disarm",
     "paper.pause_entries",
     "paper.resume_entries",
     "paper.raise_stop",
+    "paper.export",
 )
 
 
@@ -348,6 +355,12 @@ def create_app(
                 new_stop=Decimal(inner["new_stop"]),
                 correlation_id=correlation_id,
             )
+        elif command == "paper.export":
+            result = service.export(
+                venue=inner["venue"],
+                pair=inner["pair"],
+                correlation_id=correlation_id,
+            )
         else:
             return JSONResponse({"detail": f"unknown command {command}"}, status_code=403)
 
@@ -528,13 +541,16 @@ def create_app(
         return JSONResponse(body, status_code=200)
 
     @app.get("/api/v1/capabilities")
-    async def capabilities() -> Response:
+    async def capabilities(request: Request) -> Response:
+        s = _state(request.app)
         body = {
             "schema_version": SCHEMA_VERSION,
             "paper_commands": list(PAPER_COMMANDS),
             "research": True,
             "live_orders": False,
         }
+        if not s.bootstrap_used:
+            body["bootstrap_token"] = s.bootstrap_token
         return JSONResponse(body, status_code=200)
 
     # ---- strategy drafts (NS08a) --------------------------------------
@@ -671,5 +687,97 @@ def create_app(
         except (TypeError, ValueError) as exc:
             return JSONResponse({"detail": str(exc)}, status_code=400)
         return JSONResponse(summary, status_code=200)
+
+    # ---- research result download (lane E) ------------------------------
+
+    @app.get("/api/v1/jobs/{job_id}/result/download")
+    async def download_job_result(request: Request, job_id: str) -> Response:
+        """Return the canonical receipt bytes for ``job_id`` as a download.
+
+        The route uses ``_gate_get`` so a session is required; no CSRF
+        since it is a read. The body is the byte-identical canonical
+        UTF-8 JSON of ``legacy_receipt`` so a workstation ``Save As``
+        yields the exact bytes the runner shipped. A missing or non-
+        succeeded job is 404 with the same closed shape the inline
+        result route uses.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        snap = s.jobs.get(job_id)
+        if snap is None:
+            return JSONResponse(
+                {"code": JOB_ERROR_NOT_FOUND, "message": "job not found"},
+                status_code=404,
+            )
+        if snap.state != "succeeded":
+            return JSONResponse(
+                {"code": JOB_ERROR_RESULT_UNAVAILABLE},
+                status_code=404,
+            )
+        result = s.jobs.result_for(job_id)
+        if result is None or "legacy_receipt" not in result:
+            return JSONResponse(
+                {"code": JOB_ERROR_RESULT_UNAVAILABLE},
+                status_code=404,
+            )
+        receipt = result["legacy_receipt"]
+        if not isinstance(receipt, dict):
+            return JSONResponse(
+                {"code": JOB_ERROR_RESULT_UNAVAILABLE},
+                status_code=404,
+            )
+        # ``canonical_receipt_bytes`` is the single source of truth for
+        # the wire shape; using it keeps the inline route and the
+        # download byte-identical.
+        from krellbot.api.jobs import canonical_receipt_bytes
+
+        body = canonical_receipt_bytes(receipt)
+        return Response(
+            content=body,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": 'attachment; filename="research-result.json"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    # ---- activation redeem (lane E) -------------------------------------
+
+    @app.post("/api/v1/activation/redeem")
+    async def redeem_activation(request: Request) -> Response:
+        """Delegate to ``krellbot.ui.activate.redeem``; never echoes a key.
+
+        The route runs the redeem pass against ``s.home`` and returns
+        the closed ``ActivateOutcome`` as JSON. Any ``OSError`` /
+        decode failure surfaces as the matching safe message; the key
+        never appears in the URL, body, header, or response.
+        """
+
+        s = _state(request.app)
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        key = payload.get("key", "")
+        if not isinstance(key, str):
+            key = ""
+
+        from krellbot.ui.activate import redeem
+
+        outcome = redeem(key, home=s.home, now=int(_now_seconds()))
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "status": outcome.status,
+            "message": outcome.message,
+            "catalog_downloaded": outcome.catalog_downloaded,
+        }
+        return JSONResponse(body, status_code=200)
 
     return app

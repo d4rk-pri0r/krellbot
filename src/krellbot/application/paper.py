@@ -7,6 +7,7 @@
     paper.pause_entries
     paper.resume_entries
     paper.raise_stop
+    paper.export       (read the on-disk pack bytes for an armed paper record)
 
 Every method validates completely before mutating the armed-pack config and
 returns a typed `CommandResultV1`. CLI, dashboard forms, and any future
@@ -36,6 +37,7 @@ Contracts (`.superpowers/sdd/krellbot-2027/contracts/commands.md`):
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import time
@@ -69,6 +71,7 @@ CODE_INVALID_BALANCE = "invalid_balance"
 CODE_INVALID_STOP = "invalid_stop"
 CODE_MINIMUM_NOT_MET = "minimum_not_met"
 CODE_STORED_MODE_NOT_PAPER = "stored_mode_not_paper"
+CODE_EXPORTED = "exported"
 
 
 @dataclass(frozen=True)
@@ -90,9 +93,12 @@ class CommandResultV1:
     effect: str
     revision_before: str | None
     revision_after: str | None
+    # Optional. Set only on ``paper.export`` so the on-disk pack bytes
+    # can ship to the client. Base64 in the wire shape for JSON safety.
+    pack_bytes: bytes | None = None
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "schema_version": self.schema_version,
             "correlation_id": self.correlation_id,
             "code": self.code,
@@ -102,6 +108,11 @@ class CommandResultV1:
             "revision_before": self.revision_before,
             "revision_after": self.revision_after,
         }
+        if self.pack_bytes is not None:
+            out["pack_bytes_b64"] = base64.b64encode(self.pack_bytes).decode("ascii")
+            out["pack_sha256"] = hashlib.sha256(self.pack_bytes).hexdigest()
+            out["pack_bytes_len"] = len(self.pack_bytes)
+        return out
 
 
 def _revision(home: Path) -> str | None:
@@ -487,6 +498,77 @@ class PaperService:
             effect="changed",
             revision_before=rev_before,
             revision_after=rev_after,
+        )
+
+    # ---- export ----------------------------------------------------------
+
+    def export(
+        self,
+        *,
+        venue: str,
+        pair: str,
+        correlation_id: str = "",
+    ) -> CommandResultV1:
+        """Return the on-disk pack bytes for the armed (venue, pair) record.
+
+        The workstation uses this to ship the same bytes the engine
+        currently has armed — the canonical pack the user uploaded. The
+        method refuses when no record exists, the venue is unknown, or
+        the stored mode is not paper (the legacy live path owns live
+        export). On success ``pack_bytes`` carries the verbatim file
+        bytes; ``effect`` is ``unchanged`` so callers can distinguish
+        a read from a write.
+        """
+
+        rev = _revision(self._home)
+
+        if venue not in kb_secrets.VENUES:
+            return self._refusal(
+                CODE_UNKNOWN_VENUE,
+                f"unknown venue: {venue}",
+                correlation_id,
+                rev,
+            )
+
+        config = kb_config.load_config(self._home)
+        armed = kb_config.find_armed(config, venue, pair)
+        if armed is None:
+            return self._refusal(
+                CODE_NOT_ARMED,
+                f"not armed: {venue} {pair}",
+                correlation_id,
+                rev,
+            )
+
+        if armed.mode != "paper":
+            return self._refusal(
+                CODE_STORED_MODE_NOT_PAPER,
+                f"stored mode is {armed.mode!r}; paper service only exports paper targets",
+                correlation_id,
+                rev,
+            )
+
+        pack_path = Path(armed.pack_path)
+        try:
+            pack_bytes = pack_path.read_bytes()
+        except OSError:
+            return self._refusal(
+                CODE_INVALID_PACK,
+                f"pack file unreadable: {pack_path}",
+                correlation_id,
+                rev,
+            )
+
+        return CommandResultV1(
+            schema_version=SCHEMA_VERSION,
+            correlation_id=correlation_id,
+            code=CODE_EXPORTED,
+            ok=True,
+            message=f"exported {venue} {pair}",
+            effect="unchanged",
+            revision_before=rev,
+            revision_after=rev,
+            pack_bytes=pack_bytes,
         )
 
     # ---- helpers ---------------------------------------------------------
