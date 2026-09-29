@@ -5,8 +5,14 @@ export type LayoutPoint = {
   y: number;
 };
 
+export type StudioEdge = {
+  source: string;
+  target: string;
+};
+
 export type StudioEditor = {
   layout?: Record<string, LayoutPoint>;
+  edges?: StudioEdge[];
 };
 
 export function nodesFromPack(

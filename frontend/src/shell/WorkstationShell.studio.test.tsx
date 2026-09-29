@@ -250,6 +250,9 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
     triggerConnect("n2");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(countText()).toMatch(/1/);
+    expect(getCaptured().edges).toHaveLength(1);
+    expect(getCaptured().edges?.[0]?.source).toBe("n0");
+    expect(getCaptured().edges?.[0]?.target).toBe("n2");
   });
 
   it("records two connections when two valid edges are added in sequence", () => {

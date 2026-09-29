@@ -182,7 +182,18 @@ export function WorkstationShell({
           <>
             <GraphCanvas
               nodes={studioNodes}
-              edges={[]}
+              edges={connections.flatMap((connection, index) => {
+                if (!connection.source || !connection.target) {
+                  return [];
+                }
+                return [
+                  {
+                    id: `${connection.source}-${connection.target}-${index}`,
+                    source: connection.source,
+                    target: connection.target,
+                  },
+                ];
+              })}
               onAddConnection={handleAddConnection}
             />
             <p data-testid="studio-node-count">{studioNodes.length}</p>
@@ -196,7 +207,13 @@ export function WorkstationShell({
                   const layout = Object.fromEntries(
                     studioNodes.map((node) => [node.id, node.position]),
                   );
-                  void client.saveEditor?.(savedRevision.revision_id, { layout });
+                  const edges = connections.flatMap((connection) => {
+                    if (!connection.source || !connection.target) {
+                      return [];
+                    }
+                    return [{ source: connection.source, target: connection.target }];
+                  });
+                  void client.saveEditor?.(savedRevision.revision_id, { layout, edges });
                 }}
               >
                 Save layout
