@@ -25,6 +25,7 @@ export type StrategyClient = {
     revisionId: string,
     editor: Record<string, unknown>,
   ): Promise<void>;
+  loadEditor?(revisionId: string): Promise<Record<string, unknown>>;
 };
 
 type RawSummary = {
@@ -157,6 +158,24 @@ export function createHttpClient(): StrategyClient {
       if (!response.ok) {
         throw new Error(`editor save failed: ${response.status}`);
       }
+    },
+    async loadEditor(revisionId: string): Promise<Record<string, unknown>> {
+      const response = await fetch(
+        `/api/v1/strategies/drafts/${encodeURIComponent(revisionId)}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: { "X-Krellbot-CSRF": getCsrf() },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`editor load failed: ${response.status}`);
+      }
+      const body = (await response.json()) as { editor?: unknown };
+      if (!body.editor || typeof body.editor !== "object" || Array.isArray(body.editor)) {
+        return {};
+      }
+      return body.editor as Record<string, unknown>;
     },
   };
 }

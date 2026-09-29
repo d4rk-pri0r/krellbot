@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { Connection } from "@xyflow/react";
 import type { PaperClient } from "../features/paper/client";
 import { StatusPanel } from "../features/paper/StatusPanel";
@@ -114,6 +114,44 @@ export function WorkstationShell({
     () => strategyClient ?? createHttpClient(),
     [strategyClient],
   );
+  const loadedEditorFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!savedRevision || !client.loadEditor) {
+      return;
+    }
+    if (loadedEditorFor.current === savedRevision.revision_id) {
+      return;
+    }
+    loadedEditorFor.current = savedRevision.revision_id;
+    let cancelled = false;
+    void client.loadEditor(savedRevision.revision_id).then((editor) => {
+      if (cancelled || !Array.isArray(editor.edges) || editor.edges.length === 0) {
+        return;
+      }
+      setConnections(
+        editor.edges.flatMap((edge) => {
+          if (!edge || typeof edge !== "object") {
+            return [];
+          }
+          const row = edge as { source?: unknown; target?: unknown };
+          if (typeof row.source !== "string" || typeof row.target !== "string") {
+            return [];
+          }
+          return [
+            {
+              source: row.source,
+              target: row.target,
+              sourceHandle: null,
+              targetHandle: null,
+            },
+          ];
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [savedRevision, client]);
   const research = useMemo(
     () => researchClient ?? createResearchHttpClient(),
     [researchClient],

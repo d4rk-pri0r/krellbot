@@ -310,4 +310,37 @@ describe("WorkstationShell — saved strategy studio", () => {
     expect(ids).toContain("sma20");
     expect(ids).not.toContain("n0");
   });
+
+  it("restores saved edges onto the canvas", async () => {
+    const strategy = makeStrategyClient();
+    strategy.loadEditor = vi.fn().mockResolvedValue({
+      edges: [{ source: "entry", target: "sma20" }],
+    });
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={makeResearchClient()}
+        strategyClient={strategy}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    fireEvent.change(screen.getByLabelText(/raw json/i), {
+      target: {
+        value: JSON.stringify({
+          id: "trend-follow",
+          timeframe: "1h",
+          indicators: { sma20: { fn: "sma" } },
+          entry: ["close", ">", "sma20"],
+          exit: ["close", "<", "sma20"],
+        }),
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByTestId("editor-revision-id");
+    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    await vi.waitFor(() => {
+      expect(getCaptured().edges?.[0]?.source).toBe("entry");
+      expect(getCaptured().edges?.[0]?.target).toBe("sma20");
+    });
+  });
 });
