@@ -15,10 +15,27 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
+
+NS05_CLOCK = datetime(2026, 9, 28, 12, tzinfo=timezone.utc).timestamp()
+
+
+@pytest.fixture(autouse=True)
+def pin_metadata_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Read snapshots at 2026-09-28T12:00:00Z.
+
+    The default fixture expires at 2026-09-29T00:00:00Z. Consumers that
+    omit a clock use ``_default_now``. Pin that clock inside the fresh
+    window. Tests that pass their own clock, including the stale-record
+    refusal, keep that clock.
+    """
+
+    monkeypatch.setattr("krellbot.data.instruments._default_now", lambda: NS05_CLOCK)
+
 
 from krellbot.data.instruments import (
     METADATA_INVALID,
