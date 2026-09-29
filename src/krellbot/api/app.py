@@ -27,6 +27,7 @@ from krellbot.api.security import (
     is_loopback_host,
     is_loopback_origin,
 )
+from krellbot.application.live_preflight import SandboxTransport, evaluate as live_preflight_evaluate
 from krellbot.application.strategy import (
     DraftNotRunnable,
     RevisionNotFound,
@@ -56,6 +57,7 @@ class _AppState:
     jobs: JobManager = field(default=None)  # type: ignore[assignment]
     draft_service: object = field(default=None)  # StrategyDraftService singleton per home
     paper_service: object = field(default=None)  # PaperService singleton per home
+    live_transport: object = field(default=None)  # SandboxTransport or test spy for live.preflight
 
 
 def _state(app: FastAPI) -> _AppState:
@@ -78,6 +80,34 @@ def _paper_service(s: _AppState):
 
         s.paper_service = PaperService(home=s.home)
     return s.paper_service
+
+
+def _live_transport(s: _AppState):
+    """Lazily build the sandbox live transport bound to the app's home.
+
+    Tests pre-set ``s.live_transport`` to a spy before issuing a
+    ``live.preflight`` command so they can assert that ``send`` was
+    never called.
+    """
+
+    if s.live_transport is None:
+        s.live_transport = SandboxTransport(account="sandbox-default")
+    return s.live_transport
+
+
+def _stored_deployment_mode(home: Path) -> str | None:
+    """Return the mode of the first armed pack, or None when no record exists.
+
+    Used by ``live.preflight`` to honor the symmetric stored-live
+    refusal (``stored_mode_not_sandbox``). The full-mode-only check is
+    a deliberate read of the existing config bytes; the helper never
+    mutates the config.
+    """
+
+    config = kb_config.load_config(home)
+    if not config.armed:
+        return None
+    return config.armed[0].mode
 
 
 def _resolve_dist_dir(dist_dir: Path | None) -> Path:
@@ -262,6 +292,26 @@ def create_app(
             return JSONResponse({"detail": "invalid body"}, status_code=400)
         correlation_id = payload.get("correlation_id") or ""
 
+        if command == "live.preflight":
+            # ``live.preflight`` is the single carve-out from the prefix
+            # gate: a sandbox-only dry-run against the fake transport
+            # that never sends an order. Every other ``live.*`` command
+            # still returns 403 below; the ``mode == "live"`` payload
+            # refusal remains in force for non-preflight commands.
+            account_id = inner.get("account_id") or ""
+            revision_id = inner.get("revision_id")
+            mode = inner.get("mode")
+            if not isinstance(account_id, str) or not isinstance(revision_id, str) or not isinstance(mode, str):
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            stored_mode = _stored_deployment_mode(s.home)
+            result = live_preflight_evaluate(
+                account_id=account_id,
+                revision_id=revision_id,
+                mode=mode,
+                transport=_live_transport(s),
+                stored_mode=stored_mode,
+            )
+            return JSONResponse(result.to_dict(), status_code=200)
         if command.startswith("live."):
             return JSONResponse({"detail": "live orders are disabled"}, status_code=403)
         if inner.get("mode") == "live":
