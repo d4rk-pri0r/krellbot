@@ -102,18 +102,12 @@ class _FakeVenue:
         while self.pending_fills:
             self._fills.append(self.pending_fills.pop(0))
         return Truth(
-            balances=[
-                Balance(asset=str(a), free=q)
-                for a, q in self._balances.items()
-                if q > Decimal(0)
-            ],
+            balances=[Balance(asset=str(a), free=q) for a, q in self._balances.items() if q > Decimal(0)],
             open_orders=list(self._orders),
             recent_fills=list(self._fills),
         )
 
-    def place_entry_with_stop(
-        self, coid: str, qty: Decimal, stop: Decimal, *, pair: str
-    ) -> OrderRef:
+    def place_entry_with_stop(self, coid: str, qty: Decimal, stop: Decimal, *, pair: str) -> OrderRef:
         self.calls.append(_Call("entry", coid, qty, stop, pair))
         base, _quote = self._split(pair)
         self._balances[base] = self._balances.get(base, Decimal(0)) + qty
@@ -141,10 +135,7 @@ class _FakeVenue:
         self.calls.append(_Call("exit", coid, qty, None, pair))
         base, _quote = self._split(pair)
         self._balances[base] = self._balances.get(base, Decimal(0)) - qty
-        self._orders = [
-            o for o in self._orders
-            if not (o.pair == pair and o.stop_price is not None)
-        ]
+        self._orders = [o for o in self._orders if not (o.pair == pair and o.stop_price is not None)]
         return OrderRef(
             id=coid,
             coid=coid,
@@ -160,10 +151,7 @@ class _FakeVenue:
 
     def cancel_stops(self, pair: str) -> None:
         self.calls.append(_Call("cancel_stops", ""))
-        self._orders = [
-            o for o in self._orders
-            if not (o.pair == pair and o.stop_price is not None)
-        ]
+        self._orders = [o for o in self._orders if not (o.pair == pair and o.stop_price is not None)]
 
     def raise_stop(self, pair: str, new_stop: Decimal) -> None:
         self.calls.append(_Call("raise_stop", "", None, new_stop, pair))
@@ -177,12 +165,8 @@ class _FakeVenue:
     def check_key(self) -> KeyPerms:
         return KeyPerms(can_trade=True, can_withdraw=False)
 
-    def push_pending_fill(
-        self, coid: str, pair: str, side: str, qty: Decimal, price: Decimal, ts_ms: int
-    ) -> None:
-        self.pending_fills.append(
-            Fill(id=coid, coid=coid, pair=pair, side=side, qty=qty, price=price, ts_ms=ts_ms)
-        )
+    def push_pending_fill(self, coid: str, pair: str, side: str, qty: Decimal, price: Decimal, ts_ms: int) -> None:
+        self.pending_fills.append(Fill(id=coid, coid=coid, pair=pair, side=side, qty=qty, price=price, ts_ms=ts_ms))
 
     @staticmethod
     def _split(pair: str) -> tuple[str, str]:
@@ -326,9 +310,7 @@ def test_second_arm_over_allocates_cash_is_refused(home) -> None:
     )
 
     assert not r2.ok, f"second arm must refuse; got code={r2.code!r} message={r2.message!r}"
-    assert r2.code == reservations.CODE_OVER_RESERVED, (
-        f"refusal must use the typed over_reserved code; got {r2.code!r}"
-    )
+    assert r2.code == reservations.CODE_OVER_RESERVED, f"refusal must use the typed over_reserved code; got {r2.code!r}"
     # Refusal must leave the on-disk record unchanged.
     assert r2.revision_after == r2.revision_before, (
         f"refusal must leave revision_after == revision_before; "
@@ -417,9 +399,7 @@ def test_needs_reconcile_blocks_new_tick_entry(home) -> None:
 
     # The entry must NOT have been placed while reconcile is pending.
     entries = [c for c in venue.calls if c.method == "entry"]
-    assert entries == [], (
-        f"needs_reconcile must block new entries; got {entries}"
-    )
+    assert entries == [], f"needs_reconcile must block new entries; got {entries}"
 
 
 def test_needs_reconcile_does_not_block_paid_expiry_exit(home) -> None:
@@ -460,13 +440,9 @@ def test_needs_reconcile_does_not_block_paid_expiry_exit(home) -> None:
     assert rc == 0
 
     exits = [c for c in venue.calls if c.method == "exit"]
-    assert len(exits) == 1, (
-        f"paid-expiry exit must fire even with needs_reconcile pending; got {exits}"
-    )
+    assert len(exits) == 1, f"paid-expiry exit must fire even with needs_reconcile pending; got {exits}"
     entries = [c for c in venue.calls if c.method == "entry"]
-    assert entries == [], (
-        f"entries must stay blocked under lapsed cache; got {entries}"
-    )
+    assert entries == [], f"entries must stay blocked under lapsed cache; got {entries}"
 
 
 def test_needs_reconcile_does_not_block_normal_exit_for_owned(home) -> None:
@@ -516,9 +492,7 @@ def test_action_codes_are_four_distinct_strings() -> None:
         reservations.CODE_MANAGE_EXITS,
         reservations.CODE_FLATTEN,
     }
-    assert len(codes) == 4, (
-        f"action codes must be distinct; got {sorted(codes)}"
-    )
+    assert len(codes) == 4, f"action codes must be distinct; got {sorted(codes)}"
 
     # None of them collide with paper command v1 codes.
     paper_command_codes = {
@@ -543,9 +517,7 @@ def test_flatten_of_unowned_quantity_is_refused(home) -> None:
     # because the journal only attributes 5 to this pack.
     _seed_journal_owned(home, pack_id="ns14-flatten", owned_qty=Decimal(5))
 
-    code = reservations.flatten_result(
-        home, pack_id="ns14-flatten", pair="SUIUSD", qty=Decimal(10)
-    )
+    code = reservations.flatten_result(home, pack_id="ns14-flatten", pair="SUIUSD", qty=Decimal(10))
     assert code == reservations.CODE_FLATTEN_NOT_OWNED, (
         f"flatten of unowned qty must refuse with flatten_not_owned; got {code!r}"
     )
@@ -557,17 +529,11 @@ def test_flatten_of_owned_quantity_is_allowed(home) -> None:
     """
     _seed_journal_owned(home, pack_id="ns14-flatten-own", owned_qty=Decimal(5))
 
-    code = reservations.flatten_result(
-        home, pack_id="ns14-flatten-own", pair="SUIUSD", qty=Decimal(5)
-    )
-    assert code == reservations.CODE_FLATTEN, (
-        f"flatten of fully owned qty must return flatten; got {code!r}"
-    )
+    code = reservations.flatten_result(home, pack_id="ns14-flatten-own", pair="SUIUSD", qty=Decimal(5))
+    assert code == reservations.CODE_FLATTEN, f"flatten of fully owned qty must return flatten; got {code!r}"
 
     # Below the owned qty is also fine.
-    code_partial = reservations.flatten_result(
-        home, pack_id="ns14-flatten-own", pair="SUIUSD", qty=Decimal(3)
-    )
+    code_partial = reservations.flatten_result(home, pack_id="ns14-flatten-own", pair="SUIUSD", qty=Decimal(3))
     assert code_partial == reservations.CODE_FLATTEN
 
 
@@ -583,6 +549,4 @@ def test_flatten_action_code_does_not_collide_with_pause_or_manage_exits() -> No
         reservations.CODE_FLATTEN_NOT_OWNED,
         reservations.CODE_OVER_RESERVED,
     )
-    assert len(set(distinct)) == len(distinct), (
-        f"all reservation codes must be pairwise distinct; got {distinct}"
-    )
+    assert len(set(distinct)) == len(distinct), f"all reservation codes must be pairwise distinct; got {distinct}"

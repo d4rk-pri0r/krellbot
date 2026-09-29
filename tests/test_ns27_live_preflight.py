@@ -383,9 +383,7 @@ def test_app_live_preflight_delegates_to_helper(home: Path) -> None:
             "mode": "sandbox",
         },
     }
-    status, _hdrs, body, _cookies = _post_json(
-        app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session)
-    )
+    status, _hdrs, body, _cookies = _post_json(app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session))
     assert status == 200, (status, body)
     decoded = json.loads(body)
     assert decoded["ok"] is True, decoded
@@ -415,9 +413,7 @@ def test_app_live_preflight_refuses_account_mismatch_through_helper(home: Path) 
             "mode": "sandbox",
         },
     }
-    status, _hdrs, body, _cookies = _post_json(
-        app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session)
-    )
+    status, _hdrs, body, _cookies = _post_json(app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session))
     assert status == 200, (status, body)
     decoded = json.loads(body)
     assert decoded["ok"] is False, decoded
@@ -466,9 +462,7 @@ def test_app_live_preflight_refuses_wrong_mode_when_stored_is_live(home: Path) -
             "mode": "live",
         },
     }
-    status, _hdrs, body, _cookies = _post_json(
-        app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session)
-    )
+    status, _hdrs, body, _cookies = _post_json(app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session))
     assert status == 200, (status, body)
     decoded = json.loads(body)
     assert decoded["ok"] is False, decoded
@@ -487,9 +481,7 @@ def test_app_live_arm_is_403(home: Path) -> None:
         "command": "live.arm",
         "payload": {"venue": "kraken"},
     }
-    status, _hdrs, body, _cookies = _post_json(
-        app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session)
-    )
+    status, _hdrs, body, _cookies = _post_json(app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session))
     assert status == 403, (status, body)
     decoded = json.loads(body)
     assert decoded.get("detail") == "live orders are disabled", decoded
@@ -506,9 +498,7 @@ def test_app_paper_arm_with_mode_live_is_403(home: Path) -> None:
         "command": "paper.arm",
         "payload": {"venue": "kraken", "mode": "live"},
     }
-    status, _hdrs, body, _cookies = _post_json(
-        app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session)
-    )
+    status, _hdrs, body, _cookies = _post_json(app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session))
     assert status == 403, (status, body)
     decoded = json.loads(body)
     assert decoded.get("detail") == "live orders are disabled", decoded

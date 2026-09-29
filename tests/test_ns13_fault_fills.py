@@ -106,11 +106,7 @@ class _FakeVenue:
         while self.pending_fills:
             self._fills.append(self.pending_fills.pop(0))
         return Truth(
-            balances=[
-                Balance(asset=str(a), free=q)
-                for a, q in self._balances.items()
-                if q > Decimal(0)
-            ],
+            balances=[Balance(asset=str(a), free=q) for a, q in self._balances.items() if q > Decimal(0)],
             open_orders=list(self._orders),
             recent_fills=list(self._fills),
         )
@@ -182,9 +178,7 @@ class _FakeVenue:
     # ---- helpers used by tests --------------------------------------------
 
     def push_pending_fill(self, coid: str, pair: str, side: str, qty: Decimal, price: Decimal, ts_ms: int) -> None:
-        self.pending_fills.append(
-            Fill(id=coid, coid=coid, pair=pair, side=side, qty=qty, price=price, ts_ms=ts_ms)
-        )
+        self.pending_fills.append(Fill(id=coid, coid=coid, pair=pair, side=side, qty=qty, price=price, ts_ms=ts_ms))
 
     @staticmethod
     def _split(pair: str) -> tuple[str, str]:
@@ -329,9 +323,7 @@ def test_duplicate_fill_does_not_open_a_second_position(home) -> None:
     assert rc == 0
 
     entries = [c for c in venue.calls if c.method == "entry"]
-    assert entries == [], (
-        f"pre-seeded outbox state=sent must suppress re-place; got {entries}"
-    )
+    assert entries == [], f"pre-seeded outbox state=sent must suppress re-place; got {entries}"
 
 
 def test_partial_fill_owned_qty_is_the_filled_size(home) -> None:
@@ -358,9 +350,7 @@ def test_partial_fill_owned_qty_is_the_filled_size(home) -> None:
 
     config = load_config(home)
     armed = next(a for a in config.armed if a.pack_id == "ns13-partial")
-    assert armed.owned_qty == Decimal(2), (
-        f"armed.owned_qty must equal the filled size 2, got {armed.owned_qty}"
-    )
+    assert armed.owned_qty == Decimal(2), f"armed.owned_qty must equal the filled size 2, got {armed.owned_qty}"
 
     store = OperationalStore(home / "ops.sqlite")
     kinds = [r[1] for r in store.read_ledger()]
@@ -398,7 +388,7 @@ def test_late_fill_after_cancel_is_audited_but_does_not_reopen_position(home) ->
         pair="SUIUSD",
         side="sell",
         qty=Decimal(5),
-        price=Decimal("8"),
+        price=Decimal(8),
         ts_ms=10_800_000,
     )
 
@@ -438,7 +428,7 @@ def test_unknown_ack_is_audited_but_does_not_resubmit(home) -> None:
         pair="SUIUSD",
         side="buy",
         qty=Decimal(3),
-        price=Decimal("11"),
+        price=Decimal(11),
         ts_ms=14_400_000,
     )
 
@@ -506,7 +496,7 @@ def test_paper_tick_uses_outbox_and_live_tick_raises_mode_error(home) -> None:
     live_body = json.dumps({"kind": "entry", "qty": "5", "stop": "5", "pair": "SUIUSD"})
 
     def _live_send(_coid: str, _body: str) -> None:
-        live_venue.calls.append(_Call("entry", _coid, Decimal("5"), Decimal("5"), "SUIUSD"))
+        live_venue.calls.append(_Call("entry", _coid, Decimal(5), Decimal(5), "SUIUSD"))
 
     raised = False
     try:

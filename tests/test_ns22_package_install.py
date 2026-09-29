@@ -25,11 +25,7 @@ from io import BytesIO
 
 import pytest
 
-
-PACK_URL = (
-    "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/"
-    "main/evil-pack.json"
-)
+PACK_URL = "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/main/evil-pack.json"
 INDEX_BODY = json.dumps({"packs": [{"id": "evil-pack", "url": PACK_URL}]}).encode("utf-8")
 
 
@@ -163,8 +159,7 @@ def test_install_stages_then_atomic_renames_json_body(home):
                 {
                     "id": "good-pack",
                     "url": (
-                        "https://raw.githubusercontent.com/d4rk-pri0r/"
-                        "krellbot-community-packs/main/good-pack.json"
+                        "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/main/good-pack.json"
                     ),
                 }
             ]

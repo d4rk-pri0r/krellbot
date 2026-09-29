@@ -76,9 +76,7 @@ def paper_account_cash(home: Path, *, new_starting_cash: Decimal | None = None) 
     """
     config = kb_config.load_config(home)
     candidates: list[Decimal] = [
-        Decimal(str(a.starting_cash))
-        for a in config.armed
-        if a.mode == "paper" and a.starting_cash is not None
+        Decimal(str(a.starting_cash)) for a in config.armed if a.mode == "paper" and a.starting_cash is not None
     ]
     if new_starting_cash is not None:
         candidates.append(Decimal(str(new_starting_cash)))

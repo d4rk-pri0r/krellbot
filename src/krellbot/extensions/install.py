@@ -52,9 +52,7 @@ def _validate_tar(body: bytes, install_dir: Path) -> None:
 
     with _open_tar(body) as tar:
         if tar is None:
-            raise kb_community.InstallPayloadError(
-                "community pack body is not a parseable tar archive"
-            )
+            raise kb_community.InstallPayloadError("community pack body is not a parseable tar archive")
         try:
             members = tar.getmembers()
         except tarfile.TarError as exc:
@@ -72,25 +70,17 @@ def _validate_tar(body: bytes, install_dir: Path) -> None:
         normalized = name.replace("\\", "/")
         parts = normalized.split("/")
         if ".." in parts or name.startswith("/") or "\\" in name:
-            raise kb_community.InstallPayloadError(
-                f"community pack body refuses archive traversal: {name!r}"
-            )
+            raise kb_community.InstallPayloadError(f"community pack body refuses archive traversal: {name!r}")
 
         # Symlink that escapes the install directory. Both symbolic and
         # hard links are checked: a hard link can also write outside
         # the staging dir if its target resolves elsewhere.
         if member.issym() or member.islnk():
             linkname = member.linkname or ""
-            target = os.path.normpath(
-                os.path.join(str(install_dir), linkname)
-            )
-            if (
-                target != install_dir_norm
-                and not target.startswith(install_dir_norm + os.sep)
-            ):
+            target = os.path.normpath(os.path.join(str(install_dir), linkname))
+            if target != install_dir_norm and not target.startswith(install_dir_norm + os.sep):
                 raise kb_community.InstallPayloadError(
-                    f"community pack body refuses symlink escape: "
-                    f"{name!r} -> {linkname!r}"
+                    f"community pack body refuses symlink escape: {name!r} -> {linkname!r}"
                 )
 
 
@@ -111,13 +101,9 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
     from krellbot import community as kb_community
 
     if not isinstance(body, (bytes, bytearray)):
-        raise kb_community.InstallPayloadError(
-            f"community pack body must be bytes, got {type(body).__name__}"
-        )
+        raise kb_community.InstallPayloadError(f"community pack body must be bytes, got {type(body).__name__}")
     if len(body) > MAX_BODY_BYTES:
-        raise kb_community.InstallPayloadError(
-            f"community pack body too large: {len(body)} > {MAX_BODY_BYTES}"
-        )
+        raise kb_community.InstallPayloadError(f"community pack body too large: {len(body)} > {MAX_BODY_BYTES}")
 
     install_dir = Path(home) / "packs" / "community"
 
@@ -128,12 +114,7 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
         # Write body to the staged file with restrictive perms (0o600).
         # O_BINARY is a no-op on POSIX but matters on Windows so the
         # bytes on disk match the body verbatim.
-        flags = (
-            os.O_WRONLY
-            | os.O_CREAT
-            | os.O_TRUNC
-            | getattr(os, "O_BINARY", 0)
-        )
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
         fd = os.open(str(staged_file), flags, 0o600)
         try:
             os.write(fd, body)

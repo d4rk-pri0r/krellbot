@@ -308,9 +308,7 @@ def _paper_send_via_outbox(
     reconcile from the venue's snapshot.
     """
     if mode != "paper":
-        raise ModeError(
-            f"paper-send invoked in mode={mode!r}; only paper arms route through the outbox"
-        )
+        raise ModeError(f"paper-send invoked in mode={mode!r}; only paper arms route through the outbox")
     store = OperationalStore(home / "ops.sqlite")
     state = Outbox(store).dispatch(coid, body, send)
     if state == "needs_reconcile":
@@ -350,9 +348,7 @@ def _paper_dispatch_place(
                 pair=str(payload["pair"]),
             )
         elif kind == "exit":
-            captured[0] = venue_obj.place_exit(
-                c, Decimal(str(payload["qty"])), pair=str(payload["pair"])
-            )
+            captured[0] = venue_obj.place_exit(c, Decimal(str(payload["qty"])), pair=str(payload["pair"]))
         elif kind == "stop":
             venue_obj.place_stop(
                 c,
@@ -580,10 +576,7 @@ def tick(
             # "Persistence and pause semantics". `blocked` covers the paid
             # license lapse (entries off, exits on).
             entries_suppressed = armed.entries_paused
-            reconcile_blocked = (
-                armed.mode == "paper"
-                and kb_reservations.should_block_for_reconcile(home)
-            )
+            reconcile_blocked = armed.mode == "paper" and kb_reservations.should_block_for_reconcile(home)
             metadata_refusal: str | None = None
             rules: PairRules | None = None
             try:

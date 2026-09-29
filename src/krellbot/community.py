@@ -125,6 +125,4 @@ def install(
     kb_paths.ensure_layout()
     from krellbot.extensions import install as kb_extensions_install
 
-    return kb_extensions_install.atomic_install(
-        home=home, pack_id=pack_id, body=body
-    )
+    return kb_extensions_install.atomic_install(home=home, pack_id=pack_id, body=body)

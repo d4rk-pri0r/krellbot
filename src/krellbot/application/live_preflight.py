@@ -34,7 +34,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-
 SCHEMA_VERSION = "1"
 
 # Stable refusal codes for the live-preflight closed set.

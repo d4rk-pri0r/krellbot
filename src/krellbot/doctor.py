@@ -282,9 +282,7 @@ def _format_bundle_preview(redacted: dict[str, Any]) -> str:
             continue
         present = info.get("present")
         if present and "trade" in info:
-            lines.append(
-                f"{venue}: present (trade={info.get('trade')}, withdraw={info.get('withdraw')})"
-            )
+            lines.append(f"{venue}: present (trade={info.get('trade')}, withdraw={info.get('withdraw')})")
         else:
             lines.append(f"{venue}: present={present}")
     lines.append(f"service_installed: {redacted.get('service_installed')}")
@@ -298,8 +296,7 @@ def _format_bundle_preview(redacted: dict[str, Any]) -> str:
         if not isinstance(entry, dict):
             continue
         lines.append(
-            f"armed: {entry.get('venue')} {entry.get('pair')} cap={entry.get('cap')} "
-            f"warning={entry.get('warning')}"
+            f"armed: {entry.get('venue')} {entry.get('pair')} cap={entry.get('cap')} warning={entry.get('warning')}"
         )
     lines.append(f"projection_status: {redacted.get('projection_status')}")
     lines.append(f"backup_ok: {redacted.get('backup_ok')}")
@@ -442,12 +439,7 @@ def run(
     # probe ran, so a present key with no probe is fail-closed. A restored
     # engine must not place a new entry until backup_ok is True AND the
     # NS12 projection is match; trading_ready enforces both gates.
-    install_ready = (
-        home_is_dir
-        and home_mode_ok is not False
-        and backend_warn is None
-        and _ui_bind_available()
-    )
+    install_ready = home_is_dir and home_mode_ok is not False and backend_warn is None and _ui_bind_available()
     has_trade_only_key = any(
         info.get("present") and info.get("trade") is True and info.get("withdraw") is False for info in keys.values()
     )

@@ -276,10 +276,14 @@ class PaperService:
         except (OSError, json.JSONDecodeError, KeyError, ValueError, TypeError):
             cap = None
 
-        if cap is not None and cap > Decimal(0) and reservations.would_over_reserve(
-            self._home,
-            new_starting_cash=paper_balance,
-            new_cap=cap,
+        if (
+            cap is not None
+            and cap > Decimal(0)
+            and reservations.would_over_reserve(
+                self._home,
+                new_starting_cash=paper_balance,
+                new_cap=cap,
+            )
         ):
             return self._refusal(
                 CODE_OVER_RESERVED,

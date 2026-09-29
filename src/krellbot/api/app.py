@@ -28,7 +28,8 @@ from krellbot.api.security import (
     is_loopback_host,
     is_loopback_origin,
 )
-from krellbot.application.live_preflight import SandboxTransport, evaluate as live_preflight_evaluate
+from krellbot.application.live_preflight import SandboxTransport
+from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
 from krellbot.application.strategy import (
     DraftNotRunnable,
     RevisionNotFound,

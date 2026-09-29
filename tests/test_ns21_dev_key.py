@@ -104,6 +104,7 @@ def test_verify_signed_source_refuses_dev_marker_in_release(home):
     the guard, this test fails before any signed envelope is constructed.
     """
     import inspect
+
     from krellbot import license
 
     source = inspect.getsource(license.verify_signed)
