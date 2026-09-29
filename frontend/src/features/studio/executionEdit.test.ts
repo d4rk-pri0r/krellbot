@@ -187,3 +187,22 @@ describe("executionEdit.ts module surface", () => {
     expect(source).not.toMatch(/from\s+["']reactflow["']/);
   });
 });
+
+describe("WorkstationShell.tsx source tripwire", () => {
+  const shellSource = readFileSync(
+    resolve(here, "../../shell/WorkstationShell.tsx"),
+    "utf8",
+  );
+
+  it("imports applyExecutionEdit or uses the drafts PUT path for execution edits", () => {
+    const importsExecutionEdit = /from\s+["'][^"']*studio\/executionEdit["']/.test(
+      shellSource,
+    );
+    const usesDraftsPutPath = shellSource.includes("/api/v1/strategies/drafts/");
+    expect(importsExecutionEdit || usesDraftsPutPath).toBe(true);
+  });
+
+  it("still routes layout-only changes through saveEditor", () => {
+    expect(shellSource).toMatch(/saveEditor/);
+  });
+});
