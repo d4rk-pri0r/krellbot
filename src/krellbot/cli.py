@@ -1747,12 +1747,22 @@ def cmd_workstation(args):
     return 0. The server never accepts a non-loopback Host header and
     never opens a socket to a venue.
 
+    The launcher refuses up front when the resolved ``dist`` directory has
+    no ``index.html``: a bare checkout (or a missing build) must not bind
+    a loopback socket and serve ``404 {"code":"shell_not_built"}`` while
+    the operator stares at a dead page. The refusal prints one stderr
+    line containing ``--dist`` and ``npm --prefix frontend run build``
+    and exits 2 without binding. ``_resolve_dist_dir`` is reused so an
+    explicit ``--dist`` pointing at a directory without ``index.html``
+    is refused the same way.
+
     Unknown arguments, including ``--host``, exit 2 and do not start a
     server. A non-integer ``--port`` exits 2. ``--open`` is the only path
     that imports ``webbrowser``.
     """
     import signal
 
+    from krellbot.api.app import _resolve_dist_dir
     from krellbot.api.serve import WorkstationServer
 
     port = 0
@@ -1778,6 +1788,17 @@ def cmd_workstation(args):
             i += 1
             continue
         print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+
+    resolved = _resolve_dist_dir(dist_dir)
+    if not (resolved / "index.html").is_file():
+        print(
+            f"workstation shell is not built: {resolved}/index.html is missing. "
+            f'Run "npm --prefix frontend ci --include=dev && '
+            f'npm --prefix frontend run build" or pass --dist PATH.',
+            file=sys.stderr,
+            flush=True,
+        )
         return 2
 
     server = WorkstationServer(home=kb_paths.home(), port=port, dist_dir=dist_dir)

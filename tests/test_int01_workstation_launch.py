@@ -291,49 +291,41 @@ def test_workstation_serves_index_with_bootstrap_meta(tmp_path):
             pytest.fail(f"workstation did not exit cleanly: rc={proc.returncode} stdout={stdout!r}")
 
 
-# ----- 2. empty dist -> 404 shell_not_built --------------------------------
+# ----- 2. empty dist -> refuse with build hint -----------------------------
 
 
-def test_workstation_missing_index_returns_shell_not_built(tmp_path):
-    """A dist with no ``index.html`` returns 404 with the closed JSON
-    shape; the bootstrap token is absent from both stdout and the body.
+def test_workstation_missing_index_exits_2_with_build_hint(tmp_path):
+    """A dist with no ``index.html`` must refuse before binding a socket.
+
+    The launcher exits 2 within 10 s, prints exactly one stderr line
+    containing both ``--dist`` and ``npm --prefix frontend run build``,
+    and prints no URL on stdout. The bootstrap token is never generated,
+    so the secret-leak check the legacy test ran becomes a "stdout has
+    no URL" check; the static-layer ``shell_not_built`` 404 stays in
+    place as defence in depth.
     """
 
     empty_dist = tmp_path / "empty_dist"
     empty_dist.mkdir()
     home = tmp_path / "home"
-    proc = _spawn_workstation(home, "--port", "0", "--dist", str(empty_dist))
-    try:
-        url = _wait_for_workstation_url(proc, timeout=10.0)
-        port = int(url.rsplit(":", 1)[1].rstrip("/"))
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        try:
-            conn.request("GET", "/", headers={"Host": f"127.0.0.1:{port}"})
-            resp = conn.getresponse()
-            body = resp.read()
-            status = resp.status
-        finally:
-            conn.close()
-        assert status == 404, (status, body[:256])
-        decoded = body.decode("utf-8")
-        assert '"code":"shell_not_built"' in decoded, decoded
-        # No bootstrap meta tag must be injected when index.html is missing.
-        assert "krellbot-bootstrap" not in decoded, decoded
+    env = _sanitized_env(home)
+    result = subprocess.run(
+        [sys.executable, "-m", "krellbot.cli", "workstation", "--port", "0", "--dist", str(empty_dist)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
 
-        # Drain the rest of stdout so we can assert the token was never
-        # printed. The token is a 43-char base64-urlsafe string; it must
-        # not appear anywhere in the captured output.
-    finally:
-        _stop_workstation(proc)
-        try:
-            stdout, _stderr = proc.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            stdout, _stderr = proc.communicate(timeout=2)
-    # Scan the URL line for the bootstrap token format: 43+ base64-urlsafe chars.
-    # The brief guarantees the token is never printed.
-    url_token_match = re.search(r"token=([A-Za-z0-9_\-]{16,})", stdout or "")
-    assert not url_token_match, f"stdout leaked a token: {stdout!r}"
+    stderr_lines = [line for line in result.stderr.splitlines() if line.strip()]
+    assert len(stderr_lines) == 1, f"expected exactly one non-empty stderr line, got {stderr_lines!r}"
+    line = stderr_lines[0]
+    assert "--dist" in line, f"stderr line missing --dist hint: {line!r}"
+    assert "npm --prefix frontend run build" in line, f"stderr line missing build command hint: {line!r}"
+    assert "http://" not in result.stdout, f"refusal still printed a URL: {result.stdout!r}"
 
 
 # ----- 3. unknown arg --host exits 2 --------------------------------------
