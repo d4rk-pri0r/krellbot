@@ -69,17 +69,12 @@ def _shim_binary(tmp_path: Path) -> Path:
     The shim mirrors the production contract: argv tokens after
     the script path are the CLI subcommand and flags, exactly as
     the helper script appends (``["workstation", "--port", "0"]``).
-    The shim ``os.execvp``s ``python -m krellbot.cli <suffix>`` so
-    the test exercises the real ``cmd_workstation`` path, not a
-    mock.
+    The shim stays in-process. ``os.execvp`` drops the stdout pipe on
+    Windows, so the smoke helper never sees the URL.
     """
     shim = tmp_path / "shim-krellbot.py"
     shim.write_text(
-        "#!/usr/bin/env python3\n"
-        "import os, sys\n"
-        "# Forward argv tokens after the script path verbatim to ``krellbot.cli``.\n"
-        "suffix = sys.argv[1:]\n"
-        "os.execvp(sys.executable, [sys.executable, '-m', 'krellbot.cli', *suffix])\n",
+        "import sys\nfrom krellbot.cli import main\nraise SystemExit(main(['krellbot', *sys.argv[1:]]))\n",
         encoding="utf-8",
     )
     shim.chmod(0o755)
