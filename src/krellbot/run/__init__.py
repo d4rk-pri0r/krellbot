@@ -39,10 +39,22 @@ from krellbot import paths as kb_paths
 from krellbot import secrets as kb_secrets
 from krellbot.data.instruments import InstrumentMetadataError
 from krellbot.domain import trace as kb_trace
+from krellbot.execution import reservations as kb_reservations
 from krellbot.pack import evaluate as kb_evaluate
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle as Candle
-from krellbot.venues.base import PairRules
+from krellbot.storage.database import OperationalStore
+from krellbot.storage.outbox import (
+    ModeError,
+    Outbox,
+    audit_late_fill,
+    audit_needs_reconcile,
+    audit_partial_fill,
+    audit_unknown_ack,
+    audited_coids,
+    dispatched_coids,
+)
+from krellbot.venues.base import OrderRef, PairRules
 
 from .lock import TickLock
 
@@ -273,6 +285,119 @@ def set_stop(
     return 0
 
 
+# ---- paper send + fault-fill audit ---------------------------------------
+
+
+def _paper_send_via_outbox(
+    *,
+    home: Path,
+    mode: str,
+    coid: str,
+    body: str,
+    send: Callable[[str, str], None],
+    journal_sink: Callable[[dict], Path] | None = None,
+) -> str:
+    """Commit-then-send a paper order through the Outbox.
+
+    Refuses for non-paper mode by raising ``ModeError``; live arms bypass
+    the Outbox entirely and write no ``paper-<venue>.json``. The Outbox
+    is the boundary that prevents double-sends across restarts: a second
+    call for an already-sent coid returns ``"already_sent"`` without
+    invoking ``send``; a committed-but-not-sent coid returns
+    ``"needs_reconcile"`` and we record the audit so the next tick can
+    reconcile from the venue's snapshot.
+    """
+    if mode != "paper":
+        raise ModeError(
+            f"paper-send invoked in mode={mode!r}; only paper arms route through the outbox"
+        )
+    store = OperationalStore(home / "ops.sqlite")
+    state = Outbox(store).dispatch(coid, body, send)
+    if state == "needs_reconcile":
+        audit_needs_reconcile(store, coid=coid)
+        if journal_sink is not None:
+            try:
+                journal_sink(
+                    {
+                        "kind": "needs_reconcile",
+                        "coid": coid,
+                        "body": body,
+                    }
+                )
+            except (ValueError, TypeError):
+                pass
+    return state
+
+
+def _paper_dispatch_place(
+    *,
+    home: Path,
+    mode: str,
+    coid: str,
+    body: str,
+    venue_obj: Any,
+) -> tuple[str, OrderRef | None]:
+    captured: list[OrderRef | None] = [None]
+
+    def _send(c: str, b: str) -> None:
+        payload = json.loads(b)
+        kind = str(payload.get("kind", ""))
+        if kind == "entry":
+            captured[0] = venue_obj.place_entry_with_stop(
+                c,
+                Decimal(str(payload["qty"])),
+                Decimal(str(payload["stop"])),
+                pair=str(payload["pair"]),
+            )
+        elif kind == "exit":
+            captured[0] = venue_obj.place_exit(
+                c, Decimal(str(payload["qty"])), pair=str(payload["pair"])
+            )
+        elif kind == "stop":
+            venue_obj.place_stop(
+                c,
+                Decimal(str(payload["qty"])),
+                Decimal(str(payload["stop"])),
+                pair=str(payload["pair"]),
+            )
+
+    state = _paper_send_via_outbox(home=home, mode=mode, coid=coid, body=body, send=_send)
+    return state, captured[0]
+
+
+def _audit_paper_fault_fills(*, home: Path, venue_obj: Any) -> None:
+    """Classify venue fills for paper mode and write late_fill / unknown_ack audits.
+
+    A fill whose coid is in the Outbox's dispatched set but matches no
+    currently-open order is a late fill (the position was already exited
+    or the stop was cancelled). A fill whose coid is not in the dispatched
+    set at all is an unknown ack — the venue reported a coid we never
+    generated; we audit it but do not resubmit.
+    """
+    try:
+        snap = venue_obj.snapshot()
+    except (InstrumentMetadataError, RuntimeError, ValueError, OSError):
+        # Metadata refusals and transient venue errors must not crash the
+        # tick; the audit is best-effort and the next tick can re-run it.
+        return
+    store = OperationalStore(home / "ops.sqlite")
+    dispatched = dispatched_coids(store)
+    already = audited_coids(store, kinds=("late_fill", "unknown_ack"))
+    fills = list(getattr(snap, "recent_fills", []) or [])
+    open_coids = {getattr(o, "coid", None) for o in (getattr(snap, "open_orders", []) or [])}
+    for fill in fills:
+        coid = getattr(fill, "coid", None)
+        if not coid or coid in already:
+            continue
+        qty = str(getattr(fill, "qty", "0"))
+        price = str(getattr(fill, "price", "0"))
+        ts_ms = int(getattr(fill, "ts_ms", 0))
+        if coid not in dispatched:
+            audit_unknown_ack(store, coid=coid, qty=qty, price=price, ts_ms=ts_ms)
+        elif coid not in open_coids:
+            audit_late_fill(store, coid=coid, qty=qty, price=price, ts_ms=ts_ms)
+
+
 # ---- tick ----------------------------------------------------------------
 
 
@@ -359,17 +484,34 @@ def tick(
                     bar_ts=bar_ts,
                     intent="stop",
                 )
+                stop_body = json.dumps(
+                    {"kind": "stop", "qty": str(owned), "stop": str(repair), "pair": armed.pair},
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
                 try:
-                    venue_obj.place_stop(stop_coid, owned, repair, pair=armed.pair)
-                    ensure_stop_entry = stop_coid
-                    fill_context[stop_coid] = {
-                        "pack_id": armed.pack_id,
-                        "pack_version": armed.pack_version,
-                        "bar_ts": bar_ts,
-                        "modeled_px": str(repair),
-                        "fee_bps": _fee_bps_for_venue(venue),
-                        "kind": "stop",
-                    }
+                    if armed.mode == "paper":
+                        stop_state, _stop_ref = _paper_dispatch_place(
+                            home=home,
+                            mode=armed.mode,
+                            coid=stop_coid,
+                            body=stop_body,
+                            venue_obj=venue_obj,
+                        )
+                        if stop_state == "sent":
+                            ensure_stop_entry = stop_coid
+                    else:
+                        venue_obj.place_stop(stop_coid, owned, repair, pair=armed.pair)
+                        ensure_stop_entry = stop_coid
+                    if ensure_stop_entry:
+                        fill_context[ensure_stop_entry] = {
+                            "pack_id": armed.pack_id,
+                            "pack_version": armed.pack_version,
+                            "bar_ts": bar_ts,
+                            "modeled_px": str(repair),
+                            "fee_bps": _fee_bps_for_venue(venue),
+                            "kind": "stop",
+                        }
                 except (AttributeError, RuntimeError, ValueError):
                     ensure_stop_failed = True
                     print("ensure_stop failed: stop", flush=True)
@@ -381,8 +523,22 @@ def tick(
                         bar_ts=bar_ts,
                         intent="exit",
                     )
+                    exit_body = json.dumps(
+                        {"kind": "exit", "qty": str(owned), "pair": armed.pair},
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    )
                     try:
-                        venue_obj.place_exit(exit_coid, owned, pair=armed.pair)
+                        if armed.mode == "paper":
+                            _paper_dispatch_place(
+                                home=home,
+                                mode=armed.mode,
+                                coid=exit_coid,
+                                body=exit_body,
+                                venue_obj=venue_obj,
+                            )
+                        else:
+                            venue_obj.place_exit(exit_coid, owned, pair=armed.pair)
                         fill_context[exit_coid] = {
                             "pack_id": armed.pack_id,
                             "pack_version": armed.pack_version,
@@ -424,6 +580,10 @@ def tick(
             # "Persistence and pause semantics". `blocked` covers the paid
             # license lapse (entries off, exits on).
             entries_suppressed = armed.entries_paused
+            reconcile_blocked = (
+                armed.mode == "paper"
+                and kb_reservations.should_block_for_reconcile(home)
+            )
             metadata_refusal: str | None = None
             rules: PairRules | None = None
             try:
@@ -433,6 +593,7 @@ def tick(
             if (
                 not blocked
                 and not entries_suppressed
+                and not reconcile_blocked
                 and target.long
                 and owned == Decimal(0)
                 and target.stop_price is not None
@@ -456,23 +617,87 @@ def tick(
                             Decimal(1).scaleb(-rules.lot_decimals), rounding=ROUND_DOWN
                         )
                         if qty >= rules.ordermin and qty * close_price >= rules.costmin:
-                            try:
-                                venue_obj.place_entry_with_stop(
-                                    entry_coid_for_signal,
-                                    qty,
-                                    target.stop_price,
-                                    pair=armed.pair,
-                                )
-                                entry_qty = qty
-                                owned = qty
-                                fill_context[entry_coid_for_signal] = {
-                                    "pack_id": armed.pack_id,
-                                    "pack_version": armed.pack_version,
-                                    "bar_ts": bar_ts,
-                                    "modeled_px": str(close_price),
-                                    "fee_bps": _fee_bps_for_venue(venue),
+                            entry_body = json.dumps(
+                                {
                                     "kind": "entry",
-                                }
+                                    "qty": str(qty),
+                                    "stop": str(target.stop_price),
+                                    "pair": armed.pair,
+                                },
+                                separators=(",", ":"),
+                                sort_keys=True,
+                            )
+                            try:
+                                if armed.mode == "paper":
+                                    entry_state, entry_ref = _paper_dispatch_place(
+                                        home=home,
+                                        mode=armed.mode,
+                                        coid=entry_coid_for_signal,
+                                        body=entry_body,
+                                        venue_obj=venue_obj,
+                                    )
+                                    if entry_state == "sent":
+                                        ref_filled = getattr(entry_ref, "filled_qty", None)
+                                        filled = ref_filled if isinstance(ref_filled, Decimal) else qty
+                                        if filled < qty:
+                                            owned = filled
+                                            entry_qty = filled
+                                            audit_partial_fill(
+                                                OperationalStore(home / "ops.sqlite"),
+                                                coid=entry_coid_for_signal,
+                                                requested=str(qty),
+                                                filled=str(filled),
+                                            )
+                                        else:
+                                            entry_qty = qty
+                                            owned = qty
+                                        fill_context[entry_coid_for_signal] = {
+                                            "pack_id": armed.pack_id,
+                                            "pack_version": armed.pack_version,
+                                            "bar_ts": bar_ts,
+                                            "modeled_px": str(close_price),
+                                            "fee_bps": _fee_bps_for_venue(venue),
+                                            "kind": "entry",
+                                        }
+                                    elif entry_state == "already_sent":
+                                        # Outbox dedup: a previous tick already
+                                        # placed this coid; the venue snapshot
+                                        # carries the fill. Read the actual
+                                        # filled balance from there.
+                                        snap_dedup = venue_obj.snapshot()
+                                        dedup_fill = next(
+                                            (
+                                                f
+                                                for f in (snap_dedup.recent_fills or [])
+                                                if f.coid == entry_coid_for_signal
+                                            ),
+                                            None,
+                                        )
+                                        if dedup_fill is not None:
+                                            owned = Decimal(str(dedup_fill.qty))
+                                            entry_qty = Decimal(str(dedup_fill.qty))
+                                        else:
+                                            owned = qty
+                                            entry_qty = qty
+                                    # needs_reconcile: helper already audited;
+                                    # do not re-place or set owned.
+                                else:
+                                    venue_obj.place_entry_with_stop(
+                                        entry_coid_for_signal,
+                                        qty,
+                                        target.stop_price,
+                                        pair=armed.pair,
+                                    )
+                                    entry_qty = qty
+                                    owned = qty
+                                    fill_context[entry_coid_for_signal] = {
+                                        "pack_id": armed.pack_id,
+                                        "pack_version": armed.pack_version,
+                                        "bar_ts": bar_ts,
+                                        "modeled_px": str(close_price),
+                                        "fee_bps": _fee_bps_for_venue(venue),
+                                        "kind": "entry",
+                                    }
                             except (RuntimeError, ValueError):
                                 entry_qty = Decimal(0)
             elif target.reason == "exit" and owned > Decimal(0):
@@ -489,18 +714,43 @@ def tick(
                     intent="exit",
                 )
                 close_price = Decimal(str(candles[-1].close))
+                exit_body = json.dumps(
+                    {"kind": "exit", "qty": str(owned), "pair": armed.pair},
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
                 try:
-                    venue_obj.place_exit(exit_coid, owned, pair=armed.pair)
-                    exit_qty = owned
-                    owned = Decimal(0)
-                    fill_context[exit_coid] = {
-                        "pack_id": armed.pack_id,
-                        "pack_version": armed.pack_version,
-                        "bar_ts": bar_ts,
-                        "modeled_px": str(close_price),
-                        "fee_bps": _fee_bps_for_venue(venue),
-                        "kind": "exit",
-                    }
+                    if armed.mode == "paper":
+                        exit_state, _exit_ref = _paper_dispatch_place(
+                            home=home,
+                            mode=armed.mode,
+                            coid=exit_coid,
+                            body=exit_body,
+                            venue_obj=venue_obj,
+                        )
+                        if exit_state == "sent":
+                            exit_qty = owned
+                            owned = Decimal(0)
+                            fill_context[exit_coid] = {
+                                "pack_id": armed.pack_id,
+                                "pack_version": armed.pack_version,
+                                "bar_ts": bar_ts,
+                                "modeled_px": str(close_price),
+                                "fee_bps": _fee_bps_for_venue(venue),
+                                "kind": "exit",
+                            }
+                    else:
+                        venue_obj.place_exit(exit_coid, owned, pair=armed.pair)
+                        exit_qty = owned
+                        owned = Decimal(0)
+                        fill_context[exit_coid] = {
+                            "pack_id": armed.pack_id,
+                            "pack_version": armed.pack_version,
+                            "bar_ts": bar_ts,
+                            "modeled_px": str(close_price),
+                            "fee_bps": _fee_bps_for_venue(venue),
+                            "kind": "exit",
+                        }
                 except (RuntimeError, ValueError):
                     pass
             elif target.long and owned > Decimal(0) and target.stop_price is not None:
@@ -546,6 +796,9 @@ def tick(
                 armed.pack_version = armed.pending_version
                 armed.pending_version = None
         kb_config.save_config(home, config)
+
+        if any(a.mode == "paper" for a in armed_for_venue):
+            _audit_paper_fault_fills(home=home, venue_obj=venue_obj)
 
         _emit_telemetry(
             venue=venue,
