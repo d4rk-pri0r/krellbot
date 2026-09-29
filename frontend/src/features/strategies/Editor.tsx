@@ -18,6 +18,7 @@ export type LoadedRevision = {
 export type EditorProps = {
   client: StrategyClient;
   initial?: LoadedRevision;
+  onRevision?: (summary: DraftSummary, bytes: string) => void;
 };
 
 function parsePack(text: string): Pack | null {
@@ -40,7 +41,7 @@ function readLabel(pack: Pack | null): string {
   return typeof value === "string" ? value : "";
 }
 
-export function Editor({ client, initial }: EditorProps): JSX.Element {
+export function Editor({ client, initial, onRevision }: EditorProps): JSX.Element {
   const initialRawJson = initial?.bytes ?? "";
   const [rawJson, setRawJson] = useState<string>(initialRawJson);
   const [lastSummary, setLastSummary] = useState<DraftSummary | null>(() => {
@@ -105,6 +106,7 @@ export function Editor({ client, initial }: EditorProps): JSX.Element {
       ? await client.edit(parentId, pack)
       : await client.create(pack);
     setLastSummary(summary);
+    onRevision?.(summary, rawJson);
   };
 
   const handleValidate = async (): Promise<void> => {
@@ -113,6 +115,7 @@ export function Editor({ client, initial }: EditorProps): JSX.Element {
     }
     const summary = await client.validate(lastSummary.revision_id);
     setLastSummary(summary);
+    onRevision?.(summary, rawJson);
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {

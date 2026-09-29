@@ -14,7 +14,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("createHttpClient submitRun", () => {
-  it("posts /api/v1/jobs with dataset, fee, and dates at the top level", async () => {
+  it("posts /api/v1/research/jobs with dataset, fee, and dates at the top level", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
         schema_version: "1",
@@ -41,7 +41,7 @@ describe("createHttpClient submitRun", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/jobs");
+    expect(url).toBe("/api/v1/research/jobs");
     expect(init.method).toBe("POST");
     const body = JSON.parse(String(init.body));
     expect(body.kind).toBe("research.backtest");

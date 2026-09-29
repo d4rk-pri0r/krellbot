@@ -125,6 +125,24 @@ describe("ResearchView form", () => {
     ).toMatch(/job-abc/);
   });
 
+  it("a blank pack path sends the saved revision id", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} revisionId="rev-saved" />);
+    expect(screen.getByTestId("research-revision").textContent).toMatch(/rev-saved/);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledWith({
+        datasetPath: "fixtures/synthetic.csv",
+        feeBps: 40,
+        fromMs: 0,
+        toMs: 1000,
+        packPath: "",
+        revisionId: "rev-saved",
+      });
+    });
+  });
+
   it("Cancel calls client.cancelJob with that job id", async () => {
     const client = makeClient();
     render(<ResearchView client={client} />);

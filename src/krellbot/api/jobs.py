@@ -614,6 +614,18 @@ class JobManager:
         from krellbot.application.research import ResearchRequest, ResearchService
 
         pack_path = request_payload.get("pack_path", "")
+        revision_id = request_payload.get("revision_id")
+        if not pack_path and isinstance(revision_id, str) and revision_id:
+            from krellbot.application.strategy import RevisionNotFound, StrategyDraftService
+
+            try:
+                pack_path = str(StrategyDraftService(home=self._home).revision_path(revision_id))
+            except RevisionNotFound:
+                return {
+                    "ok": False,
+                    "code": JOB_ERROR_NOT_FOUND,
+                    "message": "revision not found",
+                }
         venue = request_payload.get("venue") or "kraken"
         pair = request_payload.get("pair")
         timeframe = request_payload.get("timeframe")

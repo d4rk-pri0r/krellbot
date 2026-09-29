@@ -5,6 +5,7 @@ export type { ResearchClient, StoredResult } from "./client";
 
 export type ResearchViewProps = {
   client: ResearchClient;
+  revisionId?: string | null;
 };
 
 type TraceCondition = {
@@ -104,7 +105,10 @@ function readPath(condition: TraceCondition): string {
   return "";
 }
 
-export function ResearchView({ client }: ResearchViewProps): JSX.Element {
+export function ResearchView({
+  client,
+  revisionId,
+}: ResearchViewProps): JSX.Element {
   const [datasetPath, setDatasetPath] = useState("");
   const [packPath, setPackPath] = useState("");
   const [feeBps, setFeeBps] = useState("");
@@ -149,6 +153,9 @@ export function ResearchView({ client }: ResearchViewProps): JSX.Element {
         toMs: readNumberField(toMs),
         packPath: readStringField(packPath),
       };
+      if (revisionId && packPath.trim() === "") {
+        request.revisionId = revisionId;
+      }
       if (holdoutFromFilled) {
         request.holdoutFromMs = Number(holdoutFromTrimmed);
       }
@@ -219,6 +226,11 @@ export function ResearchView({ client }: ResearchViewProps): JSX.Element {
             spellCheck={false}
           />
         </label>
+        {revisionId ? (
+          <p className="kbot-research__revision" data-testid="research-revision">
+            revision: {revisionId}
+          </p>
+        ) : null}
         <label className="kbot-research__field" htmlFor="kbot-research-fee-bps">
           <span className="kbot-research__field-label">Fee basis points</span>
           <input
@@ -341,6 +353,26 @@ export function ResearchView({ client }: ResearchViewProps): JSX.Element {
           onSelectBar={setSelectedBarTs}
           selectedBar={selectedBar}
         />
+      ) : null}
+      {storedResult ? (
+        <button
+          type="button"
+          className="kbot-research__action"
+          onClick={() => {
+            const blob = new Blob([JSON.stringify(storedResult)], {
+              type: "application/json",
+            });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = "research-result.json";
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+          }}
+        >
+          Export result
+        </button>
       ) : null}
       {storedResult ? (
         <pre

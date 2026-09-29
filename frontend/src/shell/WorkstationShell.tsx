@@ -9,6 +9,7 @@ import type { ResearchClient } from "../features/research/client";
 import { Editor } from "../features/strategies/Editor";
 import { createHttpClient } from "../features/strategies/client";
 import type { StrategyClient } from "../features/strategies/client";
+import type { LoadedRevision } from "../features/strategies/Editor";
 import {
   GraphCanvas,
   type GraphCanvasNode,
@@ -91,6 +92,7 @@ export function WorkstationShell({
   const handleAddConnection = useCallback((connection: Connection): void => {
     setConnections((prev) => [...prev, connection]);
   }, []);
+  const [savedRevision, setSavedRevision] = useState<LoadedRevision | null>(null);
   const client = useMemo(
     () => strategyClient ?? createHttpClient(),
     [strategyClient],
@@ -140,9 +142,24 @@ export function WorkstationShell({
             <Inspector />
           </>
         ) : null}
-        {active === "strategies" ? <Editor client={client} /> : null}
+        {active === "strategies" ? (
+          <Editor
+            client={client}
+            initial={savedRevision ?? undefined}
+            onRevision={(summary, bytes) => {
+              setSavedRevision({
+                revision_id: summary.revision_id,
+                state: summary.state,
+                bytes,
+              });
+            }}
+          />
+        ) : null}
         {active === "research" ? (
-          <ResearchView client={research} />
+          <ResearchView
+            client={research}
+            revisionId={savedRevision?.revision_id ?? null}
+          />
         ) : null}
         {active === "studio" ? (
           <>
