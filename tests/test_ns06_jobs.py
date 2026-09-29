@@ -633,6 +633,30 @@ def test_get_job_returns_jobv1_fields(home: Path) -> None:
     assert snap["correlation_id"] == "shape-1"
 
 
+def test_list_jobs_returns_the_submitted_id(home: Path) -> None:
+    from tests.test_ns06_api import asgi_call
+
+    app = _build_app(home, runner=lambda _r: {"ok": True, "result_ref": "r1"})
+    csrf, session = _bootstrap_session(app)
+    _status, submitted = _submit_job(app, csrf, session, {"correlation_id": "list-1"})
+    status, _hdrs, raw, _cookies = asgi_call(
+        app,
+        method="GET",
+        path="/api/v1/jobs",
+        headers=[
+            ("Host", f"127.0.0.1:{TEST_PORT}"),
+            ("Origin", f"http://127.0.0.1:{TEST_PORT}"),
+            ("X-Krellbot-CSRF", csrf),
+            ("Cookie", f"krellbot_session={session}"),
+        ],
+    )
+    body = json.loads(raw) if raw else None
+    assert status == 200
+    assert body is not None
+    assert body["jobs"][0]["id"] == submitted["id"]
+    assert body["jobs"][0]["state"] in {"queued", "running", "succeeded", "failed"}
+
+
 def test_failed_job_returns_closed_code_only(home: Path) -> None:
     """An exception inside the runner becomes a JobV1 with closed ``error``."""
 

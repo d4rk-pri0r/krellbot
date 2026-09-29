@@ -370,6 +370,14 @@ class JobManager:
                 return None
             return internal.snapshot()
 
+    def list_jobs(self) -> list[JobV1]:
+        """Return known jobs, newest first. Does not create a job."""
+
+        with self._lock:
+            jobs = [internal.snapshot() for internal in self._jobs.values()]
+        jobs.reverse()
+        return jobs
+
     def result_for(self, job_id: str) -> dict | None:
         """Return the stored result for ``job_id`` or ``None``.
 

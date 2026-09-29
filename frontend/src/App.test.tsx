@@ -81,12 +81,21 @@ describe("App inspector", () => {
 });
 
 describe("App jobs drawer", () => {
-  it("opens a drawer labelled 'Jobs' with the 'No jobs' empty state", () => {
+  it("opens a drawer labelled 'Jobs' with the 'No jobs' empty state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ jobs: [] }),
+      }),
+    );
     render(<App />);
     expect(screen.queryByRole("dialog", { name: "Jobs" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /jobs/i }));
     const drawer = screen.getByRole("dialog", { name: "Jobs" });
+    expect(await screen.findByText("No jobs")).toBeTruthy();
     expect(drawer.textContent).toMatch(/No jobs/);
+    vi.unstubAllGlobals();
   });
 });
 

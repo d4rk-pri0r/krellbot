@@ -384,6 +384,15 @@ def create_app(
 
         return JSONResponse(job.to_dict(), status_code=200)
 
+    @app.get("/api/v1/jobs")
+    async def list_jobs(request: Request) -> Response:
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+        rows = [job.to_dict() for job in s.jobs.list_jobs()]
+        return JSONResponse({"schema_version": SCHEMA_VERSION, "jobs": rows}, status_code=200)
+
     @app.get("/api/v1/jobs/{job_id}")
     async def get_job(request: Request, job_id: str) -> Response:
         s = _state(request.app)
