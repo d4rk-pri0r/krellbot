@@ -618,4 +618,49 @@ def create_app(
             )
         return JSONResponse(summary, status_code=200)
 
+    @app.get("/api/v1/strategies/drafts/{revision_id}")
+    async def get_draft(request: Request, revision_id: str) -> Response:
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+        summary = _draft_service(s).get(revision_id)
+        if summary is None:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "draft_not_found",
+                    "message": f"draft {revision_id} not found",
+                },
+                status_code=404,
+            )
+        return JSONResponse(summary, status_code=200)
+
+    @app.post("/api/v1/strategies/drafts/{revision_id}/editor")
+    async def save_draft_editor(request: Request, revision_id: str) -> Response:
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict) or not isinstance(payload.get("editor"), dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        try:
+            summary = _draft_service(s).save_editor(revision_id, payload["editor"])
+        except RevisionNotFound:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "draft_not_found",
+                    "message": f"draft {revision_id} not found",
+                },
+                status_code=404,
+            )
+        except (TypeError, ValueError) as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=400)
+        return JSONResponse(summary, status_code=200)
+
     return app

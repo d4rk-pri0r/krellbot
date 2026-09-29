@@ -14,6 +14,7 @@ import {
   GraphCanvas,
   type GraphCanvasNode,
 } from "../features/studio/GraphCanvas";
+import { nodesFromPack } from "../features/studio/packNodes";
 import { redeemBootstrap } from "../session";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
@@ -93,6 +94,22 @@ export function WorkstationShell({
     setConnections((prev) => [...prev, connection]);
   }, []);
   const [savedRevision, setSavedRevision] = useState<LoadedRevision | null>(null);
+  const savedPack = useMemo(() => {
+    if (!savedRevision) {
+      return null;
+    }
+    try {
+      const value = JSON.parse(savedRevision.bytes) as unknown;
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }, [savedRevision]);
+  const studioNodes = (workload ??
+    (savedPack ? nodesFromPack(savedPack) : STUDIO_NODES)) as GraphCanvasNode[];
   const client = useMemo(
     () => strategyClient ?? createHttpClient(),
     [strategyClient],
@@ -164,11 +181,27 @@ export function WorkstationShell({
         {active === "studio" ? (
           <>
             <GraphCanvas
-              nodes={(workload ?? STUDIO_NODES) as GraphCanvasNode[]}
+              nodes={studioNodes}
               edges={[]}
               onAddConnection={handleAddConnection}
             />
-            <p data-testid="studio-node-count">{(workload ?? STUDIO_NODES).length}</p>
+            <p data-testid="studio-node-count">{studioNodes.length}</p>
+            {savedPack && !workload ? (
+              <p data-testid="studio-pack-id">{String(savedPack.id ?? "")}</p>
+            ) : null}
+            {savedRevision && savedPack && !workload ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const layout = Object.fromEntries(
+                    studioNodes.map((node) => [node.id, node.position]),
+                  );
+                  void client.saveEditor?.(savedRevision.revision_id, { layout });
+                }}
+              >
+                Save layout
+              </button>
+            ) : null}
             <p data-testid="studio-connection-count">
               Connections: {connections.length}
             </p>

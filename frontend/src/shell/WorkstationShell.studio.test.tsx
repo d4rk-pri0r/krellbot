@@ -281,3 +281,30 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
     window.history.pushState({}, "", "/");
   });
 });
+
+describe("WorkstationShell — saved strategy studio", () => {
+  it("renders the saved pack instead of the demo nodes", async () => {
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    fireEvent.change(screen.getByLabelText(/raw json/i), {
+      target: {
+        value: JSON.stringify({
+          id: "trend-follow",
+          timeframe: "1h",
+          indicators: { sma20: { fn: "sma" } },
+          entry: ["close", ">", "sma20"],
+          exit: ["close", "<", "sma20"],
+        }),
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByTestId("editor-revision-id");
+    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    expect(screen.getByTestId("studio-pack-id").textContent).toBe("trend-follow");
+    const ids = (getCaptured().nodes ?? []).map((node) => node.id);
+    expect(ids).toContain("entry");
+    expect(ids).toContain("exit");
+    expect(ids).toContain("sma20");
+    expect(ids).not.toContain("n0");
+  });
+});

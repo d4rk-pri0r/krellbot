@@ -21,6 +21,10 @@ export type StrategyClient = {
   edit(parentRevisionId: string, pack: Pack): Promise<DraftSummary>;
   validate(revisionId: string): Promise<DraftSummary>;
   arm(revisionId: string, venue: string, paperBalance: string): Promise<void>;
+  saveEditor?(
+    revisionId: string,
+    editor: Record<string, unknown>,
+  ): Promise<void>;
 };
 
 type RawSummary = {
@@ -132,6 +136,26 @@ export function createHttpClient(): StrategyClient {
       const body = (await response.json()) as { ok?: boolean; code?: string };
       if (body.ok === false) {
         throw new Error(body.code || "arm refused");
+      }
+    },
+    async saveEditor(
+      revisionId: string,
+      editor: Record<string, unknown>,
+    ): Promise<void> {
+      const response = await fetch(
+        `/api/v1/strategies/drafts/${encodeURIComponent(revisionId)}/editor`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Krellbot-CSRF": getCsrf(),
+          },
+          body: JSON.stringify({ editor }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`editor save failed: ${response.status}`);
       }
     },
   };

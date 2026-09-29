@@ -363,10 +363,28 @@ class StrategyDraftService:
 
     # ---- internal ------------------------------------------------------
 
+    def save_editor(self, revision_id: str, editor: dict) -> dict:
+        """Store canvas layout on the revision meta. Pack bytes stay put."""
+
+        if not isinstance(editor, dict):
+            raise TypeError("editor must be a mapping")
+        if not self.exists(revision_id):
+            raise RevisionNotFound(revision_id)
+        strategy_id = self._strategy_for_revision(revision_id)
+        assert strategy_id is not None
+        before = self.canonical_bytes(revision_id)
+        meta = self._read_meta(strategy_id, revision_id)
+        meta["editor"] = editor
+        self._write_meta(strategy_id, revision_id, meta)
+        after = self.canonical_bytes(revision_id)
+        if after != before:
+            raise RuntimeError("editor save rewrote the pack")
+        return self._summary(strategy_id, revision_id)
+
     def _summary(self, strategy_id: str, revision_id: str) -> dict:
         meta = self._read_meta(strategy_id, revision_id)
         pack = self._read_pack(strategy_id, revision_id)
-        return {
+        summary = {
             "schema_version": SCHEMA_VERSION,
             "strategy_id": str(meta.get("strategy_id", strategy_id)),
             "revision_id": revision_id,
@@ -377,3 +395,6 @@ class StrategyDraftService:
             "errors": list(meta.get("errors") or []),
             "pack": pack,
         }
+        if "editor" in meta:
+            summary["editor"] = meta["editor"]
+        return summary
