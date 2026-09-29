@@ -47,9 +47,7 @@ class Outbox:
 
     def _mark_sent(self, client_order_id: str) -> None:
         with self._store.transaction() as conn:
-            rows = conn.execute(
-                "SELECT id, payload FROM ledger WHERE kind = 'outbox'"
-            ).fetchall()
+            rows = conn.execute("SELECT id, payload FROM ledger WHERE kind = 'outbox'").fetchall()
             for row in rows:
                 record = json.loads(row["payload"])
                 if record.get("coid") != client_order_id:

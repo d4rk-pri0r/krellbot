@@ -38,8 +38,5 @@ def test_restart_after_commit_does_not_send_again(tmp_path) -> None:
         raise AssertionError("the send must fail after the commit")
     calls: list[str] = []
     reopened = Outbox(OperationalStore(path))
-    assert (
-        reopened.dispatch("coid-2", "buy", lambda coid, _body: calls.append(coid))
-        == "needs_reconcile"
-    )
+    assert reopened.dispatch("coid-2", "buy", lambda coid, _body: calls.append(coid)) == "needs_reconcile"
     assert calls == []

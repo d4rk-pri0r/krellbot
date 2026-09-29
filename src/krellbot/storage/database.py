@@ -43,9 +43,7 @@ class OperationalStore:
         return conn
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)"
-        )
+        conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)")
         row = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
         current = int(row[0] or 0)
         if current < 1:
