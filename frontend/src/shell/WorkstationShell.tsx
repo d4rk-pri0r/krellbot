@@ -15,6 +15,7 @@ import {
   type GraphCanvasNode,
 } from "../features/studio/GraphCanvas";
 import { nodesFromPack } from "../features/studio/packNodes";
+import { applyExecutionEdit } from "../features/studio/executionEdit";
 import { redeemBootstrap } from "../session";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
@@ -239,23 +240,33 @@ export function WorkstationShell({
               <p data-testid="studio-pack-id">{String(savedPack.id ?? "")}</p>
             ) : null}
             {savedRevision && savedPack && !workload ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const layout = Object.fromEntries(
-                    studioNodes.map((node) => [node.id, node.position]),
-                  );
-                  const edges = connections.flatMap((connection) => {
-                    if (!connection.source || !connection.target) {
-                      return [];
-                    }
-                    return [{ source: connection.source, target: connection.target }];
-                  });
-                  void client.saveEditor?.(savedRevision.revision_id, { layout, edges });
-                }}
-              >
-                Save layout
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const layout = Object.fromEntries(
+                      studioNodes.map((node) => [node.id, node.position]),
+                    );
+                    const edges = connections.flatMap((connection) => {
+                      if (!connection.source || !connection.target) {
+                        return [];
+                      }
+                      return [{ source: connection.source, target: connection.target }];
+                    });
+                    void client.saveEditor?.(savedRevision.revision_id, { layout, edges });
+                  }}
+                >
+                  Save layout
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void applyExecutionEdit(savedRevision.revision_id, savedPack);
+                  }}
+                >
+                  Save execution
+                </button>
+              </>
             ) : null}
             <p data-testid="studio-connection-count">
               Connections: {connections.length}
