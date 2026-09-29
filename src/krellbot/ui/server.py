@@ -284,7 +284,7 @@ def _view_snapshot(home: Path) -> dict:
         # curves, no paid-catalog reads. Legacy packs render with
         # ``runnable: false`` so the dashboard's arm affordance stays
         # hidden for them. The arm route refuses them with 403 anyway.
-        "packs": ui_packs.list_installed(home),
+        "packs": ui_packs.dashboard_packs(home),
         # ---- command-center additions ----
         # ``as_of`` is the dashboard render time. Pages do not claim a
         # live probe happened on GET; the as-of timestamp is the only
