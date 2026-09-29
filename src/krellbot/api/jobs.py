@@ -648,6 +648,8 @@ class JobManager:
             kwargs["holdout_from_ms"] = holdout_from_ms_raw
         if "holdout_to_ms" in request_payload:
             kwargs["holdout_to_ms"] = holdout_to_ms_raw
+        if "nodes" in request_payload:
+            kwargs["nodes"] = request_payload.get("nodes")
         request = ResearchRequest(**kwargs)
         service = ResearchService(home=self._home)
         result = service.run(request)

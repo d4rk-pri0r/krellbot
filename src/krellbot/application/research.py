@@ -42,6 +42,8 @@ from krellbot.domain.trace import shared_decision_trace
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle
 from krellbot.research.holdout import HoldoutOverlap, assert_disjoint
+from krellbot.strategy_ir.availability import FutureData
+from krellbot.strategy_ir.v1 import prepare_v1
 
 SCHEMA_VERSION = "1"
 
@@ -58,6 +60,8 @@ CODE_NO_DATASET_AND_NO_FETCH = "no_dataset_and_no_fetch"
 CODE_INVALID_DATASET = "invalid_dataset"
 CODE_INVALID_HOLDOUT = "invalid_holdout"
 CODE_HOLDOUT_OVERLAP = "holdout_overlap"
+CODE_FUTURE_DATA = "future_data"
+CODE_INVALID_NODES = "invalid_nodes"
 
 
 FetchFn = Callable[[str, str, str], list[Candle]]
@@ -85,6 +89,7 @@ class ResearchRequest:
     holdout_from_ms: int | None = None
     holdout_to_ms: int | None = None
     allow_gaps: bool = False
+    nodes: list | None = None
 
 
 @dataclass(frozen=True)
@@ -272,17 +277,54 @@ class ResearchService:
                     refusal=refusal,
                 )
 
-        bt = Backtester(
-            pack,
-            candles,
-            starting_cash=Decimal(request.starting_cash),
-            fee_bps=fee_bps,
-            slippage_bps=slippage_bps,
-            slippage_mult=slippage_mult,
-        )
-        records = bt.run()
+        nodes = request.nodes if request.nodes is not None else []
+        if not isinstance(nodes, list):
+            refusal = {
+                "code": CODE_INVALID_NODES,
+                "message": "nodes must be a list when present",
+            }
+            return ResearchResult(
+                ok=False,
+                legacy_receipt=None,
+                detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
+                refusal=refusal,
+            )
+        decision_bar = len(candles) - 1
+        evaluated: dict = {}
+        runners: list[Backtester] = []
+
+        def _evaluate(stripped: dict) -> list:
+            evaluated["pack"] = stripped
+            runner = Backtester(
+                stripped,
+                candles,
+                starting_cash=Decimal(request.starting_cash),
+                fee_bps=fee_bps,
+                slippage_bps=slippage_bps,
+                slippage_mult=slippage_mult,
+            )
+            runners.append(runner)
+            return runner.run()
+
+        try:
+            records = prepare_v1(pack, nodes, decision_bar, _evaluate)
+        except FutureData as exc:
+            refusal = {
+                "code": CODE_FUTURE_DATA,
+                "message": str(exc),
+                "node_id": exc.node_id,
+                "index": exc.index,
+            }
+            return ResearchResult(
+                ok=False,
+                legacy_receipt=None,
+                detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
+                refusal=refusal,
+            )
+        bt = runners[0]
+        receipt_pack = evaluated["pack"]
         receipt = build_receipt(
-            pack=pack,
+            pack=receipt_pack,
             records=records,
             trade_count=bt.trade_count,
             data_manifest_sha256=manifest_sha,
@@ -295,7 +337,7 @@ class ResearchService:
             starting_cash=Decimal(request.starting_cash),
         )
 
-        trace = self._build_trace(pack, candles)
+        trace = self._build_trace(receipt_pack, candles)
         detail = {
             "schema_version": SCHEMA_VERSION,
             "venue": request.venue,
