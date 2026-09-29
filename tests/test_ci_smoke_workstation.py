@@ -71,10 +71,28 @@ def _shim_binary(tmp_path: Path) -> Path:
     the helper script appends (``["workstation", "--port", "0"]``).
     The shim stays in-process. ``os.execvp`` drops the stdout pipe on
     Windows, so the smoke helper never sees the URL.
+
+    The shim also writes a minimal ``frontend/dist/index.html`` next
+    to itself and forwards ``--dist`` to the CLI. The in-tree
+    checkout has no bundled dist, and the new M1R-T2 refusal in
+    ``cmd_workstation`` exits 2 with a build hint when ``index.html``
+    is missing — so a bare shim can no longer reach the URL path the
+    helper probes. The brief's note in the gates section requires
+    tests that spawn ``workstation`` without ``--dist`` to build
+    their own dist in tmp; this shim satisfies that by self-bundling
+    a dist the launcher can resolve.
     """
     shim = tmp_path / "shim-krellbot.py"
     shim.write_text(
-        "import sys\nfrom krellbot.cli import main\nraise SystemExit(main(['krellbot', *sys.argv[1:]]))\n",
+        "import sys\n"
+        "from pathlib import Path\n"
+        "_dist = Path(__file__).resolve().parent / 'dist'\n"
+        "_dist.mkdir(parents=True, exist_ok=True)\n"
+        "(_dist / 'index.html').write_text("
+        "'<!doctype html><html><head></head><body>ok</body></html>', "
+        "encoding='utf-8')\n"
+        "from krellbot.cli import main\n"
+        "raise SystemExit(main(['krellbot', 'workstation', '--dist', str(_dist), *sys.argv[2:]]))\n",
         encoding="utf-8",
     )
     shim.chmod(0o755)
