@@ -1,4 +1,11 @@
-import { useState, type JSX } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type JSX,
+} from "react";
 import type { ResearchClient, StoredResult } from "./client";
 
 export type { ResearchClient, StoredResult } from "./client";
@@ -20,6 +27,10 @@ type TraceBar = {
 };
 
 const SYNTHETIC_FIXTURE_PATH = "fixtures/synthetic.csv";
+
+const TRACE_ROW_HEIGHT = 24;
+const TRACE_OVERSCAN_ROWS = 8;
+const TRACE_VIEWPORT_HEIGHT = 480;
 
 function readNumberField(value: string): number {
   const trimmed = value.trim();
@@ -55,9 +66,49 @@ function formatMetric(value: unknown): string {
 }
 
 function readTradeCount(receipt: Record<string, unknown>): string {
+  // Real engine receipts expose the count under ``metrics.trade_count``;
+  // unit tests and the locked CLI receipt may also expose a top-level
+  // ``trades`` array or a top-level ``trade_count`` number. Read all
+  // three shapes so the UI displays a real value for both the
+  // production receipt and the test fixture.
   const trades = receipt.trades;
   if (Array.isArray(trades)) {
     return String(trades.length);
+  }
+  const topLevelCount = receipt.trade_count;
+  if (typeof topLevelCount === "number" && Number.isFinite(topLevelCount)) {
+    return String(topLevelCount);
+  }
+  const metrics = receipt.metrics;
+  if (metrics && typeof metrics === "object" && !Array.isArray(metrics)) {
+    const metricCount = (metrics as Record<string, unknown>).trade_count;
+    if (typeof metricCount === "number" && Number.isFinite(metricCount)) {
+      return String(metricCount);
+    }
+  }
+  return "unavailable";
+}
+
+function readEquity(receipt: Record<string, unknown>): string {
+  // Production receipts expose equity under ``metrics.total_return_pct``.
+  // Older unit-test fixtures use a top-level ``equity`` field. Read
+  // both so the rendered text reflects whichever shape arrives.
+  const topLevelEquity = receipt.equity;
+  if (typeof topLevelEquity === "number" && Number.isFinite(topLevelEquity)) {
+    return String(topLevelEquity);
+  }
+  if (typeof topLevelEquity === "string") {
+    return topLevelEquity;
+  }
+  const metrics = receipt.metrics;
+  if (metrics && typeof metrics === "object" && !Array.isArray(metrics)) {
+    const metricEquity = (metrics as Record<string, unknown>).total_return_pct;
+    if (typeof metricEquity === "number" && Number.isFinite(metricEquity)) {
+      return String(metricEquity);
+    }
+    if (typeof metricEquity === "string") {
+      return metricEquity;
+    }
   }
   return "unavailable";
 }
@@ -117,6 +168,7 @@ export function ResearchView({
   const [holdoutFrom, setHoldoutFrom] = useState("");
   const [holdoutTo, setHoldoutTo] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
+  const jobIdRef = useRef<string | null>(null);
   const [storedResult, setStoredResult] = useState<StoredResult | null>(null);
   const [selectedBarTs, setSelectedBarTs] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -164,8 +216,38 @@ export function ResearchView({
       }
       const summary = await client.submitRun(request);
       setJobId(summary.id);
+      jobIdRef.current = summary.id;
+      // Poll for the result so the UI auto-populates when the job
+      // succeeds. The brief's e2e path waits for ``research-result``
+      // without a manual Load result click; the original Load button
+      // is preserved for users who want to refetch.
+      void pollForResult(summary.id);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const pollForResult = async (targetJobId: string): Promise<void> => {
+    const intervalMs = 250;
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < deadline) {
+      // A new Run since this poll started: hand off to the new poll.
+      if (jobIdRef.current !== targetJobId) {
+        return;
+      }
+      try {
+        const result = await client.getResult(targetJobId);
+        if (result !== null) {
+          setStoredResult(result);
+          return;
+        }
+      } catch {
+        // The job may be in a transitional state (404); retry.
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    if (jobIdRef.current === targetJobId) {
+      setSubmitError("research job did not produce a result before timeout");
     }
   };
 
@@ -209,7 +291,9 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={datasetPath}
-            onChange={(event) => setDatasetPath(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setDatasetPath(event.target.value)
+            }
             autoComplete="off"
             spellCheck={false}
           />
@@ -221,7 +305,9 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={packPath}
-            onChange={(event) => setPackPath(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setPackPath(event.target.value)
+            }
             autoComplete="off"
             spellCheck={false}
           />
@@ -238,7 +324,9 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={feeBps}
-            onChange={(event) => setFeeBps(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setFeeBps(event.target.value)
+            }
             autoComplete="off"
             spellCheck={false}
           />
@@ -250,7 +338,9 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={fromMs}
-            onChange={(event) => setFromMs(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setFromMs(event.target.value)
+            }
             autoComplete="off"
             spellCheck={false}
           />
@@ -262,7 +352,9 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={toMs}
-            onChange={(event) => setToMs(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setToMs(event.target.value)
+            }
             autoComplete="off"
             spellCheck={false}
           />
@@ -274,7 +366,9 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={holdoutFrom}
-            onChange={(event) => setHoldoutFrom(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setHoldoutFrom(event.target.value)
+            }
             autoComplete="off"
             spellCheck={false}
           />
@@ -286,7 +380,9 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={holdoutTo}
-            onChange={(event) => setHoldoutTo(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setHoldoutTo(event.target.value)
+            }
             autoComplete="off"
             spellCheck={false}
           />
@@ -410,7 +506,7 @@ function ResultPanel({
             className="kbot-research__metric-value"
             data-testid="research-result-equity"
           >
-            {formatMetric(receipt.equity)}
+            {readEquity(receipt)}
           </dd>
         </div>
         <div className="kbot-research__metric">
@@ -452,26 +548,11 @@ function ResultPanel({
       </dl>
       <div className="kbot-research__trace" data-testid="research-trace">
         <h2 className="kbot-research__trace-title">Trace</h2>
-        <div className="kbot-research__trace-buttons">
-          {trace.map((bar, index) => {
-            const label = readBarTs(bar, index);
-            const active = label === selectedBarTs;
-            return (
-              <button
-                key={`bar-${label}`}
-                type="button"
-                className={
-                  "kbot-research__trace-button" +
-                  (active ? " kbot-research__trace-button--active" : "")
-                }
-                aria-pressed={active}
-                onClick={() => onSelectBar(label)}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        <TraceList
+          trace={trace}
+          selectedBarTs={selectedBarTs}
+          onSelectBar={onSelectBar}
+        />
         {selectedBar ? (
           <div
             className="kbot-research__bar-detail"
@@ -494,5 +575,138 @@ function ResultPanel({
         ) : null}
       </div>
     </div>
+  );
+}
+
+type TraceListProps = {
+  trace: TraceBar[];
+  selectedBarTs: string | null;
+  onSelectBar: (barTs: string) => void;
+};
+
+/**
+ * Windowed trace list: a fixed-height scroll container with a tall
+ * spacer behind a small slice of visible rows. The scroll handler
+ * recomputes the start/end indices and React re-mounts only the
+ * mounted rows; everything outside the slice is unmounted. No new
+ * runtime dependency is required.
+ */
+function TraceList({
+  trace,
+  selectedBarTs,
+  onSelectBar,
+}: TraceListProps): JSX.Element {
+  const total = trace.length;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(TRACE_VIEWPORT_HEIGHT);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) {
+      return;
+    }
+    const update = (): void => {
+      setViewportHeight(node.clientHeight || TRACE_VIEWPORT_HEIGHT);
+    };
+    update();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(update);
+      observer.observe(node);
+      return () => {
+        observer.disconnect();
+      };
+    }
+    return undefined;
+  }, []);
+
+  const visibleCount = Math.max(
+    1,
+    Math.ceil(viewportHeight / TRACE_ROW_HEIGHT) + 1,
+  );
+  const startIndex = Math.max(
+    0,
+    Math.floor(scrollTop / TRACE_ROW_HEIGHT) - TRACE_OVERSCAN_ROWS,
+  );
+  const endIndex = Math.min(
+    total,
+    startIndex + visibleCount + TRACE_OVERSCAN_ROWS * 2,
+  );
+  const slice = useMemo(
+    () => trace.slice(startIndex, endIndex),
+    [trace, startIndex, endIndex],
+  );
+
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>): void => {
+    setScrollTop(event.currentTarget.scrollTop);
+  };
+
+  const totalHeight = total * TRACE_ROW_HEIGHT;
+
+  return (
+    <>
+      <p className="kbot-research__trace-count" data-testid="research-trace-count">
+        {total}
+      </p>
+      <div
+        className="kbot-research__trace-scroll"
+        data-testid="research-trace-scroll"
+        ref={scrollRef}
+        onScroll={handleScroll}
+        style={{
+          height: TRACE_VIEWPORT_HEIGHT,
+          overflowY: "auto",
+          border: "1px solid var(--kbot-border, #ccc)",
+          position: "relative",
+        }}
+      >
+        <div
+          aria-hidden="true"
+          style={{
+            height: totalHeight,
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: startIndex * TRACE_ROW_HEIGHT,
+            left: 0,
+            right: 0,
+          }}
+        >
+          {slice.map((bar, offset) => {
+            const index = startIndex + offset;
+            const label = readBarTs(bar, index);
+            const active = label === selectedBarTs;
+            return (
+              <button
+                key={`bar-${label}-${index}`}
+                type="button"
+                className={
+                  "kbot-research__trace-button" +
+                  (active ? " kbot-research__trace-button--active" : "")
+                }
+                aria-pressed={active}
+                onClick={() => onSelectBar(label)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  height: TRACE_ROW_HEIGHT,
+                  textAlign: "left",
+                  padding: "0 8px",
+                  border: "none",
+                  background: active ? "#eef" : "transparent",
+                  cursor: "pointer",
+                  boxSizing: "border-box",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }

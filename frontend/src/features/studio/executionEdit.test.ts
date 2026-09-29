@@ -45,7 +45,10 @@ beforeEach(async () => {
     if (url.endsWith("/api/v1/session/bootstrap")) {
       return mockJsonResponse({ csrf_token: csrfToken });
     }
-    return mockJsonResponse({ pack: { id: "lane-a-strategy" } });
+    return mockJsonResponse({
+      revision_id: "lane-a-strategy",
+      pack: { id: "lane-a-strategy" },
+    });
   });
   vi.stubGlobal("fetch", fetchMock);
   await redeemBootstrap("test-bootstrap-token");
@@ -115,12 +118,14 @@ describe("applyExecutionEdit: request shape", () => {
 });
 
 describe("applyExecutionEdit: response handling", () => {
-  it("returns the pack from the server response", async () => {
+  it("returns the revision id and pack from the server response", async () => {
     const serverPack = { id: "lane-a-strategy", entry: ["a", "b"] };
-    fetchMock.mockResolvedValueOnce(mockJsonResponse({ pack: serverPack }));
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse({ revision_id: "rev-new-7", pack: serverPack }),
+    );
 
     const result = await applyExecutionEdit("rev-7", { id: "x" });
-    expect(result).toEqual(serverPack);
+    expect(result).toEqual({ revisionId: "rev-new-7", pack: serverPack });
   });
 
   it("throws when the server returns a non-2xx status", async () => {
@@ -130,10 +135,10 @@ describe("applyExecutionEdit: response handling", () => {
     );
   });
 
-  it("returns an empty object when the server omits the pack field", async () => {
+  it("returns an empty pack and empty revision id when the server omits both", async () => {
     fetchMock.mockResolvedValueOnce(mockJsonResponse({}));
     const result = await applyExecutionEdit("rev-9", { id: "x" });
-    expect(result).toEqual({});
+    expect(result).toEqual({ revisionId: "", pack: {} });
   });
 });
 

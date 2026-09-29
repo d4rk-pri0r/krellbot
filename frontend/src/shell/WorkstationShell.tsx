@@ -16,6 +16,7 @@ import {
 } from "../features/studio/GraphCanvas";
 import { nodesFromPack } from "../features/studio/packNodes";
 import { applyExecutionEdit } from "../features/studio/executionEdit";
+import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
 import { redeemBootstrap } from "../session";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
@@ -24,13 +25,25 @@ import { Navigation, type View } from "./Navigation";
 import { StatusStrip } from "./StatusStrip";
 
 const BOOTSTRAP_META = "krellbot-bootstrap";
+const WORKLOAD_NODE_COUNT = 200;
+const STUDIO_SAVE_ERROR_MESSAGE =
+  "save execution failed: see server response for status code";
 
-function workloadNodes(search: string): ReadonlyArray<GraphCanvasNode> | null {
+type SearchParams = {
+  workload: string | null;
+  packParam: string | null;
+};
+
+function parseSearch(search: string): SearchParams {
   const params = new URLSearchParams(search);
-  if (params.get("workload") !== "200") {
-    return null;
-  }
-  return Array.from({ length: 200 }, (_, index) => ({
+  return {
+    workload: params.get("workload"),
+    packParam: params.get("pack"),
+  };
+}
+
+function syntheticWorkloadNodes(): ReadonlyArray<GraphCanvasNode> {
+  return Array.from({ length: WORKLOAD_NODE_COUNT }, (_, index) => ({
     id: `w${index}`,
     type: "default",
     position: { x: (index % 20) * 40, y: Math.floor(index / 20) * 40 },
@@ -38,7 +51,11 @@ function workloadNodes(search: string): ReadonlyArray<GraphCanvasNode> | null {
   }));
 }
 
-const STUDIO_NODES: ReadonlyArray<GraphCanvasNode> = [
+function workloadOnlyNodes(): ReadonlyArray<GraphCanvasNode> {
+  return syntheticWorkloadNodes();
+}
+
+const STUDIO_DEMO_NODES: ReadonlyArray<GraphCanvasNode> = [
   {
     id: "n0",
     type: "default",
@@ -86,15 +103,43 @@ export function WorkstationShell({
   strategyClient,
 }: WorkstationShellProps = {}): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const workload = workloadNodes(
+  const [searchRevision, setSearchRevision] = useState(0);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onPopState = (): void => {
+      setSearchRevision((value) => value + 1);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  const { workload, packParam } = parseSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
-  const [active, setActive] = useState<View>(workload ? "studio" : "workstation");
+  // ``searchRevision`` is consumed to make this hook reactive to
+  // popstate events.
+  void searchRevision;
+  // ``plainWorkload`` = the synthetic-only 200-node canvas (no pack
+  // attached). ``workloadWithPack`` = the 200-node canvas layered on
+  // top of a saved pack; editing still operates on the real pack.
+  const plainWorkload = workload === "200" && packParam === null;
+  const workloadWithPack = workload === "200" && packParam === "1";
+  const initialActive: View =
+    plainWorkload || workloadWithPack ? "studio" : "workstation";
+  const [active, setActive] = useState<View>(initialActive);
   const [connections, setConnections] = useState<ReadonlyArray<Connection>>([]);
   const handleAddConnection = useCallback((connection: Connection): void => {
     setConnections((prev) => [...prev, connection]);
   }, []);
   const [savedRevision, setSavedRevision] = useState<LoadedRevision | null>(null);
+  const [editedPack, setEditedPack] = useState<Record<string, unknown> | null>(
+    null,
+  );
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [studioRevisionId, setStudioRevisionId] = useState<string | null>(null);
+  const [studioSaveError, setStudioSaveError] = useState<string | null>(null);
+
   const savedPack = useMemo(() => {
     if (!savedRevision) {
       return null;
@@ -109,8 +154,53 @@ export function WorkstationShell({
     }
     return null;
   }, [savedRevision]);
-  const studioNodes = (workload ??
-    (savedPack ? nodesFromPack(savedPack) : STUDIO_NODES)) as GraphCanvasNode[];
+
+  const workingPack = useMemo<Record<string, unknown> | null>(() => {
+    if (editedPack) {
+      return editedPack;
+    }
+    return savedPack;
+  }, [editedPack, savedPack]);
+
+  const handleIndicatorChange = useCallback(
+    (nextPack: Record<string, unknown>): void => {
+      setEditedPack(nextPack);
+    },
+    [],
+  );
+
+  const studioNodes = useMemo<ReadonlyArray<GraphCanvasNode>>(() => {
+    if (workloadWithPack && workingPack) {
+      const packNodes = nodesFromPack(workingPack);
+      const seen = new Set(packNodes.map((node) => node.id));
+      const filler: GraphCanvasNode[] = [];
+      let index = 0;
+      while (packNodes.length + filler.length < WORKLOAD_NODE_COUNT) {
+        const id = `w${index}`;
+        if (!seen.has(id)) {
+          filler.push({
+            id,
+            type: "default",
+            position: {
+              x: ((index + packNodes.length) % 20) * 40,
+              y: Math.floor((index + packNodes.length) / 20) * 40,
+            },
+            data: { timeframe: index % 2 === 0 ? "1h" : "4h" },
+          });
+        }
+        index += 1;
+      }
+      return [...packNodes, ...filler];
+    }
+    if (plainWorkload) {
+      return workloadOnlyNodes();
+    }
+    if (workingPack) {
+      return nodesFromPack(workingPack);
+    }
+    return STUDIO_DEMO_NODES;
+  }, [workloadWithPack, plainWorkload, workingPack]);
+
   const client = useMemo(
     () => strategyClient ?? createHttpClient(),
     [strategyClient],
@@ -162,15 +252,35 @@ export function WorkstationShell({
     [paperClient],
   );
 
+  const [bootstrapDone, setBootstrapDone] = useState(false);
+
   useEffect(() => {
     const token = consumeBootstrapToken();
-    if (token) {
-      void redeemBootstrap(token);
+    if (!token) {
+      setBootstrapDone(true);
+      return;
     }
+    let cancelled = false;
+    void redeemBootstrap(token)
+      .then(() => {
+        if (!cancelled) {
+          setBootstrapDone(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          // Bootstrap failed: still mark "done" so the UI mounts;
+          // the next state-change request will surface the error.
+          setBootstrapDone(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
+    const onKey = (event: KeyboardEvent): void => {
       if (
         event.key.toLowerCase() === "k" &&
         (event.ctrlKey || event.metaKey)
@@ -183,8 +293,55 @@ export function WorkstationShell({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const studioHasPack = !!savedPack;
+  // Studio controls (inspector + save buttons) are visible whenever
+  // a saved pack is loaded. ``plainWorkload`` (no pack param) is the
+  // synthetic-only mode and never shows them.
+  const showStudioControls = studioHasPack && !plainWorkload;
+
+  const handleSaveExecution = useCallback(async (): Promise<void> => {
+    setStudioSaveError(null);
+    if (!savedRevision || !workingPack) {
+      return;
+    }
+    try {
+      const outcome = await applyExecutionEdit(
+        savedRevision.revision_id,
+        workingPack,
+      );
+      if (!outcome.revisionId) {
+        setStudioSaveError(STUDIO_SAVE_ERROR_MESSAGE);
+        return;
+      }
+      setEditedPack(outcome.pack);
+      const nextRevision: LoadedRevision = {
+        revision_id: outcome.revisionId,
+        state: "draft",
+        bytes: JSON.stringify(outcome.pack),
+      };
+      setSavedRevision(nextRevision);
+      setStudioRevisionId(outcome.revisionId);
+      try {
+        const validated = await client.validate(outcome.revisionId);
+        const validatedRevision: LoadedRevision = {
+          revision_id: validated.revision_id,
+          state: validated.state,
+          bytes: JSON.stringify(validated.pack ?? outcome.pack),
+        };
+        setSavedRevision(validatedRevision);
+      } catch {
+        // validation is best-effort here; the new revision id is
+        // surfaced either way so the e2e can drive the assertion.
+      }
+    } catch (err) {
+      setStudioSaveError(
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }, [savedRevision, workingPack, client]);
+
   return (
-    <div className="kbot-shell">
+    <div className="kbot-shell" data-testid="kbot-shell" data-bootstrap-done={bootstrapDone ? "1" : "0"}>
       <div className="kbot-shell__topbar">
         <StatusStrip />
         <JobsDrawer />
@@ -208,6 +365,7 @@ export function WorkstationShell({
                 state: summary.state,
                 bytes,
               });
+              setEditedPack(null);
             }}
           />
         ) : null}
@@ -220,7 +378,7 @@ export function WorkstationShell({
         {active === "studio" ? (
           <>
             <GraphCanvas
-              nodes={studioNodes}
+              nodes={studioNodes as GraphCanvasNode[]}
               edges={connections.flatMap((connection, index) => {
                 if (!connection.source || !connection.target) {
                   return [];
@@ -234,13 +392,46 @@ export function WorkstationShell({
                 ];
               })}
               onAddConnection={handleAddConnection}
+              onSelectNode={setSelectedNodeId}
+              nodeTypes={{
+                default: ({ data, id }) => (
+                  <div
+                    data-testid={`studio-node-${id}`}
+                    data-timeframe={String(
+                      (data as { timeframe?: string } | undefined)?.timeframe ?? "",
+                    )}
+                    style={{ padding: 4 }}
+                  >
+                    {String(id)}
+                  </div>
+                ),
+              }}
             />
             <p data-testid="studio-node-count">{studioNodes.length}</p>
-            {savedPack && !workload ? (
+            {savedPack && !plainWorkload ? (
               <p data-testid="studio-pack-id">{String(savedPack.id ?? "")}</p>
             ) : null}
-            {savedRevision && savedPack && !workload ? (
+            {studioRevisionId ? (
+              <p data-testid="studio-revision-id">
+                revision: {studioRevisionId}
+              </p>
+            ) : null}
+            {studioSaveError ? (
+              <p
+                className="kbot-shell__error"
+                role="alert"
+                data-testid="studio-save-error"
+              >
+                {studioSaveError}
+              </p>
+            ) : null}
+            {showStudioControls ? (
               <>
+                <StudioNodeInspector
+                  nodeId={selectedNodeId}
+                  pack={workingPack ?? savedPack ?? {}}
+                  onChange={handleIndicatorChange}
+                />
                 <button
                   type="button"
                   onClick={() => {
@@ -253,15 +444,16 @@ export function WorkstationShell({
                       }
                       return [{ source: connection.source, target: connection.target }];
                     });
-                    void client.saveEditor?.(savedRevision.revision_id, { layout, edges });
+                    void client.saveEditor?.(savedRevision!.revision_id, { layout, edges });
                   }}
                 >
                   Save layout
                 </button>
                 <button
                   type="button"
+                  data-testid="studio-save-execution"
                   onClick={() => {
-                    void applyExecutionEdit(savedRevision.revision_id, savedPack);
+                    void handleSaveExecution();
                   }}
                 >
                   Save execution
@@ -270,6 +462,9 @@ export function WorkstationShell({
             ) : null}
             <p data-testid="studio-connection-count">
               Connections: {connections.length}
+            </p>
+            <p data-testid="studio-selected-node">
+              Selected: {selectedNodeId ?? "(none)"}
             </p>
           </>
         ) : null}

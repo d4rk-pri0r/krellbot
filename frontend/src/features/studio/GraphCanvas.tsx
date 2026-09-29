@@ -5,6 +5,7 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type NodeMouseHandler,
   type NodeTypes,
   type OnConnect,
 } from "@xyflow/react";
@@ -22,6 +23,7 @@ export type GraphCanvasProps = {
   nodes: GraphCanvasNode[];
   edges?: Edge[];
   onAddConnection: (connection: Connection) => void;
+  onSelectNode?: (nodeId: string) => void;
   nodeTypes?: NodeTypes;
   fitView?: boolean;
 };
@@ -31,6 +33,7 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
     nodes,
     edges = [],
     onAddConnection,
+    onSelectNode,
     nodeTypes,
     fitView = false,
   } = props;
@@ -54,12 +57,19 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
     setRefusal(verdict);
   };
 
+  const handleNodeClick: NodeMouseHandler = (_event, node) => {
+    if (onSelectNode) {
+      onSelectNode(String(node.id));
+    }
+  };
+
   return (
     <div data-testid="graph-canvas">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onConnect={handleConnect}
+        onNodeClick={handleNodeClick}
         nodeTypes={nodeTypes}
         nodesConnectable
         edgesFocusable={false}
