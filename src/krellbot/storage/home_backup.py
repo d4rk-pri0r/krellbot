@@ -326,7 +326,15 @@ def restore(archive: Path, home: Path) -> dict:
         else:
             raise BackupError("home_not_empty", f"target home exists and is not a directory: {home}")
 
+    manifest: dict | None = None
     with tempfile.TemporaryDirectory(prefix="krellbot-restore-") as td:
+        # Build the restored home inside the tempdir (call it ``staged``),
+        # then atomic-rename it into place. This avoids a separate
+        # staged-to-home ``os.walk`` copy that races against the deferred
+        # ``sqlite3_close_v2`` on the staged ``ops.sqlite`` cached
+        # connection (Windows + Python 3.13 holds the WAL/SHM handle
+        # longer than the original staged-to-home walk waited, leaving
+        # ``ops.sqlite`` sha-mismatched and the walk incomplete).
         staged = Path(td) / "staged"
         staged.mkdir(parents=True, exist_ok=True)
 
@@ -353,15 +361,15 @@ def restore(archive: Path, home: Path) -> dict:
                 f = tf.extractfile(manifest_member)
                 manifest_raw = f.read() if f else b""
                 try:
-                    manifest = json.loads(manifest_raw.decode("utf-8"))
+                    parsed_manifest = json.loads(manifest_raw.decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                     raise BackupError("archive_corrupt", f"manifest.json is not valid JSON: {exc}") from exc
-                if not isinstance(manifest, dict):
+                if not isinstance(parsed_manifest, dict):
                     raise BackupError("archive_corrupt", "manifest.json is not an object")
-                schema = manifest.get("schema")
+                schema = parsed_manifest.get("schema")
                 if schema != ARCHIVE_SCHEMA:
                     raise BackupError("archive_schema", f"unsupported schema: {schema!r}")
-                manifest_files = manifest.get("files")
+                manifest_files = parsed_manifest.get("files")
                 if not isinstance(manifest_files, list):
                     raise BackupError("archive_corrupt", "manifest.files is not a list")
 
@@ -418,7 +426,7 @@ def restore(archive: Path, home: Path) -> dict:
                 rows = store.read_ledger()
                 rows_json = json.dumps([list(r) for r in rows], sort_keys=True).encode("utf-8")
                 actual_sha = _bytes_sha256(rows_json)
-                expected_sha = manifest.get("ops_rows_sha256")
+                expected_sha = parsed_manifest.get("ops_rows_sha256")
                 if expected_sha is not None and actual_sha != expected_sha:
                     raise BackupError(
                         "archive_corrupt",
@@ -429,30 +437,110 @@ def restore(archive: Path, home: Path) -> dict:
             except Exception as exc:
                 raise BackupError("archive_corrupt", f"ops.sqlite could not be opened: {exc}") from exc
             finally:
+                # WAL `PRAGMA wal_checkpoint(TRUNCATE)` + handle release
+                # BEFORE the staged-to-final-home swap. On Windows +
+                # Python 3.13 ``sqlite3_close_v2`` defers the actual
+                # OS handle teardown to garbage collection, which can
+                # outlive ``conn.close()`` and hold the WAL/SHM sidecar
+                # files mapped. The original code then performed an
+                # ``os.walk(staged)`` file-copy after releasing the
+                # handle; the deferred close raced the copy and the
+                # walk read partial bytes for ``ops.sqlite``. We force
+                # a full WAL checkpoint (merges WAL into the main DB
+                # and drops the SHM mapping) and drop the cached
+                # connection + thread-local, then run ``gc.collect()``
+                # so the deferred close runs before the rename. The
+                # WAL/SHM sidecar files are excluded from the archive
+                # by ``EXCLUDE_SUFFIXES`` so the checkpoint is the
+                # only deterministic close available here. Portable
+                # across POSIX and Windows.
+                try:
+                    conn = getattr(getattr(store, "_local", None), "conn", None)
+                    if conn is not None:
+                        try:
+                            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                        except (sqlite3.Error, OSError):
+                            pass
+                except (sqlite3.Error, OSError):
+                    pass
                 _release_store_handle(store)
+                try:
+                    import gc as _gc
 
-        if home.exists() and not list(home.iterdir()) and (staged.exists()):
-            home.rmdir()
+                    _gc.collect()
+                except (OSError, RuntimeError, ValueError, TypeError):
+                    pass
 
-        if home.exists():
-            raise BackupError("home_not_empty", f"target home already exists: {home}")
-        home.mkdir(parents=True, exist_ok=False)
+        # At this point ``staged`` is the complete restored home:
+        # every captured file written, ledger rows sha-checked, WAL
+        # checkpointed, the cached connection closed, and any
+        # deferred ``sqlite3_close_v2`` reaped via ``gc.collect()``.
+        # The home-existence check below is re-evaluated because the
+        # caller could have raced us between the entry check and
+        # here; if the home is now non-empty we refuse rather than
+        # clobber.
+        if home.exists() and home.is_dir():
+            try:
+                next(home.iterdir())
+                raise BackupError("home_not_empty", f"target home already exists: {home}")
+            except StopIteration:
+                # Empty dir: remove so ``os.rename`` can move the
+                # staged tree into its place atomically. The
+                # restore contract refuses any non-empty existing
+                # home; an empty one is the legitimate "fresh
+                # restore into a freshly-created home" case.
+                try:
+                    home.rmdir()
+                except OSError:
+                    raise BackupError("home_not_empty", f"target home already exists: {home}")
 
-        for root, dirs, files in os.walk(staged):
-            rel = Path(root).relative_to(staged)
-            for d in dirs:
-                d_target = home / rel / d
-                d_target.mkdir(parents=True, exist_ok=True)
-                if not _IS_WINDOWS:
-                    os.chmod(d_target, 0o700)
-            for f in files:
-                f_target = home / rel / f
-                f_target.parent.mkdir(parents=True, exist_ok=True)
-                with open(f_target, "wb") as out:
-                    out.write((staged / rel / f).read_bytes())
-                if not _IS_WINDOWS:
-                    os.chmod(f_target, 0o600)
+        # Atomic swap: rename the complete staged tree into the
+        # target ``home`` path. This is the platform-portable
+        # replacement for the staged-to-home ``os.walk`` copy:
+        # ``os.rename`` (and on Windows ``os.replace``) is metadata-
+        # only and atomic, so the final ``home`` either has every
+        # file or none of them — no partial-walk failure mode where
+        # ``ops.sqlite`` is sha-mismatched while ``config.json`` is
+        # still missing.
+        # Ensure the parent of ``home`` exists; otherwise
+        # ``os.rename`` would refuse with FileNotFoundError because
+        # the parent path doesn't exist (POSIX ``rename`` does not
+        # create the destination's parent). The previous
+        # ``home.mkdir`` call covered this implicitly when it walked
+        # ``parents=True``; the atomic-rename path needs the parent
+        # up-front.
+        if str(home.parent) not in ("", "/") and not home.parent.exists():
+            home.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.rename(staged, home)
+        except OSError:
+            # ``os.rename`` over an existing destination fails on
+            # POSIX when the destination is a non-empty dir; we've
+            # already removed an empty one above. Fall back to
+            # ``os.replace`` (same semantics on POSIX, replaces on
+            # Windows). If both fail, surface ``archive_corrupt``
+            # with the underlying error.
+            try:
+                os.replace(staged, home)
+            except OSError as exc:
+                raise BackupError("archive_corrupt", f"could not move staged tree into {home}: {exc}") from exc
 
+        if not _IS_WINDOWS:
+            for root, dirs, files in os.walk(home):
+                for d in dirs:
+                    try:
+                        os.chmod(Path(root) / d, 0o700)
+                    except OSError:
+                        pass
+                for f in files:
+                    try:
+                        os.chmod(Path(root) / f, 0o600)
+                    except OSError:
+                        pass
+
+        manifest = parsed_manifest
+
+    assert manifest is not None
     return manifest
 
 
