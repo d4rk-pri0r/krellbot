@@ -772,7 +772,7 @@ def cmd_backtest(args):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall [--dry-run] [--root PATH] | doctor [--json] | ui [--port N] | workstation [--port N] [--dist PATH] [--open] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick [--venue NAME] [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall|status [--dry-run] [--root PATH] | backup create --out PATH | backup restore --from PATH | doctor [--json] | ui [--port N] | workstation [--port N] [--dist PATH] [--open] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
         file=sys.stderr,
     )
     return 2
@@ -1320,14 +1320,17 @@ def _now_seconds_tick() -> float:
 
 
 def cmd_tick(args, *, fetch=None, transport=None):
-    """`krellbot tick --venue V [--offline-candles CSV]`.
+    """`krellbot tick [--venue V] [--offline-candles CSV]`.
 
     `fetch` and `transport` are injected for tests. The defaults talk to the
     real public fetch and urllib. A fetch error is printed as the exception
     type name only, journaled, and the tick exits 1.
+
+    With no ``--venue``, ticks every venue that has armed records in sorted
+    order. The per-venue body is delegated to ``_tick_one_venue`` so the
+    multi-venue and single-venue paths share one implementation.
     """
     from krellbot.config import load_config
-    from krellbot.venues.paper import PaperVenue
 
     if fetch is None:
         fetch = _default_fetch
@@ -1349,11 +1352,65 @@ def cmd_tick(args, *, fetch=None, transport=None):
             continue
         print(f"Unknown argument: {a}", file=sys.stderr)
         return 2
-    if venue is None:
-        print("--venue is required", file=sys.stderr)
-        return 2
 
     home = kb_paths.home()
+
+    if venue is None:
+        if offline is not None:
+            print("--venue is required with --offline-candles", file=sys.stderr)
+            return 2
+        config = load_config(home)
+        venues = sorted({a.venue for a in config.armed if a.venue})
+        if not venues:
+            print("no armed packs", flush=True)
+            return 0
+        rc = 0
+        for v in venues:
+            print(f"== tick {v} ==", flush=True)
+            v_rc = _tick_one_venue(
+                home=home,
+                venue=v,
+                offline=None,
+                fetch=fetch,
+                transport=transport,
+            )
+            if v_rc != 0:
+                rc = 1
+        return rc
+
+    return _tick_one_venue(
+        home=home,
+        venue=venue,
+        offline=offline,
+        fetch=fetch,
+        transport=transport,
+    )
+
+
+def _tick_one_venue(
+    home,
+    venue: str,
+    *,
+    offline: Path | None,
+    fetch,
+    transport,
+) -> int:
+    """Tick one venue. The single-venue and multi-venue paths share this body.
+
+    Before ticking, journals a ``wake_gap`` supervision record when the gap
+    since the last tick for ``venue`` is at least ``TICK_STALE_SECONDS``.
+    The tick itself is unchanged: it evaluates only the latest closed bar
+    and outbox coids prevent a duplicate send for a bar that was already sent.
+    """
+    from krellbot.config import load_config
+    from krellbot.service import supervise
+    from krellbot.venues.paper import PaperVenue
+
+    if offline is None:
+        from krellbot.run import _now_seconds as _run_now_seconds
+
+        supervise.record_wake_gap(home, venue, now=int(_run_now_seconds()))
+
     config = load_config(home)
     armed_list = [a for a in config.armed if a.venue == venue]
     if not armed_list:
@@ -1614,8 +1671,51 @@ def cmd_service(args):
         if write_root is None:
             write_root = Path.home()
         return kb_service.uninstall(home=kb_paths.home(), write_root=write_root)
+    if sub == "status":
+        return cmd_service_status(home=kb_paths.home(), write_root=write_root)
     print(f"unknown service subcommand: {sub}", file=sys.stderr)
     return 2
+
+
+def cmd_service_status(*, home: Path, write_root: Path | None) -> int:
+    """`krellbot service status [--root PATH]`.
+
+    Emits one JSON object on stdout (sorted keys, no trailing newline
+    required) and returns 0. Writes nothing to disk. A home without an
+    owner file yields ``owner: null`` and ``owner_present: false``.
+    """
+    from krellbot import doctor as kb_doctor
+    from krellbot.service import owner_path as _owner_path
+    from krellbot.service import supervise
+
+    if write_root is None:
+        write_root = Path.home()
+
+    installed = kb_doctor._service_installed(write_root)
+    owner_present = _owner_path(home).exists()
+    owner_record = supervise.resolve_owner(home)
+    now = int(_now_seconds_tick())
+    last_tick_age_s = kb_doctor._last_tick_age(home, now)
+    last_tick_stale = last_tick_age_s is None or last_tick_age_s >= kb_doctor.TICK_STALE_SECONDS
+    last_wake_gap_s = supervise.latest_wake_gap(home)
+    home_matches_owner = False
+    if owner_record is not None:
+        owner_home = owner_record.get("krellbot_home")
+        home_matches_owner = owner_home is not None and owner_home == str(home)
+
+    body = {
+        "schema_version": "1",
+        "installed": installed,
+        "owner_present": owner_present,
+        "owner": owner_record,
+        "krellbot_home": str(home),
+        "home_matches_owner": home_matches_owner,
+        "last_tick_age_s": last_tick_age_s,
+        "last_tick_stale": last_tick_stale,
+        "last_wake_gap_s": last_wake_gap_s,
+    }
+    print(json.dumps(body, sort_keys=True), flush=True)
+    return 0
 
 
 def _kraken_time_source() -> int:
@@ -1938,6 +2038,93 @@ def cmd_telemetry(args):
     return 2
 
 
+def _resolve_backup_home() -> Path:
+    """Resolve ``KRELLBOT_HOME`` (or ``~/.krellbot``) without creating the directory.
+
+    ``paths.home()`` creates the directory; ``backup restore`` must read the
+    environment variable the same way but skip the mkdir so a fresh restore
+    into a non-existent home actually creates it for the first time.
+    """
+    import os as _os
+
+    base = _os.environ.get("KRELLBOT_HOME")
+    if base:
+        return Path(base)
+    return Path.home() / ".krellbot"
+
+
+def cmd_backup(args):
+    """`krellbot backup create --out PATH | backup restore --from PATH`.
+
+    `create` snapshots ``KRELLBOT_HOME`` (the current home, created if
+    missing — this is the snapshot path). `restore` reads ``KRELLBOT_HOME``
+    without creating it and restores the archive there. Both respect
+    ``BackupError`` codes and translate to exit codes 1 (refusal) and 2
+    (usage).
+    """
+    import time as _time
+
+    from krellbot.storage import home_backup
+
+    if not args:
+        print("usage: krellbot backup create --out PATH | restore --from PATH", file=sys.stderr)
+        return 2
+    sub = args[0]
+    out_path: Path | None = None
+    from_path: Path | None = None
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a == "--out" and i + 1 < len(args):
+            out_path = Path(args[i + 1])
+            i += 2
+            continue
+        if a == "--from" and i + 1 < len(args):
+            from_path = Path(args[i + 1])
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+
+    if sub == "create":
+        if out_path is None:
+            print("--out is required", file=sys.stderr)
+            return 2
+        try:
+            manifest = home_backup.create(
+                kb_paths.home(),
+                out_path,
+                now=int(_time.time()),
+            )
+        except home_backup.BackupError as exc:
+            print(f"backup refused: {exc.code}", file=sys.stderr)
+            return 1
+        files = manifest.get("files", [])
+        ops_rows = manifest.get("ops_rows")
+        print(
+            f"backup written: {out_path} ({len(files)} files, ops_rows {ops_rows})",
+            flush=True,
+        )
+        return 0
+
+    if sub == "restore":
+        if from_path is None:
+            print("--from is required", file=sys.stderr)
+            return 2
+        target = _resolve_backup_home()
+        try:
+            manifest = home_backup.restore(from_path, target)
+        except home_backup.BackupError as exc:
+            print(f"backup refused: {exc.code}", file=sys.stderr)
+            return 1
+        files = manifest.get("files", [])
+        print(f"restored {len(files)} files into {target}", flush=True)
+        return 0
+
+    print(f"unknown backup subcommand: {sub}", file=sys.stderr)
+    return 2
+
+
 def main(argv):
     if len(argv) >= 2 and argv[1] == "--version":
         from krellbot import __version__
@@ -1946,6 +2133,8 @@ def main(argv):
         return 0
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         return usage()
+    if argv[1] == "backup" and len(argv) >= 2:
+        return cmd_backup(argv[2:])
     try:
         kb_secrets.migrate_legacy()
     except (ValueError, RuntimeError, FileNotFoundError) as exc:
