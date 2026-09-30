@@ -7,11 +7,13 @@ URLs without round-tripping through the token-gated dashboard server:
 * ``GET /`` returns ``frontend/dist/index.html`` with
   ``Content-Type: text/html`` and ``Cache-Control: no-store``. The
   shell never caches so a freshly-built bundle is picked up on the
-  next reload. The response body is annotated with
-  ``<meta name="krellbot-bootstrap" content="...">`` carrying the
-  one-time bootstrap token the JS bundle exchanges at
-  ``/api/v1/session/bootstrap``. The token is injected at response
-  time and never written to ``frontend/dist/index.html``.
+  next reload. While the one-time bootstrap token is still
+  redeemable, the response body is annotated with
+  ``<meta name="krellbot-bootstrap" content="...">`` that the JS
+  bundle exchanges at ``/api/v1/session/bootstrap``. The token is
+  injected at response time (``register`` accepts a callable so a
+  redeemed token stops being served) and is never written to
+  ``frontend/dist/index.html``.
 
 * ``GET /assets/<file>`` returns ``frontend/dist/assets/<file>`` with a
   content type derived from the extension. Path traversal (``..``),
@@ -33,10 +35,13 @@ from __future__ import annotations
 import html
 import mimetypes
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse, Response
+
+BootstrapTokenSource = str | Callable[[], str | None] | None
 
 SHELL_NOT_BUILT_CODE = "shell_not_built"
 
@@ -152,19 +157,25 @@ def register(
     app: FastAPI,
     dist_dir: Path,
     *,
-    bootstrap_token: str | None = None,
+    bootstrap_token: BootstrapTokenSource = None,
 ) -> None:
     """Mount ``GET /`` and ``GET /assets/{file_name}`` on ``app``.
 
-    When ``bootstrap_token`` is supplied, ``GET /`` annotates the
-    served HTML with the bootstrap meta tag. The token is never
-    written to disk; it is captured by closure so every response
-    reads the current process token.
+    ``bootstrap_token`` is either a fixed string, or a callable that
+    returns the current token (or ``None``) on every ``GET /``. The
+    callable form lets the app stop serving the meta tag once the
+    one-time token has been redeemed; a ``None`` result serves the
+    plain index with no meta tag. The token is never written to
+    disk.
     """
 
     @app.get("/")
     def _index() -> Response:
-        return serve_index(dist_dir, bootstrap_token)
+        if callable(bootstrap_token):
+            token = bootstrap_token()
+        else:
+            token = bootstrap_token
+        return serve_index(dist_dir, token)
 
     @app.get("/assets/{file_name}")
     def _asset(file_name: str) -> Response:

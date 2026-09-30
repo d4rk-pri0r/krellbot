@@ -41,6 +41,7 @@ vi.mock("../session", () => ({
     new Promise<void>((resolve) => {
       resolveBootstrapRef = () => resolve();
     }),
+  recoverCsrf: (): Promise<boolean> => Promise.resolve(false),
 }));
 
 function makePaperClient(): PaperClient {
