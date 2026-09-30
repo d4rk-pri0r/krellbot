@@ -65,7 +65,9 @@ def _write_zigzag(path: Path, rows: int) -> None:
         close = 100 + 12 * math.sin(i / 18) + (1.5 if i % 2 == 0 else -1.5)
         op = close - 0.5
         lines.append(f"{ts},{op:.4f},{max(op, close) + 0.25:.4f},{min(op, close) - 0.25:.4f},{close:.4f},1")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # write_bytes, not write_text: text mode turns "\n" into "\r\n" on Windows,
+    # which changes the input bytes and so data_manifest_sha256 in the receipt.
+    path.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
 
 
 def _write_pack(tmp_path: Path) -> Path:
@@ -211,6 +213,9 @@ def test_ordinary_receipt_is_byte_identical_to_base(fresh_home: Path, tmp_path: 
     """
     csv_path = tmp_path / "zz400.csv"
     _write_zigzag(csv_path, 400)
+    # The pin covers the input bytes via data_manifest_sha256; they must be
+    # LF-only on every OS (Windows CI failed here with CRLF input).
+    assert b"\r" not in csv_path.read_bytes()
     pack_path = _write_pack(tmp_path)
 
     svc = ResearchService(home=fresh_home)
