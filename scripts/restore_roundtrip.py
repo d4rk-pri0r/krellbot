@@ -97,9 +97,14 @@ def _read_ledger_rows(home: Path) -> list:
     if not p.exists():
         return []
     rows = []
-    with sqlite3.connect(str(p)) as conn:
+    conn = sqlite3.connect(str(p))
+    try:
         for row in conn.execute("SELECT id, kind, payload FROM ledger ORDER BY id").fetchall():
             rows.append((int(row[0]), str(row[1]), str(row[2])))
+    finally:
+        # Connection.__exit__ handles transactions; it does not close the
+        # database. Release the reader before the caller wipes this home.
+        conn.close()
     return rows
 
 
