@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import tarfile
 import tempfile
@@ -95,18 +96,31 @@ def _seed_home(
     ledger_rows: list[tuple] = []
     if include_opstore:
         from krellbot.storage.database import OperationalStore
+        from krellbot.storage.home_backup import _release_store_handle
 
         store = OperationalStore(home / "ops.sqlite")
         conn = store.connect()
-        # Two outbox rows: one sent, one committed.
-        conn.execute(
-            "INSERT INTO ledger (kind, payload) VALUES ('outbox', ?)",
-            (json.dumps({"coid": "abc12345", "body": "x", "sent": True}),),
-        )
-        conn.execute(
-            "INSERT INTO ledger (kind, payload) VALUES ('outbox', ?)",
-            (json.dumps({"coid": "def67890", "body": "y", "sent": False}),),
-        )
+        try:
+            # Two outbox rows: one sent, one committed.
+            conn.execute(
+                "INSERT INTO ledger (kind, payload) VALUES ('outbox', ?)",
+                (json.dumps({"coid": "abc12345", "body": "x", "sent": True}),),
+            )
+            conn.execute(
+                "INSERT INTO ledger (kind, payload) VALUES ('outbox', ?)",
+                (json.dumps({"coid": "def67890", "body": "y", "sent": False}),),
+            )
+        finally:
+            # Close the cached sqlite connection and drop the thread-local so
+            # the OS-level file handle is released BEFORE the caller rmtree's
+            # the temp home. On Windows + Python 3.13, sqlite3_close_v2 holds
+            # the handle through the function frame's reference; without this
+            # cleanup shutil.rmtree raises PermissionError [WinError 32].
+            try:
+                conn.close()
+            except (sqlite3.Error, OSError):
+                pass
+            _release_store_handle(store)
         ledger_rows = [
             (1, "outbox", json.dumps({"coid": "abc12345", "body": "x", "sent": True})),
             (2, "outbox", json.dumps({"coid": "def67890", "body": "y", "sent": False})),
