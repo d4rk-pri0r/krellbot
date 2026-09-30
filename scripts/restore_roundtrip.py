@@ -223,21 +223,22 @@ def _rmtree_with_retry(path: Path, *, attempts: int = 60, delay: float = 0.5) ->
     """
 
     def _retry(_func, _path, _exc_info):
-        # ``onerror(func, path, exc_info)`` — exc_info[1] is the exception
-        # instance. Only retry OSError subclasses (WinError 32 is
-        # PermissionError); anything else re-raises immediately. After
-        # exhausting retries, swallow so rmtree's walk continues to
-        # the rest of the tree.
-        exc = _exc_info[1]
-        if not isinstance(exc, OSError):
-            raise exc
-        for _ in range(attempts):
-            time.sleep(delay)
-            try:
-                _func(_path)
-                return
-            except OSError:
-                continue
+            # ``onerror(func, path, exc_info)`` — exc_info[1] is the exception
+            # instance. Only retry PermissionError (WinError 32: file in
+            # use by another process); any other OSError — including
+            # FileNotFoundError after a successful delete in a previous
+            # attempt — propagates immediately so rmtree continues. After
+            # exhausting retries, swallow so rmtree's walk continues.
+            exc = _exc_info[1]
+            if not isinstance(exc, PermissionError):
+                raise exc
+            for _ in range(attempts):
+                time.sleep(delay)
+                try:
+                    _func(_path)
+                    return
+                except PermissionError:
+                    continue
 
     try:
         shutil.rmtree(path)
@@ -254,14 +255,14 @@ def _rmtree_with_retry(path: Path, *, attempts: int = 60, delay: float = 0.5) ->
         if sibling.exists():
             shutil.rmtree(sibling)
         path.rename(sibling)
+        return  # path is gone; renamed copy is drained in main finally
     except OSError:
         sibling = None
 
-    # Strategy 3: rmtree with onerror-retry. The locked files survive
-    # in the rename; they will be released when the OS reaps whatever
-    # held them. POSIX has no rename vs in-place difference.
-    target = sibling if sibling is not None else path
-    shutil.rmtree(target, onerror=_retry)
+    # Strategy 3: in-place rmtree with onerror-retry. The locked files
+    # stay in place until the OS reaps whatever held them. POSIX has
+    # no rename-in-place difference so this only runs on Win.
+    shutil.rmtree(path, onerror=_retry)
 
 
 def main() -> int:
@@ -383,7 +384,15 @@ def main() -> int:
         _emitter(rows)
         return 0 if all(r["pass"] for r in rows) else 1
     finally:
-        for p in (home, archive_dir, non_empty_target):
+        # Drain every tempdir the script owns plus any
+        # ``<name>.rmtree-tmp`` siblings left behind by
+        # ``_rmtree_with_retry`` when rename-then-drain was used to
+        # defeat a Win32 locked-file race.
+        cleanup_paths: list[Path] = []
+        for p in (home, archive_dir, non_empty_target, fresh_target):
+            cleanup_paths.append(p)
+            cleanup_paths.append(p.with_name(p.name + ".rmtree-tmp"))
+        for p in cleanup_paths:
             try:
                 _rmtree_with_retry(p)
             except OSError:
