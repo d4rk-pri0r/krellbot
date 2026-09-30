@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page, type Response } from "@playwright/test";
 import {
   startWorkstationForSpec,
   stopWorkstationForSpec,
@@ -12,25 +12,71 @@ import {
  * backtest proves the new windowed list does NOT mount 100000 buttons
  * and that scrolling works.
  *
+ * M2-CE: the spec also enforces the console guard — every console
+ * error and every response with status >= 400 must be empty, and the
+ * result-route (``/api/v1/jobs/{id}/result``) must be requested
+ * exactly once per completed run.
+ *
  *  1. Validate a pack and run research on ``rows100k.csv``.
- *  2. Assert ``research-trace-count`` shows ``100000``; the number
+ *  2. Wait for ``research-result`` (auto-fetched by ``pollForResult``).
+ *  3. Assert ``research-trace-count`` shows ``100000``; the number
  *     of mounted trace buttons is < 500.
- *  3. Scroll ``research-trace-scroll`` to the bottom and assert a
+ *  4. Scroll ``research-trace-scroll`` to the bottom and assert a
  *     button whose label is the last bar becomes visible; the first
  *     bar's button is no longer mounted.
- *  4. Scroll to the middle and assert a middle bar is visible.
- *  5. Click one and assert ``research-bar-detail`` appears.
- *  6. Record timings in ``console.log`` for the report.
+ *  5. Scroll to the middle and assert a middle bar is visible.
+ *  6. Click one and assert ``research-bar-detail`` appears.
+ *  7. Record timings and the console guard summary for the report.
  */
+
+function isResultRoute(pathname: string): boolean {
+  return /^\/api\/v1\/jobs\/[^/]+\/result\/?$/.test(pathname);
+}
+
+type ConsoleGuard = {
+  errors: string[];
+  badResponses: { method: string; path: string; status: number }[];
+  resultRouteRequests: { method: string; path: string }[];
+};
+
+function attachConsoleGuard(page: Page): ConsoleGuard {
+  const guard: ConsoleGuard = {
+    errors: [],
+    badResponses: [],
+    resultRouteRequests: [],
+  };
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      guard.errors.push(msg.text());
+      console.log(`[ns20-100k-console] error: ${msg.text()}`);
+    } else {
+      console.log(`[ns20-100k-console] ${msg.type()}: ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) => {
+    guard.errors.push(err.message);
+    console.log(`[ns20-100k-pageerror] ${err.message}`);
+  });
+  page.on("response", (response: Response) => {
+    const status = response.status();
+    const req = response.request();
+    const method = req.method();
+    const url = new URL(response.url());
+    const path = url.pathname;
+    if (isResultRoute(path)) {
+      guard.resultRouteRequests.push({ method, path });
+    }
+    if (status >= 400) {
+      guard.badResponses.push({ method, path, status });
+      console.log(`[ns20-100k-bad-response] ${method} ${path} ${status}`);
+    }
+  });
+  return guard;
+}
 
 test("100000-row inspection renders and scrolls", async ({ page }) => {
   test.setTimeout(180_000);
-  page.on("console", (msg) => {
-    console.log(`[ns20-100k-console] ${msg.type()}: ${msg.text()}`);
-  });
-  page.on("pageerror", (err) => {
-    console.log(`[ns20-100k-pageerror] ${err.message}`);
-  });
+  const guard = attachConsoleGuard(page);
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
   await page.goto(baseURL + "/");
   await expect(page.locator('meta[name="krellbot-bootstrap"]')).toHaveCount(0, {
@@ -80,7 +126,8 @@ test("100000-row inspection renders and scrolls", async ({ page }) => {
   await page.getByRole("button", { name: /^run$/i }).click();
   const job = page.getByTestId("research-job-id");
   await expect(job).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("button", { name: /load result/i }).click();
+  // pollForResult auto-fetches; skipping the manual Load result click
+  // keeps the result-route count at exactly 1 per run.
   await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 120_000 });
   const resultElapsed = Date.now() - runStart;
   console.log(`[ns20-100k-rows] run+result elapsed_ms=${resultElapsed}`);
@@ -146,6 +193,17 @@ test("100000-row inspection renders and scrolls", async ({ page }) => {
   // Click the first middle button and assert the detail appears.
   await page.locator('[data-testid="research-trace-scroll"] button').first().click();
   await expect(page.getByTestId("research-bar-detail")).toBeVisible();
+
+  // Console guard: zero errors, zero >=400 responses, exactly one
+  // result-route request per completed run.
+  expect(guard.errors).toEqual([]);
+  expect(guard.badResponses).toEqual([]);
+  expect(guard.resultRouteRequests).toHaveLength(1);
+  console.log(
+    `[ns20-100k-guard] errors=${guard.errors.length} ` +
+      `badResponses=${guard.badResponses.length} ` +
+      `resultRouteRequests=${guard.resultRouteRequests.length}`,
+  );
 });
 
 let workstation: WorkstationHandle | null = null;

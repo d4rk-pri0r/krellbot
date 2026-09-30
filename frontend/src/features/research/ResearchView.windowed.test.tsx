@@ -5,10 +5,17 @@ import { ResearchView, type ResearchClient, type StoredResult } from "./Research
 afterEach(cleanup);
 
 function makeClient(overrides: Partial<ResearchClient> = {}): ResearchClient {
+  const defaultResponse = {
+    ok: true,
+    status: 200,
+    blob: vi.fn().mockResolvedValue(new Blob(['{"ok":true}'])),
+  } as unknown as Response;
   return {
     submitRun: vi.fn().mockResolvedValue({ id: "job-xyz" }),
     cancelJob: vi.fn().mockResolvedValue(undefined),
     getResult: vi.fn().mockResolvedValue(null),
+    getJob: vi.fn().mockResolvedValue({ id: "job-xyz", state: "succeeded" }),
+    getResultDownload: vi.fn().mockResolvedValue(defaultResponse),
     ...overrides,
   };
 }

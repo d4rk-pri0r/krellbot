@@ -1,4 +1,11 @@
-import { test, expect, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Page,
+  type Response,
+  type Download,
+} from "@playwright/test";
+import { createHash } from "node:crypto";
 import {
   startWorkstationForSpec,
   stopWorkstationForSpec,
@@ -11,25 +18,65 @@ import {
  * End-to-end proof that a Studio indicator input ends in a different
  * backtest result on the same dataset.
  *
- *  1. Open the served index and wait for the bootstrap meta + a
- *     connected status (no direct cookie read; the page reports its
- *     own readiness).
- *  2. Strategies view: paste a pack JSON (sma_cross shape, id
- *     ``ns20-e2e``, ``indicators.sma2.len = 2``), Save, Validate,
- *     read ``editor-revision-id`` (revision A).
- *  3. Research view: dataset path = absolute path of ``edit.csv``,
- *     fee 10, from 0, to 0 (engine takes ``<=``), Run; wait for
- *     ``research-result``; record equity text and trade count (A).
- *  4. Navigate to ``/?workload=200&pack=1`` without losing the
- *     revision; assert ``studio-node-count`` = 200 and at least one
- *     ``react-flow__node`` is rendered.
- *  5. Click node ``sma2``, set ``studio-indicator-len`` to 20, click
- *     Save execution; assert ``studio-revision-id`` != revision A.
- *  6. Research view: run again with the same inputs; record result
- *     B. Assert (equity B != equity A) OR (trade count B != trade
- *     count A). The Run POST is captured on the wire; assert its
- *     ``revision_id`` equals the new revision id.
+ * M2-CE: this spec also enforces the console guard — zero console
+ * errors and zero responses with status >= 400 across the whole run,
+ * and runs the real-browser Export result proof: the bytes the page
+ * downloads match the bytes the backend download endpoint serves,
+ * and a second export is byte-equal to the first.
  */
+
+type ConsoleGuard = {
+  errors: string[];
+  badResponses: { method: string; path: string; status: number }[];
+};
+
+function attachConsoleGuard(page: Page): ConsoleGuard {
+  const guard: ConsoleGuard = { errors: [], badResponses: [] };
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      guard.errors.push(msg.text());
+      console.log(`[ns20-studio-console] error: ${msg.text()}`);
+    } else {
+      console.log(`[ns20-studio-console] ${msg.type()}: ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) => {
+    guard.errors.push(err.message);
+    console.log(`[ns20-studio-pageerror] ${err.message}`);
+  });
+  page.on("response", (response: Response) => {
+    const status = response.status();
+    if (status >= 400) {
+      const req = response.request();
+      const path = new URL(response.url()).pathname;
+      const method = req.method();
+      guard.badResponses.push({ method, path, status });
+      console.log(`[ns20-studio-bad-response] ${method} ${path} ${status}`);
+    }
+  });
+  return guard;
+}
+
+async function downloadExportBytes(
+  page: Page,
+): Promise<{ bytes: Uint8Array; download: Download }> {
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: /export result/i }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  if (!stream) {
+    throw new Error("download stream missing");
+  }
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    stream.on("data", (chunk: Buffer | string) => {
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    });
+    stream.on("end", () => resolve());
+    stream.on("error", (err: Error) => reject(err));
+  });
+  return { bytes: new Uint8Array(Buffer.concat(chunks)), download };
+}
 
 const PACK_TEXT = JSON.stringify(
   {
@@ -76,6 +123,7 @@ async function waitForSessionReady(page: Page): Promise<void> {
 
 test("200-node studio edit changes a backtest result", async ({ page }) => {
   test.setTimeout(180_000);
+  const guard = attachConsoleGuard(page);
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
   await page.goto(baseURL + "/");
   // Bootstrap meta present (it will be consumed on first render).
@@ -122,8 +170,8 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   // Wait for job id to appear.
   const jobA = await readJobIdAfterRun(page);
   expect(jobA).not.toBe("");
-  // The server runs synchronously here; poll for the result.
-  await page.getByRole("button", { name: /load result/i }).click();
+  // pollForResult auto-fetches the result on succeeded; wait for
+  // the rendered testid instead of clicking "Load result".
   await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
   const equityA = (await page.getByTestId("research-result-equity").innerText()).trim();
   const tradesA = (await page.getByTestId("research-result-trade-count").innerText()).trim();
@@ -131,6 +179,41 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   // Verify the job actually ran against the saved revision.
   const jobAInfo = await page.request.get(`${baseURL}/api/v1/jobs/${encodeURIComponent(jobA)}`);
   expect(jobAInfo.status()).toBe(200);
+
+  // Real-browser Export result proof for revision A. Click the
+  // "Export result" button, capture the download bytes, and compare
+  // them to the backend download endpoint. Then run the same
+  // revision/dataset/fee a second time and export again to prove
+  // byte-equal determinism.
+  const backendA = await page.request.get(
+    `${baseURL}/api/v1/jobs/${encodeURIComponent(jobA)}/result/download`,
+  );
+  expect(backendA.status()).toBe(200);
+  const backendBytesA = new Uint8Array(await backendA.body());
+  const firstDownload = await downloadExportBytes(page);
+  const firstSha = createHash("sha256").update(Buffer.from(firstDownload.bytes)).digest("hex");
+  console.log(`[m2-export] sha256(revA first download)=${firstSha}`);
+  expect(firstDownload.bytes).toEqual(backendBytesA);
+  expect(firstDownload.download.suggestedFilename()).toBe(`research-receipt-${jobA}.json`);
+
+  // Run the same revision/dataset/fee a second time. The receipt
+  // bytes must be byte-identical to the first run.
+  await page.getByLabel(/dataset path/i).fill(editCsv);
+  await page.getByLabel(/fee basis points/i).fill("10");
+  await page.getByLabel(/^from$/i).fill("0");
+  await page.getByLabel(/^to$/i).fill("9999999999999");
+  const reqA2 = page.waitForRequest(
+    (r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/research/jobs",
+  );
+  await page.getByRole("button", { name: /^run$/i }).click();
+  const requestA2 = await reqA2;
+  const bodyA2 = JSON.parse(requestA2.postData() ?? "{}") as Record<string, unknown>;
+  expect(bodyA2.revision_id).toBe(bodyA.revision_id);
+  await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
+  const secondDownload = await downloadExportBytes(page);
+  const secondSha = createHash("sha256").update(Buffer.from(secondDownload.bytes)).digest("hex");
+  console.log(`[m2-export] sha256(revA second download)=${secondSha}`);
+  expect(secondDownload.bytes).toEqual(firstDownload.bytes);
 
   // Switch to studio, navigate to the 200+pack workload mode.
   // Use history.pushState (not page.goto) so the in-memory
@@ -222,7 +305,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   const bodyB = JSON.parse(requestB.postData() ?? "{}") as Record<string, unknown>;
   const jobB = await readJobIdAfterRun(page);
   expect(jobB).not.toBe("");
-  await page.getByRole("button", { name: /load result/i }).click();
+  // pollForResult auto-fetches on succeeded.
   await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
   const equityB = (await page.getByTestId("research-result-equity").innerText()).trim();
   const tradesB = (await page.getByTestId("research-result-trade-count").innerText()).trim();
@@ -280,6 +363,15 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
     pack?: { indicators?: { sma2?: { len?: number } } };
   };
   expect(draftABody.pack?.indicators?.sma2?.len).toBe(2);
+
+  // Console guard: zero errors and zero >=400 responses across the
+  // whole spec run.
+  expect(guard.errors).toEqual([]);
+  expect(guard.badResponses).toEqual([]);
+  console.log(
+    `[ns20-studio-guard] errors=${guard.errors.length} ` +
+      `badResponses=${guard.badResponses.length}`,
+  );
 
   // Log timings for the report.
   console.log(

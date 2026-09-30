@@ -9,10 +9,18 @@ function textOf(node: HTMLElement | null): string {
 }
 
 function makeClient(overrides: Partial<ResearchClient> = {}): ResearchClient {
+  const defaultBlob = new Blob(['{"ok":true}'], { type: "application/json" });
+  const defaultResponse = {
+    ok: true,
+    status: 200,
+    blob: vi.fn().mockResolvedValue(defaultBlob),
+  } as unknown as Response;
   return {
     submitRun: vi.fn().mockResolvedValue({ id: "job-abc" }),
     cancelJob: vi.fn().mockResolvedValue(undefined),
     getResult: vi.fn().mockResolvedValue(null),
+    getJob: vi.fn().mockResolvedValue({ id: "job-abc", state: "succeeded" }),
+    getResultDownload: vi.fn().mockResolvedValue(defaultResponse),
     ...overrides,
   };
 }
@@ -355,17 +363,94 @@ describe("ResearchView trace", () => {
 });
 
 describe("ResearchView export", () => {
-  it("renders JSON.stringify(storedResult) in the export panel", async () => {
-    const client = makeClient({ getResult: vi.fn().mockResolvedValue(sampleStored) });
-    render(<ResearchView client={client} />);
-    fillForm();
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
-    await screen.findByTestId("research-job-id");
-    fireEvent.click(screen.getByRole("button", { name: /load result/i }));
-    const exportPanel = (await screen.findByTestId(
-      "research-export",
-    )) as HTMLElement;
-    expect(exportPanel.textContent).toBe(JSON.stringify(sampleStored));
+  it("Export result fetches /api/v1/jobs/{id}/result/download and feeds the response blob to URL.createObjectURL", async () => {
+    const blob = new Blob(['{"canon":true}'], { type: "application/json" });
+    const downloadResponse = {
+      ok: true,
+      status: 200,
+      blob: vi.fn().mockResolvedValue(blob),
+    } as unknown as Response;
+    const client = makeClient({
+      getResult: vi.fn().mockResolvedValue(sampleStored),
+      getResultDownload: vi.fn().mockResolvedValue(downloadResponse),
+    });
+    const createObjectURL = vi.fn<(input: Blob | MediaSource) => string>(
+      () => "blob:research-result",
+    );
+    const revokeObjectURL = vi.fn();
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+    let capturedAnchor: HTMLAnchorElement | null = null;
+    const realCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation(
+      ((tag: string) => {
+        const el = realCreateElement(tag) as HTMLElement;
+        if (tag.toLowerCase() === "a") {
+          capturedAnchor = el as HTMLAnchorElement;
+        }
+        return el as ReturnType<typeof document.createElement>;
+      }) as typeof document.createElement,
+    );
+    try {
+      render(<ResearchView client={client} />);
+      fillForm();
+      fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+      await screen.findByTestId("research-job-id");
+      fireEvent.click(screen.getByRole("button", { name: /load result/i }));
+      await screen.findByTestId("research-result");
+
+      fireEvent.click(screen.getByRole("button", { name: /export result/i }));
+
+      await waitFor(() => {
+        expect(client.getResultDownload).toHaveBeenCalledTimes(1);
+      });
+      expect(client.getResultDownload).toHaveBeenCalledWith("job-abc");
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      const passedBlob = createObjectURL.mock.calls[0]?.[0] as Blob | undefined;
+      expect(passedBlob).toBe(blob);
+      expect(capturedAnchor).not.toBeNull();
+      expect(capturedAnchor!.href).toBe("blob:research-result");
+      expect(capturedAnchor!.download).toBe("research-receipt-job-abc.json");
+      expect(createElementSpy).toHaveBeenCalled();
+    } finally {
+      createElementSpy.mockRestore();
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+
+  it("Export result surfaces an error and never falls back to JSON.stringify when the download response is not ok", async () => {
+    const client = makeClient({
+      getResult: vi.fn().mockResolvedValue(sampleStored),
+      getResultDownload: vi.fn().mockRejectedValue(new Error("download failed: 500")),
+    });
+    const createObjectURL = vi.fn<(input: Blob | MediaSource) => string>(
+      () => "blob:research-result",
+    );
+    const originalCreate = URL.createObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    try {
+      render(<ResearchView client={client} />);
+      fillForm();
+      fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+      await screen.findByTestId("research-job-id");
+      fireEvent.click(screen.getByRole("button", { name: /load result/i }));
+      await screen.findByTestId("research-result");
+
+      fireEvent.click(screen.getByRole("button", { name: /export result/i }));
+
+      await waitFor(() => {
+        expect(client.getResultDownload).toHaveBeenCalledTimes(1);
+      });
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(
+        await screen.findByText(/download failed: 500/i),
+      ).toBeDefined();
+    } finally {
+      URL.createObjectURL = originalCreate;
+    }
   });
 });
 
@@ -439,5 +524,81 @@ describe("ResearchView holdout bounds", () => {
     expect(
       await screen.findByText("holdout bound must be an integer"),
     ).toBeDefined();
+  });
+});
+
+describe("ResearchView pollForResult (M2-CE)", () => {
+  it("polls getJob until succeeded and then calls getResult exactly once", async () => {
+    const getJob = vi
+      .fn()
+      .mockResolvedValueOnce({ id: "job-abc", state: "running" })
+      .mockResolvedValueOnce({ id: "job-abc", state: "running" })
+      .mockResolvedValueOnce({ id: "job-abc", state: "succeeded" });
+    const getResult = vi.fn().mockResolvedValue(sampleStored);
+    const client = makeClient({ getJob, getResult });
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(getJob).toHaveBeenCalled();
+    });
+    await screen.findByTestId("research-result");
+    expect(getJob).toHaveBeenCalledWith("job-abc");
+    expect(getResult).toHaveBeenCalledTimes(1);
+    expect(getResult).toHaveBeenCalledWith("job-abc");
+  });
+
+  it("renders research-job-error with the error code and never calls getResult when the job fails", async () => {
+    const getJob = vi.fn().mockResolvedValue({
+      id: "job-abc",
+      state: "failed",
+      error: { code: "numeric_out_of_range", message: "equity out of range" },
+    });
+    const getResult = vi.fn().mockResolvedValue(null);
+    const client = makeClient({ getJob, getResult });
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(getJob).toHaveBeenCalled();
+    });
+    const error = await screen.findByTestId("research-job-error");
+    expect(error.textContent).toMatch(/numeric_out_of_range/);
+    expect(error.textContent).toMatch(/equity out of range/);
+    expect(getResult).not.toHaveBeenCalled();
+  });
+
+  it("renders research-job-error with 'cancelled' and never calls getResult when the job is cancelled", async () => {
+    const getJob = vi.fn().mockResolvedValue({
+      id: "job-abc",
+      state: "cancelled",
+    });
+    const getResult = vi.fn().mockResolvedValue(null);
+    const client = makeClient({ getJob, getResult });
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(getJob).toHaveBeenCalled();
+    });
+    const error = await screen.findByTestId("research-job-error");
+    expect(error.textContent).toMatch(/cancelled/);
+    expect(getResult).not.toHaveBeenCalled();
+  });
+
+  it("'Load result' button still calls getResult directly when no result has been auto-fetched", async () => {
+    const getJob = vi.fn().mockResolvedValue({ id: "job-abc", state: "running" });
+    const getResult = vi.fn().mockResolvedValue(sampleStored);
+    const client = makeClient({ getJob, getResult });
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await screen.findByTestId("research-job-id");
+    expect(getResult).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /load result/i }));
+    await waitFor(() => {
+      expect(getResult).toHaveBeenCalledTimes(1);
+    });
+    expect(getResult).toHaveBeenCalledWith("job-abc");
   });
 });

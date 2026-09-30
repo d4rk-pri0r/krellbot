@@ -424,7 +424,16 @@ export function WorkstationShell({
         {active === "workstation" ? (
           <>
             <h1 className="kbot-shell__heading">Paper workstation</h1>
-            <StatusPanel client={paper} />
+            {bootstrapDone ? (
+              <StatusPanel client={paper} />
+            ) : (
+              <p
+                className="kbot-paper-status__empty"
+                data-testid="status-panel-pending"
+              >
+                Connecting…
+              </p>
+            )}
             <Inspector />
           </>
         ) : null}
