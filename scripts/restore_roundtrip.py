@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tarfile
@@ -159,6 +160,22 @@ def _seed_home_via_subprocesses(home: Path) -> tuple[dict, list]:
         outbox.dispatch("abc12345", json.dumps({"qty": "1"}), _send, mode="paper", venue="kraken")
         outbox.dispatch("def67890", json.dumps({"qty": "2"}), _send, mode="paper", venue="kraken")
     finally:
+        # Force the WAL/SHM sidecar files off disk BEFORE releasing the
+        # cached connection. The store's ``connect`` enables WAL mode,
+        # which keeps ``ops.sqlite-wal`` and ``ops.sqlite-shm`` mapped
+        # for the life of the connection; on Windows + Python 3.13 the
+        # sqlite3_close_v2 path keeps those OS handles alive past
+        # ``conn.close()`` until garbage collection runs, and the
+        # enclosing ``shutil.rmtree(home)`` then fails with
+        # PermissionError [WinError 32]. ``PRAGMA wal_checkpoint(TRUNCATE)``
+        # truncates and unlinks the WAL and drops the SHM mapping while
+        # the connection is still authoritative.
+        try:
+            conn = getattr(getattr(store, "_local", None), "conn", None)
+            if conn is not None:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except (sqlite3.Error, OSError):
+            pass
         _release_store_handle(store)
 
     live_auth = home / "live-authorization.json"
