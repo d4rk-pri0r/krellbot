@@ -188,10 +188,13 @@ def test_live_arm_requires_withdraw_off_and_confirmation(home, monkeypatch, fres
     First live arm reads stdin; if the text is not exactly "LIVE", it refuses.
     A key that can withdraw is refused. A key that cannot trade is refused.
     """
+    from fakes.live_grant import write_grant
+
     from krellbot import secrets
     from krellbot.run import arm_pack, disarm_pack
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    write_grant(home, venue="kraken", pair="SUIUSD")
     secrets.store("kraken", "FAKEKEY", "FAKESECRET")
     pack_path = _write_pack(home)
 

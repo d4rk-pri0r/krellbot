@@ -653,7 +653,7 @@ def test_paper_arm_with_revision_id_then_tick_records_journal_and_outbox(
     assert pack_records, [r.get("pack") for r in records]
 
     # Outbox ledger row was written.
-    store_db = fresh_home / "run" / "store.db"
+    store_db = fresh_home / "ops.sqlite"
     assert store_db.is_file(), store_db
     from krellbot.storage.database import OperationalStore
 
@@ -665,7 +665,9 @@ def test_paper_arm_with_revision_id_then_tick_records_journal_and_outbox(
     assert "coid" in parsed_payload, parsed_payload
     body = json.loads(parsed_payload["body"])
     assert body["kind"] in {"entry", "stop", "exit"}, body
-    assert body["pack_id"] == "lane-e-strategy", body
+    assert body["pair"] == "SUIUSD", body
+    assert parsed_payload["venue"] == "kraken", parsed_payload
+    assert parsed_payload["mode"] == "paper", parsed_payload
 
 
 def test_paper_pause_survives_a_restart(fresh_home: Path, client: _LoopbackClient) -> None:

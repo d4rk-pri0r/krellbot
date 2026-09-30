@@ -29,13 +29,16 @@ class Outbox:
         client_order_id: str,
         body: str,
         send: Callable[[str, str], None],
+        *,
+        mode: str | None = None,
+        venue: str | None = None,
     ) -> str:
         state = self._state(client_order_id)
         if state == "sent":
             return "already_sent"
         if state == "committed":
             return "needs_reconcile"
-        self._commit(client_order_id, body)
+        self._commit(client_order_id, body, mode=mode, venue=venue)
         send(client_order_id, body)
         self._mark_sent(client_order_id)
         return "sent"
@@ -49,8 +52,20 @@ class Outbox:
                 return "sent" if record.get("sent") is True else "committed"
         return None
 
-    def _commit(self, client_order_id: str, body: str) -> None:
-        record = json.dumps({"coid": client_order_id, "body": body, "sent": False})
+    def _commit(
+        self,
+        client_order_id: str,
+        body: str,
+        *,
+        mode: str | None = None,
+        venue: str | None = None,
+    ) -> None:
+        record_obj: dict = {"coid": client_order_id, "body": body, "sent": False}
+        if mode is not None:
+            record_obj["mode"] = mode
+        if venue is not None:
+            record_obj["venue"] = venue
+        record = json.dumps(record_obj, sort_keys=True, separators=(",", ":"))
         with self._store.transaction() as conn:
             conn.execute(
                 "INSERT INTO ledger (kind, payload) VALUES ('outbox', ?)",
