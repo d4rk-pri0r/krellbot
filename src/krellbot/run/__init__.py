@@ -23,6 +23,7 @@ Money is `Decimal`. No HTTP. No secret in any log/journal line.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 from collections.abc import Callable
@@ -43,7 +44,7 @@ from krellbot.execution import reservations as kb_reservations
 from krellbot.pack import evaluate as kb_evaluate
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle as Candle
-from krellbot.storage.database import OperationalStore, StoreError
+from krellbot.storage.database import OperationalStore, StoreError, StoreFull
 from krellbot.storage.outbox import (
     ModeError,
     Outbox,
@@ -851,7 +852,16 @@ def tick(
             if armed.pending_version and armed.owned_qty == Decimal(0):
                 armed.pack_version = armed.pending_version
                 armed.pending_version = None
-        kb_config.save_config(home, config)
+        try:
+            kb_config.save_config(home, config)
+        except OSError as exc:
+            if getattr(exc, "errno", None) == errno.ENOSPC:
+                for _refused in armed_for_venue:
+                    pack_intent_refused[_refused.pack_id] = StoreFull.code
+                any_refused = True
+                print(f"intent refused: {StoreFull.code}", flush=True)
+            else:
+                raise
 
         if any(a.mode == "paper" for a in armed_for_venue):
             _audit_paper_fault_fills(home=home, venue_obj=venue_obj)

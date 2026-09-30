@@ -95,23 +95,12 @@ def _row_for(rows: list[dict], case: str) -> dict:
 # Documented product defects (D1-Dn). Each tuple is
 # (case_name, sub_probe, defect_id, human description). The harness is
 # expected to report pass=False on these specific (case, sub_probe)
-# pairs until product src/ is patched. The brief forbids patching
-# product src/ during FM integration, so the wrapper pytest test
-# asserts the harness reports these exact failures and no others.
-DOCUMENTED_DEFECTS = (
-    (
-        "disk_full_state_write",
-        "enospc_state",
-        "D1",
-        (
-            "src/krellbot/run/__init__.py:854 (run.tick) does not catch "
-            "OSError(errno.ENOSPC) raised by kb_config.save_config at "
-            "src/krellbot/config.py:126 -> paths.atomic_write. An "
-            "ENOSPC on state write surfaces an uncaught traceback instead "
-            "of being recorded as a clean refusal. Owner-deferred."
-        ),
-    ),
-)
+# pairs until product src/ is patched. As of M3-REPAIR-ENOSPC
+# (2026-09-30), no product defects remain; D1 was repaired on the
+# m3/repair-ospc leaf. Any future defect must be added here AND have
+# a corresponding repair leaf; otherwise the wrapper pytest will
+# fail loudly when the harness reports an undocumented failure.
+DOCUMENTED_DEFECTS = ()
 
 
 def test_harness_runs_eight_cases_with_only_documented_defects_failing():
@@ -119,10 +108,9 @@ def test_harness_runs_eight_cases_with_only_documented_defects_failing():
     documented product defect must pass. Documented defects must be
     reported as failing by name, so the harness keeps surfacing them.
 
-    As of M3-FM integration (2026-09-30), one product defect is
-    documented: D1 (disk_full_state_write.enospc_state). All other
-    sub-probes must pass. New regressions in any other case/sub-probe
-    are not allowed and will fail this test.
+    As of M3-REPAIR-ENOSPC (2026-09-30), no product defects are
+    documented. All eight cases must pass; any new regression in any
+    case/sub-probe will fail this test.
     """
     if not shutil.which("uv"):
         pytest.skip("uv is required to run the harness end-to-end")
@@ -175,9 +163,10 @@ def test_harness_runs_eight_cases_with_only_documented_defects_failing():
 
         summary = _last_json_line(proc.stdout)
         # The summary's passed/failed counts must match the documented
-        # defect set: 7 passed, 1 failed (D1). If D1 is fixed in
-        # product src/, this assertion will fail loudly and the
-        # DOCUMENTED_DEFECTS list should be reviewed.
+        # defect set: with D1 fixed on the m3/repair-ospc leaf, all
+        # eight cases pass (8 passed, 0 failed). If a new defect
+        # appears in product src/, this assertion will fail loudly and
+        # the DOCUMENTED_DEFECTS list should be reviewed.
         n_defects = len({(c, s) for c, s, _d, _x in DOCUMENTED_DEFECTS})
         expected_passed = 8 - n_defects
         assert summary["summary"]["total"] == 8
