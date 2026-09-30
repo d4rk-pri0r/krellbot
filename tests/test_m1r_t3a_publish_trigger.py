@@ -1,14 +1,11 @@
 """M1R-T3A — make the preview tag safe.
 
-PyPI publication is undecided (see decisions.md), so a ``v*`` tag must
-not queue a PyPI run. This test pins two invariants and one new
-invariant:
+PyPI publication is retired under the 2026-09-29 20:15 PyPI = NO
+decision, so a ``v*`` tag must not queue a PyPI run and no PyPI
+publish workflow may exist at all. This test pins three invariants:
 
-1. ``.github/workflows/publish.yml`` is manual-dispatch only. The
-   ``on:`` block's first-level keys are exactly ``{workflow_dispatch}``;
-   ``tags`` and ``push`` do not appear anywhere inside that block. The
-   pypa publish step itself is preserved, so an operator can still
-   trigger the publish job by hand.
+1. ``.github/workflows/publish.yml`` is gone. No operator can dispatch a
+   PyPI run because the workflow file no longer exists.
 2. ``.github/workflows/release-frozen.yml`` still fires on ``v*`` tags
    and its publish job still gates on ``refs/tags/v`` and passes
    ``--prerelease`` to ``gh release create``.
@@ -73,60 +70,18 @@ def _extract_on_block(text: str) -> tuple[list[str], list[str]]:
     return [lines[on_idx]], body
 
 
-def _first_level_keys(body: list[str]) -> set[str]:
-    """Collect the first-level keys of the ``on:`` mapping.
+def test_publish_workflow_is_retired() -> None:
+    """``publish.yml`` must not exist after the PyPI = NO decision.
 
-    A first-level key is a non-empty, non-comment line whose first
-    non-whitespace character is in column 2 (i.e. one indent step
-    inside ``on:``) and whose first token ends with ``:``. Inline
-    scalars like ``on: push:`` are handled by ``_extract_on_block``
-    already; here we only need the body shape.
+    The previous invariant — that the workflow was manual-dispatch
+    only — is now subsumed by the stricter invariant that the file
+    itself is gone. No dispatch path can publish to PyPI when the
+    workflow file no longer exists.
     """
 
-    keys: set[str] = set()
-    for raw in body:
-        if not raw.strip() or raw.lstrip().startswith("#"):
-            continue
-        # Compute the indentation of the first non-whitespace char.
-        stripped = raw.lstrip()
-        indent = len(raw) - len(stripped)
-        if indent != 2:
-            continue
-        # The key is everything up to the first ``:``.
-        if ":" not in stripped:
-            continue
-        key = stripped.split(":", 1)[0].strip()
-        if key:
-            keys.add(key)
-    return keys
-
-
-def test_publish_workflow_is_manual_dispatch_only() -> None:
-    """``publish.yml`` must be ``workflow_dispatch`` only.
-
-    No ``push:`` trigger, no ``tags:`` matcher, and the
-    pypa publish step must still be in the file so manual dispatch
-    remains functional.
-    """
-
-    text = _read_text(PUBLISH_WORKFLOW)
-    _header, body = _extract_on_block(text)
-
-    keys = _first_level_keys(body)
-    assert keys == {"workflow_dispatch"}, f"publish.yml `on:` must be {{workflow_dispatch}}; got {sorted(keys)!r}"
-
-    body_text = "\n".join(body)
-    assert "tags" not in body_text, (
-        "publish.yml `on:` block must not contain `tags`; a v* tag must not queue a PyPI run"
-    )
-    assert "push" not in body_text, (
-        "publish.yml `on:` block must not contain `push`; publishing must be manual-dispatch only"
-    )
-
-    # Sanity: the job itself was not deleted. Manual dispatch would
-    # not work without the pypa publish step.
-    assert "pypa/gh-action-pypi-publish" in text, (
-        "publish.yml must still reference pypa/gh-action-pypi-publish; the publish job was deleted"
+    assert not PUBLISH_WORKFLOW.exists(), (
+        "publish.yml must be retired under the 2026-09-29 20:15 PyPI = NO decision; "
+        "delete the file with `git rm .github/workflows/publish.yml`"
     )
 
 
