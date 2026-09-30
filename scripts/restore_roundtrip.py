@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -190,8 +191,30 @@ def _seed_home_via_subprocesses(home: Path) -> tuple[dict, list]:
 
 def _reset_home_to_fresh_empty(home: Path) -> None:
     if home.exists():
-        shutil.rmtree(home)
+        _rmtree_with_retry(home)
     home.mkdir(parents=True, exist_ok=True)
+
+
+def _rmtree_with_retry(path: Path, *, attempts: int = 20, delay: float = 0.1) -> None:
+    """``shutil.rmtree`` with a short retry loop for Windows + Python 3.13.
+
+    A sqlite3 connection that was closed via ``sqlite3_close_v2`` can keep
+    the underlying file handle alive until the OS reaps the owning
+    process. The CLI subprocess that ran ``backup create`` exited, but
+    its ops.sqlite handle may still be mapped when ``shutil.rmtree``
+    walks the tree a few milliseconds later. Retry with a short delay
+    until the handle is released; POSIX is a single fast pass.
+    """
+    last: BaseException | None = None
+    for _ in range(attempts):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError as exc:
+            last = exc
+            time.sleep(delay)
+    if last is not None:
+        raise last
 
 
 def main() -> int:
@@ -241,7 +264,7 @@ def main() -> int:
             str("manifest.json" in member_names),
         )
 
-        shutil.rmtree(home)
+        _rmtree_with_retry(home)
         proc = _run_krellbot(home, "backup", "restore", "--from", str(archive))
         _record(rows, "backup restore rc", "0", str(proc.returncode))
 
@@ -315,7 +338,7 @@ def main() -> int:
     finally:
         for p in (home, archive_dir, non_empty_target):
             try:
-                shutil.rmtree(p)
+                _rmtree_with_retry(p)
             except OSError:
                 pass
 
