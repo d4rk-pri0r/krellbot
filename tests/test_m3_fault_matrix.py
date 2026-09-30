@@ -92,27 +92,97 @@ def _row_for(rows: list[dict], case: str) -> dict:
     raise AssertionError(f"row for case {case!r} not found in {rows!r}")
 
 
-def test_harness_runs_eight_cases_with_zero_failures():
-    """The harness runs all eight cases, prints eight rows on stdout, all pass."""
+# Documented product defects (D1-Dn). Each tuple is
+# (case_name, sub_probe, defect_id, human description). The harness is
+# expected to report pass=False on these specific (case, sub_probe)
+# pairs until product src/ is patched. The brief forbids patching
+# product src/ during FM integration, so the wrapper pytest test
+# asserts the harness reports these exact failures and no others.
+DOCUMENTED_DEFECTS = (
+    (
+        "disk_full_state_write",
+        "enospc_state",
+        "D1",
+        (
+            "src/krellbot/run/__init__.py:854 (run.tick) does not catch "
+            "OSError(errno.ENOSPC) raised by kb_config.save_config at "
+            "src/krellbot/config.py:126 -> paths.atomic_write. An "
+            "ENOSPC on state write surfaces an uncaught traceback instead "
+            "of being recorded as a clean refusal. Owner-deferred."
+        ),
+    ),
+)
+
+
+def test_harness_runs_eight_cases_with_only_documented_defects_failing():
+    """The harness runs all eight cases; every case that is not a
+    documented product defect must pass. Documented defects must be
+    reported as failing by name, so the harness keeps surfacing them.
+
+    As of M3-FM integration (2026-09-30), one product defect is
+    documented: D1 (disk_full_state_write.enospc_state). All other
+    sub-probes must pass. New regressions in any other case/sub-probe
+    are not allowed and will fail this test.
+    """
     if not shutil.which("uv"):
         pytest.skip("uv is required to run the harness end-to-end")
     with tempfile.TemporaryDirectory() as tmp:
         json_path = Path(tmp) / "fm.json"
         proc = _run_harness(json_out=json_path, timeout=900)
-        assert proc.returncode == 0, f"harness rc={proc.returncode}; stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        # The harness returns non-zero if any row fails (including D1);
+        # that's by design and must be preserved. We don't gate on rc
+        # here; we gate on the row content.
         rows = json.loads(json_path.read_text(encoding="utf-8"))
         case_names = [r["case"] for r in rows]
         assert case_names == EXPECTED_CASE_ORDER, (
             f"case order mismatch: got {case_names}, expected {EXPECTED_CASE_ORDER}"
         )
         assert len(rows) == 8
+
+        failing_rows = [r for r in rows if r["pass"] is False]
+        documented_failing = []
+        for case, sub_probe, _did, _desc in DOCUMENTED_DEFECTS:
+            for r in failing_rows:
+                if r["case"] == case:
+                    documented_failing.append((case, sub_probe, _did))
+
+        # Every documented defect must appear as a failing row.
+        expected_doc = {(c, s) for c, s, _d, _x in DOCUMENTED_DEFECTS}
+        seen_doc = {(c, s) for c, s, _d in documented_failing}
+        missing = expected_doc - seen_doc
+        assert not missing, (
+            "documented defect(s) not surfaced by the harness: "
+            f"{missing}; failing rows were {[r['case'] for r in failing_rows]}"
+        )
+
+        # No OTHER row may fail (i.e., no undocumented regressions).
+        allowed_failing_cases = {c for c, _s, _d, _x in DOCUMENTED_DEFECTS}
+        unexpected = [r["case"] for r in failing_rows if r["case"] not in allowed_failing_cases]
+        assert not unexpected, (
+            f"harness reports failures beyond documented defects: {unexpected}; "
+            f"failing rows: {[r for r in failing_rows]}"
+        )
+
+        # Non-defect cases must all pass cleanly.
         for r in rows:
+            if r["case"] in allowed_failing_cases:
+                continue
             assert r["pass"] is True, (
-                f"row must pass; case={r['case']!r} observed={r['observed']!r} expected={r['expected']!r} detail={r['detail']!r}"
+                f"non-defect row must pass; case={r['case']!r} "
+                f"observed={r['observed']!r} expected={r['expected']!r} "
+                f"detail={r['detail']!r}"
             )
 
         summary = _last_json_line(proc.stdout)
-        assert summary == {"summary": {"total": 8, "passed": 8, "failed": 0}}, summary
+        # The summary's passed/failed counts must match the documented
+        # defect set: 7 passed, 1 failed (D1). If D1 is fixed in
+        # product src/, this assertion will fail loudly and the
+        # DOCUMENTED_DEFECTS list should be reviewed.
+        n_defects = len({(c, s) for c, s, _d, _x in DOCUMENTED_DEFECTS})
+        expected_passed = 8 - n_defects
+        assert summary["summary"]["total"] == 8
+        assert summary["summary"]["failed"] == n_defects
+        assert summary["summary"]["passed"] == expected_passed, summary
 
 
 def test_harness_observed_is_not_copied_from_expected():
