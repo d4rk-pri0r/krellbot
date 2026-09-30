@@ -26,9 +26,11 @@ def main(argv: list[str] | None = None) -> int:
     """Entry point invoked by the scheduler.
 
     The scheduler runs ``<executable> tick``. ``argv`` is the argument
-    vector after the executable. If the first argument is not ``tick``,
-    this is not a supervised call and the runner exits 2 (usage error)
-    rather than silently doing the wrong thing.
+    vector after the executable. The runner delegates a ``tick``
+    invocation to ``krellbot.cli.main`` (lazy import) so the supervised
+    tick path shares the CLI's parsing, fetch, transport, and
+    supervision wiring. Any other first argument is a usage error and
+    exits 2.
 
     Returns 0 on a successful invocation; non-zero on refusal. The OS
     scheduler only logs the exit code; the run loop journals per-tick
@@ -36,10 +38,10 @@ def main(argv: list[str] | None = None) -> int:
     """
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "tick":
-        # Tick dispatch lives in the CLI (``krellbot tick --venue ...``);
-        # this module is just the stable entry point the scheduler unit
-        # points at, so a run-loop refactor does not rewrite every plist.
-        return 0
+        from krellbot import cli as kb_cli
+
+        rest = list(argv[1:])
+        return kb_cli.main(["krellbot", "tick", *rest])
     print("usage: krellbot runner tick", file=sys.stderr)
     return 2
 
