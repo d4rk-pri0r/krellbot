@@ -46,9 +46,11 @@ import json
 import os
 import posixpath
 import re
+import sqlite3
 import sys
 import tarfile
 import tempfile
+import threading
 from pathlib import Path
 
 from krellbot.storage import backup as _sqlite_backup
@@ -92,6 +94,30 @@ def _posix_relpath(home: Path, path: Path) -> str:
     """Return the POSIX relative path from ``home`` to ``path``."""
     rel = path.resolve().relative_to(home.resolve())
     return rel.as_posix()
+
+
+def _release_store_handle(store: OperationalStore | None) -> None:
+    """Close the cached sqlite connection on ``store`` and reset its
+    thread-local. ``OperationalStore.connect`` caches the
+    ``sqlite3.Connection`` in ``store._local.conn``; on Windows the
+    OS-level file handle can outlive the Python object reference and
+    cause ``tempfile.TemporaryDirectory`` cleanup to fail with
+    PermissionError [WinError 32]. Dropping the conn + thread-local
+    forces the handle to close deterministically before tempdir
+    cleanup runs. Safe no-op on POSIX.
+    """
+    if store is None:
+        return
+    try:
+        conn = getattr(getattr(store, "_local", None), "conn", None)
+        if conn is not None:
+            conn.close()
+    except (sqlite3.Error, OSError):
+        pass
+    try:
+        store._local = threading.local()
+    except (AttributeError, TypeError):
+        pass
 
 
 def _is_excluded(rel: str) -> bool:
@@ -206,9 +232,12 @@ def create(home: Path, out: Path, *, now: int) -> dict:
                 manifest_files.sort(key=lambda e: e["path"])
             try:
                 store = OperationalStore(snap_path)
-                rows = store.read_ledger()
-                ops_rows = len(rows)
-                ops_rows_sha256 = _bytes_sha256(json.dumps([list(r) for r in rows], sort_keys=True).encode("utf-8"))
+                try:
+                    rows = store.read_ledger()
+                    ops_rows = len(rows)
+                    ops_rows_sha256 = _bytes_sha256(json.dumps([list(r) for r in rows], sort_keys=True).encode("utf-8"))
+                finally:
+                    _release_store_handle(store)
             except (OSError, RuntimeError, ValueError, TypeError):
                 ops_rows = None
                 ops_rows_sha256 = None
@@ -383,6 +412,7 @@ def restore(archive: Path, home: Path) -> dict:
 
         ops_sqlite = staged / _OPS_FILENAME
         if ops_sqlite.is_file():
+            store = None
             try:
                 store = OperationalStore(ops_sqlite)
                 rows = store.read_ledger()
@@ -398,6 +428,8 @@ def restore(archive: Path, home: Path) -> dict:
                 raise
             except Exception as exc:
                 raise BackupError("archive_corrupt", f"ops.sqlite could not be opened: {exc}") from exc
+            finally:
+                _release_store_handle(store)
 
         if home.exists() and not list(home.iterdir()) and (staged.exists()):
             home.rmdir()
