@@ -223,14 +223,25 @@ def _rmtree_with_retry(path: Path, *, attempts: int = 60, delay: float = 0.5) ->
     """
 
     def _retry(_func, _path, _exc_info):
-            # ``onerror(func, path, exc_info)`` — exc_info[1] is the exception
-            # instance. Only retry PermissionError (WinError 32: file in
-            # use by another process); any other OSError — including
-            # FileNotFoundError after a successful delete in a previous
-            # attempt — propagates immediately so rmtree continues. After
-            # exhausting retries, swallow so rmtree's walk continues.
+            # ``onerror(func, path, exc_info)`` — exc_info[1] is the
+            # exception instance. Retry on PermissionError (WinError
+            # 32: file in use by another process); any other OSError
+            # — including FileNotFoundError after a successful delete
+            # in a previous attempt — propagates immediately so rmtree
+            # continues. After exhausting retries, swallow so rmtree's
+            # walk continues. Also swallow WinError 145 (ERROR_DIR_NOT_
+            # EMPTY) when the failing op is ``os.rmdir`` — that means
+            # rmtree hit the parent-directory delete while a child is
+            # still locked, and the next tree walk has nothing left to
+            # do anyway.
             exc = _exc_info[1]
-            if not isinstance(exc, PermissionError):
+            is_rmdir = _func is os.rmdir
+            dir_not_empty = (
+                is_rmdir
+                and isinstance(exc, OSError)
+                and getattr(exc, "winerror", None) == 145
+            )
+            if not isinstance(exc, PermissionError) and not dir_not_empty:
                 raise exc
             for _ in range(attempts):
                 time.sleep(delay)
