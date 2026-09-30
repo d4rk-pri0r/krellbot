@@ -172,6 +172,9 @@ def test_arm_pack_reports_withdraw_on_for_withdraw_capable_key(home, fresh_keyri
     from krellbot.cli import cmd_arm
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    from fakes.live_grant import write_grant
+
+    write_grant(home, venue="kraken", pair="SUIUSD")
     _store(fresh_keyring)
     pack_path = _write_pack(home)
 
@@ -200,6 +203,9 @@ def test_arm_pack_reports_trade_off_for_trade_off_key(home, fresh_keyring, monke
     from krellbot.cli import cmd_arm
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    from fakes.live_grant import write_grant
+
+    write_grant(home, venue="kraken", pair="SUIUSD")
     _store(fresh_keyring)
     pack_path = _write_pack(home)
 
@@ -225,6 +231,9 @@ def test_arm_pack_reports_trade_off_for_invalid_key(home, fresh_keyring, monkeyp
     from krellbot.cli import cmd_arm
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    from fakes.live_grant import write_grant
+
+    write_grant(home, venue="kraken", pair="SUIUSD")
     _store(fresh_keyring)
     pack_path = _write_pack(home)
 

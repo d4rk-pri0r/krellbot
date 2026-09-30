@@ -1198,6 +1198,7 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
     Returns `(venue_obj, reader)` or a refusal string. A string is printed
     and the tick exits 1. The string never contains a key.
     """
+    from krellbot.application import live_gate as kb_live_gate
     from krellbot.venues.base import WithdrawCapableError
     from krellbot.venues.coinbase import CoinbaseVenue
     from krellbot.venues.kraken import KrakenVenue
@@ -1222,8 +1223,11 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
         )
         return (venue_obj, reader)
 
-    if os.environ.get("KRELLBOT_ENABLE_LIVE") != "1":
-        return LIVE_TICK_REFUSED
+    gate_result = kb_live_gate.check_live_send(home, venue=armed.venue, pair=armed.pair)
+    if not gate_result.ok:
+        if gate_result.code == kb_live_gate.CODE_LIVE_DISABLED:
+            return LIVE_TICK_REFUSED
+        return f"live refused: {gate_result.code}"
     try:
         api_key, api_secret = kb_secrets.get(armed.venue)
     except (FileNotFoundError, ValueError, PermissionError):
@@ -1251,12 +1255,18 @@ def _build_live_venue_for_offline(armed, *, transport):
     Used when `--offline-candles` is set on a live arm. Does not call fetch;
     the caller wires the offline reader into `run.tick`.
     """
+    from krellbot import paths as kb_paths
+    from krellbot.application import live_gate as kb_live_gate
     from krellbot.venues.base import WithdrawCapableError
     from krellbot.venues.coinbase import CoinbaseVenue
     from krellbot.venues.kraken import KrakenVenue
 
-    if os.environ.get("KRELLBOT_ENABLE_LIVE") != "1":
-        return LIVE_TICK_REFUSED
+    home = kb_paths.home()
+    gate_result = kb_live_gate.check_live_send(home, venue=armed.venue, pair=armed.pair)
+    if not gate_result.ok:
+        if gate_result.code == kb_live_gate.CODE_LIVE_DISABLED:
+            return LIVE_TICK_REFUSED
+        return f"live refused: {gate_result.code}"
     try:
         api_key, api_secret = kb_secrets.get(armed.venue)
     except (FileNotFoundError, ValueError, PermissionError):
