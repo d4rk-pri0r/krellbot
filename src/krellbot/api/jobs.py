@@ -21,10 +21,12 @@ import copy
 import datetime as _dt
 import hashlib
 import json
+import math
 import secrets
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +55,7 @@ JOB_ERROR_RESULT_UNAVAILABLE = "result_unavailable"
 
 CODE_INVALID_DATASET = "invalid_dataset"
 CODE_NO_DATASET_AND_NO_FETCH = "no_dataset_and_no_fetch"
+CODE_INVALID_STARTING_CASH = "invalid_starting_cash"
 
 # Allowed concurrency per the brief: one running + up to four queued.
 MAX_RUNNING_JOBS = 1
@@ -202,6 +205,58 @@ def _resolve_dataset_id(home: Path, dataset_id: Any, dataset_csv: Any) -> tuple[
         return None, refusal
 
     return resolved, None
+
+
+def _coerce_starting_cash(value: Any) -> tuple[Decimal, dict | None]:
+    """Validate ``value`` at the job boundary and return a Decimal or refusal.
+
+    A missing ``value`` defaults to ``Decimal(10000)``. Any other type —
+    bool, list, dict, bytes, etc. — is rejected with ``invalid_starting_cash``.
+    Strings must parse as a finite, positive Decimal: ``"abc"``, ``"NaN"``,
+    ``"Infinity"``, ``"-5"``, ``"0"`` all refuse. ``True`` (bool) refuses
+    because Python treats it as an int subclass but never as money.
+    """
+    from decimal import Decimal as _Decimal
+
+    if value is None:
+        return _Decimal(10000), None
+    if type(value) is bool:
+        return _Decimal(0), {
+            "code": CODE_INVALID_STARTING_CASH,
+            "message": "starting_cash must be a number or numeric string",
+        }
+    if isinstance(value, int):
+        if value <= 0:
+            return _Decimal(0), {
+                "code": CODE_INVALID_STARTING_CASH,
+                "message": "starting_cash must be greater than zero",
+            }
+        return _Decimal(value), None
+    if isinstance(value, float):
+        if value <= 0 or not math.isfinite(value):
+            return _Decimal(0), {
+                "code": CODE_INVALID_STARTING_CASH,
+                "message": "starting_cash must be a finite number greater than zero",
+            }
+        return _Decimal(str(value)), None
+    if isinstance(value, str):
+        try:
+            parsed = _Decimal(value)
+        except (ArithmeticError, ValueError, TypeError):
+            return _Decimal(0), {
+                "code": CODE_INVALID_STARTING_CASH,
+                "message": "starting_cash must be a numeric string",
+            }
+        if not parsed.is_finite() or parsed <= 0:
+            return _Decimal(0), {
+                "code": CODE_INVALID_STARTING_CASH,
+                "message": "starting_cash must be a finite number greater than zero",
+            }
+        return parsed, None
+    return _Decimal(0), {
+        "code": CODE_INVALID_STARTING_CASH,
+        "message": "starting_cash must be a number or numeric string",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -714,7 +769,9 @@ class JobManager:
         holdout_from_ms_raw = request_payload.get("holdout_from_ms")
         holdout_to_ms_raw = request_payload.get("holdout_to_ms")
 
-        from decimal import Decimal
+        starting_cash_decimal, cash_refusal = _coerce_starting_cash(starting_cash)
+        if cash_refusal is not None:
+            return {"ok": False, **cash_refusal}
 
         kwargs: dict = {
             "pack_path": Path(str(pack_path)) if pack_path else Path("."),
@@ -722,7 +779,7 @@ class JobManager:
             "pair": str(pair) if isinstance(pair, str) else None,
             "timeframe": str(timeframe) if isinstance(timeframe, str) else None,
             "dataset_csv": Path(str(dataset_csv)) if dataset_csv else None,
-            "starting_cash": Decimal(str(starting_cash)) if starting_cash is not None else Decimal(10000),
+            "starting_cash": starting_cash_decimal,
             "fee_bps": int(fee_bps) if fee_bps is not None else None,
             "slippage_bps": int(slippage_bps) if slippage_bps is not None else None,
             "slippage_mult": float(slippage_mult) if slippage_mult is not None else None,

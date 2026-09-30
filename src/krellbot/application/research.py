@@ -29,9 +29,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from pathlib import Path
 
 from krellbot.backtest.engine import Backtester
@@ -62,6 +63,9 @@ CODE_INVALID_HOLDOUT = "invalid_holdout"
 CODE_HOLDOUT_OVERLAP = "holdout_overlap"
 CODE_FUTURE_DATA = "future_data"
 CODE_INVALID_NODES = "invalid_nodes"
+CODE_NUMERIC_OUT_OF_RANGE = "numeric_out_of_range"
+
+NUMERIC_OUT_OF_RANGE_MESSAGE = "backtest equity exceeded the supported numeric range (1e20)"
 
 
 FetchFn = Callable[[str, str, str], list[Candle]]
@@ -321,21 +325,56 @@ class ResearchService:
                 detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
                 refusal=refusal,
             )
+        except (DecimalException, OverflowError):
+            refusal = {
+                "code": CODE_NUMERIC_OUT_OF_RANGE,
+                "message": NUMERIC_OUT_OF_RANGE_MESSAGE,
+            }
+            return ResearchResult(
+                ok=False,
+                legacy_receipt=None,
+                detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
+                refusal=refusal,
+            )
         bt = runners[0]
         receipt_pack = evaluated["pack"]
-        receipt = build_receipt(
-            pack=receipt_pack,
-            records=records,
-            trade_count=bt.trade_count,
-            data_manifest_sha256=manifest_sha,
-            venue=request.venue,
-            pair=pair,
-            tf=timeframe,
-            fee_bps=fee_bps,
-            slippage_bps=slippage_bps,
-            slippage_mult=slippage_mult,
-            starting_cash=Decimal(request.starting_cash),
-        )
+        try:
+            receipt = build_receipt(
+                pack=receipt_pack,
+                records=records,
+                trade_count=bt.trade_count,
+                data_manifest_sha256=manifest_sha,
+                venue=request.venue,
+                pair=pair,
+                tf=timeframe,
+                fee_bps=fee_bps,
+                slippage_bps=slippage_bps,
+                slippage_mult=slippage_mult,
+                starting_cash=Decimal(request.starting_cash),
+            )
+        except (DecimalException, OverflowError):
+            refusal = {
+                "code": CODE_NUMERIC_OUT_OF_RANGE,
+                "message": NUMERIC_OUT_OF_RANGE_MESSAGE,
+            }
+            return ResearchResult(
+                ok=False,
+                legacy_receipt=None,
+                detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
+                refusal=refusal,
+            )
+
+        if _receipt_has_non_finite(receipt):
+            refusal = {
+                "code": CODE_NUMERIC_OUT_OF_RANGE,
+                "message": NUMERIC_OUT_OF_RANGE_MESSAGE,
+            }
+            return ResearchResult(
+                ok=False,
+                legacy_receipt=None,
+                detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
+                refusal=refusal,
+            )
 
         trace = self._build_trace(receipt_pack, candles)
         detail = {
@@ -469,3 +508,20 @@ def _candles_to_canonical_bytes(candles: list[Candle]) -> bytes:
     for c in candles:
         parts.append(f"{c.ts_ms},{c.open},{c.high},{c.low},{c.close},{c.volume}")
     return ("\n".join(parts) + "\n").encode("utf-8")
+
+
+def _receipt_has_non_finite(value: object) -> bool:
+    """Return True if ``value`` is or contains a non-finite float.
+
+    Walks dicts, lists, and tuples. Strings, ints, bools, None, and
+    Decimals are always finite. The browser cannot parse ``Infinity``
+    or ``NaN`` in JSON, so any receipt containing one of these floats
+    must be rejected before it is handed back to the caller.
+    """
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    if isinstance(value, dict):
+        return any(_receipt_has_non_finite(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_receipt_has_non_finite(v) for v in value)
+    return False
