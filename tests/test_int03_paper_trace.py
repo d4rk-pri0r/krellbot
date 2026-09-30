@@ -360,8 +360,12 @@ def test_live_tick_does_not_call_paper_decision_trace(home, fresh_keyring, monke
     detail carries no ``decision_trace_bars`` key — the live path must not
     gain a trace field it never asked for.
     """
+    from fakes.live_grant import write_grant
+
     from krellbot.run import tick
 
+    monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    write_grant(home, venue="kraken", pair="BTCUSD")
     pack_path = _write_pack(home, pack_id="int03-live", pair="BTCUSD")
     _arm(home, pack_path, mode="live", pack_id="int03-live", pair="BTCUSD")
     spy = _install_trace_spy(monkeypatch)

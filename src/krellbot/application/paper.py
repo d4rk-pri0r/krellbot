@@ -74,6 +74,7 @@ CODE_MINIMUM_NOT_MET = "minimum_not_met"
 CODE_STORED_MODE_NOT_PAPER = "stored_mode_not_paper"
 CODE_EXPORTED = "exported"
 CODE_OVER_RESERVED = reservations.CODE_OVER_RESERVED
+CODE_KILL_SWITCH_ENGAGED = "kill_switch_engaged"
 
 
 @dataclass(frozen=True)
@@ -244,6 +245,16 @@ class PaperService:
             return self._refusal(
                 CODE_INVALID_REQUEST,
                 "live arm is not handled by the paper service",
+                correlation_id,
+                rev_before,
+            )
+
+        from krellbot.application import live_gate as kb_live_gate
+
+        if kb_live_gate.kill_state(self._home).engaged:
+            return self._refusal(
+                CODE_KILL_SWITCH_ENGAGED,
+                "kill switch engaged; paper arm refused",
                 correlation_id,
                 rev_before,
             )

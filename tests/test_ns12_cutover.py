@@ -87,9 +87,11 @@ def test_disk_full_rolls_back_no_partial_migration(tmp_path: Path) -> None:
     def enospc_writer(_conn, _record) -> None:
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    with pytest.raises(OSError) as excinfo:
+    # M3-OUT: OSError(errno.ENOSPC) → StoreFull.
+    from krellbot.storage.database import StoreFull
+
+    with pytest.raises(StoreFull):
         import_legacy.import_legacy(store, [_record("first"), _record("second")], writer=enospc_writer)
-    assert excinfo.value.errno == errno.ENOSPC
 
     assert store.read_ledger() == before_ledger
     after_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]

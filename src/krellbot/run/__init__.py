@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections.abc import Callable
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
@@ -37,13 +36,14 @@ from krellbot import journal as kb_journal
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 from krellbot import secrets as kb_secrets
+from krellbot.application import live_gate
 from krellbot.data.instruments import InstrumentMetadataError
 from krellbot.domain import trace as kb_trace
 from krellbot.execution import reservations as kb_reservations
 from krellbot.pack import evaluate as kb_evaluate
 from krellbot.pack import lint as kb_pack_lint
 from krellbot.pack.model import Candle as Candle
-from krellbot.storage.database import OperationalStore
+from krellbot.storage.database import OperationalStore, StoreError
 from krellbot.storage.outbox import (
     ModeError,
     Outbox,
@@ -150,8 +150,12 @@ def arm_pack(
         return 1
 
     if mode == "live":
-        if os.environ.get("KRELLBOT_ENABLE_LIVE") != "1":
-            print("live is off; set KRELLBOT_ENABLE_LIVE=1 to arm a live pack", flush=True)
+        gate_result = live_gate.check_live_send(home, venue=venue, pair=pair)
+        if not gate_result.ok:
+            if gate_result.code == live_gate.CODE_LIVE_DISABLED:
+                print("live is off; set KRELLBOT_ENABLE_LIVE=1 to arm a live pack", flush=True)
+            else:
+                print(f"live refused: {gate_result.code}", flush=True)
             return 1
         # Must have a stored key for this venue.
         try:
@@ -310,7 +314,7 @@ def _paper_send_via_outbox(
     if mode != "paper":
         raise ModeError(f"paper-send invoked in mode={mode!r}; only paper arms route through the outbox")
     store = OperationalStore(home / "ops.sqlite")
-    state = Outbox(store).dispatch(coid, body, send)
+    state = Outbox(store).dispatch(coid, body, send, mode=mode, venue=None)
     if state == "needs_reconcile":
         audit_needs_reconcile(store, coid=coid)
         if journal_sink is not None:
@@ -335,6 +339,36 @@ def _paper_dispatch_place(
     body: str,
     venue_obj: Any,
 ) -> tuple[str, OrderRef | None]:
+    """Thin wrapper that forwards ``_dispatch_place`` with ``mode="paper"``."""
+    return _dispatch_place(
+        home=home,
+        mode="paper",
+        venue=None,
+        coid=coid,
+        body=body,
+        venue_obj=venue_obj,
+    )
+
+
+def _dispatch_place(
+    *,
+    home: Path,
+    mode: str,
+    venue: str | None,
+    coid: str,
+    body: str,
+    venue_obj: Any,
+) -> tuple[str, OrderRef | None]:
+    """Commit-before-send dispatch for every ``place_*`` call.
+
+    Both paper and live arms route through here. Paper takes the same
+    Outbox path as before; live goes through the same Outbox so a
+    coid is durable in ``<home>/ops.sqlite`` BEFORE the venue call.
+    On ``needs_reconcile`` the helper records the audit and returns
+    ``"needs_reconcile"`` without invoking ``venue_obj``. ``StoreError``
+    is propagated; the caller is responsible for refusing before any
+    venue call.
+    """
     captured: list[OrderRef | None] = [None]
 
     def _send(c: str, b: str) -> None:
@@ -357,7 +391,10 @@ def _paper_dispatch_place(
                 pair=str(payload["pair"]),
             )
 
-    state = _paper_send_via_outbox(home=home, mode=mode, coid=coid, body=body, send=_send)
+    store = OperationalStore(home / "ops.sqlite")
+    state = Outbox(store).dispatch(coid, body, _send, mode=mode, venue=venue)
+    if state == "needs_reconcile":
+        audit_needs_reconcile(store, coid=coid)
     return state, captured[0]
 
 
@@ -414,6 +451,12 @@ def tick(
     keys). Tests inject a recording sink. `transport` defaults to a no-op
     so the CLI does not need to wire one; tests inject a spy to assert that
     telemetry calls happen (or do not happen) when expected.
+
+    Refusal order (the brief):
+      1. live gate (A1) — refuses BEFORE any ``venue_obj`` attribute.
+      2. store open (C3) — refuses BEFORE any ``venue_obj`` attribute.
+      3. per-venue send (C4) — catches ``StoreError`` before generic
+         ``RuntimeError``, so a commit failure refuses without a place.
     """
     home = Path(home) if home is not None else kb_paths.home()
     journal = journal_sink if journal_sink is not None else kb_journal.append
@@ -432,6 +475,48 @@ def tick(
             print(f"no armed packs for {venue}", flush=True)
             return 0
 
+        # A1: live gate comes BEFORE any venue_obj attribute access.
+        for live_armed in armed_for_venue:
+            if live_armed.mode != "live":
+                continue
+            gate_result = live_gate.check_live_send(home, venue=venue, pair=live_armed.pair)
+            if not gate_result.ok:
+                print(f"live refused: {gate_result.code}", flush=True)
+                _record_tick(
+                    journal,
+                    now=int(now),
+                    venue=venue,
+                    pack=live_armed.pack_id,
+                    bar_ts=0,
+                    detail={
+                        "reason": "live_refused",
+                        "code": gate_result.code,
+                        "pair": live_armed.pair,
+                    },
+                )
+                return 1
+
+        # C3: store open BEFORE any venue call.
+        try:
+            OperationalStore(home / "ops.sqlite").connect()
+        except StoreError as exc:
+            print(f"store refused: {exc.code}", flush=True)
+            for live_armed in armed_for_venue:
+                _record_tick(
+                    journal,
+                    now=int(now),
+                    venue=venue,
+                    pack=live_armed.pack_id,
+                    bar_ts=0,
+                    detail={
+                        "reason": "store_refused",
+                        "code": exc.code,
+                        "intent_refused": exc.code,
+                        "pair": live_armed.pair,
+                    },
+                )
+            return 1
+
         cache = kb_license.read_cache(home)
 
         snap = venue_obj.snapshot()
@@ -440,6 +525,9 @@ def tick(
         fills_before = {f.coid for f in (snap.recent_fills or [])}
         fill_context: dict[str, dict] = {}
         warned = False
+        # C4: per-pack refusal on StoreError during a venue send.
+        pack_intent_refused: dict[str, str] = {}
+        any_refused = False
 
         for armed in armed_for_venue:
             pack = armed_pack_dict(home, armed)
@@ -486,18 +574,15 @@ def tick(
                     sort_keys=True,
                 )
                 try:
-                    if armed.mode == "paper":
-                        stop_state, _stop_ref = _paper_dispatch_place(
-                            home=home,
-                            mode=armed.mode,
-                            coid=stop_coid,
-                            body=stop_body,
-                            venue_obj=venue_obj,
-                        )
-                        if stop_state == "sent":
-                            ensure_stop_entry = stop_coid
-                    else:
-                        venue_obj.place_stop(stop_coid, owned, repair, pair=armed.pair)
+                    stop_state, _stop_ref = _dispatch_place(
+                        home=home,
+                        mode=armed.mode,
+                        venue=venue,
+                        coid=stop_coid,
+                        body=stop_body,
+                        venue_obj=venue_obj,
+                    )
+                    if stop_state == "sent":
                         ensure_stop_entry = stop_coid
                     if ensure_stop_entry:
                         fill_context[ensure_stop_entry] = {
@@ -508,6 +593,11 @@ def tick(
                             "fee_bps": _fee_bps_for_venue(venue),
                             "kind": "stop",
                         }
+                except StoreError as exc:
+                    pack_intent_refused[armed.pack_id] = exc.code
+                    any_refused = True
+                    print(f"intent refused: {exc.code}", flush=True)
+                    ensure_stop_failed = True
                 except (AttributeError, RuntimeError, ValueError):
                     ensure_stop_failed = True
                     print("ensure_stop failed: stop", flush=True)
@@ -525,16 +615,14 @@ def tick(
                         sort_keys=True,
                     )
                     try:
-                        if armed.mode == "paper":
-                            _paper_dispatch_place(
-                                home=home,
-                                mode=armed.mode,
-                                coid=exit_coid,
-                                body=exit_body,
-                                venue_obj=venue_obj,
-                            )
-                        else:
-                            venue_obj.place_exit(exit_coid, owned, pair=armed.pair)
+                        _dispatch_place(
+                            home=home,
+                            mode=armed.mode,
+                            venue=venue,
+                            coid=exit_coid,
+                            body=exit_body,
+                            venue_obj=venue_obj,
+                        )
                         fill_context[exit_coid] = {
                             "pack_id": armed.pack_id,
                             "pack_version": armed.pack_version,
@@ -543,6 +631,10 @@ def tick(
                             "fee_bps": _fee_bps_for_venue(venue),
                             "kind": "exit",
                         }
+                    except StoreError as exc:
+                        pack_intent_refused[armed.pack_id] = exc.code
+                        any_refused = True
+                        print(f"intent refused: {exc.code}", flush=True)
                     except (AttributeError, RuntimeError, ValueError):
                         pass
                     owned = Decimal(0)
@@ -570,13 +662,12 @@ def tick(
             entry_qty = Decimal(0)
             exit_qty = Decimal(0)
             entry_coid_for_signal = ""
-            # `entries_paused` suppresses NEW entries only. Snapshot /
-            # reconciliation / existing-position protection / valid exits
-            # are unaffected — see contracts/commands.md §
-            # "Persistence and pause semantics". `blocked` covers the paid
-            # license lapse (entries off, exits on).
-            entries_suppressed = armed.entries_paused
-            reconcile_blocked = armed.mode == "paper" and kb_reservations.should_block_for_reconcile(home)
+            kill_engaged = live_gate.kill_state(home).engaged
+            entries_suppressed = armed.entries_paused or kill_engaged
+            try:
+                reconcile_blocked = kb_reservations.should_block_for_reconcile(home)
+            except StoreError:
+                reconcile_blocked = True
             metadata_refusal: str | None = None
             rules: PairRules | None = None
             try:
@@ -621,68 +712,29 @@ def tick(
                                 sort_keys=True,
                             )
                             try:
-                                if armed.mode == "paper":
-                                    entry_state, entry_ref = _paper_dispatch_place(
-                                        home=home,
-                                        mode=armed.mode,
-                                        coid=entry_coid_for_signal,
-                                        body=entry_body,
-                                        venue_obj=venue_obj,
-                                    )
-                                    if entry_state == "sent":
-                                        ref_filled = getattr(entry_ref, "filled_qty", None)
-                                        filled = ref_filled if isinstance(ref_filled, Decimal) else qty
-                                        if filled < qty:
-                                            owned = filled
-                                            entry_qty = filled
-                                            audit_partial_fill(
-                                                OperationalStore(home / "ops.sqlite"),
-                                                coid=entry_coid_for_signal,
-                                                requested=str(qty),
-                                                filled=str(filled),
-                                            )
-                                        else:
-                                            entry_qty = qty
-                                            owned = qty
-                                        fill_context[entry_coid_for_signal] = {
-                                            "pack_id": armed.pack_id,
-                                            "pack_version": armed.pack_version,
-                                            "bar_ts": bar_ts,
-                                            "modeled_px": str(close_price),
-                                            "fee_bps": _fee_bps_for_venue(venue),
-                                            "kind": "entry",
-                                        }
-                                    elif entry_state == "already_sent":
-                                        # Outbox dedup: a previous tick already
-                                        # placed this coid; the venue snapshot
-                                        # carries the fill. Read the actual
-                                        # filled balance from there.
-                                        snap_dedup = venue_obj.snapshot()
-                                        dedup_fill = next(
-                                            (
-                                                f
-                                                for f in (snap_dedup.recent_fills or [])
-                                                if f.coid == entry_coid_for_signal
-                                            ),
-                                            None,
+                                entry_state, entry_ref = _dispatch_place(
+                                    home=home,
+                                    mode=armed.mode,
+                                    venue=venue,
+                                    coid=entry_coid_for_signal,
+                                    body=entry_body,
+                                    venue_obj=venue_obj,
+                                )
+                                if entry_state == "sent":
+                                    ref_filled = getattr(entry_ref, "filled_qty", None)
+                                    filled = ref_filled if isinstance(ref_filled, Decimal) else qty
+                                    if filled < qty:
+                                        owned = filled
+                                        entry_qty = filled
+                                        audit_partial_fill(
+                                            OperationalStore(home / "ops.sqlite"),
+                                            coid=entry_coid_for_signal,
+                                            requested=str(qty),
+                                            filled=str(filled),
                                         )
-                                        if dedup_fill is not None:
-                                            owned = Decimal(str(dedup_fill.qty))
-                                            entry_qty = Decimal(str(dedup_fill.qty))
-                                        else:
-                                            owned = qty
-                                            entry_qty = qty
-                                    # needs_reconcile: helper already audited;
-                                    # do not re-place or set owned.
-                                else:
-                                    venue_obj.place_entry_with_stop(
-                                        entry_coid_for_signal,
-                                        qty,
-                                        target.stop_price,
-                                        pair=armed.pair,
-                                    )
-                                    entry_qty = qty
-                                    owned = qty
+                                    else:
+                                        entry_qty = qty
+                                        owned = qty
                                     fill_context[entry_coid_for_signal] = {
                                         "pack_id": armed.pack_id,
                                         "pack_version": armed.pack_version,
@@ -691,6 +743,23 @@ def tick(
                                         "fee_bps": _fee_bps_for_venue(venue),
                                         "kind": "entry",
                                     }
+                                elif entry_state == "already_sent":
+                                    snap_dedup = venue_obj.snapshot()
+                                    dedup_fill = next(
+                                        (f for f in (snap_dedup.recent_fills or []) if f.coid == entry_coid_for_signal),
+                                        None,
+                                    )
+                                    if dedup_fill is not None:
+                                        owned = Decimal(str(dedup_fill.qty))
+                                        entry_qty = Decimal(str(dedup_fill.qty))
+                                    else:
+                                        owned = qty
+                                        entry_qty = qty
+                            except StoreError as exc:
+                                pack_intent_refused[armed.pack_id] = exc.code
+                                any_refused = True
+                                print(f"intent refused: {exc.code}", flush=True)
+                                entry_qty = Decimal(0)
                             except (RuntimeError, ValueError):
                                 entry_qty = Decimal(0)
             elif target.reason == "exit" and owned > Decimal(0):
@@ -713,27 +782,15 @@ def tick(
                     sort_keys=True,
                 )
                 try:
-                    if armed.mode == "paper":
-                        exit_state, _exit_ref = _paper_dispatch_place(
-                            home=home,
-                            mode=armed.mode,
-                            coid=exit_coid,
-                            body=exit_body,
-                            venue_obj=venue_obj,
-                        )
-                        if exit_state == "sent":
-                            exit_qty = owned
-                            owned = Decimal(0)
-                            fill_context[exit_coid] = {
-                                "pack_id": armed.pack_id,
-                                "pack_version": armed.pack_version,
-                                "bar_ts": bar_ts,
-                                "modeled_px": str(close_price),
-                                "fee_bps": _fee_bps_for_venue(venue),
-                                "kind": "exit",
-                            }
-                    else:
-                        venue_obj.place_exit(exit_coid, owned, pair=armed.pair)
+                    exit_state, _exit_ref = _dispatch_place(
+                        home=home,
+                        mode=armed.mode,
+                        venue=venue,
+                        coid=exit_coid,
+                        body=exit_body,
+                        venue_obj=venue_obj,
+                    )
+                    if exit_state == "sent":
                         exit_qty = owned
                         owned = Decimal(0)
                         fill_context[exit_coid] = {
@@ -744,6 +801,10 @@ def tick(
                             "fee_bps": _fee_bps_for_venue(venue),
                             "kind": "exit",
                         }
+                except StoreError as exc:
+                    pack_intent_refused[armed.pack_id] = exc.code
+                    any_refused = True
+                    print(f"intent refused: {exc.code}", flush=True)
                 except (RuntimeError, ValueError):
                     pass
             elif target.long and owned > Decimal(0) and target.stop_price is not None:
@@ -770,10 +831,12 @@ def tick(
                     "owned_qty_after": str(owned),
                     "entries_blocked": blocked,
                     "entries_paused": entries_suppressed,
+                    "kill_switch": kill_engaged,
                     "ensure_stop_failed": ensure_stop_failed,
                     "entry_coid": ensure_stop_entry or entry_coid_for_signal,
                     "no_double_order": bool(ensure_stop_entry),
                     "metadata_refusal": metadata_refusal,
+                    "intent_refused": pack_intent_refused.get(armed.pack_id),
                     **trace_extra,
                 },
             )
@@ -790,7 +853,6 @@ def tick(
                 armed.pending_version = None
         kb_config.save_config(home, config)
 
-        _commit_outbox_rows(home=home, fill_context=fill_context)
         if any(a.mode == "paper" for a in armed_for_venue):
             _audit_paper_fault_fills(home=home, venue_obj=venue_obj)
 
@@ -803,6 +865,8 @@ def tick(
             transport=transport,
         )
 
+        if any_refused:
+            return 1
         return 0
     finally:
         lock.release()
@@ -905,43 +969,6 @@ def _fee_bps_for_venue(venue: str) -> int:
     if venue == "coinbase":
         return 120
     return 0
-
-
-def _outbox_store_path(home: Path) -> Path:
-    return Path(home) / "run" / "store.db"
-
-
-def _commit_outbox_rows(*, home: Path, fill_context: dict[str, dict]) -> None:
-    """Write one outbox ledger row per coid in ``fill_context``.
-
-    The OperationalStore is one-writer and lives under ``<home>/run/store.db``.
-    A lock-acquire failure or a corrupt store is silent here so the tick
-    does not regress the journal path; the journal is the source of
-    truth and the ledger is a derived record. Rows are tagged
-    ``kind="outbox"`` so an auditor can read them with the same shape
-    the live tick already records. The ``send`` callable is a no-op:
-    the venue object already simulated the send, and the row records
-    the intent the engine would have committed before a live send.
-    """
-
-    if not fill_context:
-        return
-    from krellbot.storage.database import OperationalStore, StoreBusy, StoreCorrupt
-
-    store_path = _outbox_store_path(home)
-    store_path.parent.mkdir(parents=True, exist_ok=True)
-    outbox = Outbox(OperationalStore(store_path))
-
-    def _noop_send(_coid: str, _body: str) -> None:
-        return None
-
-    for coid, fill in fill_context.items():
-        body = json.dumps(fill, sort_keys=True, separators=(",", ":"))
-        try:
-            outbox.dispatch(coid, body, send=_noop_send)
-        except (StoreBusy, StoreCorrupt, OSError, ValueError, TypeError, json.JSONDecodeError):
-            # ledger write failure is derived state; do not block the journal
-            continue
 
 
 def _emit_telemetry(
