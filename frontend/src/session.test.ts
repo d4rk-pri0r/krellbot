@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearCsrf, getCsrf, redeemBootstrap } from "./session";
+import { clearCsrf, getCsrf, recoverCsrf, redeemBootstrap } from "./session";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -124,5 +124,63 @@ describe("getCsrf", () => {
 describe("clearCsrf", () => {
   it("does not throw when called before any bootstrap", () => {
     expect(() => clearCsrf()).not.toThrow();
+  });
+});
+
+describe("recoverCsrf", () => {
+  it("GETs /api/v1/session/csrf with credentials and stores the token on 200", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1", csrf_token: "csrf-recovered" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ok = await recoverCsrf();
+
+    expect(ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/session/csrf");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    expect(getCsrf()).toBe("csrf-recovered");
+  });
+
+  it("returns false on 403 without throwing and leaves getCsrf() empty", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 403));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(recoverCsrf()).resolves.toBe(false);
+    expect(getCsrf()).toBe("");
+  });
+
+  it("returns false when the body has no csrf_token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(recoverCsrf()).resolves.toBe(false);
+    expect(getCsrf()).toBe("");
+  });
+
+  it("resolves false (never rejects) when fetch itself rejects", async () => {
+    // G3: jsdom fetch throws "Failed to parse URL" for relative URLs.
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(new TypeError("Failed to parse URL"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(recoverCsrf()).resolves.toBe(false);
+    expect(getCsrf()).toBe("");
+  });
+
+  it("resolves false when a 200 response carries a non-JSON body", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("<html>not json", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(recoverCsrf()).resolves.toBe(false);
+    expect(getCsrf()).toBe("");
   });
 });

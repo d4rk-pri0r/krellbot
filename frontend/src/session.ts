@@ -37,6 +37,35 @@ export function getCsrf(): string {
   return csrfToken ?? "";
 }
 
+/**
+ * Recover the CSRF token for an existing session after a reload.
+ *
+ * A page reload drops the module-memory token while the HttpOnly
+ * session cookie survives. `GET /api/v1/session/csrf` re-reads the
+ * token for that cookie. Resolves `false` (never throws) when the
+ * session is gone, the body carries no token, or the request itself
+ * fails.
+ */
+export async function recoverCsrf(): Promise<boolean> {
+  try {
+    const response = await fetch("/api/v1/session/csrf", {
+      method: "GET",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const body = (await response.json()) as { csrf_token?: unknown };
+    if (typeof body.csrf_token !== "string" || body.csrf_token.length === 0) {
+      return false;
+    }
+    csrfToken = body.csrf_token;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function clearCsrf(): void {
   csrfToken = null;
 }

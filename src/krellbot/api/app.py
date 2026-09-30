@@ -28,6 +28,9 @@ from krellbot.api.security import (
     is_loopback_host,
     is_loopback_origin,
 )
+from krellbot.application import alerts as alerts_app
+from krellbot.application import live_gate
+from krellbot.application import operations as operations_view_app
 from krellbot.application.live_preflight import SandboxTransport
 from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
 from krellbot.application.strategy import (
@@ -235,7 +238,7 @@ def create_app(
     _static.register(
         app,
         _resolve_dist_dir(dist_dir),
-        bootstrap_token=bootstrap_token,
+        bootstrap_token=lambda: None if state.bootstrap_used else bootstrap_token,
     )
 
     @app.middleware("http")
@@ -281,6 +284,30 @@ def create_app(
         )
         return response
 
+    @app.get("/api/v1/session/csrf")
+    async def session_csrf(request: Request) -> Response:
+        """Return the CSRF token for the caller's existing session.
+
+        A page reload loses the module-memory CSRF while the session
+        cookie stays valid; this read endpoint lets the reloaded shell
+        recover the token. It runs ``_gate_get`` (session membership
+        plus the loopback Origin/Host checks), never mints a session,
+        and never returns the bootstrap token.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        session_id = request.cookies.get(SESSION_COOKIE)
+        csrf_token = s.sessions[session_id]
+        return JSONResponse(
+            {"schema_version": SCHEMA_VERSION, "csrf_token": csrf_token},
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.post("/api/v1/commands")
     async def commands(request: Request) -> Response:
         s = _state(request.app)
@@ -307,6 +334,17 @@ def create_app(
             # that never sends an order. Every other ``live.*`` command
             # still returns 403 below; the ``mode == "live"`` payload
             # refusal remains in force for non-preflight commands.
+            if live_gate.kill_state(s.home).engaged:
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": "kill_switch_engaged",
+                        "ok": False,
+                        "effect": "refused",
+                        "message": "kill switch engaged",
+                    },
+                    status_code=200,
+                )
             account_id = inner.get("account_id") or ""
             revision_id = inner.get("revision_id")
             mode = inner.get("mode")
@@ -321,6 +359,100 @@ def create_app(
                 stored_mode=stored_mode,
             )
             return JSONResponse(result.to_dict(), status_code=200)
+        if command == "live.promote":
+            venue = inner.get("venue")
+            pair = inner.get("pair")
+            revision_id = inner.get("revision_id")
+            if not isinstance(venue, str) or not isinstance(pair, str) or not isinstance(revision_id, str):
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            promote = live_gate.check_promotion(
+                s.home,
+                venue=venue,
+                pair=pair,
+                revision_id=revision_id,
+            )
+            body_promote = {
+                "schema_version": SCHEMA_VERSION,
+                "code": promote.code,
+                "ok": False,
+                "message": promote.message,
+                "effect": "refused",
+                "venue": venue,
+                "pair": pair,
+            }
+            return JSONResponse(body_promote, status_code=200)
+        if command == "operations.kill":
+            reason = inner.get("reason")
+            if not isinstance(reason, str):
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": "bad_input",
+                        "ok": False,
+                        "effect": "refused",
+                        "message": "reason must be a string",
+                    },
+                    status_code=200,
+                )
+            try:
+                state = live_gate.engage_kill(s.home, reason=reason, now=_now_seconds())
+            except ValueError as exc:
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": "bad_input",
+                        "ok": False,
+                        "effect": "refused",
+                        "message": str(exc),
+                    },
+                    status_code=200,
+                )
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "kill_switch_engaged",
+                    "ok": True,
+                    "effect": "changed",
+                    "kill_switch": state.to_dict(),
+                },
+                status_code=200,
+            )
+        if command == "operations.release_kill":
+            state = live_gate.release_kill(s.home)
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "kill_switch_released",
+                    "ok": True,
+                    "effect": "changed",
+                    "kill_switch": state.to_dict(),
+                },
+                status_code=200,
+            )
+        if command == "alerts.ack":
+            alert_id = inner.get("alert_id")
+            if not isinstance(alert_id, str):
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            try:
+                acked = alerts_app.acknowledge(s.home, alert_id, now=_now_seconds())
+            except KeyError:
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": "alert_not_found",
+                        "ok": False,
+                    },
+                    status_code=404,
+                )
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "acknowledged",
+                    "ok": True,
+                    "alert": acked.to_dict(),
+                },
+                status_code=200,
+            )
         if command.startswith("live."):
             return JSONResponse({"detail": "live orders are disabled"}, status_code=403)
         if inner.get("mode") == "live":
@@ -571,6 +703,28 @@ def create_app(
 
         headers = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
         return StreamingResponse(_emit(), media_type="text/event-stream", headers=headers)
+
+    @app.get("/api/v1/operations")
+    async def operations(request: Request) -> Response:
+        """Return the closed-shape operations view (M3-GUI).
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF
+        required. The body aggregates ``live_gate.live_status`` (with the
+        app's actual ``env`` so ``KRELLBOT_ENABLE_LIVE`` is honored), the
+        per-deployment projection (mode verbatim, promotion refusal code),
+        and the deduped, severity-sorted alert list. No ``cap``,
+        ``stop``, ``starting_cash``, ``owned_qty``, ``pack_path``,
+        ``pack_sha256``, balance, or key material appears in the body.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = operations_view_app.operations_view(s.home, now=_now_seconds())
+        return JSONResponse(body, status_code=200)
 
     @app.get("/api/v1/paper/status")
     async def paper_status(request: Request) -> Response:

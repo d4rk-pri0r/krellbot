@@ -17,7 +17,10 @@ import {
 import { nodesFromPack } from "../features/studio/packNodes";
 import { applyExecutionEdit } from "../features/studio/executionEdit";
 import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
-import { redeemBootstrap } from "../session";
+import { OperationsView } from "../features/operations/OperationsView";
+import { createHttpClient as createOperationsHttpClient } from "../features/operations/client";
+import type { OperationsClient } from "../features/operations/client";
+import { recoverCsrf, redeemBootstrap } from "../session";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
 import { JobsDrawer } from "./JobsDrawer";
@@ -95,12 +98,14 @@ export type WorkstationShellProps = {
   paperClient?: PaperClient;
   researchClient?: ResearchClient;
   strategyClient?: StrategyClient;
+  operationsClient?: OperationsClient;
 };
 
 export function WorkstationShell({
   paperClient,
   researchClient,
   strategyClient,
+  operationsClient,
 }: WorkstationShellProps = {}): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchRevision, setSearchRevision] = useState(0);
@@ -253,14 +258,30 @@ export function WorkstationShell({
     () => paperClient ?? createPaperHttpClient(),
     [paperClient],
   );
+  const operations = useMemo(
+    () => operationsClient ?? createOperationsHttpClient(),
+    [operationsClient],
+  );
 
   const [bootstrapDone, setBootstrapDone] = useState(false);
 
   useEffect(() => {
     const token = consumeBootstrapToken();
     if (!token) {
-      setBootstrapDone(true);
-      return;
+      // Reload with a redeemed (or absent) bootstrap token: the
+      // session cookie may still be valid, so try to recover the
+      // CSRF before mounting.
+      let cancelled = false;
+      void recoverCsrf()
+        .catch(() => false)
+        .finally(() => {
+          if (!cancelled) {
+            setBootstrapDone(true);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     let cancelled = false;
     void redeemBootstrap(token)
@@ -583,6 +604,18 @@ export function WorkstationShell({
               Selected: {selectedNodeId ?? "(none)"}
             </p>
           </>
+        ) : null}
+        {active === "operations" ? (
+          bootstrapDone ? (
+            <OperationsView client={operations} />
+          ) : (
+            <p
+              className="kbot-paper-status__empty"
+              data-testid="status-panel-pending"
+            >
+              Connecting…
+            </p>
+          )
         ) : null}
       </main>
       <CommandPalette
