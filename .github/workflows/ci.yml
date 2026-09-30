@@ -50,12 +50,14 @@ jobs:
       KRELLBOT_ENABLE_LIVE: "0"
       PYTHON_KEYRING_BACKEND: tests.fakes.fake_keyring.FakeKeyring
       CI: "true"
-      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
     steps:
-      - name: Export isolated KRELLBOT_HOME
+      # ``runner.*`` is not an allowed context in ``jobs.<id>.env``; the
+      # runner-temp paths are exported through $GITHUB_ENV instead.
+      - name: Export isolated KRELLBOT_HOME and uv cache
         run: |
-          mkdir -p "${{ runner.temp }}/krellbot-home"
+          mkdir -p "${{ runner.temp }}/krellbot-home" "${{ runner.temp }}/uv-cache"
           echo "KRELLBOT_HOME=${{ runner.temp }}/krellbot-home" >> "$GITHUB_ENV"
+          echo "UV_CACHE_DIR=${{ runner.temp }}/uv-cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - name: Install uv and sync project deps
         uses: astral-sh/setup-uv@v6

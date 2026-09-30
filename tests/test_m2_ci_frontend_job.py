@@ -288,3 +288,36 @@ def test_pre_existing_lint_job_ruff_lines_unchanged() -> None:
     assert "uvx ruff format --check src tests" in body_text, (
         "the pre-existing `lint:` job must still run `uvx ruff format --check src tests`"
     )
+
+
+def test_frontend_job_level_env_uses_only_allowed_contexts() -> None:
+    """``jobs.<id>.env`` may not reference ``runner.*`` (GitHub rejects the file).
+
+    Regression for b633034: ``UV_CACHE_DIR: ${{ runner.temp }}/uv-cache`` at
+    job level made GitHub refuse the whole workflow ("workflow file issue"),
+    so no CI job ran. Runner-temp paths must be exported via $GITHUB_ENV in a
+    step instead. The allowed contexts at job-level env are github, needs,
+    strategy, matrix, vars, secrets, inputs; this job uses none of them.
+    """
+
+    text = _read_text(CI_WORKFLOW)
+    body = _extract_job_body(text, "frontend")
+    env_lines: list[str] = []
+    in_env = False
+    for line in body:
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if indent == 4 and stripped.startswith("env:"):
+            in_env = True
+            continue
+        if in_env:
+            if stripped and indent <= 4:
+                break
+            env_lines.append(line)
+    assert env_lines, "frontend job must declare a job-level env block"
+    joined = "\n".join(env_lines)
+    assert "runner." not in joined, joined
+    assert "${{" not in joined, joined
+    steps_text = _body_joined(body)
+    assert 'UV_CACHE_DIR=${{ runner.temp }}/uv-cache" >> "$GITHUB_ENV"' in steps_text
+    assert 'KRELLBOT_HOME=${{ runner.temp }}/krellbot-home" >> "$GITHUB_ENV"' in steps_text
