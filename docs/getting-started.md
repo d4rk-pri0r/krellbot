@@ -19,13 +19,138 @@ Coinbase is not ready. Do not make a Coinbase key for this client yet.
 
 ## Install the free client
 
-On a Mac:
+The site installer downloads a per-user, one-directory frozen release,
+verifies its SHA-256 digest before staging anything, and writes the
+launcher next to your shell's `PATH`.
 
-```
+On macOS or Linux:
+
+```sh
 curl -fsSL https://krellbot.dev/api/install?os=mac | sh
+# or
+curl -fsSL https://krellbot.dev/api/install?os=linux | sh
 ```
 
-On Windows, Python is required. The install command is on the home page.
+On Windows (PowerShell):
+
+```powershell
+irm https://krellbot.dev/api/install?os=win | iex
+```
+
+The first install also opens the local dashboard in your default
+browser. Subsequent runs:
+
+```sh
+krellbot ui            # print the gated URL; do not open a browser
+krellbot ui --open     # print the URL and hand it to the default browser
+krellbot ui --port N   # bind a fixed loopback port instead of a random one
+```
+
+### First-run wizard
+
+The first time the dashboard server is opened, the browser renders
+`/{token}/welcome` instead of the dashboard. The wizard has four
+steps: Welcome, Security, Exchange, Next. Each step is a plain HTML page with
+sibling-relative `<a>` links, so a browser with JavaScript disabled
+can still navigate the wizard by following the links.
+
+* **Welcome** — free and open-source, exchange keys stored locally
+  rather than sent to krellbot.dev, official packs optional and recommended.
+  The Continue link navigates to Security; it does not change preferences.
+* **Security** — the local trust posture, server-rendered from
+  `trust_snapshot()`: keychain backend name, resolved home path and
+  POSIX mode, loopback bind, live-arm rail, and key permissions. A
+  fail-closed diagnostic names `krellbot doctor` as the next CLI
+  action when the keychain is not persistent.
+* **Exchange** — the browser posts the key and secret to the loopback
+  dashboard; the handler sends an authenticated HTTPS permission request
+  to the selected Kraken or Coinbase venue, then stores only a verified
+  trade-only pair in the native OS keychain. GET status is historical,
+  not a current-key or connection check.
+* **Next** — pack adoption (slice D) is a future slice. Enter dashboard
+  is an explicit POST through the token/session/CSRF/Origin gate, followed
+  by a 303 redirect. The free path today includes the dashboard,
+  `krellbot ui`, and `krellbot doctor`.
+
+Credential-source precedence when the engine later loads a key is a complete
+`KRELLBOT_<VEN>_KEY` and `KRELLBOT_<VEN>_SECRET` environment pair, then
+the keyring, then an explicitly configured `KRELLBOT_<VEN>_KEYFILE` if no
+keyring pair exists. A partial environment pair is an error; wizard status
+does not show which credential a later trade will use.
+
+After the wizard is dismissed once, `/<token>/` renders the
+dashboard shell directly. A "Resume setup" link in the header
+returns to the wizard at any time. Browser back/forward and
+wizard Back never mutate trading state.
+
+### What gets written
+
+| What | POSIX | Windows |
+| --- | --- | --- |
+| Launcher | `~/.local/bin/krellbot` | `%LOCALAPPDATA%\Krellbot\bin\krellbot.cmd` |
+| Frozen binary | `~/.local/share/krellbot/versions/<ver>/krellbot` | `%LOCALAPPDATA%\Krellbot\versions\<ver>\krellbot.exe` |
+| Data home (default `$KRELLBOT_HOME`) | `~/.krellbot/` | `%USERPROFILE%\.krellbot\` |
+
+The installer does not touch the data home. Your keys, paper state,
+journal, and receipts survive install, update, and uninstall.
+
+### Code-signing / notarization status
+
+The downloaded artifact is verified against an HTTPS-pinned SHA-256
+manifest **before** extraction. The artifact itself is **not**
+code-signed and **not** notarized in this release:
+
+- macOS Gatekeeper may show a first-run warning.
+- Windows SmartScreen may show a first-run warning.
+- Linux has no `gpg`/`minisign` publisher signature today.
+
+Code signing, notarization, and signed publisher releases are a future
+hardening step; the SHA-256 check is the integrity guarantee today.
+
+### PATH check
+
+If the launcher is not on your `PATH`:
+
+- POSIX: add `~/.local/bin` to your shell's `PATH`. The installer's
+  README prints the exact line for `bash`, `zsh`, and `fish`.
+- Windows: add `%LOCALAPPDATA%\Krellbot\bin` to your user PATH
+  (`Settings → System → About → Advanced system settings →
+  Environment Variables`).
+
+### Uninstall
+
+```sh
+# POSIX
+~/.local/bin/krellbot uninstall
+
+# Windows
+krellbot uninstall
+```
+
+Removes only the managed launcher and the staged version directory
+for the version you ran with. The data home is retained; pass
+`--purge-data` to remove it too.
+
+## Is the install ready?
+
+```sh
+krellbot doctor --json
+```
+
+`install_ready` is `True` when the runtime can serve the local UI:
+home permissions are `0o700`, the keychain backend is a real persistent
+one, and a loopback bind probe succeeds. It does not require keys, a
+tick, or the scheduler unit.
+
+`trading_ready` is the stricter gate: it also needs a fresh tick in
+the journal and at least one stored key whose permissions were probed
+with `trade=True` AND `withdraw=False`. Unknown permissions are
+fail-closed; a present key with no probe never satisfies
+`trading_ready`.
+
+A fresh install is `install_ready=True` and `trading_ready=False`
+until you add a key and the scheduler runs a tick. See
+[docs/service.md](service.md) for the full field list.
 
 ## What a pack is
 

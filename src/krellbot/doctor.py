@@ -22,11 +22,27 @@ Checks (each a row in text and a field in JSON):
 - Each armed pack: cap cash versus `paper.default_rules(pair)` when that pair
   is known. Unknown pair warns `minimums not loaded`. We never invent a
   fake minimum.
+
+Readiness summary (new in Task 4):
+
+- `install_ready` is True iff the runtime can serve the local UI: home
+  permissions are not wrong, the keyring backend is a real persistent
+  one (not null/fail/fake), and a loopback bind probe succeeds. No
+  exchange key, no tick, and no scheduler unit are required for install
+  readiness.
+- `trading_ready` is True only when `install_ready` is True, a fresh tick
+  exists, and at least one stored key had its permissions probed with
+  `trade=True` AND `withdraw=False`. Unknown permissions are fail-closed:
+  `_keys_status` only emits `trade`/`withdraw` when a permission probe
+  ran, so a present key with no probe cannot satisfy the readiness check.
+- Existing warning semantics and the `ok` field are preserved. The new
+  fields live beside the old semantics, not in place of them.
 """
 
 from __future__ import annotations
 
 import json
+import socket
 import sys
 import time as _time
 from collections.abc import Callable
@@ -37,17 +53,48 @@ from typing import Any
 from krellbot import config as kb_config
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
+from krellbot import sanitize as kb_sanitize
 from krellbot import secrets as kb_secrets
+from krellbot.storage import backup as kb_backup
+from krellbot.storage import import_legacy
 
 TICK_STALE_SECONDS = 2 * 3600
 CLOCK_SKEW_WARN_SECONDS = 5
 
 
 def _home_mode_ok(home: Path) -> bool | None:
-    """True if home mode is `0o700`, None on Windows (skipped), False otherwise."""
+    """True for POSIX 0o700, False for missing/unsafe home, None on Windows."""
     if sys.platform == "win32":
         return None
-    return (home.stat().st_mode & 0o777) == 0o700
+    try:
+        return (home.stat().st_mode & 0o777) == 0o700
+    except OSError:
+        return False
+
+
+def _ui_bind_available() -> bool:
+    """Return True when a loopback bind probe succeeds.
+
+    Probes ``127.0.0.1:0`` with ``socket.socket()`` so the kernel assigns
+    a free port; closes the socket in ``finally`` so no descriptor leaks.
+    The bind address is fixed; no venue or remote address is touched.
+    Returns False on any OSError (host has no loopback, sandbox refuses
+    bind, etc.) so the readiness check stays honest about whether the
+    UI server can actually start.
+    """
+    sock: socket.socket | None = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        return True
+    except OSError:
+        return False
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
 
 
 def _keychain_backend() -> tuple[str | None, str | None]:
@@ -197,6 +244,70 @@ def _armed_check(armed: list) -> list[dict[str, Any]]:
     return out
 
 
+def _bundle_preview(report: dict[str, Any]) -> str:
+    """Render a redacted text preview of the doctor report.
+
+    Any string registered with ``sanitize.register_secret`` is replaced
+    by ``***``; privileged keys (``api_key``, ``password``, etc.) are
+    redacted regardless of registration. The preview is what an
+    operator would paste into a bug report — never contains a raw
+    secret that a key onboarding flow registered.
+    """
+    redacted = kb_sanitize.redact(_bundle_dict(report))
+    return _format_bundle_preview(redacted)
+
+
+def _bundle_dict(report: dict[str, Any]) -> dict[str, Any]:
+    """Strip the bundle-only fields from a report for redaction.
+
+    The redaction walk only needs the user-visible content; the
+    ``backup_ok`` / ``backup_checked`` flags are booleans and are kept.
+    """
+    out = dict(report)
+    out.pop("bundle_preview", None)
+    return out
+
+
+def _format_bundle_preview(redacted: dict[str, Any]) -> str:
+    """Format the redacted report as multi-line text."""
+    lines: list[str] = []
+    lines.append(f"ok: {redacted.get('ok')}")
+    lines.append(f"home_mode_ok: {redacted.get('home_mode_ok')}")
+    lines.append(f"keychain_backend: {redacted.get('keychain_backend')}")
+    keys = redacted.get("keys") or {}
+    for venue in sorted(keys):
+        info = keys[venue]
+        if not isinstance(info, dict):
+            lines.append(f"{venue}: present={info}")
+            continue
+        present = info.get("present")
+        if present and "trade" in info:
+            lines.append(f"{venue}: present (trade={info.get('trade')}, withdraw={info.get('withdraw')})")
+        else:
+            lines.append(f"{venue}: present={present}")
+    lines.append(f"service_installed: {redacted.get('service_installed')}")
+    lines.append(f"last_tick_age_s: {redacted.get('last_tick_age_s')}")
+    lines.append(f"last_tick_stale: {redacted.get('last_tick_stale')}")
+    lines.append(f"clock_skew_s: {redacted.get('clock_skew_s')}")
+    lines.append(f"clock_warn: {redacted.get('clock_warn')}")
+    lines.append(f"license_status: {redacted.get('license_status')}")
+    armed = redacted.get("armed") or []
+    for entry in armed:
+        if not isinstance(entry, dict):
+            continue
+        lines.append(
+            f"armed: {entry.get('venue')} {entry.get('pair')} cap={entry.get('cap')} warning={entry.get('warning')}"
+        )
+    lines.append(f"projection_status: {redacted.get('projection_status')}")
+    lines.append(f"backup_ok: {redacted.get('backup_ok')}")
+    lines.append(f"backup_checked: {redacted.get('backup_checked')}")
+    lines.append(f"install_ready: {redacted.get('install_ready')}")
+    lines.append(f"trading_ready: {redacted.get('trading_ready')}")
+    warnings = redacted.get("warnings") or []
+    lines.append(f"warnings: {'; '.join(str(w) for w in warnings) if warnings else 'none'}")
+    return "\n".join(lines)
+
+
 def _render_text(report: dict[str, Any]) -> str:
     lines = []
     home_mode_ok = report["home_mode_ok"]
@@ -237,6 +348,8 @@ def _render_text(report: dict[str, Any]) -> str:
         lines.append(f"warnings: {'; '.join(report['warnings'])}")
     else:
         lines.append("warnings: none")
+    lines.append(f"install_ready: {report['install_ready']}")
+    lines.append(f"trading_ready: {report['trading_ready']}")
     return "\n".join(lines)
 
 
@@ -264,8 +377,13 @@ def run(
     warnings: list[str] = []
 
     home_mode_ok = _home_mode_ok(home)
+    home_is_dir = home.is_dir()
     if home_mode_ok is False:
-        warnings.append("home directory mode is not 0o700")
+        warnings.append("home directory is missing or mode is not 0o700")
+    elif not home_is_dir:
+        # Windows does not model DACLs (home_mode_ok is None), but a
+        # missing/non-directory home cannot be an install-ready data home.
+        warnings.append("home directory is missing or not a directory")
 
     backend_name, backend_warn = _keychain_backend()
     if backend_warn is not None:
@@ -300,6 +418,34 @@ def run(
 
     ok = len(warnings) == 0
 
+    projection_status = import_legacy.compare_legacy_projection(home)
+    if projection_status == import_legacy.PROJECTION_MISMATCH:
+        warnings.append("legacy journal projection mismatch")
+
+    store_path = home / import_legacy.DEFAULT_STORE_FILENAME
+    backup_checked = store_path.exists()
+    if backup_checked:
+        backup_result = kb_backup.round_trip(store_path)
+        backup_ok = bool(backup_result["ok"])
+        if not backup_ok:
+            warnings.append("backup round-trip failed")
+    else:
+        backup_ok = None
+
+    # Readiness: install_ready means the runtime can serve the local UI.
+    # trading_ready is the stricter gate: install_ready AND a non-stale
+    # tick AND at least one probed key with trade=True AND withdraw=False.
+    # `_keys_status` only emits `trade`/`withdraw` after a real permission
+    # probe ran, so a present key with no probe is fail-closed. A restored
+    # engine must not place a new entry until backup_ok is True AND the
+    # NS12 projection is match; trading_ready enforces both gates.
+    install_ready = home_is_dir and home_mode_ok is not False and backend_warn is None and _ui_bind_available()
+    has_trade_only_key = any(
+        info.get("present") and info.get("trade") is True and info.get("withdraw") is False for info in keys.values()
+    )
+    backup_ready = backup_ok is not False and projection_status != import_legacy.PROJECTION_MISMATCH
+    trading_ready = install_ready and not last_tick_stale and has_trade_only_key and backup_ready
+
     report = {
         "ok": ok,
         "home_mode_ok": home_mode_ok,
@@ -312,8 +458,15 @@ def run(
         "clock_warn": clock_warn,
         "license_status": license_status,
         "armed": armed_status,
+        "projection_status": projection_status,
         "warnings": warnings,
+        "install_ready": install_ready,
+        "trading_ready": trading_ready,
+        "backup_ok": backup_ok,
+        "backup_checked": backup_checked,
     }
+
+    report["bundle_preview"] = _bundle_preview(report)
 
     if as_json:
         return (0 if ok else 1, json.dumps(report, sort_keys=True))

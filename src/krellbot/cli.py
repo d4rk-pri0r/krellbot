@@ -377,23 +377,24 @@ def download_catalog(key):
 
 
 def cmd_setup(license_key):
-    result = check_license(license_key)
-    if result.get("status") not in {"paid", "grace"}:
-        print(result.get("message") or DEAD, file=sys.stderr)
+    """Redeem an activation key into the signed license cache.
+
+    The key is POSTed in the JSON body to ``/api/license``. It is not
+    placed in a URL and it is not stored in ``state.json``. Exchange
+    API keys are not involved.
+    """
+    import time
+
+    from krellbot.ui.activate import redeem
+
+    outcome = redeem(str(license_key), home=kb_paths.home(), now=int(time.time()))
+    print(outcome.message)
+    if outcome.status not in {"paid", "grace"}:
         return 2
-    state = load_state()
-    state["license_key"] = license_key
-    state["license_status"] = result["status"]
-    save_state(state)
-    print(result.get("message") or "License stored.")
-    print(f"Stored in {STATE}")
-    print("Coinbase is not ready.")
-    if download_catalog(license_key):
+    if outcome.catalog_downloaded:
         print("Packs downloaded to this machine.")
     else:
-        print("License stored. Pack download failed. Run setup again when the site answers.")
-    if result["status"] == "grace":
-        print(GRACE)
+        print("License cache written. Pack download failed. Run setup again when the site answers.")
     return 0
 
 
@@ -559,21 +560,42 @@ def cmd_data_import_kraken_ohlcvt(args):
 
 
 def cmd_backtest(args):
-    """Run a backtest over a CSV (or fetched) candle series and print a receipt."""
-    from krellbot.backtest import Backtester
-    from krellbot.backtest.receipt import build_receipt
-    from krellbot.data import TF_MS, GapError, check_gaps
+    """Run a backtest over a CSV (or fetched) candle series and print a receipt.
 
-    pack_path = Path(args[0])
+    The CLI parses flags, resolves the home/cache, then delegates the
+    backtest to ``krellbot.application.research.ResearchService``. The
+    legacy stdout sentence, the ``--json`` receipt shape, and the exit
+    codes stay byte-identical for the cases the existing test suite
+    pins (``tests/test_backtest_cache.py``,
+    ``tests/test_legacy_cli.py``).
+    """
+    from krellbot.application.research import (
+        CODE_GAPPED_DATA,
+        CODE_INVALID_DATASET,
+        CODE_INVALID_PACK,
+        CODE_LEGACY_PACK_NOT_RUNNABLE,
+        CODE_MISSING_PACK,
+        CODE_PACK_HAS_NO_MARKET,
+        CODE_UNSUPPORTED_TIMEFRAME,
+        ResearchRequest,
+        ResearchService,
+    )
+    from krellbot.data import TF_MS
+
+    pack_arg = args[0] if args else None
+    if pack_arg is None:
+        print("Usage: krellbot backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json]", file=sys.stderr)
+        return 2
+    pack_path = Path(pack_arg)
     if not pack_path.exists():
         print(f"No such file: {pack_path}", file=sys.stderr)
         return 1
     try:
-        pack = json.loads(pack_path.read_text(encoding="utf-8"))
+        _pack_peek = json.loads(pack_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         print(f"invalid JSON: {exc}", file=sys.stderr)
         return 1
-    if not isinstance(pack, dict) or "schema_version" not in pack:
+    if not isinstance(_pack_peek, dict) or "schema_version" not in _pack_peek:
         print("pack must be a DSL pack JSON", file=sys.stderr)
         return 1
 
@@ -643,26 +665,23 @@ def cmd_backtest(args):
     if venue not in {"kraken", "coinbase"}:
         print("--venue must be kraken or coinbase", file=sys.stderr)
         return 1
-    tf = pack.get("timeframe")
+    tf = _pack_peek.get("timeframe")
     if tf not in TF_MS:
         print(f"pack timeframe unsupported: {tf}", file=sys.stderr)
         return 1
-    match = next((m for m in pack.get("markets") or [] if m.get("venue") == venue), None)
+    match = next((m for m in _pack_peek.get("markets") or [] if m.get("venue") == venue), None)
     pair = match.get("pair") if match else None
     if pair is None:
         print("pack has no markets", file=sys.stderr)
         return 1
 
-    if fee_bps is None:
-        fee_bps = 40 if venue == "kraken" else 120
-    if slippage_bps is None:
-        slippage_bps = 5
-    if slippage_mult is None:
-        slippage_mult = 1.0
-
     if data_csv is None:
-        # No CSV given: use the local candle cache, fetching public candles once if empty.
-        from krellbot.data import read_cache, write_cache
+        # No CSV given: prime the local candle cache before delegating. The
+        # legacy path prints the cache notice and refuses with the type-only
+        # message the existing test pins. We then pass the cache CSV path to
+        # the service as the dataset so the service reads exactly the bytes
+        # the cache holds (and records that sha256 in the receipt).
+        from krellbot.data import cache_path, read_cache, write_cache
 
         home = kb_paths.home()
         cached = read_cache(home, venue, pair, tf)
@@ -680,57 +699,61 @@ def cmd_backtest(args):
                 return 1
             write_cache(home, venue, pair, tf, fetched)
             print(f"fetched {len(fetched)} {tf} candles from {venue} public data (cached)", file=sys.stderr)
-            cached = read_cache(home, venue, pair, tf)
-        if cached is None:
-            print(f"candle cache unreadable for {venue} {pair} {tf}; pass --data <csv>", file=sys.stderr)
-            return 1
-        candles, digest = cached
+        dataset_csv = cache_path(home, venue, pair, tf)
     else:
-        csv_path = Path(data_csv)
-        if not csv_path.exists():
-            print(f"No such file: {csv_path}", file=sys.stderr)
+        dataset_csv = Path(data_csv)
+        if not dataset_csv.exists():
+            print(f"No such file: {dataset_csv}", file=sys.stderr)
             return 1
 
-        from krellbot.data.cache import _parse_csv, sha256_bytes
+    from datetime import datetime, timezone
 
-        body = csv_path.read_bytes()
-        candles = _parse_csv(body)
-        digest = sha256_bytes(body)
+    from_ms = None
+    to_ms = None
+    if from_date:
+        from_ms = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+    if to_date:
+        to_ms = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
 
-    try:
-        check_gaps(candles, tf, pair=pair, allow_gaps=allow_gaps)
-    except GapError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-
-    if from_date or to_date:
-        from datetime import datetime, timezone
-
-        if from_date:
-            fts = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
-            candles = [c for c in candles if c.ts_ms >= fts]
-        if to_date:
-            tts = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
-            candles = [c for c in candles if c.ts_ms <= tts]
-
-    if not candles:
-        print(f"No candles after filtering (pair={pair})", file=sys.stderr)
-        return 1
-
-    bt = Backtester(pack, candles, fee_bps=fee_bps, slippage_bps=slippage_bps, slippage_mult=slippage_mult)
-    records = bt.run()
-    receipt = build_receipt(
-        pack=pack,
-        records=records,
-        trade_count=bt.trade_count,
-        data_manifest_sha256=digest,
-        venue=venue,
-        pair=pair,
-        tf=tf,
-        fee_bps=fee_bps,
-        slippage_bps=slippage_bps,
-        slippage_mult=slippage_mult,
+    svc = ResearchService(home=kb_paths.home(), fetch=None)
+    result = svc.run(
+        ResearchRequest(
+            pack_path=pack_path,
+            dataset_csv=dataset_csv,
+            venue=venue,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+            slippage_mult=slippage_mult,
+            from_ms=from_ms,
+            to_ms=to_ms,
+            allow_gaps=allow_gaps,
+        )
     )
+
+    if not result.ok:
+        code = result.refusal["code"] if result.refusal else ""
+        msg = result.refusal["message"] if result.refusal else ""
+        if code == CODE_MISSING_PACK:
+            print(msg, file=sys.stderr)
+            return 1
+        if code in {CODE_INVALID_PACK, CODE_LEGACY_PACK_NOT_RUNNABLE, CODE_PACK_HAS_NO_MARKET}:
+            print(msg, file=sys.stderr)
+            return 1
+        if code == CODE_UNSUPPORTED_TIMEFRAME:
+            print(f"pack timeframe unsupported: {tf}", file=sys.stderr)
+            return 1
+        if code == CODE_GAPPED_DATA:
+            print(msg, file=sys.stderr)
+            return 1
+        if code == CODE_INVALID_DATASET:
+            print(f"No such file: {dataset_csv}", file=sys.stderr) if dataset_csv is not None else print(
+                msg, file=sys.stderr
+            )
+            return 1
+        print(msg or "backtest refused", file=sys.stderr)
+        return 1
+
+    receipt = result.legacy_receipt
     if as_json:
         print(json.dumps(receipt))
     else:
@@ -749,15 +772,96 @@ def cmd_backtest(args):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick --venue NAME [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall [--dry-run] [--root PATH] | doctor [--json] | ui [--port N] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick [--venue NAME] [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall|status [--dry-run] [--root PATH] | backup create --out PATH | backup restore --from PATH | doctor [--json] | ui [--port N] | workstation [--port N] [--dist PATH] [--open] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
         file=sys.stderr,
     )
     return 2
 
 
+def _new_correlation_id() -> str:
+    """Return a short opaque correlation id for service calls."""
+    import secrets as _secrets
+
+    return _secrets.token_hex(9)
+
+
+def _render_paper_arm_cli(result, pack_arg: str) -> int:
+    """Translate a paper-arm service result to legacy CLI stdout and exit code.
+
+    Return codes: 0 success, 1 state refusal, 2 invalid input. The service
+    emits the legacy sentence in `result.message`; the community banner is
+    re-printed here for symmetry with the legacy live path.
+    """
+    from krellbot.application import paper as kb_paper
+
+    if result.code == kb_paper.CODE_ARMED:
+        print(result.message, flush=True)
+        if _is_community_path(Path(pack_arg).resolve()):
+            print(COMMUNITY_BANNER, flush=True)
+        return 0
+    if result.code == kb_paper.CODE_ALREADY_ARMED:
+        print(result.message, flush=True)
+        return 1
+    if result.code in (
+        kb_paper.CODE_UNKNOWN_VENUE,
+        kb_paper.CODE_INVALID_PACK,
+        kb_paper.CODE_LEGACY_PACK_NOT_RUNNABLE,
+        kb_paper.CODE_PACK_HAS_NO_MARKET,
+        kb_paper.CODE_INVALID_BALANCE,
+        kb_paper.CODE_INVALID_REQUEST,
+    ):
+        print(result.message, flush=True)
+        return 2
+    if result.code == kb_paper.CODE_MINIMUM_NOT_MET:
+        print(result.message, flush=True)
+        return 1
+    # Unknown refusal code — fail closed, message is already safe (no secrets).
+    print(result.message, flush=True)
+    return 2
+
+
+def _render_disarm_cli(result) -> int:
+    from krellbot.application import paper as kb_paper
+
+    if result.code == kb_paper.CODE_DISARMED:
+        print(result.message, flush=True)
+        return 0
+    if result.code == kb_paper.CODE_NOT_ARMED:
+        print(result.message, flush=True)
+        return 1
+    if result.code == kb_paper.CODE_UNKNOWN_VENUE:
+        print(result.message, flush=True)
+        return 2
+    print(result.message, flush=True)
+    return 2
+
+
+def _render_stop_cli(result) -> int:
+    from krellbot.application import paper as kb_paper
+
+    if result.code == kb_paper.CODE_STOP_RAISED:
+        print(result.message, flush=True)
+        return 0
+    if result.code in (kb_paper.CODE_NOT_ARMED, kb_paper.CODE_INVALID_STOP):
+        print(result.message, flush=True)
+        return 1
+    if result.code == kb_paper.CODE_UNKNOWN_VENUE:
+        print(result.message, flush=True)
+        return 2
+    print(result.message, flush=True)
+    return 2
+
+
 def cmd_arm(args):
-    """`krellbot arm <pack.json> --venue V --mode M [--paper-balance USD]`."""
+    """`krellbot arm <pack.json> --venue V --mode M [--paper-balance USD]`.
+
+    Paper mode delegates to the application service so validation, persistence,
+    and pause semantics share a single boundary. Live mode stays on the legacy
+    `run.arm_pack` path so the typed confirmation and key check remain a
+    CLI-only concern.
+    """
     from krellbot import secrets as kb_secrets_mod
+    from krellbot.application.paper import PaperService
     from krellbot.run import arm_pack
 
     if not args:
@@ -795,34 +899,73 @@ def cmd_arm(args):
         print("--venue and --mode are required", file=sys.stderr)
         return 2
 
-    key_check = None
+    if mode == "paper":
+        # Pre-check pack on disk so the CLI can print the legacy sentence.
+        if not Path(pack_arg).exists():
+            print(f"no such pack: {pack_arg}", flush=True)
+            return 2
+        try:
+            pack_data = json.loads(Path(pack_arg).read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            print(f"invalid JSON: {exc}", flush=True)
+            return 2
+        if not isinstance(pack_data, dict):
+            print("pack must be a JSON object", flush=True)
+            return 2
+        from krellbot.pack import lint as kb_pack_lint
+
+        if kb_pack_lint.is_legacy(pack_data):
+            print("legacy: not runnable", flush=True)
+            return 2
+        errors = kb_pack_lint.check(pack_data)
+        if errors:
+            for err in errors:
+                print(f"{err['field']}: {err['message']}", flush=True)
+            return 2
+        service = PaperService(home=kb_paths.home())
+        result = service.arm(
+            Path(pack_arg),
+            venue=venue,
+            mode=mode,
+            paper_balance=paper_balance,
+            correlation_id=_new_correlation_id(),
+        )
+        return _render_paper_arm_cli(result, pack_arg)
+
     if mode == "live":
         from krellbot.cli_keys import _probe
 
         def key_check(venue_arg):
-
             try:
                 api_key, api_secret = kb_secrets_mod.get(venue_arg)
             except (FileNotFoundError, ValueError, PermissionError):
                 return None
-            return _probe(venue_arg, api_key, api_secret)
+            probe = _probe(venue_arg, api_key, api_secret)
+            return probe.to_key_perms()
 
-    rc = arm_pack(
-        Path(pack_arg),
-        venue=venue,
-        mode=mode,
-        paper_balance=paper_balance,
-        confirm_fn=None,
-        key_check=key_check,
-    )
-    if rc == 0 and _is_community_path(Path(pack_arg).resolve()):
-        print(COMMUNITY_BANNER, flush=True)
-    return rc
+        rc = arm_pack(
+            Path(pack_arg),
+            venue=venue,
+            mode=mode,
+            paper_balance=paper_balance,
+            confirm_fn=None,
+            key_check=key_check,
+        )
+        if rc == 0 and _is_community_path(Path(pack_arg).resolve()):
+            print(COMMUNITY_BANNER, flush=True)
+        return rc
+
+    print(f"unknown mode: {mode}", flush=True)
+    return 2
 
 
 def cmd_disarm(args):
-    """`krellbot disarm --venue V --pair P`."""
-    from krellbot.run import disarm_pack
+    """`krellbot disarm --venue V --pair P`.
+
+    Paper and live disarms share the same config-only path; the service
+    owns the business outcome and the CLI renders the legacy sentence.
+    """
+    from krellbot.application.paper import PaperService
 
     venue = None
     pair = None
@@ -842,12 +985,14 @@ def cmd_disarm(args):
     if venue is None or pair is None:
         print("--venue and --pair are required", file=sys.stderr)
         return 2
-    return disarm_pack(venue=venue, pair=pair)
+    service = PaperService(home=kb_paths.home())
+    result = service.disarm(venue=venue, pair=pair, correlation_id=_new_correlation_id())
+    return _render_disarm_cli(result)
 
 
 def cmd_stop(args):
     """`krellbot stop --venue V --pair P --price N`."""
-    from krellbot.run import set_stop
+    from krellbot.application.paper import PaperService
 
     venue = None
     pair = None
@@ -876,7 +1021,14 @@ def cmd_stop(args):
     if venue is None or pair is None or price is None:
         print("--venue, --pair, --price are required", file=sys.stderr)
         return 2
-    return set_stop(venue=venue, pair=pair, new_stop=price)
+    service = PaperService(home=kb_paths.home())
+    result = service.raise_stop(
+        venue=venue,
+        pair=pair,
+        new_stop=price,
+        correlation_id=_new_correlation_id(),
+    )
+    return _render_stop_cli(result)
 
 
 class CandleFetchError(RuntimeError):
@@ -939,6 +1091,42 @@ def _key_present(venue: str) -> bool:
     except (FileNotFoundError, ValueError, PermissionError):
         return False
     return True
+
+
+def _build_paper_rules_provider(home, venue: str):
+    """Build the rules provider for `PaperVenue` so a verified snapshot wins.
+
+    Precedence:
+      1. A fresh persisted snapshot record for `(venue, pair)` →
+         derive `PairRules` from the `InstrumentRulesV1` via
+         `pairrules_from_instrument`.
+      2. Pair is `SUIUSD` → return the labeled `default_rules('SUIUSD')`
+         fixture so the existing engine tests keep passing.
+      3. Any other pair without a snapshot → raise
+         `InstrumentMetadataError(METADATA_UNAVAILABLE)`. `run.tick`
+         catches it and skips the new entry while letting ownership
+         protection run, so a non-SUI pair never silently inherits the
+         SUIUSD minima.
+    """
+    from krellbot.data.instruments import (
+        InstrumentMetadataError,
+        InstrumentRulesSnapshot,
+        pairrules_from_instrument,
+    )
+    from krellbot.venues.paper import default_rules
+
+    snap = InstrumentRulesSnapshot(home=home)
+
+    def provider(pair: str):
+        try:
+            record = snap.read_pair(venue, pair, offline=True)
+        except InstrumentMetadataError as exc:
+            if pair == "SUIUSD" and exc.code == "metadata_unavailable":
+                return default_rules(pair)
+            raise
+        return pairrules_from_instrument(record)
+
+    return provider
 
 
 def _build_fetch_reader(armed_list, *, fetch, transport):
@@ -1010,10 +1198,11 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
     Returns `(venue_obj, reader)` or a refusal string. A string is printed
     and the tick exits 1. The string never contains a key.
     """
+    from krellbot.application import live_gate as kb_live_gate
     from krellbot.venues.base import WithdrawCapableError
     from krellbot.venues.coinbase import CoinbaseVenue
     from krellbot.venues.kraken import KrakenVenue
-    from krellbot.venues.paper import PaperVenue, default_rules
+    from krellbot.venues.paper import PaperVenue
 
     armed = armed_list[0]
     reader = _build_fetch_reader(armed_list, fetch=fetch, transport=transport)
@@ -1025,7 +1214,7 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
         has_key = _key_present(armed.venue)
         venue_obj = PaperVenue(
             armed.venue,
-            rules_provider=lambda _p: default_rules(_p),
+            rules_provider=_build_paper_rules_provider(home, armed.venue),
             candle_reader=reader,
             home=home,
             starting_cash=armed.starting_cash,
@@ -1034,8 +1223,11 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
         )
         return (venue_obj, reader)
 
-    if os.environ.get("KRELLBOT_ENABLE_LIVE") != "1":
-        return LIVE_TICK_REFUSED
+    gate_result = kb_live_gate.check_live_send(home, venue=armed.venue, pair=armed.pair)
+    if not gate_result.ok:
+        if gate_result.code == kb_live_gate.CODE_LIVE_DISABLED:
+            return LIVE_TICK_REFUSED
+        return f"live refused: {gate_result.code}"
     try:
         api_key, api_secret = kb_secrets.get(armed.venue)
     except (FileNotFoundError, ValueError, PermissionError):
@@ -1063,12 +1255,18 @@ def _build_live_venue_for_offline(armed, *, transport):
     Used when `--offline-candles` is set on a live arm. Does not call fetch;
     the caller wires the offline reader into `run.tick`.
     """
+    from krellbot import paths as kb_paths
+    from krellbot.application import live_gate as kb_live_gate
     from krellbot.venues.base import WithdrawCapableError
     from krellbot.venues.coinbase import CoinbaseVenue
     from krellbot.venues.kraken import KrakenVenue
 
-    if os.environ.get("KRELLBOT_ENABLE_LIVE") != "1":
-        return LIVE_TICK_REFUSED
+    home = kb_paths.home()
+    gate_result = kb_live_gate.check_live_send(home, venue=armed.venue, pair=armed.pair)
+    if not gate_result.ok:
+        if gate_result.code == kb_live_gate.CODE_LIVE_DISABLED:
+            return LIVE_TICK_REFUSED
+        return f"live refused: {gate_result.code}"
     try:
         api_key, api_secret = kb_secrets.get(armed.venue)
     except (FileNotFoundError, ValueError, PermissionError):
@@ -1122,14 +1320,17 @@ def _now_seconds_tick() -> float:
 
 
 def cmd_tick(args, *, fetch=None, transport=None):
-    """`krellbot tick --venue V [--offline-candles CSV]`.
+    """`krellbot tick [--venue V] [--offline-candles CSV]`.
 
     `fetch` and `transport` are injected for tests. The defaults talk to the
     real public fetch and urllib. A fetch error is printed as the exception
     type name only, journaled, and the tick exits 1.
+
+    With no ``--venue``, ticks every venue that has armed records in sorted
+    order. The per-venue body is delegated to ``_tick_one_venue`` so the
+    multi-venue and single-venue paths share one implementation.
     """
     from krellbot.config import load_config
-    from krellbot.venues.paper import PaperVenue, default_rules
 
     if fetch is None:
         fetch = _default_fetch
@@ -1151,11 +1352,65 @@ def cmd_tick(args, *, fetch=None, transport=None):
             continue
         print(f"Unknown argument: {a}", file=sys.stderr)
         return 2
-    if venue is None:
-        print("--venue is required", file=sys.stderr)
-        return 2
 
     home = kb_paths.home()
+
+    if venue is None:
+        if offline is not None:
+            print("--venue is required with --offline-candles", file=sys.stderr)
+            return 2
+        config = load_config(home)
+        venues = sorted({a.venue for a in config.armed if a.venue})
+        if not venues:
+            print("no armed packs", flush=True)
+            return 0
+        rc = 0
+        for v in venues:
+            print(f"== tick {v} ==", flush=True)
+            v_rc = _tick_one_venue(
+                home=home,
+                venue=v,
+                offline=None,
+                fetch=fetch,
+                transport=transport,
+            )
+            if v_rc != 0:
+                rc = 1
+        return rc
+
+    return _tick_one_venue(
+        home=home,
+        venue=venue,
+        offline=offline,
+        fetch=fetch,
+        transport=transport,
+    )
+
+
+def _tick_one_venue(
+    home,
+    venue: str,
+    *,
+    offline: Path | None,
+    fetch,
+    transport,
+) -> int:
+    """Tick one venue. The single-venue and multi-venue paths share this body.
+
+    Before ticking, journals a ``wake_gap`` supervision record when the gap
+    since the last tick for ``venue`` is at least ``TICK_STALE_SECONDS``.
+    The tick itself is unchanged: it evaluates only the latest closed bar
+    and outbox coids prevent a duplicate send for a bar that was already sent.
+    """
+    from krellbot.config import load_config
+    from krellbot.service import supervise
+    from krellbot.venues.paper import PaperVenue
+
+    if offline is None:
+        from krellbot.run import _now_seconds as _run_now_seconds
+
+        supervise.record_wake_gap(home, venue, now=int(_run_now_seconds()))
+
     config = load_config(home)
     armed_list = [a for a in config.armed if a.venue == venue]
     if not armed_list:
@@ -1173,7 +1428,7 @@ def cmd_tick(args, *, fetch=None, transport=None):
             has_key = _key_present(armed.venue)
             venue_obj = PaperVenue(
                 armed.venue,
-                rules_provider=lambda _p: default_rules(_p),
+                rules_provider=_build_paper_rules_provider(home, armed.venue),
                 candle_reader=reader,
                 home=home,
                 starting_cash=armed.starting_cash,
@@ -1416,8 +1671,51 @@ def cmd_service(args):
         if write_root is None:
             write_root = Path.home()
         return kb_service.uninstall(home=kb_paths.home(), write_root=write_root)
+    if sub == "status":
+        return cmd_service_status(home=kb_paths.home(), write_root=write_root)
     print(f"unknown service subcommand: {sub}", file=sys.stderr)
     return 2
+
+
+def cmd_service_status(*, home: Path, write_root: Path | None) -> int:
+    """`krellbot service status [--root PATH]`.
+
+    Emits one JSON object on stdout (sorted keys, no trailing newline
+    required) and returns 0. Writes nothing to disk. A home without an
+    owner file yields ``owner: null`` and ``owner_present: false``.
+    """
+    from krellbot import doctor as kb_doctor
+    from krellbot.service import owner_path as _owner_path
+    from krellbot.service import supervise
+
+    if write_root is None:
+        write_root = Path.home()
+
+    installed = kb_doctor._service_installed(write_root)
+    owner_present = _owner_path(home).exists()
+    owner_record = supervise.resolve_owner(home)
+    now = int(_now_seconds_tick())
+    last_tick_age_s = kb_doctor._last_tick_age(home, now)
+    last_tick_stale = last_tick_age_s is None or last_tick_age_s >= kb_doctor.TICK_STALE_SECONDS
+    last_wake_gap_s = supervise.latest_wake_gap(home)
+    home_matches_owner = False
+    if owner_record is not None:
+        owner_home = owner_record.get("krellbot_home")
+        home_matches_owner = owner_home is not None and owner_home == str(home)
+
+    body = {
+        "schema_version": "1",
+        "installed": installed,
+        "owner_present": owner_present,
+        "owner": owner_record,
+        "krellbot_home": str(home),
+        "home_matches_owner": home_matches_owner,
+        "last_tick_age_s": last_tick_age_s,
+        "last_tick_stale": last_tick_stale,
+        "last_wake_gap_s": last_wake_gap_s,
+    }
+    print(json.dumps(body, sort_keys=True), flush=True)
+    return 0
 
 
 def _kraken_time_source() -> int:
@@ -1480,18 +1778,21 @@ def cmd_doctor(args):
 
 
 def cmd_ui(args):
-    """`krellbot ui [--port N]`.
+    """`krellbot ui [--port N] [--open]`.
 
     Bind a token-gated dashboard to 127.0.0.1 on a random port (or the
-    given `--port`). Print the URL with the gate token. SIGINT stops the
-    server and returns 0. The server never accepts a non-loopback Host
-    header and never opens a socket to a venue.
+    given `--port`). Print the URL with the gate token. With `--open`,
+    hand the URL to the default browser once before the loop runs. SIGINT
+    stops the server and returns 0. The server never accepts a non-loopback
+    Host header and never opens a socket to a venue.
     """
     import signal
 
+    from krellbot.ui.launch import open_url, token_url
     from krellbot.ui.server import DashboardServer
 
     port = 0
+    do_open = False
     i = 0
     while i < len(args):
         a = args[i]
@@ -1503,16 +1804,125 @@ def cmd_ui(args):
                 return 2
             i += 2
             continue
+        if a == "--open":
+            do_open = True
+            i += 1
+            continue
         print(f"Unknown argument: {a}", file=sys.stderr)
         return 2
 
     server = DashboardServer(home=kb_paths.home(), port=port)
     server.start()
 
-    url = f"http://127.0.0.1:{server.bound_port}/{server.token}/"
-    print(f"Dashboard running at {url}")
-    print("Open it in your browser. Ctrl-C to stop.")
-    print("Bound to 127.0.0.1 only. Token in URL is also the session cookie.")
+    if do_open:
+        import webbrowser  # only needed when the user asked to launch
+
+        url = open_url(server, webbrowser.open)
+    else:
+        url = token_url(server)
+    # ``flush=True`` so the dashboard URL reaches the parent pipe
+    # immediately — the CI smoke helper captures the URL from a real
+    # ``subprocess.PIPE`` (no pty, no winpty). Without this, a block-
+    # buffered child (notably a PyInstaller-frozen binary whose
+    # bootloader doesn't propagate ``PYTHONUNBUFFERED``) would never
+    # flush the URL line and the smoke helper would hang.
+    print(f"Dashboard running at {url}", flush=True)
+    print("Open it in your browser. Ctrl-C to stop.", flush=True)
+    print("Bound to 127.0.0.1 only. Token in URL is also the session cookie.", flush=True)
+
+    stopped = threading.Event()
+
+    def _on_signal(signum: int, frame: Any) -> None:
+        stopped.set()
+
+    signal.signal(signal.SIGINT, _on_signal)
+    signal.signal(signal.SIGTERM, _on_signal)
+
+    try:
+        stopped.wait()
+    finally:
+        server.stop()
+        print("Stopped.")
+    return 0
+
+
+def cmd_workstation(args):
+    """`krellbot workstation [--port N] [--dist PATH] [--open]`.
+
+    Bind the FastAPI workstation shell to 127.0.0.1 on a random port
+    (or the given ``--port``). Print the URL with no token; the bootstrap
+    token is delivered via the ``<meta name="krellbot-bootstrap">`` tag
+    the static layer injects at response time. With ``--open``, hand the
+    URL to the default browser once. SIGINT/SIGTERM stop the server and
+    return 0. The server never accepts a non-loopback Host header and
+    never opens a socket to a venue.
+
+    The launcher refuses up front when the resolved ``dist`` directory has
+    no ``index.html``: a bare checkout (or a missing build) must not bind
+    a loopback socket and serve ``404 {"code":"shell_not_built"}`` while
+    the operator stares at a dead page. The refusal prints one stderr
+    line containing ``--dist`` and ``npm --prefix frontend run build``
+    and exits 2 without binding. ``_resolve_dist_dir`` is reused so an
+    explicit ``--dist`` pointing at a directory without ``index.html``
+    is refused the same way.
+
+    Unknown arguments, including ``--host``, exit 2 and do not start a
+    server. A non-integer ``--port`` exits 2. ``--open`` is the only path
+    that imports ``webbrowser``.
+    """
+    import signal
+
+    from krellbot.api.app import _resolve_dist_dir
+    from krellbot.api.serve import WorkstationServer
+
+    port = 0
+    dist_dir: Path | None = None
+    do_open = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--port" and i + 1 < len(args):
+            try:
+                port = int(args[i + 1])
+            except ValueError:
+                print(f"invalid --port: {args[i + 1]}", file=sys.stderr)
+                return 2
+            i += 2
+            continue
+        if a == "--dist" and i + 1 < len(args):
+            dist_dir = Path(args[i + 1])
+            i += 2
+            continue
+        if a == "--open":
+            do_open = True
+            i += 1
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+
+    resolved = _resolve_dist_dir(dist_dir)
+    if not (resolved / "index.html").is_file():
+        print(
+            f"workstation shell is not built: {resolved}/index.html is missing. "
+            f'Run "npm --prefix frontend ci --include=dev && '
+            f'npm --prefix frontend run build" or pass --dist PATH.',
+            file=sys.stderr,
+            flush=True,
+        )
+        return 2
+
+    server = WorkstationServer(home=kb_paths.home(), port=port, dist_dir=dist_dir)
+    server.start()
+
+    if do_open:
+        import webbrowser  # only needed when the user asked to launch
+
+        try:
+            webbrowser.open(server.url)
+        except (OSError, RuntimeError):
+            pass
+
+    print(f"Workstation running at {server.url}", flush=True)
 
     stopped = threading.Event()
 
@@ -1628,6 +2038,93 @@ def cmd_telemetry(args):
     return 2
 
 
+def _resolve_backup_home() -> Path:
+    """Resolve ``KRELLBOT_HOME`` (or ``~/.krellbot``) without creating the directory.
+
+    ``paths.home()`` creates the directory; ``backup restore`` must read the
+    environment variable the same way but skip the mkdir so a fresh restore
+    into a non-existent home actually creates it for the first time.
+    """
+    import os as _os
+
+    base = _os.environ.get("KRELLBOT_HOME")
+    if base:
+        return Path(base)
+    return Path.home() / ".krellbot"
+
+
+def cmd_backup(args):
+    """`krellbot backup create --out PATH | backup restore --from PATH`.
+
+    `create` snapshots ``KRELLBOT_HOME`` (the current home, created if
+    missing — this is the snapshot path). `restore` reads ``KRELLBOT_HOME``
+    without creating it and restores the archive there. Both respect
+    ``BackupError`` codes and translate to exit codes 1 (refusal) and 2
+    (usage).
+    """
+    import time as _time
+
+    from krellbot.storage import home_backup
+
+    if not args:
+        print("usage: krellbot backup create --out PATH | restore --from PATH", file=sys.stderr)
+        return 2
+    sub = args[0]
+    out_path: Path | None = None
+    from_path: Path | None = None
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a == "--out" and i + 1 < len(args):
+            out_path = Path(args[i + 1])
+            i += 2
+            continue
+        if a == "--from" and i + 1 < len(args):
+            from_path = Path(args[i + 1])
+            i += 2
+            continue
+        print(f"Unknown argument: {a}", file=sys.stderr)
+        return 2
+
+    if sub == "create":
+        if out_path is None:
+            print("--out is required", file=sys.stderr)
+            return 2
+        try:
+            manifest = home_backup.create(
+                kb_paths.home(),
+                out_path,
+                now=int(_time.time()),
+            )
+        except home_backup.BackupError as exc:
+            print(f"backup refused: {exc.code}", file=sys.stderr)
+            return 1
+        files = manifest.get("files", [])
+        ops_rows = manifest.get("ops_rows")
+        print(
+            f"backup written: {out_path} ({len(files)} files, ops_rows {ops_rows})",
+            flush=True,
+        )
+        return 0
+
+    if sub == "restore":
+        if from_path is None:
+            print("--from is required", file=sys.stderr)
+            return 2
+        target = _resolve_backup_home()
+        try:
+            manifest = home_backup.restore(from_path, target)
+        except home_backup.BackupError as exc:
+            print(f"backup refused: {exc.code}", file=sys.stderr)
+            return 1
+        files = manifest.get("files", [])
+        print(f"restored {len(files)} files into {target}", flush=True)
+        return 0
+
+    print(f"unknown backup subcommand: {sub}", file=sys.stderr)
+    return 2
+
+
 def main(argv):
     if len(argv) >= 2 and argv[1] == "--version":
         from krellbot import __version__
@@ -1636,6 +2133,8 @@ def main(argv):
         return 0
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         return usage()
+    if argv[1] == "backup" and len(argv) >= 2:
+        return cmd_backup(argv[2:])
     try:
         kb_secrets.migrate_legacy()
     except (ValueError, RuntimeError, FileNotFoundError) as exc:
@@ -1684,6 +2183,8 @@ def main(argv):
         return cmd_doctor(argv[2:])
     if cmd == "ui" and len(argv) >= 2:
         return cmd_ui(argv[2:])
+    if cmd == "workstation" and len(argv) >= 2:
+        return cmd_workstation(argv[2:])
     if cmd == "community" and len(argv) >= 2:
         return cmd_community(argv[2:])
     if cmd == "telemetry" and len(argv) >= 2:

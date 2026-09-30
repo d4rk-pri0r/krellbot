@@ -126,16 +126,280 @@ def test_kraken_nonce_monotonic_across_restarts(home):
 
 
 def test_kraken_withdraw_capable_key_refused(home):
-    """WithdrawMethods returning >0 methods means the key can withdraw: refused."""
+    """GetApiKeyInfo reporting withdraw-funds means the key can withdraw: refused."""
     transport = FakeKrakenTransport(
         responses=[],
-        withdraw_methods=[{"method": "Bitcoin", "address": "abc"}],
+        api_key_info={"permissions": ["query-funds", "withdraw-funds"]},
     )
     venue = _build_venue(transport, home, min_interval_ms=0)
     with pytest.raises(WithdrawCapableError) as excinfo:
         venue.check_key()
     assert KRAKEN_TEST_KEY not in str(excinfo.value)
     assert KRAKEN_TEST_SECRET not in str(excinfo.value)
+    # A live read must never place or cancel an order.
+    assert not any(c.url.endswith("/AddOrder") for c in transport.calls)
+    assert not any(c.url.endswith("/CancelOrder") for c in transport.calls)
+
+
+def test_kraken_invalid_key_refused(home):
+    """An `Invalid key` permission error must NOT be treated as trade-only.
+
+    Today WithdrawMethods-denied == trade-only; that's the bug this slice
+    closes. After the fix the same `Invalid key` response on GetApiKeyInfo
+    is a refusal.
+    """
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info_error="EAPI:Invalid key: Permission denied",
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+    assert not any(c.url.endswith("/AddOrder") for c in transport.calls)
+
+
+def test_kraken_read_only_key_refused(home):
+    """A read-only key (query permissions only) must NOT pass.
+
+    Required permissions are `modify-trades`, `close-trades`, `query-funds`,
+    `query-open-trades`. A key with only `query-funds` and
+    `query-open-trades` cannot trade.
+    """
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={"permissions": ["query-funds", "query-open-trades"]},
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+
+
+def test_kraken_missing_modify_trades_refused(home):
+    """A key without `modify-trades` cannot place orders; refuse it."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "close-trades",
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+
+
+def test_kraken_missing_close_trades_refused(home):
+    """A key without `close-trades` cannot cancel orders; refuse it."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+
+
+def test_kraken_add_withdraw_address_refused(home):
+    """A key holding `add-withdraw-address` is rejected even if it can trade."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+                "add-withdraw-address",
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+
+
+def test_kraken_update_withdraw_address_refused(home):
+    """A key holding `update-withdraw-address` is rejected even if it can trade."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+                "update-withdraw-address",
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+
+
+def test_kraken_malformed_api_key_info_refused(home):
+    """A non-dict `result` from GetApiKeyInfo must be refused; shape unknown."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info="not-a-dict",
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+
+
+def test_kraken_missing_permissions_field_refused(home):
+    """`result` present but `permissions` missing or not a list: refused."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={"apiKeyName": "x"},
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+
+
+def test_kraken_permissions_not_list_refused(home):
+    """`permissions` must be a list of strings; anything else is refused."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={"permissions": "modify-trades,close-trades"},
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError):
+        venue.check_key()
+
+
+def test_kraken_valid_trade_only_key_accepted(home):
+    """A key with all four required permissions and no withdraw rights passes."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    perms = venue.check_key()
+    assert perms.can_trade is True
+    assert perms.can_withdraw is False
+    assert not any(c.url.endswith("/AddOrder") for c in transport.calls)
+
+
+def test_kraken_extra_query_permissions_still_trade_only(home):
+    """Extra read permissions (e.g. `query-closed-trades`) keep the key trade-only."""
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "query-closed-trades",
+                "modify-trades",
+                "close-trades",
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    perms = venue.check_key()
+    assert perms.can_trade is True
+    assert perms.can_withdraw is False
+
+
+def test_kraken_documented_harmless_extras_trade_only(home):
+    """Every documented read-only extra in the published exchange guide
+    keeps the key trade-only.
+
+    Tokens here are documented in
+    https://docs.kraken.com/exchange/guides/rest/api-keys ("Query Closed
+    Orders", "Query Ledger", "Export Data", "Access WebSocket", "Query
+    affiliate participants") plus the `GetApiKeyInfo` schema enum
+    (https://docs.kraken.com/api-reference/account-data/get-api-key-info).
+    This is not a claim that the list is exhaustive — only that each
+    token here is one Kraken publishes as a read-only scope. Any token
+    NOT in the allowlist still fails closed.
+    """
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "query-closed-trades",
+                "query-ledger",
+                "export-data",
+                "create-ws-token",
+                "query-affiliate-participants",
+                "modify-trades",
+                "close-trades",
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    perms = venue.check_key()
+    assert perms.can_trade is True
+    assert perms.can_withdraw is False
+
+
+def test_kraken_unrecognized_permission_string_refused(home):
+    """An unknown permission string is refused even with all required perms.
+
+    A future Kraken-added token (e.g. a new `transfer-funds` scope) must
+    not silently pass: refuse and surface the unknown token in the reason.
+    Engine never weakens `WithdrawCapableError` for the refused key.
+    """
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+                "transfer-funds",  # not in any documented set
+            ]
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError) as excinfo:
+        venue.check_key()
+    assert "transfer-funds" in str(excinfo.value)
+
+
+def test_kraken_check_key_does_not_leak_raw_apikey(home):
+    """The raw `apiKey` value in the venue response must not appear in
+    exception messages or in any string the engine logs."""
+    raw_key = "FAKE_RAW_KEY_VALUE_DO_NOT_LOG_ME"
+    transport = FakeKrakenTransport(
+        responses=[],
+        api_key_info={
+            "apiKey": raw_key,
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+                "withdraw-funds",
+            ],
+        },
+    )
+    venue = _build_venue(transport, home, min_interval_ms=0)
+    with pytest.raises(WithdrawCapableError) as excinfo:
+        venue.check_key()
+    assert raw_key not in str(excinfo.value)
 
 
 def test_kraken_signature_header_uses_postdata_body(home):
