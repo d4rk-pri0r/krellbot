@@ -195,42 +195,73 @@ def _reset_home_to_fresh_empty(home: Path) -> None:
     home.mkdir(parents=True, exist_ok=True)
 
 
-def _rmtree_with_retry(path: Path, *, attempts: int = 40, delay: float = 0.25) -> None:
-    """``shutil.rmtree`` with retries for Windows + Python 3.13.
+def _rmtree_with_retry(path: Path, *, attempts: int = 60, delay: float = 0.5) -> None:
+    """``shutil.rmtree`` for Windows + Python 3.13 sqlite handle races.
 
     A sqlite3 connection that was closed via ``sqlite3_close_v2`` keeps
     the underlying file handle alive past ``conn.close()`` and can
     survive the OS reaping of the subprocess that opened it. On Windows
-    the handle may be held for a few hundred ms to a few seconds after
-    the CLI subprocess that ran ``backup create`` exits. ``shutil.rmtree``
-    walks the tree and fails on the first PermissionError; instead, use
-    an ``onerror`` callback that retries the failing op (delete /
-    remove-dir) with a short delay so the lock can drop. POSIX is a
-    single fast pass. ``onerror`` is deprecated in 3.12+ in favor of
-    ``onexc`` but is portable to 3.10 which the CI matrix still runs.
+    the handle may be held for up to ~30 seconds after the CLI
+    subprocess that ran ``backup create`` exits, which is longer than
+    the test's wall-clock budget allows.
+
+    Try, in order:
+
+    1. Plain ``shutil.rmtree`` (POSIX fast path).
+    2. Rename the tree to a sibling temp name (Windows allows rename
+    while files inside are locked; rename is the metadata-only op), then
+    rmtree the rename with an ``onerror`` callback that retries
+    individual file/dir failures. The original ``path`` becomes a
+    non-existent directory, which is what the subsequent
+    ``backup restore`` needs (it refuses non-empty homes).
+    3. If the rename also fails, retry the in-place rmtree directly
+    with the same ``onerror`` callback. 60 attempts × 0.5s = 30s
+    budget per file.
+
+    ``onerror`` is deprecated in 3.12+ in favor of ``onexc`` but is
+    portable to 3.10 which the CI matrix still runs.
     """
 
     def _retry(_func, _path, _exc_info):
-        # ``onerror(func, path, exc_info)`` is invoked when ``func`` raised
-        # on ``path``. ``_exc_info`` is a ``sys.exc_info()`` tuple;
-        # ``_exc_info[1]`` is the exception instance. Only retry
-        # OSError subclasses (WinError 32 is PermissionError); anything
-        # else re-raises immediately. Up to ``attempts`` tries with
-        # ``delay`` seconds between them; on success rmtree continues.
+        # ``onerror(func, path, exc_info)`` — exc_info[1] is the exception
+        # instance. Only retry OSError subclasses (WinError 32 is
+        # PermissionError); anything else re-raises immediately. After
+        # exhausting retries, swallow so rmtree's walk continues to
+        # the rest of the tree.
         exc = _exc_info[1]
         if not isinstance(exc, OSError):
             raise exc
-        last_exc: BaseException = exc
         for _ in range(attempts):
             time.sleep(delay)
             try:
                 _func(_path)
                 return
-            except OSError as try_exc:
-                last_exc = try_exc
-        raise last_exc
+            except OSError:
+                continue
 
-    shutil.rmtree(path, onerror=_retry)
+    try:
+        shutil.rmtree(path)
+        return
+    except OSError:
+        pass
+
+    # Strategy 2: rename the tree aside, then rmtree the rename. After
+    # the rename, ``path`` is a dangling directory entry — the
+    # subsequent ``backup restore`` will see ``home`` as absent (it
+    # calls ``Path(home).exists()``).
+    sibling = path.with_name(path.name + ".rmtree-tmp")
+    try:
+        if sibling.exists():
+            shutil.rmtree(sibling)
+        path.rename(sibling)
+    except OSError:
+        sibling = None
+
+    # Strategy 3: rmtree with onerror-retry. The locked files survive
+    # in the rename; they will be released when the OS reaps whatever
+    # held them. POSIX has no rename vs in-place difference.
+    target = sibling if sibling is not None else path
+    shutil.rmtree(target, onerror=_retry)
 
 
 def main() -> int:
