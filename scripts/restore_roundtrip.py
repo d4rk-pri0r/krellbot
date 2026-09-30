@@ -335,13 +335,16 @@ def main() -> int:
         )
 
         _rmtree_with_retry(home)
-        # The restore-side atomic ``os.rename(staged, home)`` swap in
-        # ``home_backup.restore`` no longer needs a settle pause: the
-        # WAL ``PRAGMA wal_checkpoint(TRUNCATE)`` + handle release +
-        # ``gc.collect()`` inside ``restore`` is the canonical
-        # close-out path on Windows + Python 3.13, so we can drop
-        # the harness ``time.sleep(0.5)`` that was previously needed
-        # to drain the deferred ``sqlite3_close_v2``.
+        # Portable settle pause. On Windows + Python 3.13
+        # ``sqlite3_close_v2`` defers the actual OS handle teardown
+        # to a non-deterministic GC cycle, and the ``_rmtree_with_retry``
+        # Strategy-2 rename only succeeds when the OS releases the
+        # handle. A short, platform-independent pause here lets any
+        # deferred-close complete on Windows + Python 3.13 before the
+        # restore subprocess opens the target home. On POSIX this is
+        # a no-op (a few hundred milliseconds of wall-clock); the cost
+        # is bounded and acceptable for a Steward/harness script.
+        time.sleep(0.5)
         proc = _run_krellbot(home, "backup", "restore", "--from", str(archive))
         _record(rows, "backup restore rc", "0", str(proc.returncode))
 
