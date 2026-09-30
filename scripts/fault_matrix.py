@@ -1064,6 +1064,10 @@ def _case_disk_full_state_write() -> dict:
 
 
 def _case_restart_with_pending_intents() -> dict:
+    import gc
+
+    from krellbot.storage.database import OperationalStore
+
     with tempfile.TemporaryDirectory() as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
@@ -1071,30 +1075,37 @@ def _case_restart_with_pending_intents() -> dict:
         pack_path = _write_pack(home)
         _arm_paper(home, pack_path)
         # Bootstrap the store and seed 2 committed-not-sent intents + 2 needs_reconcile audits.
-        from krellbot.storage.database import OperationalStore
-
-        OperationalStore(home / OPS_FILENAME).connect()
-        for coid in (ENTRY_COID_B_MINUS_2, ENTRY_COID_B_MINUS_1):
-            with OperationalStore(home / OPS_FILENAME).transaction() as conn:
-                record = json.dumps(
-                    {"coid": coid, "body": "seeded-pending", "sent": False},
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                conn.execute(
-                    "INSERT INTO ledger (kind, payload) VALUES ('outbox', ?)",
-                    (record,),
-                )
-            with OperationalStore(home / OPS_FILENAME).transaction() as conn:
-                audit = json.dumps(
-                    {"coid": coid},
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                conn.execute(
-                    "INSERT INTO ledger (kind, payload) VALUES ('needs_reconcile', ?)",
-                    (audit,),
-                )
+        # Use a single store reference and drop it (forcing GC) before
+        # the tempdir exit so Windows file handles on ops.sqlite are
+        # released; without this, the Windows runner sees
+        # PermissionError [WinError 32] on tempdir cleanup.
+        store = OperationalStore(home / OPS_FILENAME)
+        try:
+            store.connect()
+            for coid in (ENTRY_COID_B_MINUS_2, ENTRY_COID_B_MINUS_1):
+                with store.transaction() as conn:
+                    record = json.dumps(
+                        {"coid": coid, "body": "seeded-pending", "sent": False},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    conn.execute(
+                        "INSERT INTO ledger (kind, payload) VALUES ('outbox', ?)",
+                        (record,),
+                    )
+                with store.transaction() as conn:
+                    audit = json.dumps(
+                        {"coid": coid},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    conn.execute(
+                        "INSERT INTO ledger (kind, payload) VALUES ('needs_reconcile', ?)",
+                        (audit,),
+                    )
+        finally:
+            store = None  # type: ignore[assignment]
+            gc.collect()
 
         # Drop journal so the tick on bar B doesn't get skipped by _already_journaled.
         for jf in (home / JOURNAL_DIR).glob("*.jsonl"):

@@ -268,10 +268,13 @@ def test_ack_persists_and_later_occurrence_unacknowledges(home: Path) -> None:
     assert acked.acknowledged is True, acked
 
     # The ack file must exist with mode 0o600 and the alert_id keyed.
+    # Skip the mode check on Windows, where POSIX file modes aren't
+    # honored and checkout writes the file with the process umask.
     ack_file = home / "run" / "alerts-ack.json"
     assert ack_file.exists(), ack_file
-    mode = ack_file.stat().st_mode & 0o777
-    assert mode == 0o600, oct(mode)
+    if os.name != "nt":
+        mode = ack_file.stat().st_mode & 0o777
+        assert mode == 0o600, oct(mode)
     raw = json.loads(ack_file.read_text(encoding="utf-8"))
     assert raw.get(alert_id) == ts1 + 10, raw
 
