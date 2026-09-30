@@ -204,30 +204,33 @@ def _rmtree_with_retry(path: Path, *, attempts: int = 40, delay: float = 0.25) -
     the handle may be held for a few hundred ms to a few seconds after
     the CLI subprocess that ran ``backup create`` exits. ``shutil.rmtree``
     walks the tree and fails on the first PermissionError; instead, use
-    an ``onexc`` callback that retries the failing op (delete /
+    an ``onerror`` callback that retries the failing op (delete /
     remove-dir) with a short delay so the lock can drop. POSIX is a
-    single fast pass.
+    single fast pass. ``onerror`` is deprecated in 3.12+ in favor of
+    ``onexc`` but is portable to 3.10 which the CI matrix still runs.
     """
-    def _retry(_func, _path, _exc):
-        # ``onexc(func, path, exc)`` is invoked when ``func`` raised an
-        # OSError on ``path``. ``_exc`` is the exception instance. Only
-        # retry OSError subclasses (WinError 32 is PermissionError);
-        # anything else re-raises immediately. Up to ``attempts`` tries
-        # with ``delay`` seconds between them; on success rmtree
-        # continues the walk.
-        if not isinstance(_exc, OSError):
-            raise _exc
-        last_exc: BaseException = _exc
+
+    def _retry(_func, _path, _exc_info):
+        # ``onerror(func, path, exc_info)`` is invoked when ``func`` raised
+        # on ``path``. ``_exc_info`` is a ``sys.exc_info()`` tuple;
+        # ``_exc_info[1]`` is the exception instance. Only retry
+        # OSError subclasses (WinError 32 is PermissionError); anything
+        # else re-raises immediately. Up to ``attempts`` tries with
+        # ``delay`` seconds between them; on success rmtree continues.
+        exc = _exc_info[1]
+        if not isinstance(exc, OSError):
+            raise exc
+        last_exc: BaseException = exc
         for _ in range(attempts):
             time.sleep(delay)
             try:
                 _func(_path)
                 return
-            except OSError as exc:
-                last_exc = exc
+            except OSError as try_exc:
+                last_exc = try_exc
         raise last_exc
 
-    shutil.rmtree(path, onexc=_retry)
+    shutil.rmtree(path, onerror=_retry)
 
 
 def main() -> int:
