@@ -177,9 +177,13 @@ def test_round_trip_restores_files_byte_equal(home, fresh_keyring, tmp_path):
 
     # Ledger rows equal (read restored ops.sqlite)
     from krellbot.storage.database import OperationalStore
+    from krellbot.storage.home_backup import _release_store_handle
 
     restored_store = OperationalStore(target / "ops.sqlite")
-    assert restored_store.read_ledger() == seeded["ledger_rows"]
+    try:
+        assert restored_store.read_ledger() == seeded["ledger_rows"]
+    finally:
+        _release_store_handle(restored_store)
 
     # verify_home == [] on the restored home.
     diffs = home_backup.verify_home(target, returned_manifest)

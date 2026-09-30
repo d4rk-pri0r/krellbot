@@ -134,6 +134,7 @@ def _seed_home_via_subprocesses(home: Path) -> tuple[dict, list]:
 
     from krellbot import journal as kb_journal
     from krellbot.storage.database import OperationalStore
+    from krellbot.storage.home_backup import _release_store_handle
     from krellbot.storage.outbox import Outbox
 
     for ts in (1_700_000_000, 1_700_000_100, 1_700_000_200):
@@ -154,8 +155,11 @@ def _seed_home_via_subprocesses(home: Path) -> tuple[dict, list]:
     def _send(coid: str, body: str) -> None:
         return None
 
-    outbox.dispatch("abc12345", json.dumps({"qty": "1"}), _send, mode="paper", venue="kraken")
-    outbox.dispatch("def67890", json.dumps({"qty": "2"}), _send, mode="paper", venue="kraken")
+    try:
+        outbox.dispatch("abc12345", json.dumps({"qty": "1"}), _send, mode="paper", venue="kraken")
+        outbox.dispatch("def67890", json.dumps({"qty": "2"}), _send, mode="paper", venue="kraken")
+    finally:
+        _release_store_handle(store)
 
     live_auth = home / "live-authorization.json"
     live_auth.write_text(json.dumps({"grant": "secret-XYZ"}), encoding="utf-8")
