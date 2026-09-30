@@ -39,7 +39,6 @@ The returned manifest is::
 
 from __future__ import annotations
 
-import gc
 import gzip
 import hashlib
 import io
@@ -218,35 +217,7 @@ def create(home: Path, out: Path, *, now: int) -> dict:
     ops_rows: int | None = None
     ops_rows_sha256: str | None = None
     ops_sqlite_path = home / _OPS_FILENAME
-    snap_bytes: bytes | None = None
     if ops_sqlite_path.is_file():
-        # CRITICAL: checkpoint the live WAL + close the live connection + GC
-        # BEFORE the snapshot is captured (and certainly BEFORE the tar
-        # archive is written). On Windows + Python 3.13 the ``sqlite3_close_v2``
-        # deferred teardown keeps the OS handle on ``home/ops.sqlite`` alive
-        # past ``conn.close()``; opening another file on the same home while
-        # that deferred teardown is in flight can contaminate the archive
-        # bytes that ``_add_member`` writes. So:
-        #
-        # 1. Open the live ``OperationalStore(home / "ops.sqlite")``.
-        # 2. ``PRAGMA wal_checkpoint(TRUNCATE)`` — flushes the WAL into the
-        #    main database file and removes the -wal / -shm sidecars.
-        # 3. ``_release_store_handle(store)`` — closes the cached connection
-        #    and drops the thread-local.
-        # 4. ``gc.collect()`` — forces ``sqlite3_close_v2`` to run NOW, so
-        #    the OS handle on ``home/ops.sqlite`` is gone before the snapshot
-        #    is read.
-        try:
-            live_store = OperationalStore(ops_sqlite_path)
-            try:
-                live_store.connect().execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            finally:
-                _release_store_handle(live_store)
-            del live_store
-            gc.collect()
-        except (OSError, RuntimeError, ValueError, TypeError, sqlite3.DatabaseError):
-            pass
-
         with tempfile.TemporaryDirectory() as td:
             snap_path = Path(td) / _OPS_FILENAME
             _sqlite_backup.online_backup(ops_sqlite_path, snap_path)
@@ -293,15 +264,11 @@ def create(home: Path, out: Path, *, now: int) -> dict:
             )
             with tarfile.open(fileobj=gz_fileobj, mode="w") as tf:
                 _add_member(tf, "manifest.json", manifest_bytes)
-                # Reuse ``snap_bytes`` from the checkpointed snapshot taken
-                # above. The second ``_sqlite_backup.online_backup`` call
-                # (which held a raw ``sqlite3.connect`` on ``home/ops.sqlite``
-                # during the tar write) has been dropped: the tar is now
-                # written from the pre-checkpointed snap_bytes that were
-                # captured AFTER the WAL was explicitly flushed and the
-                # handle was released and ``gc.collect()`` ran.
-                if snap_bytes is not None:
-                    _add_member(tf, f"files/{_OPS_FILENAME}", snap_bytes)
+                if ops_sqlite_path.is_file():
+                    with tempfile.TemporaryDirectory() as td:
+                        snap_path = Path(td) / _OPS_FILENAME
+                        _sqlite_backup.online_backup(ops_sqlite_path, snap_path)
+                        _add_member(tf, f"files/{_OPS_FILENAME}", snap_path.read_bytes())
                 for rel, data in captures:
                     _add_member(tf, f"files/{rel}", data)
             gz_fileobj.close()
