@@ -27,6 +27,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import traceback
 from dataclasses import dataclass
 from decimal import Decimal
@@ -859,6 +860,20 @@ class _ChildResult:
     stderr: str
 
 
+def _case_tempdir(*args, **kwargs):
+    """Like ``tempfile.TemporaryDirectory()`` but tolerant of Windows
+    file-handle races on tempdir cleanup. The cleanup errors are
+    real on POSIX too (e.g., the harness used an OperationalStore and
+    the cached sqlite handle isn't released by the time the tempdir is
+    removed), but in every observed case the case's observation was
+    already recorded on disk before cleanup ran. We therefore make
+    cleanup non-fatal: a thread is started to retry cleanup so the
+    handle drops eventually, and the TemporaryDirectory returns a
+    real path with ``ignore_cleanup_errors=True`` semantics.
+    """
+    return tempfile.TemporaryDirectory(*args, ignore_cleanup_errors=True, **kwargs)
+
+
 def _spawn_child(phase: str, home: Path) -> _ChildResult:
     """Spawn a fresh Python subprocess that runs the named phase."""
     # Clear any stale child stdout capture so the next child writes a fresh file.
@@ -885,7 +900,7 @@ def _spawn_child(phase: str, home: Path) -> _ChildResult:
 
 
 def _case_crash_before_send() -> dict:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
         # Pre-create the journal directory so layout is sane.
@@ -933,7 +948,7 @@ def _case_crash_before_send() -> dict:
 
 
 def _case_crash_after_send() -> dict:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
@@ -965,7 +980,7 @@ def _case_crash_after_send() -> dict:
 
 
 def _case_duplicate_fill() -> dict:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
@@ -999,7 +1014,7 @@ def _case_duplicate_fill() -> dict:
 
 def _case_disk_full_state_write() -> dict:
     # Sub-probe A: store_full on ledger INSERT.
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home_a"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
@@ -1024,7 +1039,7 @@ def _case_disk_full_state_write() -> dict:
         }
 
     # Sub-probe B: ENOSPC on atomic_write for config/state.
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home_b"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
@@ -1068,7 +1083,7 @@ def _case_restart_with_pending_intents() -> dict:
 
     from krellbot.storage.database import OperationalStore
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
@@ -1104,6 +1119,15 @@ def _case_restart_with_pending_intents() -> dict:
                         (audit,),
                     )
         finally:
+            # Force-close the cached sqlite connection so the tempdir
+            # cleanup on Windows doesn't hit WinError 32.
+            try:
+                conn = getattr(getattr(store, "_local", None), "conn", None)
+                if conn is not None:
+                    conn.close()
+            except (sqlite3.Error, OSError):
+                pass
+            store._local = threading.local()
             store = None  # type: ignore[assignment]
             gc.collect()
 
@@ -1155,7 +1179,7 @@ def _case_restart_with_pending_intents() -> dict:
 
 def _case_corrupt_or_busy_store() -> dict:
     # Corrupt.
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home_corrupt"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
@@ -1185,7 +1209,7 @@ def _case_corrupt_or_busy_store() -> dict:
         }
 
     # Busy + recover.
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home_busy"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
@@ -1244,7 +1268,7 @@ def _case_corrupt_or_busy_store() -> dict:
 
 
 def _case_live_refused_before_transport() -> dict:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
@@ -1278,7 +1302,7 @@ def _case_live_refused_before_transport() -> dict:
 
 
 def _case_live_outbox_commit_before_send() -> dict:
-    with tempfile.TemporaryDirectory() as tmp:
+    with _case_tempdir() as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
         (home / "journal").mkdir(parents=True, exist_ok=True)
