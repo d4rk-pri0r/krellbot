@@ -250,6 +250,17 @@ def _rmtree_with_retry(path: Path, *, attempts: int = 60, delay: float = 0.5) ->
                     return
                 except PermissionError:
                     continue
+                except OSError as retry_exc:
+                    # ``os.rmdir`` against a directory that still
+                    # holds a locked child raises WinError 145; treat
+                    # that as the loop's end condition and swallow so
+                    # rmtree continues.
+                    if (
+                        _func is os.rmdir
+                        and getattr(retry_exc, "winerror", None) == 145
+                    ):
+                        return
+                    raise
 
     try:
         shutil.rmtree(path)
