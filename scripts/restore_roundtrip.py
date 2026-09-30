@@ -195,26 +195,39 @@ def _reset_home_to_fresh_empty(home: Path) -> None:
     home.mkdir(parents=True, exist_ok=True)
 
 
-def _rmtree_with_retry(path: Path, *, attempts: int = 20, delay: float = 0.1) -> None:
-    """``shutil.rmtree`` with a short retry loop for Windows + Python 3.13.
+def _rmtree_with_retry(path: Path, *, attempts: int = 40, delay: float = 0.25) -> None:
+    """``shutil.rmtree`` with retries for Windows + Python 3.13.
 
-    A sqlite3 connection that was closed via ``sqlite3_close_v2`` can keep
-    the underlying file handle alive until the OS reaps the owning
-    process. The CLI subprocess that ran ``backup create`` exited, but
-    its ops.sqlite handle may still be mapped when ``shutil.rmtree``
-    walks the tree a few milliseconds later. Retry with a short delay
-    until the handle is released; POSIX is a single fast pass.
+    A sqlite3 connection that was closed via ``sqlite3_close_v2`` keeps
+    the underlying file handle alive past ``conn.close()`` and can
+    survive the OS reaping of the subprocess that opened it. On Windows
+    the handle may be held for a few hundred ms to a few seconds after
+    the CLI subprocess that ran ``backup create`` exits. ``shutil.rmtree``
+    walks the tree and fails on the first PermissionError; instead, use
+    an ``onexc`` callback that retries the failing op (delete /
+    remove-dir) with a short delay so the lock can drop. POSIX is a
+    single fast pass.
     """
-    last: BaseException | None = None
-    for _ in range(attempts):
-        try:
-            shutil.rmtree(path)
-            return
-        except OSError as exc:
-            last = exc
+    def _retry(_func, _path, _exc):
+        # ``onexc(func, path, exc)`` is invoked when ``func`` raised an
+        # OSError on ``path``. ``_exc`` is the exception instance. Only
+        # retry OSError subclasses (WinError 32 is PermissionError);
+        # anything else re-raises immediately. Up to ``attempts`` tries
+        # with ``delay`` seconds between them; on success rmtree
+        # continues the walk.
+        if not isinstance(_exc, OSError):
+            raise _exc
+        last_exc: BaseException = _exc
+        for _ in range(attempts):
             time.sleep(delay)
-    if last is not None:
-        raise last
+            try:
+                _func(_path)
+                return
+            except OSError as exc:
+                last_exc = exc
+        raise last_exc
+
+    shutil.rmtree(path, onexc=_retry)
 
 
 def main() -> int:
