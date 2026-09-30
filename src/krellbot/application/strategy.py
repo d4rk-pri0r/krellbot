@@ -101,6 +101,24 @@ class DraftNotRunnable(ValueError):
         self.reason = reason
 
 
+class StrategyIdMismatch(ValueError):
+    """The pack's strategy ``id`` differs from the parent revision's strategy.
+
+    The PUT edit route catches this before the generic ``ValueError``
+    branch and maps it to HTTP 409 ``strategy_id_mismatch``. Catching
+    it specifically preserves the generic ``ValueError`` → 400 mapping
+    for the rest of the put-edit errors (empty id, etc.).
+    """
+
+    def __init__(self, parent_revision_id: str, parent_strategy_id: str, pack_strategy_id: str) -> None:
+        super().__init__(
+            f"pack id {pack_strategy_id!r} does not match parent strategy {parent_strategy_id!r}",
+        )
+        self.parent_revision_id = parent_revision_id
+        self.parent_strategy_id = parent_strategy_id
+        self.pack_strategy_id = pack_strategy_id
+
+
 class StrategyDraftService:
     """Application-layer boundary for strategy drafts."""
 
@@ -187,7 +205,10 @@ class StrategyDraftService:
 
         Returns a summary dict with ``schema_version``, ``strategy_id``,
         ``revision_id``, ``parent_revision_id``, ``state``,
-        ``runnable``, ``created_at``, ``errors``, and ``pack``.
+        ``runnable``, ``created_at``, ``errors``, ``outcome``, and
+        ``pack``. ``outcome`` is the literal ``"created"`` for a fresh
+        write and ``"existing"`` for a repeated POST of identical
+        canonical bytes.
         """
 
         strategy_id = str(pack.get("id") or "")
@@ -202,7 +223,9 @@ class StrategyDraftService:
         # record so repeated POSTs are idempotent and the on-disk file
         # is not rewritten.
         if self._rev_path(strategy_id, rev_id).exists():
-            return self._summary(strategy_id, rev_id)
+            summary = self._summary(strategy_id, rev_id)
+            summary["outcome"] = "existing"
+            return summary
 
         self._write_rev(strategy_id, rev_id, canonical)
         meta = {
@@ -216,12 +239,27 @@ class StrategyDraftService:
             "errors": [],
         }
         self._write_meta(strategy_id, rev_id, meta)
-        return self._summary(strategy_id, rev_id)
+        summary = self._summary(strategy_id, rev_id)
+        summary["outcome"] = "created"
+        return summary
 
     # ---- edit ----------------------------------------------------------
 
     def edit(self, parent_revision_id: str, pack: dict) -> dict:
-        """Create a new draft revision descending from ``parent_revision_id``."""
+        """Create a new draft revision descending from ``parent_revision_id``.
+
+        Returns the stored summary plus an ``outcome`` literal:
+
+          * ``"unchanged"`` — canonical bytes equal the parent's.
+            Nothing on disk changes; the returned ``revision_id`` is
+            the parent's.
+          * ``"existing"`` — canonical bytes equal a *different*
+            revision already on disk. That revision is returned as
+            stored; its meta (including ``parent_revision_id`` and
+            ``state``) is not rewritten.
+          * ``"created"`` — a new revision was written. Its meta
+            ``parent_revision_id`` is the requested parent.
+        """
 
         if not self.exists(parent_revision_id):
             raise RevisionNotFound(parent_revision_id)
@@ -230,29 +268,49 @@ class StrategyDraftService:
         pack_strategy_id = str(pack.get("id") or "")
         if not pack_strategy_id:
             raise ValueError("pack must have a non-empty id")
+        if pack_strategy_id != strategy_id:
+            raise StrategyIdMismatch(parent_revision_id, strategy_id, pack_strategy_id)
 
         rev_id = _revision_id(pack)
         self._ensure_strategy_dir(strategy_id)
-
-        # Same canonical JSON already exists at this revision id — fall
-        # through so the edit semantic is "I asked for a new revision
-        # with these bytes; if it already exists, don't lose track of
-        # who its parent was".
         canonical = _canonical_bytes(pack)
-        if not self._rev_path(strategy_id, rev_id).exists():
-            self._write_rev(strategy_id, rev_id, canonical)
-            meta = {
-                "schema_version": SCHEMA_VERSION,
-                "strategy_id": pack_strategy_id,
-                "revision_id": rev_id,
-                "parent_revision_id": parent_revision_id,
-                "state": STATE_DRAFT,
-                "runnable": False,
-                "created_at": _now_iso(self._clock),
-                "errors": [],
-            }
-            self._write_meta(strategy_id, rev_id, meta)
-        return self._summary(strategy_id, rev_id)
+        parent_canonical = self.canonical_bytes(parent_revision_id)
+
+        # Branch 1 — unchanged save. Canonical bytes equal the parent.
+        # The on-disk meta + rev files for the parent must be
+        # byte-identical before and after; nothing is written.
+        if canonical == parent_canonical:
+            summary = self._summary(strategy_id, parent_revision_id)
+            summary["outcome"] = "unchanged"
+            return summary
+
+        rev_path = self._rev_path(strategy_id, rev_id)
+        if rev_path.exists():
+            # Branch 2 — existing. The canonical bytes already live on
+            # disk under a different revision id. Return it as stored;
+            # do NOT rewrite its meta (the immutable ``parent_revision_id``
+            # and the validated ``state`` must be preserved).
+            summary = self._summary(strategy_id, rev_id)
+            summary["outcome"] = "existing"
+            return summary
+
+        # Branch 3 — created. New revision file. Meta parent_revision_id
+        # is the requested parent.
+        self._write_rev(strategy_id, rev_id, canonical)
+        meta = {
+            "schema_version": SCHEMA_VERSION,
+            "strategy_id": pack_strategy_id,
+            "revision_id": rev_id,
+            "parent_revision_id": parent_revision_id,
+            "state": STATE_DRAFT,
+            "runnable": False,
+            "created_at": _now_iso(self._clock),
+            "errors": [],
+        }
+        self._write_meta(strategy_id, rev_id, meta)
+        summary = self._summary(strategy_id, rev_id)
+        summary["outcome"] = "created"
+        return summary
 
     # ---- validate ------------------------------------------------------
 

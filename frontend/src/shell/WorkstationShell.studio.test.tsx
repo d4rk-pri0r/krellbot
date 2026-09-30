@@ -18,7 +18,24 @@ import type { JSX } from "react";
 import type { PaperClient } from "../features/paper/client";
 import type { ResearchClient } from "../features/research/client";
 import type { StrategyClient } from "../features/strategies/client";
+import type { Pack } from "../features/strategies/client";
 import { WorkstationShell } from "./WorkstationShell";
+
+// Configurable stub for applyExecutionEdit. Tests set
+// applyExecutionEditImpl to a vi.fn() that returns the desired
+// ExecutionEditOutcome before rendering the shell. The mock is
+// hoisted by vitest so WorkstationShell sees the stub on import.
+let applyExecutionEditImpl: (parent: string, pack: Pack) => Promise<unknown> = async () => {
+  throw new Error("applyExecutionEdit stub not configured for this test");
+};
+
+vi.mock("../features/studio/executionEdit", () => ({
+  applyExecutionEdit: (
+    parent: string,
+    pack: Pack,
+  ): Promise<unknown> => applyExecutionEditImpl(parent, pack),
+  DRAFTS_PATH: "/api/v1/strategies/drafts/",
+}));
 
 type CapturedReactFlowProps = {
   onConnect?: OnConnect;
@@ -342,5 +359,221 @@ describe("WorkstationShell — saved strategy studio", () => {
       expect(getCaptured().edges?.[0]?.source).toBe("entry");
       expect(getCaptured().edges?.[0]?.target).toBe("sma20");
     });
+  });
+});
+
+describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
+  function makeSavedPack(): Pack {
+    return {
+      id: "trend-follow",
+      timeframe: "1h",
+      indicators: { sma20: { fn: "sma" } },
+      entry: ["close", ">", "sma20"],
+      exit: ["close", "<", "sma20"],
+    };
+  }
+
+  async function savePackViaStrategies(): Promise<void> {
+    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    fireEvent.change(screen.getByLabelText(/raw json/i), {
+      target: { value: JSON.stringify(makeSavedPack()) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByTestId("editor-revision-id");
+    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+  }
+
+  beforeEach(() => {
+    applyExecutionEditImpl = async () => {
+      throw new Error("applyExecutionEdit stub not configured for this test");
+    };
+  });
+
+  it("Save execution with outcome 'unchanged' renders 'No change: revision <id> kept' and skips validate", async () => {
+    applyExecutionEditImpl = async (_parent, pack) => ({
+      revisionId: "rev-parent",
+      pack,
+      outcome: "unchanged",
+      state: "validated",
+    });
+    const strategy = makeStrategyClient();
+    strategy.validate = vi.fn().mockResolvedValue({
+      revision_id: "rev-parent",
+      state: "validated",
+      pack: makeSavedPack(),
+      errors: [],
+    });
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={makeResearchClient()}
+        strategyClient={strategy}
+      />,
+    );
+    await savePackViaStrategies();
+    fireEvent.click(screen.getByRole("button", { name: /save execution/i }));
+    const outcome = await screen.findByTestId("studio-save-outcome");
+    expect(outcome.textContent).toMatch(/No change: revision rev-parent kept/);
+    expect(strategy.validate).not.toHaveBeenCalled();
+  });
+
+  it("Save execution with outcome 'created' renders 'Saved new revision <id>' and runs a Research job that posts that id", async () => {
+    applyExecutionEditImpl = async (_parent, pack) => ({
+      revisionId: "rev-new",
+      pack,
+      outcome: "created",
+      state: "draft",
+    });
+    const strategy = makeStrategyClient();
+    strategy.validate = vi.fn().mockResolvedValue({
+      revision_id: "rev-new",
+      state: "validated",
+      pack: makeSavedPack(),
+      errors: [],
+    });
+    const research = makeResearchClient();
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={research}
+        strategyClient={strategy}
+      />,
+    );
+    await savePackViaStrategies();
+    fireEvent.click(screen.getByRole("button", { name: /save execution/i }));
+    const outcome = await screen.findByTestId("studio-save-outcome");
+    expect(outcome.textContent).toMatch(/Saved new revision rev-new/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    fireEvent.change(screen.getByLabelText(/dataset path/i), {
+      target: { value: "fixtures/synthetic.csv" },
+    });
+    fireEvent.change(screen.getByLabelText(/fee basis points/i), {
+      target: { value: "10" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await vi.waitFor(() => {
+      expect(research.submitRun).toHaveBeenCalledTimes(1);
+    });
+    const callArg = (research.submitRun as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(callArg.revisionId).toBe("rev-new");
+  });
+
+  it("Save execution with outcome 'existing' renders 'Selected existing revision <id>' and skips validate when state is not draft", async () => {
+    applyExecutionEditImpl = async (_parent, pack) => ({
+      revisionId: "rev-existing",
+      pack,
+      outcome: "existing",
+      state: "validated",
+    });
+    const strategy = makeStrategyClient();
+    strategy.validate = vi.fn().mockResolvedValue({
+      revision_id: "rev-existing",
+      state: "validated",
+      pack: makeSavedPack(),
+      errors: [],
+    });
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={makeResearchClient()}
+        strategyClient={strategy}
+      />,
+    );
+    await savePackViaStrategies();
+    fireEvent.click(screen.getByRole("button", { name: /save execution/i }));
+    const outcome = await screen.findByTestId("studio-save-outcome");
+    expect(outcome.textContent).toMatch(/Selected existing revision rev-existing/);
+    expect(strategy.validate).not.toHaveBeenCalled();
+  });
+
+  it("Save layout with workload=200&pack=1 only POSTs pack node ids", async () => {
+    const strategy = makeStrategyClient();
+    strategy.saveEditor = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={makeResearchClient()}
+        strategyClient={strategy}
+      />,
+    );
+    await savePackViaStrategies();
+    window.history.pushState({}, "", "/?workload=200&pack=1");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    fireEvent.click(screen.getByRole("button", { name: /save layout/i }));
+    await vi.waitFor(() => {
+      expect(strategy.saveEditor).toHaveBeenCalledTimes(1);
+    });
+    const [revId, body] = (strategy.saveEditor as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string, { layout: Record<string, unknown>; edges: unknown[] }];
+    expect(typeof revId).toBe("string");
+    expect(revId.length).toBeGreaterThan(0);
+    const layoutIds = Object.keys(body.layout);
+    expect(layoutIds).toContain("entry");
+    expect(layoutIds).toContain("exit");
+    expect(layoutIds).toContain("sma20");
+    for (const key of layoutIds) {
+      expect(key).not.toMatch(/^w\d+$/);
+    }
+  });
+
+  it("Save layout error renders studio-layout-error", async () => {
+    const strategy = makeStrategyClient();
+    strategy.saveEditor = vi.fn().mockRejectedValue(new Error("layout 500"));
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={makeResearchClient()}
+        strategyClient={strategy}
+      />,
+    );
+    await savePackViaStrategies();
+    fireEvent.click(screen.getByRole("button", { name: /save layout/i }));
+    const err = await screen.findByTestId("studio-layout-error");
+    expect(err.textContent).toMatch(/layout 500/);
+  });
+
+  it("Save layout success does not call edit / validate and leaves studio-revision-id unchanged (W2)", async () => {
+    const strategy = makeStrategyClient();
+    strategy.saveEditor = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={makeResearchClient()}
+        strategyClient={strategy}
+      />,
+    );
+    await savePackViaStrategies();
+    const revisionIdBefore = screen.queryByTestId("studio-revision-id");
+    fireEvent.click(screen.getByRole("button", { name: /save layout/i }));
+    await vi.waitFor(() => {
+      expect(strategy.saveEditor).toHaveBeenCalledTimes(1);
+    });
+    expect(strategy.edit).not.toHaveBeenCalled();
+    expect(strategy.validate).not.toHaveBeenCalled();
+    const revisionIdAfter = screen.queryByTestId("studio-revision-id");
+    expect(revisionIdAfter).toBe(revisionIdBefore);
+  });
+
+  it("Save execution with a missing server outcome renders 'Saved revision <id>' and never 'Saved new revision' (W3)", async () => {
+    applyExecutionEditImpl = async (_parent, pack) => ({
+      revisionId: "rev-no-outcome",
+      pack,
+      state: "validated",
+    });
+    const strategy = makeStrategyClient();
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={makeResearchClient()}
+        strategyClient={strategy}
+      />,
+    );
+    await savePackViaStrategies();
+    fireEvent.click(screen.getByRole("button", { name: /save execution/i }));
+    const outcome = await screen.findByTestId("studio-save-outcome");
+    expect(outcome.textContent).toMatch(/Saved revision rev-no-outcome/);
+    expect(outcome.textContent).not.toMatch(/Saved new revision/);
   });
 });

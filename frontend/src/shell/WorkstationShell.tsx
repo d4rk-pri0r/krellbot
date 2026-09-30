@@ -139,6 +139,8 @@ export function WorkstationShell({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [studioRevisionId, setStudioRevisionId] = useState<string | null>(null);
   const [studioSaveError, setStudioSaveError] = useState<string | null>(null);
+  const [studioSaveOutcome, setStudioSaveOutcome] = useState<string | null>(null);
+  const [studioLayoutError, setStudioLayoutError] = useState<string | null>(null);
 
   const savedPack = useMemo(() => {
     if (!savedRevision) {
@@ -301,6 +303,7 @@ export function WorkstationShell({
 
   const handleSaveExecution = useCallback(async (): Promise<void> => {
     setStudioSaveError(null);
+    setStudioSaveOutcome(null);
     if (!savedRevision || !workingPack) {
       return;
     }
@@ -314,6 +317,76 @@ export function WorkstationShell({
         return;
       }
       setEditedPack(outcome.pack);
+      if (outcome.outcome === "unchanged") {
+        // F1 — no save happened; the parent revision id is kept, no
+        // validate call, and the savedRevision bytes must not change.
+        setStudioSaveOutcome(
+          `No change: revision ${outcome.revisionId} kept`,
+        );
+        return;
+      }
+      if (outcome.outcome === "existing") {
+        // F2 — the edit landed on a different, already-existing
+        // revision. Use the server's stored state; do not force draft.
+        const existingState =
+          outcome.state === "validated" ||
+          outcome.state === "deployed" ||
+          outcome.state === "archived" ||
+          outcome.state === "draft"
+            ? outcome.state
+            : "draft";
+        const existingRevision: LoadedRevision = {
+          revision_id: outcome.revisionId,
+          state: existingState,
+          bytes: JSON.stringify(outcome.pack),
+        };
+        setSavedRevision(existingRevision);
+        setStudioRevisionId(outcome.revisionId);
+        setStudioSaveOutcome(
+          `Selected existing revision ${outcome.revisionId}`,
+        );
+        if (existingState === "draft") {
+          try {
+            const validated = await client.validate(outcome.revisionId);
+            const validatedRevision: LoadedRevision = {
+              revision_id: validated.revision_id,
+              state: validated.state,
+              bytes: JSON.stringify(validated.pack ?? outcome.pack),
+            };
+            setSavedRevision(validatedRevision);
+          } catch {
+            // best-effort
+          }
+        }
+        return;
+      }
+      if (outcome.outcome === "created") {
+        const nextRevision: LoadedRevision = {
+          revision_id: outcome.revisionId,
+          state: "draft",
+          bytes: JSON.stringify(outcome.pack),
+        };
+        setSavedRevision(nextRevision);
+        setStudioRevisionId(outcome.revisionId);
+        setStudioSaveOutcome(`Saved new revision ${outcome.revisionId}`);
+        try {
+          const validated = await client.validate(outcome.revisionId);
+          const validatedRevision: LoadedRevision = {
+            revision_id: validated.revision_id,
+            state: validated.state,
+            bytes: JSON.stringify(validated.pack ?? outcome.pack),
+          };
+          setSavedRevision(validatedRevision);
+        } catch {
+          // validation is best-effort here; the new revision id is
+          // surfaced either way so the e2e can drive the assertion.
+        }
+        return;
+      }
+      // W3: a missing server outcome must not be displayed as
+      // "Saved new revision". Keep the created-style state handling
+      // (select + validate) but render the neutral text. Only
+      // outcome === "created" may render "Saved new revision".
       const nextRevision: LoadedRevision = {
         revision_id: outcome.revisionId,
         state: "draft",
@@ -321,6 +394,7 @@ export function WorkstationShell({
       };
       setSavedRevision(nextRevision);
       setStudioRevisionId(outcome.revisionId);
+      setStudioSaveOutcome(`Saved revision ${outcome.revisionId}`);
       try {
         const validated = await client.validate(outcome.revisionId);
         const validatedRevision: LoadedRevision = {
@@ -330,8 +404,7 @@ export function WorkstationShell({
         };
         setSavedRevision(validatedRevision);
       } catch {
-        // validation is best-effort here; the new revision id is
-        // surfaced either way so the e2e can drive the assertion.
+        // best-effort
       }
     } catch (err) {
       setStudioSaveError(
@@ -425,6 +498,23 @@ export function WorkstationShell({
                 {studioSaveError}
               </p>
             ) : null}
+            {studioSaveOutcome ? (
+              <p
+                className="kbot-shell__outcome"
+                data-testid="studio-save-outcome"
+              >
+                {studioSaveOutcome}
+              </p>
+            ) : null}
+            {studioLayoutError ? (
+              <p
+                className="kbot-shell__error"
+                role="alert"
+                data-testid="studio-layout-error"
+              >
+                {studioLayoutError}
+              </p>
+            ) : null}
             {showStudioControls ? (
               <>
                 <StudioNodeInspector
@@ -434,17 +524,34 @@ export function WorkstationShell({
                 />
                 <button
                   type="button"
+                  data-testid="studio-save-layout"
                   onClick={() => {
-                    const layout = Object.fromEntries(
-                      studioNodes.map((node) => [node.id, node.position]),
+                    if (!savedRevision) {
+                      return;
+                    }
+                    setStudioLayoutError(null);
+                    const packNodeIds = new Set(
+                      nodesFromPack(workingPack ?? savedPack ?? {}).map(
+                        (node) => node.id,
+                      ),
                     );
+                    const layoutEntries = studioNodes
+                      .filter((node) => packNodeIds.has(node.id))
+                      .map((node) => [node.id, node.position] as const);
+                    const layout = Object.fromEntries(layoutEntries);
                     const edges = connections.flatMap((connection) => {
                       if (!connection.source || !connection.target) {
                         return [];
                       }
                       return [{ source: connection.source, target: connection.target }];
                     });
-                    void client.saveEditor?.(savedRevision!.revision_id, { layout, edges });
+                    void client.saveEditor
+                      ?.(savedRevision.revision_id, { layout, edges })
+                      .catch((err: unknown) => {
+                        setStudioLayoutError(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      });
                   }}
                 >
                   Save layout

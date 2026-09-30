@@ -9,11 +9,15 @@ export type DraftState = "draft" | "validated" | "deployed" | "archived";
 
 export type Pack = Record<string, unknown>;
 
+export type DraftOutcome = "created" | "unchanged" | "existing";
+
 export type DraftSummary = {
   revision_id: string;
   state: DraftState;
   pack: Pack;
   errors: ValidationError[];
+  outcome?: DraftOutcome;
+  parent_revision_id?: string | null;
 };
 
 export type StrategyClient = {
@@ -38,7 +42,15 @@ type RawSummary = {
   created_at?: string;
   errors?: Array<{ field?: string; message: string }>;
   pack?: Pack;
+  outcome?: unknown;
 };
+
+function adaptOutcome(raw: unknown): DraftOutcome | undefined {
+  if (raw === "created" || raw === "unchanged" || raw === "existing") {
+    return raw;
+  }
+  return undefined;
+}
 
 function adapt(raw: RawSummary): DraftSummary {
   const stateRaw = raw.state ?? "draft";
@@ -54,6 +66,11 @@ function adapt(raw: RawSummary): DraftSummary {
     state,
     pack: (raw.pack ?? {}) as Pack,
     errors: Array.isArray(raw.errors) ? raw.errors : [],
+    outcome: adaptOutcome(raw.outcome),
+    parent_revision_id:
+      raw.parent_revision_id === null || typeof raw.parent_revision_id === "string"
+        ? (raw.parent_revision_id as string | null)
+        : undefined,
   };
 }
 
@@ -68,7 +85,7 @@ async function postJson(url: string, body: unknown): Promise<DraftSummary> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`request failed: ${response.status}`);
+    throw await adaptHttpError(response);
   }
   return adapt((await response.json()) as RawSummary);
 }
@@ -84,9 +101,36 @@ async function putJson(url: string, body: unknown): Promise<DraftSummary> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`request failed: ${response.status}`);
+    throw await adaptHttpError(response);
   }
   return adapt((await response.json()) as RawSummary);
+}
+
+async function adaptHttpError(response: Response): Promise<Error> {
+  let code: string | undefined;
+  let message: string | undefined;
+  try {
+    const body = (await response.json()) as {
+      code?: string;
+      message?: string;
+      detail?: string;
+    };
+    code = typeof body.code === "string" ? body.code : undefined;
+    message =
+      typeof body.message === "string"
+        ? body.message
+        : typeof body.detail === "string"
+          ? body.detail
+          : undefined;
+  } catch {
+    return new Error(`request failed: ${response.status}`);
+  }
+  const status = response.status;
+  const head = message ? `${status} ${code ?? ""} ${message}`.trim() : `request failed: ${status}`;
+  if (code === "strategy_id_mismatch") {
+    return new Error(`strategy_id_mismatch: ${head}`);
+  }
+  return new Error(head);
 }
 
 export function createHttpClient(): StrategyClient {

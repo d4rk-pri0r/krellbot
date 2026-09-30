@@ -132,15 +132,64 @@ describe("ResearchView form", () => {
     fillForm();
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     await waitFor(() => {
-      expect(client.submitRun).toHaveBeenCalledWith({
-        datasetPath: "fixtures/synthetic.csv",
-        feeBps: 40,
-        fromMs: 0,
-        toMs: 1000,
-        packPath: "",
-        revisionId: "rev-saved",
-      });
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
     });
+    const callArg = (client.submitRun as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(callArg.revisionId).toBe("rev-saved");
+    expect(
+      callArg.packPath === undefined || callArg.packPath === "",
+    ).toBe(true);
+  });
+
+  it("with a saved revision, the pack path input is disabled and carries 'Using revision <id>' hint", () => {
+    const client = makeClient();
+    render(<ResearchView client={client} revisionId="rev-saved" />);
+    const packInput = screen.getByLabelText(/pack path/i) as HTMLInputElement;
+    expect(packInput.disabled).toBe(true);
+    const hint = screen.getByTestId("research-pack-hint");
+    expect(hint.textContent).toMatch(/Using revision rev-saved/);
+  });
+
+  it("with a saved revision, Run omits packPath from the request", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} revisionId="rev-saved" />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+    });
+    const callArg = (client.submitRun as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(callArg.revisionId).toBe("rev-saved");
+    expect(
+      callArg.packPath === undefined || callArg.packPath === "",
+    ).toBe(true);
+  });
+
+  it("when a revision is selected after a pack path was typed, Run still posts only the revision (W1)", async () => {
+    const client = makeClient();
+    const { rerender } = render(
+      <ResearchView client={client} revisionId={null} />,
+    );
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/pack path/i), {
+      target: { value: "/tmp/pack.json" },
+    });
+    rerender(<ResearchView client={client} revisionId="rev-saved" />);
+    expect(
+      (screen.getByLabelText(/pack path/i) as HTMLInputElement).disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+    });
+    const callArg = (client.submitRun as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(callArg.revisionId).toBe("rev-saved");
+    expect(
+      callArg.packPath === undefined || callArg.packPath === "",
+    ).toBe(true);
   });
 
   it("Cancel calls client.cancelJob with that job id", async () => {

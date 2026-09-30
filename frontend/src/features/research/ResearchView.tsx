@@ -203,10 +203,14 @@ export function ResearchView({
         feeBps: readNumberField(feeBps),
         fromMs: readNumberField(fromMs),
         toMs: readNumberField(toMs),
-        packPath: readStringField(packPath),
       };
-      if (revisionId && packPath.trim() === "") {
+      // F4 + W1: when a revision is selected, the request carries the
+      // revision and never a non-empty packPath, even if the typed
+      // packPath state still holds a stale value.
+      if (revisionId) {
         request.revisionId = revisionId;
+      } else {
+        request.packPath = readStringField(packPath);
       }
       if (holdoutFromFilled) {
         request.holdoutFromMs = Number(holdoutFromTrimmed);
@@ -310,8 +314,17 @@ export function ResearchView({
             }
             autoComplete="off"
             spellCheck={false}
+            disabled={revisionId != null}
           />
         </label>
+        {revisionId ? (
+          <p
+            className="kbot-research__hint"
+            data-testid="research-pack-hint"
+          >
+            Using revision {revisionId}
+          </p>
+        ) : null}
         {revisionId ? (
           <p className="kbot-research__revision" data-testid="research-revision">
             revision: {revisionId}

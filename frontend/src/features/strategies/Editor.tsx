@@ -59,6 +59,8 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
   const [venue, setVenue] = useState("kraken");
   const [paperBalance, setPaperBalance] = useState("1000");
   const [importError, setImportError] = useState<string | null>(null);
+  const [saveOutcome, setSaveOutcome] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const currentPack = useMemo(() => parsePack(rawJson), [rawJson]);
   const labelValue = readLabel(currentPack);
@@ -101,12 +103,30 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
     if (!pack) {
       return;
     }
+    setSaveOutcome(null);
+    setSaveError(null);
     const parentId = lastSummary?.revision_id ?? initial?.revision_id;
-    const summary = parentId
-      ? await client.edit(parentId, pack)
-      : await client.create(pack);
-    setLastSummary(summary);
-    onRevision?.(summary, rawJson);
+    try {
+      const summary = parentId
+        ? await client.edit(parentId, pack)
+        : await client.create(pack);
+      if (summary.outcome === "unchanged") {
+        setSaveOutcome(`No change: revision ${summary.revision_id} kept`);
+        return;
+      }
+      if (summary.outcome === "existing") {
+        setSaveOutcome(`Selected existing revision ${summary.revision_id}`);
+      } else if (summary.outcome === "created") {
+        setSaveOutcome(`Saved new revision ${summary.revision_id}`);
+      } else {
+        // W3: missing server outcome must not render "Saved new".
+        setSaveOutcome(`Saved revision ${summary.revision_id}`);
+      }
+      setLastSummary(summary);
+      onRevision?.(summary, rawJson);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleValidate = async (): Promise<void> => {
@@ -242,6 +262,23 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
             data-testid="editor-import-error"
           >
             {importError}
+          </p>
+        ) : null}
+        {saveOutcome !== null ? (
+          <p
+            className="kbot-strategy-editor__outcome"
+            data-testid="editor-save-outcome"
+          >
+            {saveOutcome}
+          </p>
+        ) : null}
+        {saveError !== null ? (
+          <p
+            className="kbot-strategy-editor__error"
+            role="alert"
+            data-testid="editor-save-error"
+          >
+            {saveError}
           </p>
         ) : null}
         {lastSummary?.errors.map((err, index) => (

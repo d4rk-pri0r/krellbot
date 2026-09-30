@@ -142,6 +142,60 @@ describe("applyExecutionEdit: response handling", () => {
   });
 });
 
+describe("applyExecutionEdit: M2-WRITE outcome pass-through", () => {
+  it("surfaces the server's outcome literal without inventing one", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse({
+        revision_id: "rev-out-created",
+        state: "draft",
+        pack: { id: "lane-a-strategy" },
+        outcome: "created",
+      }),
+    );
+    const created = await applyExecutionEdit("rev-parent", { id: "x" });
+    expect(created.outcome).toBe("created");
+    expect(created.state).toBe("draft");
+    expect(created.revisionId).toBe("rev-out-created");
+
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse({
+        revision_id: "rev-out-unchanged",
+        state: "validated",
+        pack: { id: "lane-a-strategy" },
+        outcome: "unchanged",
+      }),
+    );
+    const unchanged = await applyExecutionEdit("rev-parent", { id: "x" });
+    expect(unchanged.outcome).toBe("unchanged");
+    expect(unchanged.state).toBe("validated");
+
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse({
+        revision_id: "rev-out-existing",
+        state: "validated",
+        pack: { id: "lane-a-strategy" },
+        outcome: "existing",
+      }),
+    );
+    const existing = await applyExecutionEdit("rev-parent", { id: "x" });
+    expect(existing.outcome).toBe("existing");
+    expect(existing.state).toBe("validated");
+  });
+
+  it("returns undefined outcome when the server omits it (never invents one)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse({
+        revision_id: "rev-out-omitted",
+        state: "draft",
+        pack: { id: "lane-a-strategy" },
+      }),
+    );
+    const result = await applyExecutionEdit("rev-parent", { id: "x" });
+    expect(result.outcome).toBeUndefined();
+    expect(result.state).toBe("draft");
+  });
+});
+
 describe("applyExecutionEdit: side-effect freedom", () => {
   it("does not touch localStorage", async () => {
     const spy = vi.spyOn(Storage.prototype, "getItem");

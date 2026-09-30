@@ -200,6 +200,117 @@ describe("Editor save", () => {
   });
 });
 
+describe("Editor M2-WRITE save outcomes", () => {
+  it("unchanged save renders 'No change: revision <id> kept' and does not call onRevision", async () => {
+    const onRevision = vi.fn();
+    const client = makeClient({
+      edit: vi.fn().mockResolvedValue({
+        revision_id: "rev-parent",
+        parent_revision_id: null,
+        state: "validated",
+        pack: validPack,
+        errors: [],
+        outcome: "unchanged",
+      }),
+    });
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-parent",
+          state: "validated",
+          bytes: validPackBytes,
+        }}
+        onRevision={onRevision}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    const outcome = await screen.findByTestId("editor-save-outcome");
+    expect(outcome.textContent).toMatch(/No change: revision rev-parent kept/);
+    expect(onRevision).not.toHaveBeenCalled();
+  });
+
+  it("created save renders 'Saved new revision <id>' and surfaces the outcome", async () => {
+    const onRevision = vi.fn();
+    const client = makeClient({
+      edit: vi.fn().mockResolvedValue({
+        revision_id: "rev-new",
+        parent_revision_id: "rev-parent",
+        state: "draft",
+        pack: validPack,
+        errors: [],
+        outcome: "created",
+      }),
+    });
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-parent",
+          state: "draft",
+          bytes: validPackBytes,
+        }}
+        onRevision={onRevision}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    const outcome = await screen.findByTestId("editor-save-outcome");
+    expect(outcome.textContent).toMatch(/Saved new revision rev-new/);
+    expect(onRevision).toHaveBeenCalledTimes(1);
+  });
+
+  it("strategy id mismatch error renders an alert and surfaces strategy_id_mismatch", async () => {
+    const onRevision = vi.fn();
+    const client = makeClient({
+      edit: vi.fn().mockRejectedValue(
+        new Error("request failed: 409 strategy_id_mismatch"),
+      ),
+    });
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-parent",
+          state: "draft",
+          bytes: validPackBytes,
+        }}
+        onRevision={onRevision}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/strategy_id_mismatch/);
+  });
+
+  it("save with a missing server outcome renders 'Saved revision <id>' and never 'Saved new revision' (W3)", async () => {
+    const onRevision = vi.fn();
+    const client = makeClient({
+      edit: vi.fn().mockResolvedValue({
+        revision_id: "rev-no-outcome",
+        parent_revision_id: "rev-parent",
+        state: "draft",
+        pack: validPack,
+        errors: [],
+      }),
+    });
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-parent",
+          state: "draft",
+          bytes: validPackBytes,
+        }}
+        onRevision={onRevision}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    const outcome = await screen.findByTestId("editor-save-outcome");
+    expect(outcome.textContent).toMatch(/Saved revision rev-no-outcome/);
+    expect(outcome.textContent).not.toMatch(/Saved new revision/);
+  });
+});
+
 describe("Editor validation", () => {
   it("renders validation errors with field text next to the message", async () => {
     const client = makeClient({

@@ -147,6 +147,29 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   // though it virtualizes off-screen ones.
   expect(await page.locator(".react-flow__node").count()).toBeGreaterThanOrEqual(1);
 
+  // M2-WRITE: an unchanged save is a typed no-op. Click Save execution
+  // before editing anything and capture the wire response. The outcome
+  // element must render the "No change" message and the response body
+  // must carry outcome: "unchanged" with revision_id == A.
+  const unchangedReq = page.waitForRequest(
+    (r) =>
+      r.method() === "PUT" &&
+      new URL(r.url()).pathname === `/api/v1/strategies/drafts/${revisionA}`,
+  );
+  await page.getByRole("button", { name: /save execution/i }).click();
+  const unchangedRequest = await unchangedReq;
+  const unchangedResponse = await unchangedRequest.response();
+  const unchangedBody = (await unchangedResponse!.json()) as {
+    revision_id?: string;
+    outcome?: string;
+    state?: string;
+  };
+  expect(unchangedBody.outcome).toBe("unchanged");
+  expect(unchangedBody.revision_id).toBe(revisionA);
+  await expect(page.getByTestId("studio-save-outcome")).toContainText(
+    `No change: revision ${revisionA} kept`,
+  );
+
   // Click the sma2 indicator node and edit its length.
   // ReactFlow positions nodes absolutely inside a viewport that shares
   // its bounding box with ``<main>``; Playwright's hit-test therefore
@@ -161,7 +184,22 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   await page.waitForTimeout(300);
   await expect(page.getByTestId("studio-indicator-len")).toBeVisible();
   await page.getByTestId("studio-indicator-len").fill("20");
+  const createdReq = page.waitForRequest(
+    (r) =>
+      r.method() === "PUT" &&
+      new URL(r.url()).pathname === `/api/v1/strategies/drafts/${revisionA}`,
+  );
   await page.getByRole("button", { name: /save execution/i }).click();
+  const createdRequest = await createdReq;
+  const createdResponse = await createdRequest.response();
+  const createdBody = (await createdResponse!.json()) as {
+    revision_id?: string;
+    outcome?: string;
+  };
+  expect(createdBody.outcome).toBe("created");
+  await expect(page.getByTestId("studio-save-outcome")).toContainText(
+    "Saved new revision ",
+  );
   await expect(page.getByTestId("studio-revision-id")).toBeVisible();
   const revisionB = await page
     .getByTestId("studio-revision-id")

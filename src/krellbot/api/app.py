@@ -34,6 +34,7 @@ from krellbot.application.strategy import (
     DraftNotRunnable,
     RevisionNotFound,
     StrategyDraftService,
+    StrategyIdMismatch,
 )
 
 SCHEMA_VERSION = "1"
@@ -438,6 +439,26 @@ def create_app(
         if not isinstance(correlation_id, str):
             correlation_id = ""
 
+        # F4 — refuse an ambiguous pack source: both a non-empty
+        # ``pack_path`` and a non-empty ``revision_id``. The default
+        # runner prefers ``pack_path`` over ``revision_id``, so a
+        # payload that sets both would silently run the typed path
+        # instead of the revision the UI showed. Surface the refusal
+        # before ``jobs.submit`` so no job is created.
+        pack_path_raw = payload.get("pack_path")
+        revision_id_raw = payload.get("revision_id")
+        pack_path_filled = isinstance(pack_path_raw, str) and pack_path_raw != ""
+        revision_id_filled = isinstance(revision_id_raw, str) and revision_id_raw != ""
+        if pack_path_filled and revision_id_filled:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "ambiguous_pack_source",
+                    "message": ("request sets both pack_path and revision_id; pick one"),
+                },
+                status_code=400,
+            )
+
         try:
             job = s.jobs.submit(kind=kind, correlation_id=correlation_id, request=payload)
         except QueueFull as qf:
@@ -663,6 +684,18 @@ def create_app(
                     "message": f"draft {revision_id} not found",
                 },
                 status_code=404,
+            )
+        except StrategyIdMismatch as exc:
+            # F3 — pack strategy id differs from the parent's strategy
+            # id. Catching this before the generic ``ValueError``
+            # branch keeps the 400 mapping for the other errors.
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "strategy_id_mismatch",
+                    "message": str(exc),
+                },
+                status_code=409,
             )
         except ValueError as exc:
             return JSONResponse({"detail": str(exc)}, status_code=400)
