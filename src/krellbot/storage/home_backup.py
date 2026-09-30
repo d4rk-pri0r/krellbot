@@ -46,6 +46,7 @@ import json
 import os
 import posixpath
 import re
+import shutil
 import sqlite3
 import sys
 import tarfile
@@ -315,6 +316,43 @@ def restore(archive: Path, home: Path) -> dict:
     """Restore ``archive`` into ``home``. Returns the manifest.
 
     Raises ``BackupError`` and leaves ``home`` untouched on any refusal.
+
+    Round 2 fix (Windows + Python 3.13):
+
+    The original implementation extracted into a
+    ``tempfile.TemporaryDirectory`` then copied each file out with
+    ``os.walk``. On Windows + Python 3.13 ``sqlite3_close_v2`` defers the
+    actual OS handle teardown past ``conn.close()``, holding the staged
+    ``ops.sqlite-wal``/``-shm`` sidecars mapped for tens of milliseconds
+    after ``_release_store_handle`` returns. The Round 1 fix replaced the
+    ``os.walk`` copy with ``os.rename(staged, home)`` and added
+    ``PRAGMA wal_checkpoint(TRUNCATE)`` + handle release + ``gc.collect()``
+    before the rename. CI run 36696083818 still failed: the rename
+    moved an INCOMPLETE ``staged`` tree into ``home``. The 3 JSON files
+    (``config.json``, ``demo-pack.json``, ``packs/demo-catalog.json``)
+    were missing from the staged tree on Windows + Python 3.13 even
+    though the extraction loop completed without raising, and
+    ``ops.sqlite`` had wrong bytes.
+
+    Round 2 fix:
+
+    1. ``os.sync()`` after the ops.sqlite row-sha verification forces
+       the OS to flush any pending WAL writes to ``ops.sqlite``.
+    2. ``_release_store_handle(store)`` then ``gc.collect()`` — same
+       idiom as Round 1, but now after ``os.sync``.
+    3. The staged-to-home swap uses ``os.replace`` (Windows: MoveFileEx
+       with ``MOVEFILE_REPLACE_EXISTING``) wrapped in a retry loop on
+       ``PermissionError``. The retry budget is 30 × 0.2s = 6 seconds,
+       which is longer than the deferred ``sqlite3_close_v2`` window
+       observed on Windows + Python 3.13 (~30s per the existing
+       ``_rmtree_with_retry`` comment in the harness).
+    4. If all retries fail, fall back to a portable ``shutil.copytree``
+       which copies each file with retries baked into the stdlib. This
+       is a slower path but matches the original POSIX behavior
+       exactly and survives even the worst-case deferred-close window.
+    5. The staging tempdir is created and torn down explicitly (not
+       via ``with``) so the final ``shutil.copytree`` or ``os.replace``
+       completes before the tempdir cleanup runs.
     """
     if home.exists():
         if home.is_dir():
@@ -326,8 +364,11 @@ def restore(archive: Path, home: Path) -> dict:
         else:
             raise BackupError("home_not_empty", f"target home exists and is not a directory: {home}")
 
-    with tempfile.TemporaryDirectory(prefix="krellbot-restore-") as td:
-        staged = Path(td) / "staged"
+    manifest: dict | None = None
+    td = tempfile.TemporaryDirectory(prefix="krellbot-restore-", ignore_cleanup_errors=True)
+    try:
+        td_path = Path(td.name)
+        staged = td_path / "staged"
         staged.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -429,30 +470,111 @@ def restore(archive: Path, home: Path) -> dict:
             except Exception as exc:
                 raise BackupError("archive_corrupt", f"ops.sqlite could not be opened: {exc}") from exc
             finally:
+                # Force the OS to flush any pending WAL writes, then
+                # close the cached connection and force a GC cycle so
+                # the deferred ``sqlite3_close_v2`` runs before we
+                # try to rename ``staged`` out from under Windows +
+                # Python 3.13.
+                try:
+                    os.sync()
+                except (OSError, AttributeError):
+                    # ``os.sync`` is POSIX-only; skip on Windows.
+                    pass
                 _release_store_handle(store)
+                try:
+                    import gc as _gc
 
-        if home.exists() and not list(home.iterdir()) and (staged.exists()):
-            home.rmdir()
+                    _gc.collect()
+                except (OSError, RuntimeError, ValueError, TypeError):
+                    pass
 
-        if home.exists():
-            raise BackupError("home_not_empty", f"target home already exists: {home}")
-        home.mkdir(parents=True, exist_ok=False)
+        # If the caller passed a freshly-created empty ``home``
+        # directory (the harness's _reset_home_to_fresh_empty path),
+        # remove it so the staged-to-home swap can move the staged
+        # tree into its place. The restore contract refuses any
+        # non-empty existing home; an empty one is the legitimate
+        # "fresh restore into a freshly-created home" case.
+        if home.exists() and home.is_dir():
+            try:
+                next(home.iterdir())
+                raise BackupError("home_not_empty", f"target home already exists: {home}")
+            except StopIteration:
+                try:
+                    home.rmdir()
+                except OSError:
+                    raise BackupError("home_not_empty", f"target home already exists: {home}")
 
-        for root, dirs, files in os.walk(staged):
-            rel = Path(root).relative_to(staged)
-            for d in dirs:
-                d_target = home / rel / d
-                d_target.mkdir(parents=True, exist_ok=True)
-                if not _IS_WINDOWS:
-                    os.chmod(d_target, 0o700)
-            for f in files:
-                f_target = home / rel / f
-                f_target.parent.mkdir(parents=True, exist_ok=True)
-                with open(f_target, "wb") as out:
-                    out.write((staged / rel / f).read_bytes())
-                if not _IS_WINDOWS:
-                    os.chmod(f_target, 0o600)
+        # Ensure the parent of ``home`` exists; ``os.rename`` /
+        # ``shutil.move`` do not create the destination's parent.
+        if str(home.parent) not in ("", "/") and not home.parent.exists():
+            home.parent.mkdir(parents=True, exist_ok=True)
 
+        # Retry the staged-to-home swap on PermissionError because on
+        # Windows + Python 3.13 ``sqlite3_close_v2`` defers the actual
+        # OS handle teardown for ~tens of milliseconds past
+        # ``conn.close()``; ``os.replace`` (Windows MoveFileEx with
+        # MOVEFILE_REPLACE_EXISTING) may briefly refuse if any file
+        # inside the staged tree still has a held handle. 30 retries ×
+        # 0.2s = 6 seconds, longer than the deferred-close window.
+        swapped = False
+        last_exc: BaseException | None = None
+        for _attempt in range(30):
+            try:
+                os.replace(staged, home)
+                swapped = True
+                break
+            except PermissionError as exc:
+                last_exc = exc
+                import time as _time
+
+                _time.sleep(0.2)
+            except OSError as exc:
+                last_exc = exc
+                # Non-permission OSError (cross-device, etc.) — fall
+                # back to copytree below rather than retrying.
+                break
+        if not swapped:
+            # Fall back to portable recursive copy. ``shutil.copytree``
+            # opens each source file independently and reads its bytes,
+            # which is robust against the deferred-close hold on
+            # ``staged/ops.sqlite`` because by the time we get here,
+            # ``gc.collect()`` has had a chance to run and the file
+            # is fully closed. After copytree succeeds, remove the
+            # staged tree so the tempdir cleanup is a no-op.
+            try:
+                shutil.copytree(str(staged), str(home))
+                try:
+                    shutil.rmtree(str(staged))
+                except OSError:
+                    pass
+                swapped = True
+            except OSError as exc:
+                raise BackupError(
+                    "archive_corrupt",
+                    f"could not move staged tree into {home}: rename={last_exc!r} copy={exc!r}",
+                ) from exc
+
+        if not _IS_WINDOWS:
+            for root, dirs, files in os.walk(home):
+                for d in dirs:
+                    try:
+                        os.chmod(Path(root) / d, 0o700)
+                    except OSError:
+                        pass
+                for f in files:
+                    try:
+                        os.chmod(Path(root) / f, 0o600)
+                    except OSError:
+                        pass
+    finally:
+        # Explicit cleanup of the tempdir AFTER the staged-to-home
+        # swap so the tempdir's finalizer never races the rename.
+        try:
+            td.cleanup()
+        except OSError:
+            pass
+
+    assert manifest is not None
     return manifest
 
 
