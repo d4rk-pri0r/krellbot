@@ -384,17 +384,19 @@ def main() -> int:
         _emitter(rows)
         return 0 if all(r["pass"] for r in rows) else 1
     finally:
-        # Drain every tempdir the script owns plus any
-        # ``<name>.rmtree-tmp`` siblings left behind by
+        # Drain every tempdir the script owns. We don't bother
+        # cleaning the ``<name>.rmtree-tmp`` siblings left behind by
         # ``_rmtree_with_retry`` when rename-then-drain was used to
-        # defeat a Win32 locked-file race.
-        cleanup_paths: list[Path] = []
+        # defeat a Win32 locked-file race — those are in
+        # ``tempfile.gettempdir()`` which the OS reaps on its own
+        # schedule, and trying to drain them here can blow the test's
+        # 120-second wall-clock budget on Windows + Python 3.13
+        # (the locked files in the rename stay locked for tens of
+        # seconds). Plain rmtree on the original paths is fast and
+        # covers everything that wasn't renamed.
         for p in (home, archive_dir, non_empty_target, fresh_target):
-            cleanup_paths.append(p)
-            cleanup_paths.append(p.with_name(p.name + ".rmtree-tmp"))
-        for p in cleanup_paths:
             try:
-                _rmtree_with_retry(p)
+                shutil.rmtree(p)
             except OSError:
                 pass
 
