@@ -179,3 +179,124 @@ describe("createHttpClient getResult", () => {
     expect(result).toBeNull();
   });
 });
+
+describe("createHttpClient getJob", () => {
+  it("gets /api/v1/jobs/{id} and returns {id, state} for a running job", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        id: "job-abc",
+        kind: "research.backtest",
+        state: "running",
+        created_at: "2026-01-01T00:00:00Z",
+        started_at: "2026-01-01T00:00:01Z",
+        finished_at: null,
+        progress: null,
+        result_ref: null,
+        error: null,
+        correlation_id: "corr-1",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const snap = await createHttpClient().getJob("job-abc");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/jobs/job-abc");
+    expect(init.method).toBe("GET");
+    expect(snap).toEqual({ id: "job-abc", state: "running", error: undefined });
+  });
+
+  it("returns {id, state, error} when the job failed with a closed-shape error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        id: "job-abc",
+        kind: "research.backtest",
+        state: "failed",
+        created_at: "2026-01-01T00:00:00Z",
+        started_at: "2026-01-01T00:00:01Z",
+        finished_at: "2026-01-01T00:00:02Z",
+        progress: null,
+        result_ref: null,
+        error: { code: "numeric_out_of_range", message: "equity out of range" },
+        correlation_id: "corr-1",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const snap = await createHttpClient().getJob("job-abc");
+
+    expect(snap).toEqual({
+      id: "job-abc",
+      state: "failed",
+      error: { code: "numeric_out_of_range", message: "equity out of range" },
+    });
+  });
+
+  it("returns {id, state: 'cancelled', error: {code: 'cancelled'}} for a cancelled job", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        id: "job-abc",
+        kind: "research.backtest",
+        state: "cancelled",
+        created_at: "2026-01-01T00:00:00Z",
+        started_at: "2026-01-01T00:00:01Z",
+        finished_at: "2026-01-01T00:00:02Z",
+        progress: null,
+        result_ref: null,
+        error: null,
+        correlation_id: "corr-1",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const snap = await createHttpClient().getJob("job-abc");
+
+    expect(snap).toBeTruthy();
+    expect(snap!.state).toBe("cancelled");
+  });
+
+  it("returns null when the server responds 404 not_found for an unknown job", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ code: "not_found" }, 404),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const snap = await createHttpClient().getJob("missing");
+    expect(snap).toBeNull();
+  });
+});
+
+describe("createHttpClient getResultDownload", () => {
+  it("returns the response object so the caller can read the blob bytes unchanged", async () => {
+    const blob = new Blob(['{"ok":true}'], { type: "application/json" });
+    const response = {
+      ok: true,
+      status: 200,
+      blob: vi.fn().mockResolvedValue(blob),
+    } as unknown as Response;
+    const fetchMock = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const out = await createHttpClient().getResultDownload("job-abc");
+
+    expect(out).toBe(response);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/jobs/job-abc/result/download");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("throws on a non-2xx response so the UI can surface the failure", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createHttpClient().getResultDownload("missing")).rejects.toThrow();
+  });
+});

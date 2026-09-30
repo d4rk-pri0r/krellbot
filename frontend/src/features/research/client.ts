@@ -21,10 +21,18 @@ export type StoredResult = {
   trace: Array<Record<string, unknown>>;
 };
 
+export type ResearchJobSnapshot = {
+  id: string;
+  state: string;
+  error?: { code: string; message: string };
+};
+
 export type ResearchClient = {
   submitRun(request: RunRequest): Promise<ResearchJobSummary>;
   cancelJob(jobId: string): Promise<void>;
   getResult(jobId: string): Promise<StoredResult | null>;
+  getJob(jobId: string): Promise<ResearchJobSnapshot | null>;
+  getResultDownload(jobId: string): Promise<Response>;
 };
 
 async function postJson(url: string, body: unknown): Promise<unknown> {
@@ -119,6 +127,50 @@ export function createHttpClient(): ResearchClient {
         legacy_receipt: obj.legacy_receipt as Record<string, unknown>,
         trace,
       };
+    },
+    async getJob(jobId: string): Promise<ResearchJobSnapshot | null> {
+      const raw = await getJson(
+        `/api/v1/jobs/${encodeURIComponent(jobId)}`,
+      );
+      if (raw === null || typeof raw !== "object") {
+        return null;
+      }
+      const obj = raw as {
+        id?: unknown;
+        state?: unknown;
+        error?: unknown;
+      };
+      if (typeof obj.id !== "string" || typeof obj.state !== "string") {
+        return null;
+      }
+      let error: { code: string; message: string } | undefined;
+      if (obj.error && typeof obj.error === "object") {
+        const e = obj.error as { code?: unknown; message?: unknown };
+        if (typeof e.code === "string" && typeof e.message === "string") {
+          error = { code: e.code, message: e.message };
+        }
+      }
+      const snap: ResearchJobSnapshot = { id: obj.id, state: obj.state };
+      if (error !== undefined) {
+        snap.error = error;
+      }
+      return snap;
+    },
+    async getResultDownload(jobId: string): Promise<Response> {
+      const response = await fetch(
+        `/api/v1/jobs/${encodeURIComponent(jobId)}/result/download`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "X-Krellbot-CSRF": getCsrf(),
+          },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`download failed: ${response.status}`);
+      }
+      return response;
     },
   };
 }

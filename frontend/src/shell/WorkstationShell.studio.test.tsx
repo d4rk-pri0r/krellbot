@@ -116,6 +116,12 @@ function makeResearchClient(): ResearchClient {
     submitRun: vi.fn().mockResolvedValue({ id: "job-1", state: "queued" }),
     cancelJob: vi.fn().mockResolvedValue(undefined),
     getResult: vi.fn().mockResolvedValue(null),
+    getJob: vi.fn().mockResolvedValue({ id: "job-1", state: "succeeded" }),
+    getResultDownload: vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: vi.fn().mockResolvedValue(new Blob(['{"ok":true}'])),
+    } as unknown as Response),
   };
 }
 

@@ -172,6 +172,10 @@ export function ResearchView({
   const [storedResult, setStoredResult] = useState<StoredResult | null>(null);
   const [selectedBarTs, setSelectedBarTs] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [jobError, setJobError] = useState<
+    { code: string; message: string } | null
+  >(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const handleSyntheticFixture = (): void => {
     setDatasetPath(SYNTHETIC_FIXTURE_PATH);
@@ -179,6 +183,8 @@ export function ResearchView({
 
   const handleRun = async (): Promise<void> => {
     setSubmitError(null);
+    setJobError(null);
+    setExportError(null);
     setStoredResult(null);
     setSelectedBarTs(null);
     const holdoutFromTrimmed = holdoutFrom.trim();
@@ -235,18 +241,45 @@ export function ResearchView({
     const intervalMs = 250;
     const deadline = Date.now() + 5 * 60 * 1000;
     while (Date.now() < deadline) {
-      // A new Run since this poll started: hand off to the new poll.
       if (jobIdRef.current !== targetJobId) {
         return;
       }
+      let snap: Awaited<ReturnType<ResearchClient["getJob"]>>;
       try {
-        const result = await client.getResult(targetJobId);
-        if (result !== null) {
-          setStoredResult(result);
+        snap = await client.getJob(targetJobId);
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        continue;
+      }
+      if (snap === null) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        continue;
+      }
+      if (snap.state === "succeeded") {
+        if (jobIdRef.current !== targetJobId) {
           return;
         }
-      } catch {
-        // The job may be in a transitional state (404); retry.
+        const result = await client.getResult(targetJobId);
+        if (jobIdRef.current !== targetJobId) {
+          return;
+        }
+        setStoredResult(result);
+        return;
+      }
+      if (snap.state === "failed") {
+        if (jobIdRef.current !== targetJobId) {
+          return;
+        }
+        const error = snap.error ?? { code: "job_failed", message: "job failed" };
+        setJobError(error);
+        return;
+      }
+      if (snap.state === "cancelled") {
+        if (jobIdRef.current !== targetJobId) {
+          return;
+        }
+        setJobError({ code: "cancelled", message: "cancelled" });
+        return;
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
@@ -269,6 +302,29 @@ export function ResearchView({
     const result = await client.getResult(jobId);
     setStoredResult(result);
     setSelectedBarTs(null);
+  };
+
+  const handleExport = async (): Promise<void> => {
+    if (!jobId) {
+      return;
+    }
+    setExportError(null);
+    try {
+      const response = await client.getResultDownload(jobId);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `research-receipt-${jobId}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(
+        err instanceof Error ? err.message : "export failed",
+      );
+    }
   };
 
   const trace: TraceBar[] = storedResult
@@ -468,20 +524,29 @@ export function ResearchView({
           type="button"
           className="kbot-research__action"
           onClick={() => {
-            const blob = new Blob([JSON.stringify(storedResult)], {
-              type: "application/json",
-            });
-            const url = URL.createObjectURL(blob);
-            const anchor = document.createElement("a");
-            anchor.href = url;
-            anchor.download = "research-result.json";
-            document.body.appendChild(anchor);
-            anchor.click();
-            document.body.removeChild(anchor);
+            void handleExport();
           }}
         >
           Export result
         </button>
+      ) : null}
+      {exportError ? (
+        <p
+          className="kbot-research__error"
+          role="alert"
+          data-testid="research-export-error"
+        >
+          {exportError}
+        </p>
+      ) : null}
+      {jobError ? (
+        <p
+          className="kbot-research__error"
+          role="alert"
+          data-testid="research-job-error"
+        >
+          {jobError.code}: {jobError.message}
+        </p>
       ) : null}
       {storedResult ? (
         <pre
