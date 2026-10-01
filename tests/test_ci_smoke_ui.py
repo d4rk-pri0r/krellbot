@@ -39,6 +39,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.ci_smoke_ui import _stop_capture, capture_url_from_subprocess
+
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 HELPER = SCRIPTS_DIR / "ci_smoke_ui.py"
 
@@ -301,8 +303,6 @@ def test_ci_smoke_ui_fails_when_dashboard_does_not_start(tmp_path):
 #   - return ``(url, proc)`` so the caller can drive the smoke
 #     GETs and clean up. On timeout / child failure, return
 #     ``(None, proc)``.
-
-from scripts.ci_smoke_ui import _stop_capture, capture_url_from_subprocess
 
 
 def _binary_that_prints_url(port: int, log_path: Path, delay: float = 0.0) -> Path:

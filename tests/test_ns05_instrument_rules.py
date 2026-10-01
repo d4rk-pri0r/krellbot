@@ -21,6 +21,20 @@ from pathlib import Path
 
 import pytest
 
+from krellbot.data.instruments import (
+    METADATA_INVALID,
+    METADATA_STALE,
+    METADATA_SYMBOL_MISMATCH,
+    METADATA_UNAVAILABLE,
+    InstrumentMetadataClient,
+    InstrumentMetadataError,
+    InstrumentRulesSnapshot,
+    InstrumentRulesV1,
+    OfflineModeRequired,
+    derive_decimal_places,
+    pairrules_from_instrument,
+)
+
 NS05_CLOCK = datetime(2026, 9, 28, 12, tzinfo=timezone.utc).timestamp()
 
 
@@ -36,20 +50,6 @@ def pin_metadata_clock(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("krellbot.data.instruments._default_now", lambda: NS05_CLOCK)
 
-
-from krellbot.data.instruments import (
-    METADATA_INVALID,
-    METADATA_STALE,
-    METADATA_SYMBOL_MISMATCH,
-    METADATA_UNAVAILABLE,
-    InstrumentMetadataClient,
-    InstrumentMetadataError,
-    InstrumentRulesSnapshot,
-    InstrumentRulesV1,
-    OfflineModeRequired,
-    derive_decimal_places,
-    pairrules_from_instrument,
-)
 
 # ---- scripted transports ------------------------------------------------
 

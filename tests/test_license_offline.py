@@ -263,7 +263,7 @@ def test_live_arm_requires_withdraw_off_and_confirmation(home, monkeypatch, fres
 # ----------------------- shared helpers -----------------------
 
 
-def _candle(ts_ms: int, o: str, h: str, l: str, c: str):
+def _candle(ts_ms: int, o: str, h: str, low: str, c: str):
     from decimal import Decimal
 
     from krellbot.pack.model import Candle
@@ -272,7 +272,7 @@ def _candle(ts_ms: int, o: str, h: str, l: str, c: str):
         ts_ms=ts_ms,
         open=Decimal(o),
         high=Decimal(h),
-        low=Decimal(l),
+        low=Decimal(low),
         close=Decimal(c),
         volume=Decimal(100),
     )
