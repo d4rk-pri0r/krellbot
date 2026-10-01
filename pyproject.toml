@@ -22,7 +22,10 @@ Source = "https://github.com/d4rk-pri0r/krellbot"
 krellbot = "krellbot.cli:entry"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "pyinstaller==6.16.0",
+]
 
 [build-system]
 requires = ["hatchling>=1.26"]
@@ -33,6 +36,7 @@ packages = ["src/krellbot"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 120

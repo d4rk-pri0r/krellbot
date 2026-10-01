@@ -1,0 +1,244 @@
+name: release-frozen
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/release-frozen.yml"
+      - "scripts/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tests/test_release_archive.py"
+      - "tests/test_frozen_main.py"
+      - "tests/test_ci_smoke_ui.py"
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.os }} ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+            platform_tag: macos
+            archive_name: krellbot-macos-arm64.zip
+          - os: ubuntu-latest
+            arch: x86_64
+            platform_tag: linux
+            archive_name: krellbot-linux-x86_64.zip
+          - os: windows-latest
+            arch: x86_64
+            platform_tag: windows
+            archive_name: krellbot-windows-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    env:
+      KRELLBOT_VERSION: "0.9.1"
+      # Pass the immutable release base URL through from the repo
+      # variable explicitly so the fail-closed verification step
+      # always has the variable available. If the repo variable is
+      # not configured, ``vars.KRELLBOT_RELEASE_BASE_URL`` expands
+      # to the empty string and the downstream
+      # ``Verify immutable release base URL is configured`` step
+      # fails the run closed with a clear error message — release
+      # automation must pin the CDN per matrix.
+      KRELLBOT_RELEASE_BASE_URL: ${{ vars.KRELLBOT_RELEASE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+
+      - name: Sync dependencies
+        run: uv sync --group dev
+
+      - name: Run unit tests
+        run: uv run pytest -q tests/test_release_archive.py tests/test_frozen_main.py tests/test_ci_smoke_ui.py
+        env:
+          PYTHONUTF8: "1"
+
+      - name: Build frozen one-dir binary
+        run: uv run python scripts/freeze.py
+
+      - name: Locate bundled static assets
+        id: static
+        shell: bash
+        run: |
+          set -euo pipefail
+          # PyInstaller 6.x puts the Python runtime + data files under
+          # `_internal/` inside the bundle. The launcher executable is
+          # `dist/krellbot/krellbot` (POSIX) or `dist/krellbot/krellbot.exe`
+          # (Windows); the bundled static directory lives at
+          # `dist/krellbot/_internal/krellbot/ui/static/`. We accept both
+          # the PyInstaller 6.x layout and the legacy root layout.
+          CANDIDATES=(
+            "dist/krellbot/_internal/krellbot/ui/static/index.html"
+            "dist/krellbot/krellbot/ui/static/index.html"
+          )
+          STATIC=""
+          for cand in "${CANDIDATES[@]}"; do
+            if [ -f "$cand" ]; then
+              STATIC="$cand"
+              break
+            fi
+          done
+          if [ -z "$STATIC" ]; then
+            echo "::error::bundled static file missing under any known layout (tried: ${CANDIDATES[*]})"
+            exit 1
+          fi
+          echo "static=$STATIC" >> "$GITHUB_OUTPUT"
+
+      - name: "Verify bundled static is NOT the checkout"
+        # The bundled static must live under dist/, not under src/.
+        # Catches the regression where PyInstaller's --add-data is
+        # silently a no-op and the bundled binary reads from the checkout.
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATIC="${{ steps.static.outputs.static }}"
+          case "$STATIC" in
+            dist/*) echo "ok: static is inside the frozen bundle ($STATIC)" ;;
+            *) echo "::error::static lives outside the frozen bundle: $STATIC"; exit 1 ;;
+          esac
+
+      - name: "Smoke test packaged CLI list"
+        # Invoke the built binary's `list` command in an isolated home
+        # and confirm it exits 0. The list command reads the catalog and
+        # prints a DSL pack summary; with no packs installed it prints
+        # a friendly empty summary.
+        shell: bash
+        env:
+          KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
+          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            BIN="dist/krellbot/krellbot.exe"
+          else
+            BIN="dist/krellbot/krellbot"
+          fi
+          if [ ! -x "$BIN" ] && [ ! -f "$BIN" ]; then
+            echo "::error::frozen binary missing: $BIN"
+            exit 1
+          fi
+          "$BIN" list
+          # `list` exits 0 whether or not packs exist; we just confirm
+          # the bundled binary can launch its CLI loop.
+
+      - name: "Smoke test bundled token-gated dashboard"
+        # Spin up the bundled binary's `ui` command on a known port,
+        # parse the printed `http://127.0.0.1:PORT/<token>/` URL,
+        # and hit the gated index + a bundled static asset. A 403
+        # from any path proves the bundle is serving from the
+        # bundled static directory, not the checkout. A 200 with
+        # bytes proves the bundled UI assets actually shipped.
+        # Windows runs this through bash too because the workflow
+        # uses Git Bash; `start` / detached process not needed.
+        # The CLI prints the URL with `flush=True` so the helper
+        # can capture it from a real `subprocess.PIPE` on every
+        # platform — no tty, no winpty, no third-party dependency.
+        # Earlier reviews flagged the previous pty/winpty split
+        # because Windows GitHub Actions runners ship without
+        # winpty; the new path uses stdlib only.
+        shell: bash
+        env:
+          KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
+          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            BIN="dist/krellbot/krellbot.exe"
+          else
+            BIN="dist/krellbot/krellbot"
+          fi
+          # Bind port 0 and let the OS assign an available loopback port.
+          # The helper reads the actual gated URL from the child's stdout;
+          # probing a port in a separate process adds a race and nested
+          # Bash/Python quoting breaks on Windows runners.
+          # Cleanup: ``scripts/ci_smoke_ui.py`` owns the spawned
+          # child via its own ``finally:`` block (SIGINT + wait +
+          # SIGKILL fallback, then closes the capture). That covers
+          # success AND every early-exit path (curl failure, 403,
+          # etc.), so we do NOT install a bash ``trap`` here. The
+          # helper is the single source of truth for child
+          # cleanup; a workflow-side trap would either be
+          # POSIX-only (and therefore unavailable on Windows Git
+          # Bash runners, which ship without the GNU ``procps``
+          # tools) or would duplicate the helper's own cleanup in
+          # a way that's hard to reason about. See
+          # ``tests/test_ci_smoke_ui.py::test_workflow_smoke_block_*``.
+          uv run python scripts/ci_smoke_ui.py \
+            --binary "$BIN" \
+            --port 0 \
+            --home "${{ runner.temp }}/krellbot-home" \
+            --log ui_smoke.log
+
+      - name: "Verify immutable release base URL is configured"
+        if: github.event_name != 'pull_request'
+        # The manifest URL is built from $KRELLBOT_RELEASE_BASE_URL +
+        # version + archive_name. CI fails closed if the base URL is
+        # missing or doesn't end with a slash; release automation must
+        # pin the immutable release CDN (or equivalent) per matrix.
+        id: release_base
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${KRELLBOT_RELEASE_BASE_URL:-}" ]; then
+            echo "::error::KRELLBOT_RELEASE_BASE_URL is not set; refusing to emit manifest"
+            echo "hint: configure the immutable release base URL (e.g. https://releases.example.com/krellbot) in the workflow env or repo settings"
+            exit 1
+          fi
+          # Must be http(s) and end with a slash so we can append
+          # `<version>/<archive_name>` deterministically.
+          case "$KRELLBOT_RELEASE_BASE_URL" in
+            http://*/|https://*/) ;;
+            *) echo "::error::KRELLBOT_RELEASE_BASE_URL must be http(s) and end with a slash: $KRELLBOT_RELEASE_BASE_URL"; exit 1 ;;
+          esac
+          echo "release_base=$KRELLBOT_RELEASE_BASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable archive and manifest
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          KRELLBOT_VERSION: ${{ env.KRELLBOT_VERSION }}
+          KRELLBOT_RELEASE_BASE_URL: ${{ steps.release_base.outputs.release_base }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          ARCHIVE="artifacts/${{ matrix.archive_name }}"
+          # build_archive enforces that the URL's basename equals the
+          # archive filename, so this concatenation is safe — if
+          # ${{ matrix.archive_name }} ever drifts from the URL
+          # basename, the build aborts here.
+          URL="${KRELLBOT_RELEASE_BASE_URL}${KRELLBOT_VERSION}/${{ matrix.archive_name }}"
+          uv run python -c "
+          import json
+          from pathlib import Path
+          from scripts.release_archive import build_archive
+          m = build_archive(
+              Path('dist/krellbot'),
+              Path('${ARCHIVE}'),
+              version='${KRELLBOT_VERSION}',
+              platform_tag='${{ matrix.platform_tag }}',
+              arch='${{ matrix.arch }}',
+              url='${URL}',
+          )
+          print(json.dumps(m, indent=2, sort_keys=True))
+          " | tee "artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json"
+
+      - name: Upload archive and manifest
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: krellbot-${{ matrix.platform_tag }}-${{ matrix.arch }}
+          path: |
+            artifacts/${{ matrix.archive_name }}
+            artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json
+          if-no-files-found: error

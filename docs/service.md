@@ -59,6 +59,27 @@ krellbot service uninstall
 Deletes only the unit files `install` wrote: the plist, both Linux units,
 or the Windows task XML. Files outside the named set are never touched.
 
+## Scheduler install vs. release install
+
+There are two installs in this release and they do different things:
+
+- **Release install** (the site installer / frozen one-dir binary) places
+  the launcher at `~/.local/bin/krellbot` (POSIX) or
+  `%LOCALAPPDATA%\Krellbot\bin\krellbot.cmd` (Windows), and stages the
+  binary under `~/.local/share/krellbot/versions/<ver>/` or
+  `%LOCALAPPDATA%\Krellbot\versions\<ver>\`. The data home stays at
+  `$KRELLBOT_HOME` (default `~/.krellbot`).
+- **`krellbot service install`** writes only the OS scheduler unit. It
+  does not move the launcher, change `$KRELLBOT_HOME`, or download
+  anything. Run it after the release install and only when you want the
+  hourly tick.
+
+`krellbot doctor --json` reports `service_installed` (the scheduler unit)
+and `install_ready` (whether the local UI can run). A fresh release
+install is `install_ready=True` even before
+`krellbot service install` has been run — the scheduler is part of
+the live arm step, not the install.
+
 ## Inspecting health: `krellbot doctor`
 
 `krellbot doctor` runs every health check with no network unless a clock
@@ -67,7 +88,7 @@ endpoint (`https://api.kraken.com/0/public/Time`, reading `result.unixtime`)
 so skew is checked against a real wall clock; tests pass a fake source and
 prove zero socket calls.
 
-```
+```sh
 krellbot doctor           # text, exit 0 when ok
 krellbot doctor --json    # machine-readable, same keys, same exit code
 ```
@@ -78,7 +99,7 @@ The checks, each a row in text and a field in JSON:
 | --- | --- |
 | `home_mode_ok` | True if `KRELLBOT_HOME` is `0o700` on POSIX. `null` on Windows (skipped, not failed). |
 | `keychain_backend` | The OS keychain backend name. A `null`, `fail`, or `fake` backend is a warning. |
-| `keys` | Per venue: present or absent. With an injected permission probe, also `trade` and `withdraw`. |
+| `keys` | Per venue: present or absent. With an injected permission probe, also `trade` and `withdraw`. Without a probe those keys are omitted — the key's permissions are unknown. |
 | `service_installed` | True if the unit file exists for this platform under the write root. |
 | `last_tick_age_s` | Seconds since the last `kind=tick` journal record. `null` if no record. |
 | `last_tick_stale` | True when `last_tick_age_s` is missing or `>= 2 * 3600`. |
@@ -87,9 +108,44 @@ The checks, each a row in text and a field in JSON:
 | `license_status` | Status from `catalog/license-cache.json`, or `missing`. |
 | `armed` | Per armed pack: `venue`, `pair`, `cap`, `ok`, `warning`. Unknown pair warns `minimums not loaded`. |
 | `warnings` | Aggregated human-readable warnings. `ok` is `true` iff this list is empty. |
+| `install_ready` | **New.** `True` iff `home_mode_ok is not False` AND the keychain backend is a real persistent one AND a `127.0.0.1:0` bind probe succeeds. Does not require keys, a tick, or the scheduler unit. |
+| `trading_ready` | **New.** `True` only when `install_ready` is `True`, the journal has a tick in the last 2 hours, and at least one stored key had its permissions probed with `trade=True` AND `withdraw=False`. Unknown permissions are fail-closed: a present key with no probe does **not** satisfy this gate. |
 
 JSON keys are stable. `ok` is true only when `warnings` is empty. Exit
-code is 0 when `ok`, 1 otherwise.
+code is 0 when `ok`, 1 otherwise. The `install_ready` / `trading_ready`
+booleans live beside `ok`; they do not change `ok` and they do not
+suppress the existing warnings.
+
+### When does `install_ready` go true?
+
+Right after the release install, on a host that:
+
+- has its data home mode at `0o700` (POSIX) or skips the check
+  (Windows),
+- has a real persistent keychain backend (macOS Keychain, Windows
+  Credential Manager, Linux Secret Service — not null/fail/fake), and
+- can bind a TCP socket to `127.0.0.1` on a free port.
+
+It does **not** require a stored exchange key, a journal tick, or the
+OS scheduler unit. A brand-new install with no packs and no keys is
+still `install_ready=True`.
+
+### When does `trading_ready` go true?
+
+Only after all three:
+
+- `install_ready` is `True`.
+- `last_tick_stale` is `False` — a tick ran in the last two hours. This
+  is the journal record left by `krellbot tick` when the scheduler
+  fires it.
+- At least one stored key has a permission probe that returned
+  `can_trade=True` and `can_withdraw=False`. If no probe ran, the
+  fields `trade` and `withdraw` are not present in the JSON, and
+  `trading_ready` stays `False`.
+
+`trading_ready` is the right thing to gate an automated live arm on.
+The dashboard does not bypass it: live-arm POSTs return `403` before
+any state change.
 
 ## What the doctor never does
 
@@ -100,3 +156,6 @@ code is 0 when `ok`, 1 otherwise.
   fabricated `0.0001`.
 - Prints a secret. The output never references the API key, the API
   secret, or the license key.
+- Touches any address other than `127.0.0.1`. The bind probe is
+  strictly loopback; no venue, no catalog, no `krellbot.dev` is ever
+  contacted during `krellbot doctor`.
