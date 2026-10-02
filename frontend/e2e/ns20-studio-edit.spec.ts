@@ -2,6 +2,7 @@ import {
   test,
   expect,
   type Page,
+  type Request,
   type Response,
   type Download,
 } from "@playwright/test";
@@ -128,6 +129,31 @@ async function waitForSessionReady(page: Page): Promise<void> {
   );
 }
 
+/**
+ * BUILD-RESEARCH-INPUTS-01: count every actual research-job POST on
+ * the wire. Listener-only observation — no route(), no fulfill(), no
+ * request mocking; rejection proofs rely on this listener plus the
+ * settled UI, and the final successful journey is counted again here.
+ */
+function attachResearchPostListener(page: Page): {
+  posts: Request[];
+  count: () => number;
+} {
+  const posts: Request[] = [];
+  page.on("request", (request: Request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/v1/research/jobs"
+    ) {
+      posts.push(request);
+      console.log(
+        `[research-inputs] observed research POST #${posts.length}: ${request.postData() ?? ""}`,
+      );
+    }
+  });
+  return { posts, count: () => posts.length };
+}
+
 test("200-node studio edit changes a backtest result", async ({ page }) => {
   test.setTimeout(180_000);
   const guard = attachConsoleGuard(page);
@@ -164,16 +190,38 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   if (!editCsv) {
     throw new Error("KRELLBOT_E2E_EDIT_CSV was not set by global-setup");
   }
+  // BUILD-RESEARCH-INPUTS-01: observe every actual research POST on
+  // the wire (listener only — no interception, no mocking).
+  const researchPosts = attachResearchPostListener(page);
+  // Before the first valid run: valid pinned bounds with a malformed
+  // fee. The Run must be refused with a visible fee-naming alert and
+  // create no research POST at all.
   await page.getByLabel(/dataset path/i).fill(editCsv);
-  await page.getByLabel(/fee basis points/i).fill("10");
+  await page.getByLabel(/fee basis points/i).fill("not-a-number");
   await page.getByLabel(/^from$/i).fill("0");
   await page.getByLabel(/^to$/i).fill("9999999999999");
+  await page.getByRole("button", { name: /^run$/i }).click();
+  await expect(page.getByRole("alert")).toContainText(/fee basis points/i, {
+    timeout: 10_000,
+  });
+  expect(researchPosts.count()).toBe(0);
+  console.log(
+    `[research-inputs] invalid fee rejected before first run: posts=${researchPosts.count()}`,
+  );
+  // Correct to the original fee and keep every original wire/result/
+  // download assertion below exactly as it was.
+  await page.getByLabel(/fee basis points/i).fill("10");
   const reqA = page.waitForRequest(
     (r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/research/jobs",
   );
   await page.getByRole("button", { name: /^run$/i }).click();
   const requestA = await reqA;
   const bodyA = JSON.parse(requestA.postData() ?? "{}") as Record<string, unknown>;
+  // The corrected run submits exactly the selected integers.
+  expect(bodyA.fee_bps).toBe(10);
+  expect(bodyA.from_ms).toBe(0);
+  expect(bodyA.to_ms).toBe(9999999999999);
+  expect(researchPosts.count()).toBe(1);
   // Wait for job id to appear.
   const jobA = await readJobIdAfterRun(page);
   expect(jobA).not.toBe("");
@@ -255,6 +303,70 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   const secondSha = createHash("sha256").update(Buffer.from(secondDownload.bytes)).digest("hex");
   console.log(`[m2-export] sha256(revA second download)=${secondSha}`);
   expect(secondDownload.bytes).toEqual(firstDownload.bytes);
+
+  // BUILD-RESEARCH-INPUTS-01: after a real result A exists, select an
+  // actual backend trace bar, then attempt a reversed scored window.
+  // The refusal must name From/To, create no research POST, leave the
+  // same job id/result/selected bar intact, and keep the canonical
+  // export usable. Correcting back to the original window then runs
+  // the original repeated-download workflow above.
+  const jobIdBeforeRefusal = await readJobIdAfterRun(page);
+  expect(typedResultA.trace.length).toBeGreaterThan(0);
+  const refusalBar = typedResultA.trace[0] as {
+    bar_ts?: number;
+    input?: { close?: number };
+    conditions?: Array<{ path?: string; outcome?: unknown }>;
+  };
+  const refusalBarTsText = String(refusalBar.bar_ts);
+  const refusalScroll = page.getByTestId("research-trace-scroll");
+  await refusalScroll.evaluate((el: HTMLElement) => el.scrollTo(0, 0));
+  await page
+    .getByRole("button", { name: refusalBarTsText, exact: true })
+    .first()
+    .click();
+  await expect(page.getByTestId("research-bar-detail")).toBeVisible();
+  const refusalDetailBefore = (
+    await page.getByTestId("research-bar-detail").innerText()
+  ).trim();
+  const refusalResultTextBefore = (
+    await page.getByTestId("research-result").innerText()
+  ).trim();
+  await page.getByLabel(/dataset path/i).fill(editCsv);
+  await page.getByLabel(/fee basis points/i).fill("10");
+  await page.getByLabel(/^from$/i).fill("9999999999999");
+  await page.getByLabel(/^to$/i).fill("0");
+  await page.getByRole("button", { name: /^run$/i }).click();
+  await expect(page.getByRole("alert")).toContainText(/from/i, { timeout: 10_000 });
+  await expect(page.getByRole("alert")).toContainText(/to/i);
+  expect(researchPosts.count()).toBe(2);
+  console.log(
+    `[research-inputs] reversed scored window rejected after result A: posts=${researchPosts.count()}`,
+  );
+  // Same job identity, same rendered result, same selected bar detail.
+  expect(await readJobIdAfterRun(page)).toBe(jobIdBeforeRefusal);
+  const refusalResultTextAfter = (
+    await page.getByTestId("research-result").innerText()
+  ).trim();
+  expect(refusalResultTextAfter).toBe(refusalResultTextBefore);
+  const refusalDetailAfter = (
+    await page.getByTestId("research-bar-detail").innerText()
+  ).trim();
+  expect(refusalDetailAfter).toBe(refusalDetailBefore);
+  // The canonical export is still usable and still byte-equal.
+  const refusalDownload = await downloadExportBytes(page);
+  expect(refusalDownload.bytes).toEqual(firstDownload.bytes);
+  // Correct the scored window back to the original bounds. The
+  // original repeated-run + canonical-bytes workflow continues.
+  await page.getByLabel(/^from$/i).fill("0");
+  await page.getByLabel(/^to$/i).fill("9999999999999");
+  await page.getByRole("button", { name: /^run$/i }).click();
+  await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
+  expect(researchPosts.count()).toBe(3);
+  const thirdDownload = await downloadExportBytes(page);
+  expect(thirdDownload.bytes).toEqual(firstDownload.bytes);
+  console.log(
+    `[research-inputs] corrected window resubmitted; total research POSTs=${researchPosts.count()}`,
+  );
 
   // Switch to studio, navigate to the 200+pack workload mode.
   // Use history.pushState (not page.goto) so the in-memory

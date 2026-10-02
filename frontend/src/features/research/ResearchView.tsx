@@ -32,21 +32,34 @@ const TRACE_ROW_HEIGHT = 24;
 const TRACE_OVERSCAN_ROWS = 8;
 const TRACE_VIEWPORT_HEIGHT = 480;
 
-function readNumberField(value: string): number {
-  const trimmed = value.trim();
-  if (trimmed === "") {
-    return 0;
-  }
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function readStringField(value: string): string {
   return value;
 }
 
 function isIntegerString(value: string): boolean {
   return /^-?\d+$/.test(value);
+}
+
+/**
+ * BUILD-RESEARCH-INPUTS-01: parse a REQUIRED integer setup field.
+ * Blank, malformed, fractional, non-finite and unsafe-integer input
+ * is refused — never silently coerced to zero, truncated or rounded.
+ * The caller supplies the field-naming error text so the visible
+ * alert always names the affected field.
+ */
+function parseRequiredIntegerField(
+  raw: string,
+  errorText: string,
+): { ok: true; value: number } | { ok: false; error: string } {
+  const trimmed = raw.trim();
+  if (!isIntegerString(trimmed)) {
+    return { ok: false, error: errorText };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || !Number.isSafeInteger(parsed)) {
+    return { ok: false, error: errorText };
+  }
+  return { ok: true, value: parsed };
 }
 
 function formatMetric(value: unknown): string {
@@ -218,11 +231,45 @@ export function ResearchView({
   };
 
   const handleRun = async (): Promise<void> => {
-    setSubmitError(null);
-    setJobError(null);
-    setExportError(null);
-    setStoredResult(null);
-    setSelectedBarTs(null);
+    // BUILD-RESEARCH-INPUTS-01: validate the required fee/date setup
+    // fields BEFORE clearing any current result/selection. A refused
+    // setup must not submit a job, fabricate a job id, or discard the
+    // current job identity/result/decision/export.
+    const feeField = parseRequiredIntegerField(
+      feeBps,
+      "Fee basis points must be a nonnegative integer",
+    );
+    if (!feeField.ok) {
+      setSubmitError(feeField.error);
+      return;
+    }
+    const feeBpsValue = feeField.value;
+    if (feeBpsValue < 0) {
+      setSubmitError("Fee basis points must be a nonnegative integer");
+      return;
+    }
+    const fromField = parseRequiredIntegerField(
+      fromMs,
+      "From must be an integer timestamp",
+    );
+    if (!fromField.ok) {
+      setSubmitError(fromField.error);
+      return;
+    }
+    const toField = parseRequiredIntegerField(
+      toMs,
+      "To must be an integer timestamp",
+    );
+    if (!toField.ok) {
+      setSubmitError(toField.error);
+      return;
+    }
+    if (fromField.value > toField.value) {
+      setSubmitError(
+        "From must be less than or equal to To for the inclusive scored window",
+      );
+      return;
+    }
     const holdoutFromTrimmed = holdoutFrom.trim();
     const holdoutToTrimmed = holdoutTo.trim();
     const holdoutFromFilled = holdoutFromTrimmed !== "";
@@ -239,12 +286,17 @@ export function ResearchView({
       setSubmitError("holdout bounds must both be set");
       return;
     }
+    setSubmitError(null);
+    setJobError(null);
+    setExportError(null);
+    setStoredResult(null);
+    setSelectedBarTs(null);
     try {
       const request: Parameters<ResearchClient["submitRun"]>[0] = {
         datasetPath: readStringField(datasetPath),
-        feeBps: readNumberField(feeBps),
-        fromMs: readNumberField(fromMs),
-        toMs: readNumberField(toMs),
+        feeBps: feeBpsValue,
+        fromMs: fromField.value,
+        toMs: toField.value,
       };
       // F4 + W1: when a revision is selected, the request carries the
       // revision and never a non-empty packPath, even if the typed

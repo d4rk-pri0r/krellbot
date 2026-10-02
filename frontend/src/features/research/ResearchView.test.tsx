@@ -803,3 +803,346 @@ describe("ResearchView pollForResult (M2-CE)", () => {
     expect(getResult).toHaveBeenCalledWith("job-abc");
   });
 });
+
+// BUILD-RESEARCH-INPUTS-01: required Fee basis points / From / To setup
+// contract. Every case below must hold against the unchanged runtime
+// before the seam is implemented: a blank, malformed, fractional,
+// non-finite, unsafe, negative-fee or reversed-window value shows a
+// field-naming alert, never submits a research job, never fabricates
+// a job id, and never discards the current result/selection/export.
+describe("ResearchView setup refusal (BUILD-RESEARCH-INPUTS-01)", () => {
+  function setField(label: RegExp, value: string): void {
+    fireEvent.change(screen.getByLabelText(label), {
+      target: { value },
+    });
+  }
+
+  async function expectRefusal(
+    client: ResearchClient,
+    fieldPattern: RegExp,
+    alsoNotPattern?: RegExp,
+  ): Promise<void> {
+    const alert = await screen.findByRole("alert");
+    const text = alert.textContent ?? "";
+    expect(text).toMatch(fieldPattern);
+    if (alsoNotPattern) {
+      expect(text).not.toMatch(alsoNotPattern);
+    }
+    expect(client.submitRun).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("research-job-id")).toBeNull();
+  }
+
+  it("research setup refuses a blank Fee basis points without submitting", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/fee basis points/i, "");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /fee basis points/i);
+  });
+
+  it("research setup refuses a malformed Fee basis points without submitting", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/fee basis points/i, "not-a-number");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /fee basis points/i);
+  });
+
+  it("research setup refuses a fractional Fee basis points without truncating or rounding", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/fee basis points/i, "40.5");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /fee basis points/i);
+  });
+
+  it("research setup refuses a non-finite Fee basis points without substituting zero", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/fee basis points/i, "Infinity");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /fee basis points/i);
+  });
+
+  it("research setup refuses an unsafe Fee basis points integer", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/fee basis points/i, "9007199254740993");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /fee basis points/i);
+  });
+
+  it("research setup refuses a negative Fee basis points", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/fee basis points/i, "-5");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /fee basis points/i);
+  });
+
+  it("research setup refuses a blank From without submitting", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^from$/i, "");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /from/i, /to/i);
+  });
+
+  it("research setup refuses a malformed From without submitting", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^from$/i, "soon");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /from/i, /to/i);
+  });
+
+  it("research setup refuses a fractional From without truncating or rounding", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^from$/i, "0.5");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /from/i, /to/i);
+  });
+
+  it("research setup refuses a non-finite From without substituting zero", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^from$/i, "Infinity");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /from/i, /to/i);
+  });
+
+  it("research setup refuses an unsafe From integer", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^from$/i, "9007199254740993");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /from/i, /to/i);
+  });
+
+  it("research setup refuses a blank To without submitting", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^to$/i, "");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /to/i, /from/i);
+  });
+
+  it("research setup refuses a malformed To without submitting", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^to$/i, "12o'clock");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /to/i, /from/i);
+  });
+
+  it("research setup refuses a fractional To without truncating or rounding", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^to$/i, "1000.25");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /to/i, /from/i);
+  });
+
+  it("research setup refuses a non-finite To without substituting zero", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^to$/i, "-Infinity");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /to/i, /from/i);
+  });
+
+  it("research setup refuses an unsafe To integer", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^to$/i, "99999999999999999999999");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /to/i, /from/i);
+  });
+
+  it("research setup refuses a reversed scored window with a From/To alert", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^from$/i, "2000");
+    setField(/^to$/i, "1000");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    const alert = await screen.findByRole("alert");
+    const text = alert.textContent ?? "";
+    expect(text).toMatch(/from/i);
+    expect(text).toMatch(/to/i);
+    expect(client.submitRun).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("research-job-id")).toBeNull();
+  });
+
+  it("research setup refuses an invalid value, then submits exactly the corrected integers", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/fee basis points/i, "abc");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /fee basis points/i);
+    setField(/fee basis points/i, "25");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+    });
+    expect(client.submitRun).toHaveBeenCalledWith({
+      datasetPath: "fixtures/synthetic.csv",
+      feeBps: 25,
+      fromMs: 0,
+      toMs: 1000,
+      packPath: "",
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+    expect(
+      textOf(await screen.findByTestId("research-job-id")),
+    ).toMatch(/job-abc/);
+  });
+
+  it("research setup refuses untrimmed invalid input, then trims whitespace-padded valid integers exactly", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/fee basis points/i, "  4.5  ");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /fee basis points/i);
+    setField(/fee basis points/i, "  40  ");
+    setField(/^from$/i, " 0 ");
+    setField(/^to$/i, " 1000 ");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+    });
+    expect(client.submitRun).toHaveBeenCalledWith({
+      datasetPath: "fixtures/synthetic.csv",
+      feeBps: 40,
+      fromMs: 0,
+      toMs: 1000,
+      packPath: "",
+    });
+  });
+
+  it("research setup refuses invalid input, then accepts an explicit zero fee and an equal scored window", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^to$/i, "abc");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /to/i, /from/i);
+    setField(/fee basis points/i, "0");
+    setField(/^from$/i, "1000");
+    setField(/^to$/i, "1000");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+    });
+    expect(client.submitRun).toHaveBeenCalledWith({
+      datasetPath: "fixtures/synthetic.csv",
+      feeBps: 0,
+      fromMs: 1000,
+      toMs: 1000,
+      packPath: "",
+    });
+  });
+
+  it("research setup refuses invalid input, then accepts signed timestamps", async () => {
+    const client = makeClient();
+    render(<ResearchView client={client} />);
+    fillForm();
+    setField(/^from$/i, "x1");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await expectRefusal(client, /from/i, /to/i);
+    setField(/^from$/i, "-100");
+    setField(/^to$/i, "100");
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+    });
+    expect(client.submitRun).toHaveBeenCalledWith({
+      datasetPath: "fixtures/synthetic.csv",
+      feeBps: 40,
+      fromMs: -100,
+      toMs: 100,
+      packPath: "",
+    });
+  });
+
+  it("research setup refuses an invalid retry while preserving the current job/result/selection/export, then submits the correction", async () => {
+    const createObjectURL = vi.fn<(input: Blob | MediaSource) => string>(
+      () => "blob:research-result",
+    );
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn() as unknown as typeof URL.revokeObjectURL;
+    try {
+      const client = makeClient({
+        getResult: vi.fn().mockResolvedValue(sampleStored),
+      });
+      render(<ResearchView client={client} />);
+      fillForm();
+      fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+      await screen.findByTestId("research-job-id");
+      fireEvent.click(screen.getByRole("button", { name: /load result/i }));
+      await screen.findByTestId("research-result");
+      fireEvent.click(screen.getByRole("button", { name: "1000" }));
+      await screen.findByTestId("research-bar-detail");
+
+      // Invalid retry after a real result: the alert names the field,
+      // no new submit happens, and the prior job/result/selection and
+      // export all survive untouched.
+      setField(/fee basis points/i, "not-a-number");
+      fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent ?? "").toMatch(/fee basis points/i);
+      expect(client.submitRun).toHaveBeenCalledTimes(1);
+      expect(textOf(screen.getByTestId("research-job-id"))).toMatch(/job-abc/);
+      expect(screen.getByTestId("research-result")).toBeDefined();
+      expect(screen.getByTestId("research-bar-detail")).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: /export result/i }));
+      await waitFor(() => {
+        expect(client.getResultDownload).toHaveBeenCalledWith("job-abc");
+      });
+
+      // Correction submits exactly the new numbers and clears the alert.
+      setField(/fee basis points/i, "25");
+      fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+      await waitFor(() => {
+        expect(client.submitRun).toHaveBeenCalledTimes(2);
+      });
+      expect(client.submitRun).toHaveBeenLastCalledWith({
+        datasetPath: "fixtures/synthetic.csv",
+        feeBps: 25,
+        fromMs: 0,
+        toMs: 1000,
+        packPath: "",
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole("alert")).toBeNull();
+      });
+      await screen.findByTestId("research-result");
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+});
