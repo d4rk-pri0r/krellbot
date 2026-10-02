@@ -308,6 +308,207 @@ describe("ResearchView result panel", () => {
       textOf(screen.getByTestId("research-result-trade-count")),
     ).toMatch(/unavailable/);
   });
+
+  // DISC-EQUITY-UNIT: a production-shaped locked receipt exposes percentage
+  // performance under ``metrics`` and has no currency equity field at all.
+  const productionReceipt = {
+    engine_version: "0.9.5",
+    pack_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    data_manifest_sha256: "feedface",
+    venue: "kraken",
+    pair: "SUIUSD",
+    tf: "1h",
+    from: "2026-01-01",
+    to: "2026-01-02",
+    fee_bps: 10,
+    slippage_bps: 0,
+    slippage_mult: 1.0,
+    metrics: {
+      total_return_pct: 12.5,
+      cagr_pct: 9125.0,
+      max_drawdown_pct: -4.25,
+      return_to_dd: 2.94,
+      per_year: { trades: 0, r: 0 },
+      trade_count: 7,
+      exposure_pct: 55.0,
+      buy_and_hold: {
+        total_return_pct: -1.2,
+        cagr_pct: -876.0,
+        max_drawdown_pct: -9.9,
+        return_to_dd: -0.12,
+        per_year: { trades: 0, r: 0 },
+        trade_count: 0,
+        exposure_pct: 99.0,
+      },
+    },
+    equity_curve: [0, 1.2, 2.4, 12.5],
+  };
+
+  const productionStored: StoredResult = {
+    legacy_receipt: productionReceipt,
+    trace: [],
+  };
+
+  async function loadStoredResult(
+    stored: StoredResult,
+  ): Promise<() => void> {
+    const client = makeClient({ getResult: vi.fn().mockResolvedValue(stored) });
+    const view = render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await screen.findByTestId("research-job-id");
+    fireEvent.click(screen.getByRole("button", { name: /load result/i }));
+    await screen.findByTestId("research-result");
+    return view.unmount;
+  }
+
+  it("production-shaped metrics keep currency equity unavailable", async () => {
+    await loadStoredResult(productionStored);
+
+    // No currency equity exists on a production-shaped receipt, so the
+    // Equity metric must be unavailable — never the percentage
+    // total_return_pct and never an equity_curve point reinterpreted
+    // as cash.
+    const equityText = textOf(screen.getByTestId("research-result-equity"));
+    expect(equityText).toBe("unavailable");
+    expect(equityText).not.toMatch(/12\.5/);
+    const lastCurvePoint = productionReceipt.equity_curve[
+      productionReceipt.equity_curve.length - 1
+    ];
+    expect(equityText).not.toBe(String(lastCurvePoint));
+    // The percentage return is shown separately under an explicitly
+    // labeled percentage metric.
+    expect(screen.getByText("Total return (%)")).toBeDefined();
+    expect(textOf(screen.getByTestId("research-result-total-return-pct"))).toBe(
+      "12.5",
+    );
+    // The typed percent metric is not also smuggled into money fields.
+    expect(equityText).not.toMatch(/%/);
+  });
+
+  it("nested drawdown declares percentage units", async () => {
+    const unmountProduction = await loadStoredResult(productionStored);
+
+    // metrics.max_drawdown_pct is a typed percentage; its actual value is
+    // displayed with explicit percent units.
+    expect(
+      textOf(screen.getByTestId("research-result-max-drawdown")),
+    ).toBe("-4.25%");
+
+    // The legacy top-level fixture value stays untyped: the original
+    // unadorned value is preserved without invented percent/currency
+    // units, and the original assertion still passes.
+    unmountProduction();
+    await loadStoredResult(sampleStored);
+    expect(
+      textOf(screen.getByTestId("research-result-max-drawdown")),
+    ).toBe("-8.5");
+  });
+
+  it("non-finite real-shape metrics remain unavailable", async () => {
+    const nonFiniteStored: StoredResult = {
+      legacy_receipt: {
+        ...productionReceipt,
+        metrics: {
+          ...productionReceipt.metrics,
+          total_return_pct: Number.NaN,
+          max_drawdown_pct: Number.POSITIVE_INFINITY,
+        },
+      },
+      trace: [],
+    };
+    await loadStoredResult(nonFiniteStored);
+
+    // NaN/Infinity percentages are unavailable, never rendered as
+    // "NaN"/"Infinity" or coerced to a fabricated zero.
+    expect(
+      textOf(screen.getByTestId("research-result-total-return-pct")),
+    ).toBe("unavailable");
+    expect(
+      textOf(screen.getByTestId("research-result-max-drawdown")),
+    ).toBe("unavailable");
+    expect(
+      textOf(screen.getByTestId("research-result-equity")),
+    ).toBe("unavailable");
+    // A finite sibling metric still renders its real value.
+    expect(
+      textOf(screen.getByTestId("research-result-trade-count")),
+    ).toBe("7");
+  });
+
+  it("absent metrics object keeps percentage metrics unavailable", async () => {
+    const noMetricsStored: StoredResult = {
+      legacy_receipt: { fee_bps: 10, data_manifest_sha256: "feedface" },
+      trace: [],
+    };
+    await loadStoredResult(noMetricsStored);
+
+    expect(
+      textOf(screen.getByTestId("research-result-total-return-pct")),
+    ).toBe("unavailable");
+    expect(
+      textOf(screen.getByTestId("research-result-max-drawdown")),
+    ).toBe("unavailable");
+    expect(
+      textOf(screen.getByTestId("research-result-equity")),
+    ).toBe("unavailable");
+    expect(textOf(screen.getByTestId("research-result-fee-bps"))).toBe("10");
+  });
+
+  it("null and non-numeric metric values render unavailable, never zero", async () => {
+    const nullishStored: StoredResult = {
+      legacy_receipt: {
+        ...productionReceipt,
+        metrics: {
+          ...productionReceipt.metrics,
+          total_return_pct: null,
+          max_drawdown_pct: "not-a-number",
+        },
+      },
+      trace: [],
+    };
+    await loadStoredResult(nullishStored);
+
+    expect(
+      textOf(screen.getByTestId("research-result-total-return-pct")),
+    ).toBe("unavailable");
+    expect(
+      textOf(screen.getByTestId("research-result-max-drawdown")),
+    ).toBe("unavailable");
+    expect(
+      textOf(screen.getByTestId("research-result")),
+    ).not.toMatch(/^0|\s0|\b0$/);
+  });
+
+  it("wrong-shape metrics object renders unavailable", async () => {
+    const stringMetricsStored: StoredResult = {
+      legacy_receipt: { ...productionReceipt, metrics: "not-an-object" },
+      trace: [],
+    };
+    const unmountStringMetrics = await loadStoredResult(stringMetricsStored);
+
+    expect(
+      textOf(screen.getByTestId("research-result-total-return-pct")),
+    ).toBe("unavailable");
+    expect(
+      textOf(screen.getByTestId("research-result-max-drawdown")),
+    ).toBe("unavailable");
+
+    unmountStringMetrics();
+
+    const arrayMetricsStored: StoredResult = {
+      legacy_receipt: { ...productionReceipt, metrics: [1, 2, 3] },
+      trace: [],
+    };
+    await loadStoredResult(arrayMetricsStored);
+
+    expect(
+      textOf(screen.getByTestId("research-result-total-return-pct")),
+    ).toBe("unavailable");
+    expect(
+      textOf(screen.getByTestId("research-result-max-drawdown")),
+    ).toBe("unavailable");
+  });
 });
 
 describe("ResearchView trace", () => {

@@ -23,6 +23,13 @@ import {
  * and runs the real-browser Export result proof: the bytes the page
  * downloads match the bytes the backend download endpoint serves,
  * and a second export is byte-equal to the first.
+ *
+ * NS09 units (DISC-EQUITY-UNIT): the result panel's percentage
+ * metrics are asserted against the backend's own locked receipt —
+ * fetched over the real wire — not against intercepted or mocked
+ * responses. The Equity tile must stay unavailable on the
+ * production-shaped receipt, which carries percentage performance
+ * only, never currency.
  */
 
 type ConsoleGuard = {
@@ -196,6 +203,40 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   expect(firstDownload.bytes).toEqual(backendBytesA);
   expect(firstDownload.download.suggestedFilename()).toBe(`research-receipt-${jobA}.json`);
 
+  // NS09 units, backend-derived: fetch the backend's own typed result for
+  // job A and prove the UI shows the receipt's real percentage metrics
+  // under truthful labels, while currency Equity — which this
+  // production-shaped receipt does not carry — stays unavailable. The
+  // percentage return must not be rendered as money anywhere.
+  const typedResultA = await readBackendResult(page, baseURL, jobA);
+  expect(typeof typedResultA.metrics.total_return_pct).toBe("number");
+  expect(Number.isFinite(typedResultA.metrics.total_return_pct)).toBe(true);
+  expect(typeof typedResultA.metrics.max_drawdown_pct).toBe("number");
+  expect(Number.isFinite(typedResultA.metrics.max_drawdown_pct)).toBe(true);
+  expect(typedResultA.receipt.equity).toBeUndefined();
+  expect(typedResultA.receipt.metrics).toBeDefined();
+  await expect(page.getByTestId("research-result-total-return-pct")).toHaveText(
+    String(typedResultA.metrics.total_return_pct),
+  );
+  await expect(page.getByTestId("research-result-max-drawdown")).toHaveText(
+    `${typedResultA.metrics.max_drawdown_pct}%`,
+  );
+  await expect(page.getByTestId("research-result-equity")).toHaveText(
+    "unavailable",
+  );
+  // The percentage is never presented as currency: the Equity tile shows
+  // no digits, sign, or unit — unavailable, not percentage-as-money.
+  const equityTextA = (
+    await page.getByTestId("research-result-equity").innerText()
+  ).trim();
+  expect(equityTextA).toBe("unavailable");
+  expect(equityTextA).not.toMatch(/[\d%]/);
+  console.log(
+    `[ns09-units] jobA backend total_return_pct=${String(typedResultA.metrics.total_return_pct)} ` +
+      `max_drawdown_pct=${String(typedResultA.metrics.max_drawdown_pct)} ` +
+      `uiEquity=${equityTextA}`,
+  );
+
   // Run the same revision/dataset/fee a second time. The receipt
   // bytes must be byte-identical to the first run.
   await page.getByLabel(/dataset path/i).fill(editCsv);
@@ -318,6 +359,82 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
     );
   }
 
+  // NS09 units, backend-derived: same truthful-units proof on result B.
+  // The changed revision must move the typed percentage metrics too, and
+  // the rendered text must equal the backend's own receipt values.
+  const typedResultB = await readBackendResult(page, baseURL, jobB);
+  expect(typeof typedResultB.metrics.total_return_pct).toBe("number");
+  expect(Number.isFinite(typedResultB.metrics.total_return_pct)).toBe(true);
+  expect(typeof typedResultB.metrics.max_drawdown_pct).toBe("number");
+  expect(Number.isFinite(typedResultB.metrics.max_drawdown_pct)).toBe(true);
+  expect(typedResultB.receipt.equity).toBeUndefined();
+  expect(typedResultB.receipt.metrics).toBeDefined();
+  await expect(page.getByTestId("research-result-total-return-pct")).toHaveText(
+    String(typedResultB.metrics.total_return_pct),
+  );
+  await expect(page.getByTestId("research-result-max-drawdown")).toHaveText(
+    `${typedResultB.metrics.max_drawdown_pct}%`,
+  );
+  await expect(page.getByTestId("research-result-equity")).toHaveText(
+    "unavailable",
+  );
+  const equityTextB = (
+    await page.getByTestId("research-result-equity").innerText()
+  ).trim();
+  expect(equityTextB).toBe("unavailable");
+  expect(equityTextB).not.toMatch(/[\d%]/);
+  // The revision edit moved real percentage performance, not just a label.
+  expect(String(typedResultB.metrics.total_return_pct)).not.toBe(
+    String(typedResultA.metrics.total_return_pct),
+  );
+  expect(
+    String(typedResultB.metrics.max_drawdown_pct),
+  ).not.toBe(String(typedResultA.metrics.max_drawdown_pct));
+  // Each run's receipt is its own identity: same dataset/fee, different
+  // revision, and the pack hash follows the revision.
+  expect(typedResultB.receipt.fee_bps).toBe(typedResultA.receipt.fee_bps);
+  expect(typedResultB.receipt.data_manifest_sha256).toBe(
+    typedResultA.receipt.data_manifest_sha256,
+  );
+  expect(typedResultB.receipt.pack_sha256).not.toBe(
+    typedResultA.receipt.pack_sha256,
+  );
+
+  // Selected-decision detail: click a real trace bar and require the
+  // rendered input close and per-condition path/outcome to match the
+  // backend's versioned trace for that same bar. The windowed list only
+  // mounts a slice, so drive the scroll container to the first row
+  // before clicking.
+  expect(typedResultB.trace.length).toBeGreaterThan(0);
+  const firstBar = typedResultB.trace[0] as {
+    bar_ts?: number;
+    input?: { close?: number };
+    conditions?: Array<{ path?: string; outcome?: unknown }>;
+  };
+  const barTsText = String(firstBar.bar_ts);
+  const scroll = page.getByTestId("research-trace-scroll");
+  await scroll.evaluate((el) => el.scrollTo(0, 0));
+  await page
+    .getByRole("button", { name: barTsText, exact: true })
+    .first()
+    .click();
+  await expect(page.getByTestId("research-bar-detail")).toBeVisible();
+  const detailText = (
+    await page.getByTestId("research-bar-detail").innerText()
+  ).trim();
+  expect(detailText).toContain(String(firstBar.input?.close));
+  for (const condition of firstBar.conditions ?? []) {
+    if (condition.path) {
+      expect(detailText).toContain(condition.path);
+    }
+    expect(detailText).toContain(String(condition.outcome));
+  }
+  console.log(
+    `[ns09-units] jobB backend total_return_pct=${String(typedResultB.metrics.total_return_pct)} ` +
+      `max_drawdown_pct=${String(typedResultB.metrics.max_drawdown_pct)} ` +
+      `uiEquity=${equityTextB}`,
+  );
+
   // Probe the job B submission through the API (page.request carries
   // the cookie).
   const jobBInfo = await page.request.get(`${baseURL}/api/v1/jobs/${encodeURIComponent(jobB)}`);
@@ -390,6 +507,44 @@ async function readJobIdAfterRun(page: Page): Promise<string> {
     throw new Error(`could not parse job id from ${JSON.stringify(text)}`);
   }
   return match[1];
+}
+
+type BackendReceiptMetrics = {
+  total_return_pct?: number;
+  max_drawdown_pct?: number;
+  trade_count?: number;
+};
+
+type BackendResult = {
+  receipt: Record<string, unknown>;
+  metrics: BackendReceiptMetrics;
+  trace: Array<Record<string, unknown>>;
+};
+
+/**
+ * Fetch the job's typed result (``legacy_receipt`` + versioned trace)
+ * straight from the backend over the real wire. The UI assertions below
+ * compare rendered text against these backend-derived values; nothing is
+ * intercepted or mocked.
+ */
+async function readBackendResult(
+  page: Page,
+  baseURL: string,
+  jobId: string,
+): Promise<BackendResult> {
+  const response = await page.request.get(
+    `${baseURL}/api/v1/jobs/${encodeURIComponent(jobId)}/result`,
+  );
+  expect(response.status()).toBe(200);
+  const body = (await response.json()) as {
+    legacy_receipt?: Record<string, unknown>;
+    trace?: Array<Record<string, unknown>>;
+  };
+  expect(body.legacy_receipt).toBeDefined();
+  const receipt = body.legacy_receipt as Record<string, unknown>;
+  const metrics = receipt.metrics as BackendReceiptMetrics;
+  const trace = Array.isArray(body.trace) ? body.trace : [];
+  return { receipt, metrics, trace };
 }
 
 function extractRevisionId(text: string): string {

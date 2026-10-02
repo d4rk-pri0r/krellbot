@@ -89,10 +89,40 @@ function readTradeCount(receipt: Record<string, unknown>): string {
   return "unavailable";
 }
 
+function readMetrics(receipt: Record<string, unknown>): Record<string, unknown> | null {
+  const metrics = receipt.metrics;
+  if (metrics && typeof metrics === "object" && !Array.isArray(metrics)) {
+    return metrics as Record<string, unknown>;
+  }
+  return null;
+}
+
+function readPercentageMetric(
+  receipt: Record<string, unknown>,
+  key: string,
+): string {
+  // Production receipts carry typed percentage metrics under ``metrics``
+  // (e.g. total_return_pct). Only a real finite number is displayed;
+  // missing, null, wrong-shape, and non-finite values stay unavailable —
+  // never a fabricated zero.
+  const metrics = readMetrics(receipt);
+  if (metrics === null) {
+    return "unavailable";
+  }
+  const value = metrics[key];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return "unavailable";
+}
+
 function readEquity(receipt: Record<string, unknown>): string {
-  // Production receipts expose equity under ``metrics.total_return_pct``.
-  // Older unit-test fixtures use a top-level ``equity`` field. Read
-  // both so the rendered text reflects whichever shape arrives.
+  // DISC-EQUITY-UNIT: the locked receipt shape has no currency equity.
+  // ``metrics.total_return_pct`` and ``equity_curve`` are percentage
+  // return series, not cash, so they must never satisfy the Equity
+  // metric; deriving cash from an assumed starting value is forbidden.
+  // Only an explicit top-level ``equity`` field (older unit-test
+  // fixtures) is displayed as-is.
   const topLevelEquity = receipt.equity;
   if (typeof topLevelEquity === "number" && Number.isFinite(topLevelEquity)) {
     return String(topLevelEquity);
@@ -100,17 +130,23 @@ function readEquity(receipt: Record<string, unknown>): string {
   if (typeof topLevelEquity === "string") {
     return topLevelEquity;
   }
-  const metrics = receipt.metrics;
-  if (metrics && typeof metrics === "object" && !Array.isArray(metrics)) {
-    const metricEquity = (metrics as Record<string, unknown>).total_return_pct;
-    if (typeof metricEquity === "number" && Number.isFinite(metricEquity)) {
-      return String(metricEquity);
-    }
-    if (typeof metricEquity === "string") {
-      return metricEquity;
+  return "unavailable";
+}
+
+function readMaxDrawdown(receipt: Record<string, unknown>): string {
+  // ``metrics.max_drawdown_pct`` is a typed percentage: its finite value
+  // is displayed with explicit percent units. When it is absent the
+  // legacy untyped top-level ``max_drawdown`` fixture value is preserved
+  // verbatim — no invented currency/percent units are attached to it —
+  // and otherwise the metric is unavailable.
+  const metrics = readMetrics(receipt);
+  if (metrics !== null) {
+    const value = metrics.max_drawdown_pct;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return `${value}%`;
     }
   }
-  return "unavailable";
+  return formatMetric(receipt.max_drawdown);
 }
 
 function readBarTs(bar: TraceBar, index: number): string {
@@ -593,7 +629,16 @@ function ResultPanel({
             className="kbot-research__metric-value"
             data-testid="research-result-max-drawdown"
           >
-            {formatMetric(receipt.max_drawdown)}
+            {readMaxDrawdown(receipt)}
+          </dd>
+        </div>
+        <div className="kbot-research__metric">
+          <dt className="kbot-research__metric-label">Total return (%)</dt>
+          <dd
+            className="kbot-research__metric-value"
+            data-testid="research-result-total-return-pct"
+          >
+            {readPercentageMetric(receipt, "total_return_pct")}
           </dd>
         </div>
         <div className="kbot-research__metric">
