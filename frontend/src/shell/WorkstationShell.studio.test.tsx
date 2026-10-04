@@ -457,6 +457,32 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     fireEvent.change(screen.getByLabelText(/fee basis points/i), {
       target: { value: "10" },
     });
+    // BUILD-STUDIO-RESEARCH-VALIDATION-01: the created-revision fixture
+    // supplies the required scored-window fields explicitly instead of
+    // relying on any default. Both refusals below exercise the accepted
+    // required-input validation: Run with dataset/fee but blank scored
+    // fields names the missing From, and Run with only From=0 names the
+    // missing To; neither submits a job nor creates a job identity.
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    {
+      const refusal = await screen.findByRole("alert");
+      expect(refusal.textContent).toBe("From must be an integer timestamp");
+      expect(research.submitRun).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("research-job-id")).toBeNull();
+    }
+    fireEvent.change(screen.getByLabelText(/^from$/i), {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    {
+      const refusal = await screen.findByRole("alert");
+      expect(refusal.textContent).toBe("To must be an integer timestamp");
+      expect(research.submitRun).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("research-job-id")).toBeNull();
+    }
+    fireEvent.change(screen.getByLabelText(/^to$/i), {
+      target: { value: "9999999999999" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
     await vi.waitFor(() => {
       expect(research.submitRun).toHaveBeenCalledTimes(1);
@@ -464,6 +490,13 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     const callArg = (research.submitRun as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as Record<string, unknown>;
     expect(callArg.revisionId).toBe("rev-new");
+    expect(callArg.datasetPath).toBe("fixtures/synthetic.csv");
+    expect(callArg.feeBps).toBe(10);
+    expect(callArg.fromMs).toBe(0);
+    expect(callArg.toMs).toBe(9999999999999);
+    expect(callArg.packPath === undefined || callArg.packPath === "").toBe(
+      true,
+    );
   });
 
   it("Save execution with outcome 'existing' renders 'Selected existing revision <id>' and skips validate when state is not draft", async () => {
