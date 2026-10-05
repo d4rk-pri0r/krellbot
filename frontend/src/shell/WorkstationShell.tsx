@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from "react";
+import { createPortal } from "react-dom";
 import type { Connection } from "@xyflow/react";
 import type { PaperClient } from "../features/paper/client";
 import { StatusPanel } from "../features/paper/StatusPanel";
@@ -146,6 +154,45 @@ export function WorkstationShell({
   const [studioSaveError, setStudioSaveError] = useState<string | null>(null);
   const [studioSaveOutcome, setStudioSaveOutcome] = useState<string | null>(null);
   const [studioLayoutError, setStudioLayoutError] = useState<string | null>(null);
+
+  // Research lazy-mount + portal host lifecycle.
+  // The first time the user visits Research we mark it visited. Once
+  // visited, ResearchView stays mounted for the lifetime of this shell
+  // instance so its in-flight state (form fields, job id, result,
+  // selected bar, refusal alert) survives Studio/Strategies navigation.
+  // A stable detached <div> is created once; we move it inside the main
+  // pane only while Research is the active view. Off-document the
+  // rendered controls are absent from document queries and the
+  // accessibility tree, without unmounting their React state.
+  const [hasEverVisitedResearch, setHasEverVisitedResearch] = useState(false);
+  const researchHostRef = useRef<HTMLDivElement | null>(null);
+  const researchDetachedRef = useRef<HTMLDivElement | null>(null);
+  if (
+    researchDetachedRef.current === null &&
+    typeof document !== "undefined"
+  ) {
+    researchDetachedRef.current = document.createElement("div");
+    researchDetachedRef.current.setAttribute("data-kbot-research-portal", "");
+  }
+  const researchRevisionKey = savedRevision?.revision_id ?? "__none__";
+
+  useEffect(() => {
+    const detached = researchDetachedRef.current;
+    const host = researchHostRef.current;
+    if (!detached || typeof document === "undefined") {
+      return;
+    }
+    if (active === "research") {
+      if (host && detached.parentNode !== host) {
+        host.appendChild(detached);
+      }
+      setHasEverVisitedResearch(true);
+      return;
+    }
+    if (detached.parentNode !== null) {
+      detached.parentNode.removeChild(detached);
+    }
+  }, [active]);
 
   const savedPack = useMemo(() => {
     if (!savedRevision) {
@@ -473,9 +520,10 @@ export function WorkstationShell({
           />
         ) : null}
         {active === "research" ? (
-          <ResearchView
-            client={research}
-            revisionId={savedRevision?.revision_id ?? null}
+          <div
+            ref={researchHostRef}
+            className="kbot-research__host"
+            data-testid="research-host"
           />
         ) : null}
         {active === "studio" ? (
@@ -622,6 +670,16 @@ export function WorkstationShell({
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
       />
+      {hasEverVisitedResearch && researchDetachedRef.current
+        ? createPortal(
+            <ResearchView
+              key={researchRevisionKey}
+              client={research}
+              revisionId={savedRevision?.revision_id ?? null}
+            />,
+            researchDetachedRef.current,
+          )
+        : null}
     </div>
   );
 }
