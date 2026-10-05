@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from "react";
+import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import { getCsrf } from "../session";
 
 export type JobRow = {
@@ -56,32 +56,48 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
   const [open, setOpen] = useState(false);
   const [jobs, setJobs] = useState<JobRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+
+  const load = useCallback((): void => {
+    const requestId = ++requestIdRef.current;
+    setJobs(null);
+    setError(null);
+    const list = client?.list ?? listJobs;
+    void list().then(
+      (rows) => {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+        setJobs(rows);
+        setError(null);
+      },
+      (err: unknown) => {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+        setJobs(null);
+        setError(
+          `Jobs are unavailable: ${
+            err instanceof Error ? err.message : "the request failed"
+          }`,
+        );
+      },
+    );
+  }, [client]);
+
+  const close = useCallback((): void => {
+    requestIdRef.current += 1;
+    setJobs(null);
+    setError(null);
+    setOpen(false);
+  }, []);
+
   useEffect(() => {
     if (!open) {
       return;
     }
-    let cancelled = false;
-    const list = client?.list ?? listJobs;
-    setJobs(null);
-    setError(null);
-    void list().then(
-      (rows) => {
-        if (!cancelled) {
-          setJobs(rows);
-          setError(null);
-        }
-      },
-      (err: unknown) => {
-        if (!cancelled) {
-          setJobs(null);
-          setError(err instanceof Error ? err.message : "jobs failed");
-        }
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [open, client]);
+    load();
+  }, [open, load]);
 
   return (
     <>
@@ -91,7 +107,15 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls="kbot-jobs-drawer"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (open) {
+            return;
+          }
+          requestIdRef.current += 1;
+          setJobs(null);
+          setError(null);
+          setOpen(true);
+        }}
       >
         Jobs
       </button>
@@ -107,11 +131,14 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
             type="button"
             className="kbot-jobs__close"
             aria-label="Close jobs drawer"
-            onClick={() => setOpen(false)}
+            onClick={close}
           >
             Close
           </button>
           <h2 className="kbot-jobs__title">Jobs</h2>
+          <button type="button" className="kbot-jobs__refresh" onClick={load}>
+            Refresh jobs
+          </button>
           {error ? <p role="alert">{error}</p> : null}
           {jobs === null && !error ? (
             <p className="kbot-jobs__loading" data-testid="jobs-loading">
