@@ -20,26 +20,32 @@ async function listJobs(): Promise<JobRow[]> {
   if (!response.ok) {
     throw new Error(`jobs failed: ${response.status}`);
   }
-  const body = (await response.json()) as { jobs?: unknown };
-  if (!Array.isArray(body.jobs)) {
-    return [];
+  const body: unknown = await response.json();
+  if (body === null || typeof body !== "object") {
+    throw new Error("jobs response is not an object");
   }
-  return body.jobs.flatMap((row) => {
-    if (!row || typeof row !== "object") {
-      return [];
+  const jobs = (body as { jobs?: unknown }).jobs;
+  if (!Array.isArray(jobs)) {
+    throw new Error("jobs response has no jobs array");
+  }
+  return jobs.map((row) => {
+    if (row === null || typeof row !== "object") {
+      throw new Error("jobs response has a malformed row");
     }
     const item = row as { id?: unknown; kind?: unknown; state?: unknown };
-    if (typeof item.id !== "string" || typeof item.state !== "string") {
-      return [];
+    if (
+      !isNonemptyString(item.id) ||
+      !isNonemptyString(item.kind) ||
+      !isNonemptyString(item.state)
+    ) {
+      throw new Error("jobs response has a malformed row");
     }
-    return [
-      {
-        id: item.id,
-        kind: typeof item.kind === "string" ? item.kind : "",
-        state: item.state,
-      },
-    ];
+    return { id: item.id, kind: item.kind, state: item.state };
   });
+}
+
+function isNonemptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 export type JobsDrawerProps = {
