@@ -176,6 +176,11 @@
   color: color-mix(in srgb, var(--ink) 55%, transparent);
 }
 
+.kbot-jobs__loading {
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+
 /* --- command palette --- */
 
 .kbot-palette {

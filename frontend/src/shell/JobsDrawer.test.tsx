@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { JobsDrawer } from "./JobsDrawer";
+import { JobsDrawer, type JobRow } from "./JobsDrawer";
 
 afterEach(() => {
   cleanup();
@@ -39,8 +39,48 @@ describe("JobsDrawer", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /jobs/i }));
-    expect((await screen.findByTestId("job-row")).textContent).toContain("job-1 succeeded");
+    expect((await screen.findByTestId("job-row")).textContent).toContain("job-1 research.backtest succeeded");
     expect(screen.queryByText("No jobs")).toBeNull();
+  });
+
+  it("does not claim a snapshot while the jobs request is unsettled", async () => {
+    let resolveList: (rows: JobRow[]) => void = () => {};
+    const list = vi.fn().mockReturnValue(
+      new Promise<JobRow[]>((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+    render(<JobsDrawer client={{ list }} />);
+    openJobsDrawer();
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("jobs-loading").textContent).toMatch(/loading/i);
+    expect(screen.queryByText("No jobs")).toBeNull();
+    expect(screen.queryByTestId("job-row")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    resolveList([{ id: "job-1", kind: "research.backtest", state: "succeeded" }]);
+    expect((await screen.findByTestId("job-row")).textContent).toContain(
+      "job-1 research.backtest succeeded",
+    );
+    expect(screen.queryByTestId("jobs-loading")).toBeNull();
+  });
+
+  it("shows each job's actual kind verbatim in backend order", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubJobsFetch({
+        jobs: [
+          { id: "job-7", kind: "research.mro.sweep", state: "queued" },
+          { id: "job-2", kind: "housekeeping.compact", state: "hibernating" },
+        ],
+      }),
+    );
+    render(<JobsDrawer />);
+    openJobsDrawer();
+    const rows = await screen.findAllByTestId("job-row");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "job-7 research.mro.sweep queued",
+      "job-2 housekeeping.compact hibernating",
+    ]);
   });
 
   it("keeps a valid empty jobs response empty", async () => {
@@ -111,8 +151,8 @@ describe("JobsDrawer", () => {
     openJobsDrawer();
     const rows = await screen.findAllByTestId("job-row");
     expect(rows.map((row) => row.textContent)).toEqual([
-      "job-2 hibernating",
-      "job-1 succeeded",
+      "job-2 research.backtest hibernating",
+      "job-1 research.backtest succeeded",
     ]);
   });
 

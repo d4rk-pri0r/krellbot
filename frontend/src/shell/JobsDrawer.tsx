@@ -54,7 +54,7 @@ export type JobsDrawerProps = {
 
 export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
   const [open, setOpen] = useState(false);
-  const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [jobs, setJobs] = useState<JobRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!open) {
@@ -62,6 +62,8 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
     }
     let cancelled = false;
     const list = client?.list ?? listJobs;
+    setJobs(null);
+    setError(null);
     void list().then(
       (rows) => {
         if (!cancelled) {
@@ -71,7 +73,7 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
       },
       (err: unknown) => {
         if (!cancelled) {
-          setJobs([]);
+          setJobs(null);
           setError(err instanceof Error ? err.message : "jobs failed");
         }
       },
@@ -111,17 +113,24 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
           </button>
           <h2 className="kbot-jobs__title">Jobs</h2>
           {error ? <p role="alert">{error}</p> : null}
-          {jobs.length === 0 && !error ? (
-            <p className="kbot-jobs__empty">No jobs</p>
-          ) : (
-            <ul>
-              {jobs.map((job) => (
-                <li key={job.id} data-testid="job-row">
-                  {job.id} {job.state}
-                </li>
-              ))}
-            </ul>
-          )}
+          {jobs === null && !error ? (
+            <p className="kbot-jobs__loading" data-testid="jobs-loading">
+              Loading jobs…
+            </p>
+          ) : null}
+          {jobs !== null && !error ? (
+            jobs.length === 0 ? (
+              <p className="kbot-jobs__empty">No jobs</p>
+            ) : (
+              <ul>
+                {jobs.map((job) => (
+                  <li key={job.id} data-testid="job-row">
+                    {job.id} {job.kind} {job.state}
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : null}
         </div>
       ) : null}
     </>
