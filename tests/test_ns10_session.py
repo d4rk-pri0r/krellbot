@@ -4,7 +4,7 @@ Tests-first. The tests in this file are the contract for the leaf that
 puts the one-time bootstrap token into the served loopback page and
 keeps the returned CSRF token in module memory.
 
-Behavior under test (brief: ``.superpowers/sdd/krellbot-2027/NS10/NS10a-brief.md``):
+Behavior under test:
 
   1. ``GET /`` returns the built ``frontend/dist/index.html`` with the
      injected meta tag ``<meta name="krellbot-bootstrap" content="...">``

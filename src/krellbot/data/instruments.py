@@ -21,7 +21,7 @@ record refuses with `metadata_unavailable`; a record whose `usable_until`
 is in the past refuses with `metadata_stale`. A persisted snapshot is a
 labeled cache, not production truth.
 
-Stable refusal codes (from `.superpowers/sdd/krellbot-2027/contracts/instruments.md`):
+Stable refusal codes:
 
     metadata_unavailable, metadata_stale, metadata_symbol_mismatch,
     metadata_invalid, minimum_not_met.

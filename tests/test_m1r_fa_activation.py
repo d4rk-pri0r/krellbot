@@ -1,7 +1,6 @@
 """M1R-FA — activation regressions: RED tests written before the fix.
 
-Three findings from the parent gate (brief:
-``.superpowers/sdd/krellbot-2027/M1R-FA/brief.md``):
+Activation regressions covered:
 
   F1. The fresh-install short-circuit in ``krellbot.ui.activate.redeem``
       returns ``"skipped: no paid account"`` when neither the license

@@ -1,7 +1,6 @@
 """M2-NUM round 2: research must surface a typed refusal above the numeric domain.
 
-Tests the round-2 contract at
-``.superpowers/sdd/krellbot-2027/M2-NUM/review-findings-1.md``:
+Numeric-domain requirements:
 
     1. ``Backtester.run`` raises ``NumericRangeExceeded`` when ``starting_cash``
        or per-bar ``equity`` exceeds ``MAX_MONEY = 1e20``; the engine never

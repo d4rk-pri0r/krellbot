@@ -1,9 +1,7 @@
 """INT01 — real CLI launcher for the workstation shell.
 
 Tests first. They spawn ``python -m krellbot.cli workstation ...`` and
-inspect the loopback HTTP server the launcher binds. The brief
-(``.superpowers/sdd/krellbot-2027/INT01/INT01-brief.md``) lists four
-must-pass tests:
+inspect the loopback HTTP server the launcher binds. Required behavior:
 
   1. spawn the launcher against a fixture dist, GET the printed URL,
      verify the bootstrap meta tag, the shell copy ``Paper workstation``,

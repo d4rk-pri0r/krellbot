@@ -4,7 +4,7 @@ Tests-first. The behaviour under test is the PyInstaller one-dir bundle
 shipping the Vite-built ``frontend/dist`` and the API shell resolver
 preferring the bundled copy when ``sys.frozen`` is true.
 
-Behavior under test (brief: ``.superpowers/sdd/krellbot-2027/F03/F03a-brief.md``):
+Behavior under test:
 
   1. ``scripts.freeze._build_args`` emits an ``--add-data`` entry whose
      source is ``frontend/dist`` and whose destination inside the

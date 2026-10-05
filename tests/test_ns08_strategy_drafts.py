@@ -4,7 +4,7 @@ Tests-first. The draft routes and ``StrategyDraftService`` do not exist
 before this NS lands; the import lines below must fail with
 ``ModuleNotFoundError`` in the RED phase.
 
-Behavior under test (brief: ``.superpowers/sdd/krellbot-2027/NS08/NS08a-brief.md``):
+Behavior under test:
 
   1. The canonical revision id is the sha256 of UTF-8 JSON with sorted
      keys and ``(",", ":")`` separators. Editor-only keys named ``editor``

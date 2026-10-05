@@ -1,7 +1,6 @@
 """F03b — build the paper shell before freeze.
 
-Tests-first. Behaviour under test (brief:
-``.superpowers/sdd/krellbot-2027/F03/F03b-brief.md``):
+Behaviour under test:
 
   1. ``.github/workflows/release-frozen.yml`` installs Node 22 with
      ``actions/setup-node@v4`` and runs ``npm ci --include=dev`` plus

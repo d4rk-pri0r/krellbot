@@ -8,7 +8,7 @@ v1 API exposes at:
   * ``POST /api/v1/jobs/{id}/cancel``
   * ``GET  /api/v1/events``
 
-Shape and behavior follow ``.superpowers/sdd/krellbot-2027/contracts/jobs.md``.
+Jobs expose bounded execution and typed observable status.
 Job and Event dataclasses are versioned and stable. The buffer is bounded
 because events are a notification channel, not the ledger — authoritative
 state lives on disk and a client that misses a window may receive a

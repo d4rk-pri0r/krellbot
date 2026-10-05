@@ -3,7 +3,7 @@
 Tests-first. ``krellbot.api.static`` does not exist before this NS lands;
 the import lines below must fail in the RED phase.
 
-Behavior under test (brief: ``.superpowers/sdd/krellbot-2027/NS07/NS07c-brief.md``):
+Behavior under test:
 
   1. ``GET /`` returns the built ``frontend/dist/index.html`` with
      ``Content-Type: text/html`` and ``Cache-Control: no-store``. The body

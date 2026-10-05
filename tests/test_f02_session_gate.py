@@ -13,7 +13,7 @@ not send ``Origin`` on same-origin GET. POST routes are unchanged —
 their gate is ``_gate_state_change``, not ``_gate_get``; it keeps the
 loopback-origin + cookie-present + CSRF checks.
 
-Behavior under test (brief: ``.superpowers/sdd/krellbot-2027/F02/brief.md``):
+Behavior under test:
 
   1. A missing cookie, an invented cookie, and a cookie removed from
      ``s.sessions`` are 403 on ``GET /api/v1/paper/status``,

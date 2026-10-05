@@ -5,7 +5,7 @@ NS lands; the import lines below must fail in the RED phase, then
 ``create_app`` must accept an optional ``runner`` callable without breaking
 the NS06a suite.
 
-Behavior under test (brief: ``.superpowers/sdd/krellbot-2027/NS06/NS06b-brief.md``):
+Behavior under test:
 
   1. ``POST /api/v1/research/jobs`` reuses the same session cookie, loopback
      Origin, loopback Host, and ``X-Krellbot-CSRF`` gates as

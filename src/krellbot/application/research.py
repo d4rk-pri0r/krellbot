@@ -5,7 +5,7 @@ The CLI `backtest` command delegates to it so the existing stdout sentences,
 the `--json` receipt shape, and the exit codes stay byte-identical, and any
 future adapter (GUI, versioned API) can call the same boundary.
 
-Contracts (`.superpowers/sdd/krellbot-2027/contracts/strategy-compatibility.md`):
+Strategy compatibility contracts:
 
   * `home` is explicit. A supplied home always wins over `KRELLBOT_HOME`
     and `Path.home()`. The service never reads the process environment
@@ -491,8 +491,7 @@ class ResearchService:
         Replay and paper both call `shared_decision_trace(pack, candles)`
         in `krellbot.domain.trace`; this method is a thin shim that
         keeps the call site readable. The trace explains evaluator
-        output, not venue execution or fill certainty — see
-        `.superpowers/sdd/krellbot-2027/contracts/strategy-compatibility.md`.
+        output, not venue execution or fill certainty.
         """
         return shared_decision_trace(pack, candles)
 

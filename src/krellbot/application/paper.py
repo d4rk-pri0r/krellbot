@@ -14,7 +14,7 @@ returns a typed `CommandResultV1`. CLI, dashboard forms, and any future
 versioned API route through this service; nothing else re-implements pause
 semantics, entitlement checks, or persistence.
 
-Contracts (`.superpowers/sdd/krellbot-2027/contracts/commands.md`):
+Command contracts:
 
   * `home` is explicit. A supplied `home` always wins over `KRELLBOT_HOME`
     or `Path.home()`; the service never reads the process environment to

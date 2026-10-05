@@ -4,7 +4,7 @@ Tests-first. The result route, the result storage on the JobManager, and
 the default research runner's "keep the receipt" behavior do not exist
 before this NS lands.
 
-Behavior under test (brief: ``.superpowers/sdd/krellbot-2027/NS09/NS09a-brief.md``):
+Behavior under test:
 
   1. A successful runner outcome is stored with the job.
      ``GET /api/v1/jobs/{id}/result`` returns that stored object after

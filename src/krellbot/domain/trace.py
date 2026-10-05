@@ -155,8 +155,7 @@ def _condition_outcomes(condition: Any, computed: dict, candles: list[Candle], i
 
     Outcomes are `True`, `False`, or the literal string `"unknown"`. The
     string marker is required so warmup/unavailable is distinct from
-    `false` and from numeric zero — see
-    `.superpowers/sdd/krellbot-2027/contracts/strategy-compatibility.md`.
+    `false` and from numeric zero.
     """
 
     out: list[dict] = []
