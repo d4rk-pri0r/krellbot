@@ -547,15 +547,20 @@ def cmd_data_import_kraken_ohlcvt(args):
     if pair is None or tf is None:
         print("--pair and --timeframe are required", file=sys.stderr)
         return 2
-    from krellbot.data import TF_MS, import_kraken_ohlcvt_zip, write_cache
+    from krellbot.data import TF_MS
+    from krellbot.data.import_progress import ImportProgressError
+    from krellbot.data.kraken_public import import_kraken_ohlcvt_cached
 
     if tf not in TF_MS:
         print(f"Unsupported timeframe: {tf}", file=sys.stderr)
         return 1
-    candles = import_kraken_ohlcvt_zip(zip_path, pair=pair, tf=tf)
     kb_paths.ensure_layout()
-    csv_path, digest = write_cache(kb_paths.home(), "kraken", pair, tf, candles)
-    print(f"wrote {csv_path}  rows={len(candles)}  sha256={digest[:12]}...")
+    try:
+        csv_path, digest, rows = import_kraken_ohlcvt_cached(zip_path, pair=pair, tf=tf, home=kb_paths.home())
+    except ImportProgressError as exc:
+        print(f"import refused: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {csv_path}  rows={rows}  sha256={digest[:12]}...")
     return 0
 
 
