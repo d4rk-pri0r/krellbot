@@ -276,6 +276,71 @@ describe("OperationsView deployments", () => {
   });
 });
 
+describe("OperationsView refresh failure after prior success", () => {
+  const deployment = {
+    venue: "kraken",
+    pair: "SUIUSD",
+    pack_id: "trend-follow",
+    pack_version: "1.0.0",
+    mode: "paper",
+    entries_paused: false,
+    promotion: { available: false, code: "live_disabled" },
+  };
+
+  it("labels the retained view stale when a refresh after a successful pause fails, then clears it on recovery", async () => {
+    let calls = 0;
+    const client = makeClient({
+      getOperations: vi.fn().mockImplementation(async () => {
+        calls += 1;
+        if (calls === 2) {
+          throw new Error("operations view failed: 503");
+        }
+        return view({ deployments: [deployment] });
+      }),
+      pauseEntries: vi.fn().mockResolvedValue({
+        schema_version: "1",
+        code: "entries_paused",
+        ok: true,
+      }),
+      resumeEntries: vi.fn().mockResolvedValue({
+        schema_version: "1",
+        code: "entries_resumed",
+        ok: true,
+      }),
+    });
+    render(<OperationsView client={client} />);
+    const pause = await screen.findByTestId("ops-pause-kraken-SUIUSD");
+    fireEvent.click(pause);
+    await waitFor(() => {
+      expect(client.pauseEntries).toHaveBeenCalledWith("kraken", "SUIUSD");
+    });
+
+    const stale = await screen.findByTestId("ops-stale-warning");
+    expect(stale.getAttribute("role")).toBe("alert");
+    expect(stale.textContent).toMatch(/stale/i);
+    expect(stale.textContent).toContain("operations view failed: 503");
+    expect(stale.textContent).toMatch(/last known state/i);
+    expect(stale.textContent).toMatch(/not current server state/i);
+
+    // The last observed view is retained, not replaced with invented data.
+    const row = screen.getByTestId("ops-deployment-kraken-SUIUSD");
+    expect(row.textContent).toContain("trend-follow");
+    expect(row.textContent).toMatch(/active/i);
+
+    // A later successful refresh clears the warning and keeps the view present.
+    fireEvent.click(screen.getByTestId("ops-resume-kraken-SUIUSD"));
+    await waitFor(() => {
+      expect(client.resumeEntries).toHaveBeenCalledWith("kraken", "SUIUSD");
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("ops-stale-warning")).toBeNull();
+    });
+    expect(screen.getByTestId("ops-deployment-kraken-SUIUSD").textContent).toContain(
+      "trend-follow",
+    );
+  });
+});
+
 describe("OperationsView alerts", () => {
   it("renders 'No alerts.' when the alert list is empty", async () => {
     const client = makeClient();

@@ -11,6 +11,9 @@ const KILL_HELPER =
   "Engaging stops new entries and all live sends. It does not sell or disarm.";
 const NO_ALERTS_TEXT = "No alerts.";
 const PROMO_REVISION_ID = "deployment";
+const STALE_PREFIX = "Operations state may be stale";
+const STALE_SUFFIX =
+  "showing last known state from the previous successful read — not current server state";
 
 export type { OperationsClient } from "./client";
 export type OperationsViewProps = {
@@ -213,6 +216,11 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
       <header className="kbot-ops__head">
         <h2 className="kbot-ops__title">Operations</h2>
       </header>
+      {fetchError !== null ? (
+        <p className="kbot-ops__stale" role="alert" data-testid="ops-stale-warning">
+          {STALE_PREFIX} — refresh failed: {fetchError}; {STALE_SUFFIX}.
+        </p>
+      ) : null}
       <div className="kbot-ops__body">
         <section className="kbot-ops__panel" aria-label="Live status">
           {renderLiveBanner(view.live)}
