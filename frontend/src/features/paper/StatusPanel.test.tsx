@@ -295,3 +295,110 @@ describe("StatusPanel persistence", () => {
     expect(setItemSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("StatusPanel unavailable state", () => {
+  function unavailableMessage(): HTMLElement {
+    return screen.getByTestId("paper-status-unavailable");
+  }
+
+  async function renderUnavailable(): Promise<{
+    client: PaperClient;
+    panel: HTMLElement;
+  }> {
+    const client = makeClient({
+      getStatus: vi.fn().mockRejectedValue(new Error("paper status failed: 503")),
+    });
+    render(<StatusPanel client={client} />);
+    await waitFor(() => {
+      expect(unavailableMessage().textContent).toMatch(/unavailable/i);
+    });
+    return { client, panel: screen.getByTestId("paper-status-panel") };
+  }
+
+  it("shows an explicit unavailable state when the initial getStatus fails", async () => {
+    const { panel } = await renderUnavailable();
+    // The panel must not manufacture a confirmed unarmed response.
+    expect(panel.textContent ?? "").not.toMatch(/No pack armed/);
+    expect(screen.queryByTestId("paper-status-empty")).toBeNull();
+  });
+
+  it("shows no pause, resume, or disarm controls while the status is unknown", async () => {
+    await renderUnavailable();
+    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+  });
+
+  it("offers an explicit retry control after an initial failure", async () => {
+    await renderUnavailable();
+    expect(
+      screen.getByRole("button", { name: /retry/i }),
+    ).toBeDefined();
+  });
+
+  it("retry recovers to the armed state after an initial failure", async () => {
+    const client = makeClient({
+      getStatus: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("paper status failed: 503"))
+        .mockResolvedValueOnce(armedStatus()),
+    });
+    render(<StatusPanel client={client} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-unavailable")).toBeDefined();
+    });
+    expect(client.getStatus).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    const entries = await screen.findByTestId("paper-status-entries");
+    expect(entries.textContent).toMatch(/Entries active/);
+    expect(screen.getByTestId("paper-status-pack").textContent).toMatch(
+      /trend-follow/,
+    );
+    expect(client.getStatus).toHaveBeenCalledTimes(2);
+    // The unavailable state is gone once a real status is confirmed.
+    expect(screen.queryByTestId("paper-status-unavailable")).toBeNull();
+  });
+
+  it("retry recovers to a confirmed unarmed state after an initial failure", async () => {
+    const client = makeClient({
+      getStatus: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("paper status failed: 503"))
+        .mockResolvedValueOnce({ schema_version: "1", armed: false }),
+    });
+    render(<StatusPanel client={client} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-unavailable")).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
+        /No pack armed/,
+      );
+    });
+    expect(client.getStatus).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("paper-status-unavailable")).toBeNull();
+  });
+
+  it("a failed retry keeps the unavailable state instead of an unarmed claim", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockRejectedValue(new Error("paper status failed: 503")),
+    });
+    render(<StatusPanel client={client} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-unavailable")).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => {
+      expect(client.getStatus).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByTestId("paper-status-unavailable").textContent).toMatch(
+      /unavailable/i,
+    );
+    expect(screen.queryByTestId("paper-status-empty")).toBeNull();
+    // Still no unsafe controls while unknown.
+    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+  });
+});

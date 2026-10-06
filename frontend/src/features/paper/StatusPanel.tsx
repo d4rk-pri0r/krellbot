@@ -17,6 +17,15 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
   const [status, setStatus] = useState<PaperStatus | null>(null);
   const [sentence, setSentence] = useState<EntriesSentence>("Entries active");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+
+  const applyStatus = (next: PaperStatus): void => {
+    setStatus(next);
+    setUnavailable(false);
+    if (next.armed) {
+      setSentence(sentenceFor(next.entries_paused));
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -26,29 +35,36 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
         if (cancelled) {
           return;
         }
-        setStatus(next);
-        if (next.armed) {
-          setSentence(sentenceFor(next.entries_paused));
-        }
+        applyStatus(next);
       })
       .catch(() => {
         if (cancelled) {
           return;
         }
-        setStatus({ schema_version: "1", armed: false });
+        // A failed lookup means availability is unknown; never manufacture
+        // an unarmed response, and never poll automatically.
+        setStatus(null);
+        setUnavailable(true);
       });
     return () => {
       cancelled = true;
     };
   }, [client]);
 
+  const handleRetry = async (): Promise<void> => {
+    setErrorMessage(null);
+    try {
+      applyStatus(await client.getStatus());
+    } catch {
+      setStatus(null);
+      setUnavailable(true);
+    }
+  };
+
   const refreshSentenceFromServer = async (): Promise<void> => {
     try {
       const next = await client.getStatus();
-      setStatus(next);
-      if (next.armed) {
-        setSentence(sentenceFor(next.entries_paused));
-      }
+      applyStatus(next);
     } catch {
       // The sentence keeps its last good value on a transient failure;
       // the workstation is local-loopback so a refresh failure is rare.
@@ -174,6 +190,27 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
           <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
             Controls unavailable
           </p>
+        ) : unavailable ? (
+          <>
+            <p
+              className="kbot-paper-status__empty"
+              role="alert"
+              data-testid="paper-status-unavailable"
+            >
+              Paper status unavailable
+            </p>
+            <div className="kbot-paper-status__actions">
+              <button
+                type="button"
+                className="kbot-paper-status__action"
+                onClick={() => {
+                  void handleRetry();
+                }}
+              >
+                Retry status
+              </button>
+            </div>
+          </>
         ) : (
           <p
             className="kbot-paper-status__empty"
