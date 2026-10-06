@@ -1,5 +1,5 @@
 import "@xyflow/react/dist/style.css";
-import { useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import {
   ReactFlow,
   type Connection,
@@ -28,6 +28,15 @@ export type GraphCanvasProps = {
   fitView?: boolean;
 };
 
+function isSameEdge(edge: Edge, connection: Connection): boolean {
+  return (
+    edge.source === connection.source &&
+    edge.target === connection.target &&
+    (edge.sourceHandle ?? null) === (connection.sourceHandle ?? null) &&
+    (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
+  );
+}
+
 export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
   const {
     nodes,
@@ -38,6 +47,15 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
     fitView = false,
   } = props;
   const [refusal, setRefusal] = useState<EdgeRefusal | null>(null);
+
+  // Tracks connections forwarded to the parent while the rerender that adds
+  // the matching edge is still pending. Keeps rapid repeats from producing a
+  // duplicate edge before ``edges`` reflects the first one.
+  const pendingConnections = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    pendingConnections.current.clear();
+  }, [edges]);
 
   const handleConnect: OnConnect = (connection) => {
     const source = nodes.find((n) => n.id === connection.source);
@@ -50,6 +68,16 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
       { timeframe: target.data?.timeframe },
     );
     if (verdict === null) {
+      if (edges.some((edge) => isSameEdge(edge, connection))) {
+        return;
+      }
+      const key = `${connection.source}\u0000${connection.target}\u0000${
+        connection.sourceHandle ?? ""
+      }\u0000${connection.targetHandle ?? ""}`;
+      if (pendingConnections.current.has(key)) {
+        return;
+      }
+      pendingConnections.current.add(key);
       setRefusal(null);
       onAddConnection(connection);
       return;

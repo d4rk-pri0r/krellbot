@@ -448,7 +448,7 @@ describe("GraphCanvas — refuses before adding an edge", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("routes matching connect attempts through the recorded path", () => {
+  it("routes matching connect attempts through the recorded path once per distinct edge", () => {
     const onAddConnection = vi.fn();
     render(
       <GraphCanvas
@@ -457,11 +457,230 @@ describe("GraphCanvas — refuses before adding an edge", () => {
         onAddConnection={onAddConnection}
       />,
     );
-    const captured = getCaptured();
     triggerConnect("b");
     triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    expect(onAddConnection).toHaveBeenCalledWith({
+      source: "a",
+      target: "b",
+      sourceHandle: null,
+      targetHandle: null,
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("GraphCanvas — duplicate edges are not re-added", () => {
+  function edgeBetween(
+    source: string,
+    target: string,
+    handles?: { sourceHandle?: string; targetHandle?: string },
+  ): Edge {
+    return {
+      id: `${source}-${target}-edge`,
+      source,
+      target,
+      ...handles,
+    };
+  }
+
+  function triggerCustomConnect(connection: Connection): void {
+    act(() => {
+      getCaptured().onConnect!(connection);
+    });
+  }
+
+  it("does not call onAddConnection when an identical edge already exists", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={[edgeBetween("a", "b")]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not call onAddConnection when an existing edge matches the handles too", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={[
+          edgeBetween("a", "b", {
+            sourceHandle: "out",
+            targetHandle: "in",
+          }),
+        ]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerCustomConnect({
+      source: "a",
+      target: "b",
+      sourceHandle: "out",
+      targetHandle: "in",
+    });
+    expect(onAddConnection).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("still records a compatible connection whose handles differ from the existing edge", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={[
+          edgeBetween("a", "b", {
+            sourceHandle: "out",
+            targetHandle: "in",
+          }),
+        ]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerCustomConnect({
+      source: "a",
+      target: "b",
+      sourceHandle: "alt-out",
+      targetHandle: "alt-in",
+    });
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("still records a compatible connection to a different target", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h"), nodeOf("c", "1h")]}
+        edges={[edgeBetween("a", "b")]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("c");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    expect(onAddConnection).toHaveBeenCalledWith({
+      source: "a",
+      target: "c",
+      sourceHandle: null,
+      targetHandle: null,
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not forward a rapid repeat while the parent rerender is pending", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={[]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    triggerConnect("b");
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("forwards a distinct connection even while a prior rerender is pending", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h"), nodeOf("c", "1h")]}
+        edges={[]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    triggerConnect("c");
     expect(onAddConnection).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps suppressing the repeat after the parent renders the new edge", () => {
+    const onAddConnection = vi.fn();
+    const { rerender } = render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={[]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    rerender(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={[edgeBetween("a", "b")]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("records the connection again once the parent no longer shows the edge", () => {
+    const onAddConnection = vi.fn();
+    const { rerender } = render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={[edgeBetween("a", "b")]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).not.toHaveBeenCalled();
+    rerender(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={[]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("still refuses an incompatible duplicate and never calls the parent", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "4h")]}
+        edges={[edgeBetween("a", "b")]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "timeframe mismatch",
+    );
+  });
+
+  it("does not mutate the edges prop when suppressing a duplicate", () => {
+    const onAddConnection = vi.fn();
+    const edges: Edge[] = [edgeBetween("a", "b")];
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h")]}
+        edges={edges}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).not.toHaveBeenCalled();
+    expect(getCaptured().edges).toBe(edges);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toEqual({
+      id: "a-b-edge",
+      source: "a",
+      target: "b",
+    });
   });
 });
 
