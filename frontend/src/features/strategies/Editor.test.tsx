@@ -458,6 +458,108 @@ describe("Editor validation", () => {
   });
 });
 
+describe("Editor arm", () => {
+  it("a pending arm request refuses a second click, and its rejection shows an arm failure alert without fabricating or retrying", async () => {
+    const onRevision = vi.fn();
+    const rejections: Array<(reason?: unknown) => void> = [];
+    const client = makeClient({
+      arm: vi.fn().mockImplementation(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejections.push(reject);
+          }),
+      ),
+    });
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-1",
+          state: "validated",
+          bytes: validPackBytes,
+        }}
+        onRevision={onRevision}
+      />,
+    );
+
+    const arm = screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
+    fireEvent.click(arm);
+    fireEvent.click(arm);
+    expect(client.arm).toHaveBeenCalledTimes(1);
+
+    rejections[0](new Error("venue unreachable"));
+
+    const error = await screen.findByTestId("editor-arm-error");
+    expect(error.getAttribute("role")).toBe("alert");
+    expect(error.textContent).toMatch(/arm/i);
+    expect(error.textContent).toMatch(/venue unreachable/);
+
+    // Validated revision/state is preserved; nothing is invented or promoted.
+    expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
+      /rev-1 \(state: validated\)/,
+    );
+    expect(screen.queryByTestId("editor-save-outcome")).toBeNull();
+    expect(onRevision).not.toHaveBeenCalled();
+
+    // Give any automatic retry a chance to happen, then prove it never did.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(client.arm).toHaveBeenCalledTimes(1);
+    expect(arm.disabled).toBe(false);
+  });
+
+  it("an explicit retry after a rejected arm issues exactly a second call, clears the error, and does not claim a deployment", async () => {
+    const onRevision = vi.fn();
+    const client = makeClient({
+      arm: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("venue unreachable"))
+        .mockResolvedValueOnce(undefined),
+    });
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-1",
+          state: "validated",
+          bytes: validPackBytes,
+        }}
+        onRevision={onRevision}
+      />,
+    );
+
+    const arm = screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
+    fireEvent.click(arm);
+    expect(await screen.findByTestId("editor-arm-error")).toBeDefined();
+
+    fireEvent.click(arm);
+    await waitFor(() => {
+      expect(screen.queryByTestId("editor-arm-error")).toBeNull();
+    });
+    expect(client.arm).toHaveBeenCalledTimes(2);
+    expect((client.arm as ReturnType<typeof vi.fn>).mock.calls[0]).toEqual([
+      "rev-1",
+      "kraken",
+      "1000",
+    ]);
+    expect((client.arm as ReturnType<typeof vi.fn>).mock.calls[1]).toEqual([
+      "rev-1",
+      "kraken",
+      "1000",
+    ]);
+
+    // Controls are restored without implying a deployment from stale local state.
+    expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
+      /rev-1 \(state: validated\)/,
+    );
+    expect(screen.getByTestId("editor-revision-id").textContent).not.toMatch(
+      /deployed/,
+    );
+    expect(screen.queryByTestId("editor-save-outcome")).toBeNull();
+    expect(onRevision).not.toHaveBeenCalled();
+    expect(arm.disabled).toBe(false);
+  });
+});
+
 describe("Editor import", () => {
   it("Import with valid JSON leaves the editor without saving", async () => {
     const client = makeClient();

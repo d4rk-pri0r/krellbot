@@ -62,6 +62,8 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
   const [saveOutcome, setSaveOutcome] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [validateError, setValidateError] = useState<string | null>(null);
+  const [armError, setArmError] = useState<string | null>(null);
+  const [arming, setArming] = useState(false);
 
   const currentPack = useMemo(() => parsePack(rawJson), [rawJson]);
   const labelValue = readLabel(currentPack);
@@ -178,13 +180,24 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
   };
 
   const handleArm = async (): Promise<void> => {
-    if (!lastSummary || lastSummary.state !== "validated") {
+    if (arming || !lastSummary || lastSummary.state !== "validated") {
       return;
     }
-    await client.arm(lastSummary.revision_id, venue, paperBalance);
+    setArmError(null);
+    setArming(true);
+    try {
+      await client.arm(lastSummary.revision_id, venue, paperBalance);
+    } catch (err) {
+      // Keep the validated revision; never imply a deployment from stale local state.
+      setArmError(
+        `Arm failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setArming(false);
+    }
   };
 
-  const armDisabled = !lastSummary || lastSummary.state !== "validated";
+  const armDisabled = !lastSummary || lastSummary.state !== "validated" || arming;
 
   return (
     <section
@@ -297,6 +310,15 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
             data-testid="editor-validate-error"
           >
             {validateError}
+          </p>
+        ) : null}
+        {armError !== null ? (
+          <p
+            className="kbot-strategy-editor__error"
+            role="alert"
+            data-testid="editor-arm-error"
+          >
+            {armError}
           </p>
         ) : null}
         {lastSummary?.errors.map((err, index) => (
