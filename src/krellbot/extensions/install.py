@@ -10,7 +10,8 @@ The body is first written to a separate temp directory, then validated:
     directory are refused;
   * non-tar bodies must parse as a strict UTF-8 JSON object whose embedded
     `id` equals the requested pack id, so an index entry cannot serve
-    different-pack content under a trusted name.
+    different-pack content under a trusted name; the nonstandard JSON
+    constants `NaN`, `Infinity` and `-Infinity` are refused.
 
 Any refusal raises `kb_community.InstallPayloadError` *before* any
 `os.replace` to the destination, so a previous install file (if any) is
@@ -99,6 +100,12 @@ def _validate_raw_json_identity(body: bytes, pack_id: str) -> None:
     """
     from krellbot import community as kb_community
 
+    def _reject_constant(name: str) -> None:
+        # `json.loads` accepts NaN/Infinity/-Infinity by default, which are
+        # not part of the JSON standard and poison downstream Decimal math.
+        # `parse_constant` fires for every occurrence, nested included.
+        raise kb_community.InstallPayloadError(f"community pack body uses nonstandard JSON constant: {name}")
+
     try:
         text = body.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -107,7 +114,7 @@ def _validate_raw_json_identity(body: bytes, pack_id: str) -> None:
         ) from exc
 
     try:
-        data = json.loads(text)
+        data = json.loads(text, parse_constant=_reject_constant)
     except json.JSONDecodeError as exc:
         raise kb_community.InstallPayloadError(f"community pack body is not valid JSON: {exc}") from exc
 

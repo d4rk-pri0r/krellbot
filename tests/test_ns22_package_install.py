@@ -332,6 +332,84 @@ def test_install_matching_id_body_written_verbatim_and_importable_free(home):
     assert kb_catalog.requires_license_for(target, home) is False
 
 
+NONSTANDARD_CONSTANT_BODIES = [
+    b'{"id": "example", "risk": NaN}',
+    b'{"id": "example", "value": Infinity}',
+    b'{"id": "example", "value": -Infinity}',
+    b'{"id": "example", "risk": {"stop": {"type": "pct", "pct": NaN}}}',
+]
+
+
+@pytest.mark.parametrize("body", NONSTANDARD_CONSTANT_BODIES, ids=["nan", "infinity", "neg-infinity", "nested-risk-stop-pct-nan"])
+def test_install_refuses_nonstandard_json_constants_with_prior_install(home, body):
+    """A non-tar body containing the nonstandard JSON constants NaN,
+    Infinity or -Infinity anywhere in the document is refused before any
+    destination mutation, so an existing install of the same id survives
+    byte-for-byte with its mtime intact.
+    """
+    from krellbot import community as kb_community
+
+    community_dir = home / "packs" / "community"
+    community_dir.mkdir(parents=True, exist_ok=True)
+    previous_path = community_dir / "example.json"
+    previous_path.write_bytes(b'{"schema_version": 1, "id": "example", "version": "0.0.1"}')
+    original_bytes = previous_path.read_bytes()
+    original_mtime = previous_path.stat().st_mtime_ns
+
+    transport = _FakeTransport({kb_community.INDEX_URL: EXAMPLE_INDEX_BODY, EXAMPLE_URL: body})
+
+    with pytest.raises(kb_community.InstallPayloadError) as excinfo:
+        kb_community.install("example", transport=transport, home=home)
+
+    # Refused at the JSON-constant boundary, not by an unrelated guard.
+    assert "NaN" in str(excinfo.value) or "Infinity" in str(excinfo.value)
+
+    assert previous_path.read_bytes() == original_bytes
+    assert previous_path.stat().st_mtime_ns == original_mtime
+
+
+@pytest.mark.parametrize("body", NONSTANDARD_CONSTANT_BODIES, ids=["nan", "infinity", "neg-infinity", "nested-risk-stop-pct-nan"])
+def test_install_refuses_nonstandard_json_constants_when_no_prior_install(home, body):
+    """With no previous install, a body carrying NaN/Infinity/-Infinity
+    must not create one: neither the pack file nor the destination
+    directory appears.
+    """
+    from krellbot import community as kb_community
+
+    transport = _FakeTransport({kb_community.INDEX_URL: EXAMPLE_INDEX_BODY, EXAMPLE_URL: body})
+
+    with pytest.raises(kb_community.InstallPayloadError):
+        kb_community.install("example", transport=transport, home=home)
+
+    community_dir = home / "packs" / "community"
+    assert not (community_dir / "example.json").exists()
+    assert not community_dir.exists() or not any(community_dir.iterdir())
+
+
+def test_install_accepts_literal_constant_strings_unchanged(home):
+    """The constants rule is lexical, not textual: a strict-JSON body whose
+    *strings* merely contain the words NaN/Infinity stays valid and installs
+    byte-for-byte.
+    """
+    from krellbot import community as kb_community
+
+    body = json.dumps(
+        {
+            "schema_version": 1,
+            "id": "example",
+            "version": "1.0.0",
+            "label": "NaN but textual",
+            "author": "Infinity and beyond",
+            "notes": ["Infinity", "NaN"],
+        }
+    ).encode("utf-8")
+    transport = _FakeTransport({kb_community.INDEX_URL: EXAMPLE_INDEX_BODY, EXAMPLE_URL: body})
+
+    target = kb_community.install("example", transport=transport, home=home)
+
+    assert target.read_bytes() == body
+
+
 def test_install_payload_error_is_a_value_error(home):
     """The new typed error subclasses `ValueError` so callers that catch
     `ValueError` (or any supertype) still handle the refusal correctly.
