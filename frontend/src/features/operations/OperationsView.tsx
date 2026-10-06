@@ -66,6 +66,20 @@ function alertRowId(alertId: string): string {
   return `ops-alert-${alertId}`;
 }
 
+function clearRowEntry<T>(
+  setter: (update: (prev: Record<string, T>) => Record<string, T>) => void,
+  key: string,
+): void {
+  setter((prev) => {
+    if (!(key in prev)) {
+      return prev;
+    }
+    const next = { ...prev };
+    delete next[key];
+    return next;
+  });
+}
+
 function killStateText(engaged: boolean, reason: string | null): string {
   if (!engaged) {
     return KILL_RELEASED_TEXT;
@@ -152,14 +166,9 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
         return;
       }
       setPending((prev) => new Set(prev).add(key));
-      setPauseErrors((prev) => {
-        if (!(key in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+      // A new explicit attempt supersedes the previous outcome for this row/action.
+      clearRowEntry(setPauseResults, key);
+      clearRowEntry(setPauseErrors, key);
       try {
         const result = await client.pauseEntries(venue, pair);
         setPauseResults((prev) => ({
@@ -199,14 +208,9 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
         return;
       }
       setPending((prev) => new Set(prev).add(key));
-      setResumeErrors((prev) => {
-        if (!(key in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+      // A new explicit attempt supersedes the previous outcome for this row/action.
+      clearRowEntry(setResumeResults, key);
+      clearRowEntry(setResumeErrors, key);
       try {
         const result = await client.resumeEntries(venue, pair);
         setResumeResults((prev) => ({

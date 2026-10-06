@@ -407,7 +407,7 @@ describe("OperationsView pause/resume command failure", () => {
     expect(getOperations).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps a prior server-confirmed refusal visible next to a later transport failure", async () => {
+  it("a new explicit pause request clears the superseded result, so a later unknown transport outcome never appears alongside an old Refused status", async () => {
     const client = makeClient({
       getOperations: vi.fn().mockResolvedValue(deploymentView()),
       pauseEntries: vi
@@ -429,13 +429,64 @@ describe("OperationsView pause/resume command failure", () => {
     expect(refusal.textContent).toMatch(/Refused: stored_mode_not_paper/);
     expect(screen.queryByTestId("ops-pause-error-kraken-SUIUSD")).toBeNull();
 
+    // A new explicit attempt supersedes the earlier outcome: the old Refused
+    // status must be gone before the request is sent, so the transport failure
+    // is reported on its own instead of next to the stale refusal.
     fireEvent.click(pause);
     const alert = await screen.findByTestId("ops-pause-error-kraken-SUIUSD");
     expect(alert.getAttribute("role")).toBe("alert");
-    // The earlier server-confirmed refusal is preserved, not overwritten by the transport error.
-    expect(screen.getByTestId("ops-pause-result-kraken-SUIUSD").textContent).toMatch(
-      /Refused: stored_mode_not_paper/,
-    );
+    expect(alert.textContent).toMatch(/unknown/i);
+    expect(alert.textContent).not.toMatch(/stored_mode_not_paper/);
+    expect(screen.queryByTestId("ops-pause-result-kraken-SUIUSD")).toBeNull();
+  });
+
+  it("a new explicit resume request clears its superseded result before sending", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(deploymentView()),
+      resumeEntries: vi
+        .fn()
+        .mockResolvedValueOnce({
+          schema_version: "1",
+          code: "no_active_entries",
+          ok: false,
+          message: "nothing to resume",
+          effect: "refused",
+        })
+        .mockRejectedValueOnce(new Error("paper.resume_entries failed: network")),
+    });
+    render(<OperationsView client={client} />);
+    const resume = await screen.findByTestId("ops-resume-kraken-SUIUSD");
+    fireEvent.click(resume);
+    const refusal = await screen.findByTestId("ops-resume-result-kraken-SUIUSD");
+    expect(refusal.textContent).toMatch(/Refused: no_active_entries/);
+
+    fireEvent.click(resume);
+    const alert = await screen.findByTestId("ops-resume-error-kraken-SUIUSD");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toMatch(/unknown/i);
+    expect(screen.queryByTestId("ops-resume-result-kraken-SUIUSD")).toBeNull();
+  });
+
+  it("keeps a server-confirmed refusal from the current attempt visible, with no transport error beside it", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(deploymentView()),
+      pauseEntries: vi.fn().mockResolvedValue({
+        schema_version: "1",
+        code: "stored_mode_not_paper",
+        ok: false,
+        message: "stored mode is 'live'",
+        effect: "refused",
+      }),
+    });
+    render(<OperationsView client={client} />);
+    const pause = await screen.findByTestId("ops-pause-kraken-SUIUSD");
+    fireEvent.click(pause);
+    const refusal = await screen.findByTestId("ops-pause-result-kraken-SUIUSD");
+    expect(refusal.getAttribute("role")).toBe("status");
+    expect(refusal.textContent).toMatch(/Refused: stored_mode_not_paper/);
+    // A refusal is a server-confirmed answer, never presented as a transport error.
+    expect(screen.queryByTestId("ops-pause-error-kraken-SUIUSD")).toBeNull();
+    expect(client.pauseEntries).toHaveBeenCalledTimes(1);
   });
 
   it("sends at most one request while a pause or resume action is pending", async () => {
