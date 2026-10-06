@@ -382,6 +382,80 @@ describe("Editor validation", () => {
       ).toBe(false);
     });
   });
+
+  it("a rejected validate call shows a validation error alert, keeps the last known revision/state, and does not imply success", async () => {
+    const onRevision = vi.fn();
+    const client = makeClient({
+      validate: vi.fn().mockRejectedValueOnce(new Error("network down")),
+    });
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-1",
+          state: "draft",
+          bytes: validPackBytes,
+        }}
+        onRevision={onRevision}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /validate/i }));
+
+    const error = await screen.findByTestId("editor-validate-error");
+    expect(error.getAttribute("role")).toBe("alert");
+    expect(error.textContent).toMatch(/network down/);
+    expect(error.textContent).toMatch(/validat/i);
+
+    // Last known revision/state is retained, not invented or promoted.
+    expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
+      /rev-1 \(state: draft\)/,
+    );
+    expect(onRevision).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("an explicit retry that succeeds replaces the validation error and updates the real revision/state", async () => {
+    const onRevision = vi.fn();
+    const client = makeClient({
+      validate: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("network down"))
+        .mockResolvedValueOnce({
+          revision_id: "rev-validated",
+          state: "validated",
+          pack: validPack,
+          errors: [],
+        }),
+    });
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-1",
+          state: "draft",
+          bytes: validPackBytes,
+        }}
+        onRevision={onRevision}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /validate/i }));
+    expect(await screen.findByTestId("editor-validate-error")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /validate/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
+        /rev-validated \(state: validated\)/,
+      );
+    });
+    expect(screen.queryByTestId("editor-validate-error")).toBeNull();
+    expect(client.validate).toHaveBeenCalledTimes(2);
+    expect(onRevision).toHaveBeenCalledTimes(1);
+    expect(onRevision.mock.calls[0][0].revision_id).toBe("rev-validated");
+    expect(onRevision.mock.calls[0][0].state).toBe("validated");
+  });
 });
 
 describe("Editor import", () => {

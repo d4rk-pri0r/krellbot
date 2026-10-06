@@ -61,6 +61,7 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
   const [importError, setImportError] = useState<string | null>(null);
   const [saveOutcome, setSaveOutcome] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [validateError, setValidateError] = useState<string | null>(null);
 
   const currentPack = useMemo(() => parsePack(rawJson), [rawJson]);
   const labelValue = readLabel(currentPack);
@@ -133,9 +134,17 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
     if (!lastSummary) {
       return;
     }
-    const summary = await client.validate(lastSummary.revision_id);
-    setLastSummary(summary);
-    onRevision?.(summary, rawJson);
+    setValidateError(null);
+    try {
+      const summary = await client.validate(lastSummary.revision_id);
+      setLastSummary(summary);
+      onRevision?.(summary, rawJson);
+    } catch (err) {
+      // Keep the last known revision/state; never imply validation succeeded.
+      setValidateError(
+        `Validation failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -279,6 +288,15 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
             data-testid="editor-save-error"
           >
             {saveError}
+          </p>
+        ) : null}
+        {validateError !== null ? (
+          <p
+            className="kbot-strategy-editor__error"
+            role="alert"
+            data-testid="editor-validate-error"
+          >
+            {validateError}
           </p>
         ) : null}
         {lastSummary?.errors.map((err, index) => (
