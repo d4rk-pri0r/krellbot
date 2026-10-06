@@ -682,6 +682,105 @@ describe("GraphCanvas — duplicate edges are not re-added", () => {
       target: "b",
     });
   });
+
+  it("does not re-add when the parent rerenders with a recreated equivalent edges array", () => {
+    const onAddConnection = vi.fn();
+    const nodes = [nodeOf("a", "1h"), nodeOf("b", "1h")];
+    const { rerender } = render(
+      <GraphCanvas nodes={nodes} edges={[]} onAddConnection={onAddConnection} />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    // New array identity, same (empty) content: an unrelated parent render.
+    rerender(
+      <GraphCanvas nodes={nodes} edges={[]} onAddConnection={onAddConnection} />,
+    );
+    expect(getCaptured().edges).not.toBe([]);
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("still forwards the next distinct edge after a recreated equivalent edges array", () => {
+    const onAddConnection = vi.fn();
+    const nodes = [nodeOf("a", "1h"), nodeOf("b", "1h"), nodeOf("d", "1h")];
+    const { rerender } = render(
+      <GraphCanvas nodes={nodes} edges={[]} onAddConnection={onAddConnection} />,
+    );
+    triggerConnect("b");
+    rerender(
+      <GraphCanvas nodes={nodes} edges={[]} onAddConnection={onAddConnection} />,
+    );
+    triggerConnect("d");
+    expect(onAddConnection).toHaveBeenCalledTimes(2);
+    expect(onAddConnection).toHaveBeenLastCalledWith({
+      source: "a",
+      target: "d",
+      sourceHandle: null,
+      targetHandle: null,
+    });
+  });
+
+  it("does not re-add when a refusal is cleared on a self-render without an edges prop", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h"), nodeOf("c", "4h")]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("c");
+    expect(screen.getByRole("alert").textContent).toContain(
+      "timeframe mismatch",
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-add when a refusal is raised on a self-render without an edges prop", () => {
+    const onAddConnection = vi.fn();
+    render(
+      <GraphCanvas
+        nodes={[nodeOf("a", "1h"), nodeOf("b", "1h"), nodeOf("c", "4h")]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    triggerConnect("c");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "timeframe mismatch",
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the pending connection once the parent confirms, then re-adds after removal", () => {
+    const onAddConnection = vi.fn();
+    const nodes = [nodeOf("a", "1h"), nodeOf("b", "1h")];
+    const { rerender } = render(
+      <GraphCanvas nodes={nodes} edges={[]} onAddConnection={onAddConnection} />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    rerender(
+      <GraphCanvas
+        nodes={nodes}
+        edges={[edgeBetween("a", "b")]}
+        onAddConnection={onAddConnection}
+      />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(1);
+    rerender(
+      <GraphCanvas nodes={nodes} edges={[]} onAddConnection={onAddConnection} />,
+    );
+    triggerConnect("b");
+    expect(onAddConnection).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("GraphCanvas — side-effect freedom", () => {

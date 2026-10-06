@@ -28,12 +28,23 @@ export type GraphCanvasProps = {
   fitView?: boolean;
 };
 
-function isSameEdge(edge: Edge, connection: Connection): boolean {
-  return (
-    edge.source === connection.source &&
-    edge.target === connection.target &&
-    (edge.sourceHandle ?? null) === (connection.sourceHandle ?? null) &&
-    (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
+function connectionKey(
+  source: string | null | undefined,
+  target: string | null | undefined,
+  sourceHandle: string | null | undefined,
+  targetHandle: string | null | undefined,
+): string {
+  return `${source ?? ""}\u0000${target ?? ""}\u0000${sourceHandle ?? ""}\u0000${
+    targetHandle ?? ""
+  }`;
+}
+
+function edgeKey(edge: Edge): string {
+  return connectionKey(
+    edge.source,
+    edge.target,
+    edge.sourceHandle,
+    edge.targetHandle,
   );
 }
 
@@ -48,13 +59,21 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
   } = props;
   const [refusal, setRefusal] = useState<EdgeRefusal | null>(null);
 
-  // Tracks connections forwarded to the parent while the rerender that adds
-  // the matching edge is still pending. Keeps rapid repeats from producing a
-  // duplicate edge before ``edges`` reflects the first one.
+  // Connections forwarded to the parent while the rerender that adds the
+  // matching edge is still pending. A key is released only once the parent
+  // actually renders that edge, never because the ``edges`` array identity
+  // changed (a recreated equivalent array or a self-render from a refusal
+  // must not re-arm the guard).
   const pendingConnections = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    pendingConnections.current.clear();
+    if (pendingConnections.current.size === 0) {
+      return;
+    }
+    const confirmed = new Set(edges.map(edgeKey));
+    pendingConnections.current = new Set(
+      [...pendingConnections.current].filter((key) => !confirmed.has(key)),
+    );
   }, [edges]);
 
   const handleConnect: OnConnect = (connection) => {
@@ -68,12 +87,15 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
       { timeframe: target.data?.timeframe },
     );
     if (verdict === null) {
-      if (edges.some((edge) => isSameEdge(edge, connection))) {
+      const key = connectionKey(
+        connection.source,
+        connection.target,
+        connection.sourceHandle,
+        connection.targetHandle,
+      );
+      if (edges.some((edge) => edgeKey(edge) === key)) {
         return;
       }
-      const key = `${connection.source}\u0000${connection.target}\u0000${
-        connection.sourceHandle ?? ""
-      }\u0000${connection.targetHandle ?? ""}`;
       if (pendingConnections.current.has(key)) {
         return;
       }
