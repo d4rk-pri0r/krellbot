@@ -14,6 +14,8 @@ const PROMO_REVISION_ID = "deployment";
 const STALE_PREFIX = "Operations state may be stale";
 const STALE_SUFFIX =
   "showing last known state from the previous successful read — not current server state";
+const UNKNOWN_OUTCOME_TEXT =
+  "outcome unknown: the command may not have been sent or applied — check state before retrying";
 
 export type { OperationsClient } from "./client";
 export type OperationsViewProps = {
@@ -46,6 +48,14 @@ function pauseResultId(venue: string, pair: string): string {
 
 function resumeResultId(venue: string, pair: string): string {
   return `ops-resume-result-${venue}-${pair}`.replace(/\//g, "-");
+}
+
+function pauseErrorId(venue: string, pair: string): string {
+  return `ops-pause-error-${venue}-${pair}`.replace(/\//g, "-");
+}
+
+function resumeErrorId(venue: string, pair: string): string {
+  return `ops-resume-error-${venue}-${pair}`.replace(/\//g, "-");
 }
 
 function ackId(alertId: string): string {
@@ -105,6 +115,9 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
   const [resumeResults, setResumeResults] = useState<
     Record<string, { code: string; ok: boolean; message: string }>
   >({});
+  const [pauseErrors, setPauseErrors] = useState<Record<string, string>>({});
+  const [resumeErrors, setResumeErrors] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -134,38 +147,94 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
 
   const handlePause = useCallback(
     async (venue: string, pair: string): Promise<void> => {
-      const result = await client.pauseEntries(venue, pair);
       const key = pauseButtonId(venue, pair);
-      setPauseResults((prev) => ({
-        ...prev,
-        [key]: {
-          code: typeof result.code === "string" ? result.code : "unknown",
-          ok: result.ok === true,
-          message:
-            typeof result.message === "string" ? result.message : "pause command refused",
-        },
-      }));
-      await refresh();
+      if (pending.has(key)) {
+        return;
+      }
+      setPending((prev) => new Set(prev).add(key));
+      setPauseErrors((prev) => {
+        if (!(key in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      try {
+        const result = await client.pauseEntries(venue, pair);
+        setPauseResults((prev) => ({
+          ...prev,
+          [key]: {
+            code: typeof result.code === "string" ? result.code : "unknown",
+            ok: result.ok === true,
+            message:
+              typeof result.message === "string" ? result.message : "pause command refused",
+          },
+        }));
+        await refresh();
+      } catch (err) {
+        // The outcome is unknown, not refused: keep the last known view and any
+        // earlier server-confirmed refusal instead of guessing server state.
+        setPauseErrors((prev) => ({
+          ...prev,
+          [key]: `Pause entries failed: ${
+            err instanceof Error ? err.message : String(err)
+          } — ${UNKNOWN_OUTCOME_TEXT}`,
+        }));
+      } finally {
+        setPending((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
     },
-    [client, refresh],
+    [client, refresh, pending],
   );
 
   const handleResume = useCallback(
     async (venue: string, pair: string): Promise<void> => {
-      const result = await client.resumeEntries(venue, pair);
       const key = resumeButtonId(venue, pair);
-      setResumeResults((prev) => ({
-        ...prev,
-        [key]: {
-          code: typeof result.code === "string" ? result.code : "unknown",
-          ok: result.ok === true,
-          message:
-            typeof result.message === "string" ? result.message : "resume command refused",
-        },
-      }));
-      await refresh();
+      if (pending.has(key)) {
+        return;
+      }
+      setPending((prev) => new Set(prev).add(key));
+      setResumeErrors((prev) => {
+        if (!(key in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      try {
+        const result = await client.resumeEntries(venue, pair);
+        setResumeResults((prev) => ({
+          ...prev,
+          [key]: {
+            code: typeof result.code === "string" ? result.code : "unknown",
+            ok: result.ok === true,
+            message:
+              typeof result.message === "string" ? result.message : "resume command refused",
+          },
+        }));
+        await refresh();
+      } catch (err) {
+        setResumeErrors((prev) => ({
+          ...prev,
+          [key]: `Resume entries failed: ${
+            err instanceof Error ? err.message : String(err)
+          } — ${UNKNOWN_OUTCOME_TEXT}`,
+        }));
+      } finally {
+        setPending((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
     },
-    [client, refresh],
+    [client, refresh, pending],
   );
 
   const handleEngage = useCallback(async (): Promise<void> => {
@@ -298,6 +367,8 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                   const pauseResult = pauseResults[pauseKey];
                   const resumeKey = resumeButtonId(deployment.venue, deployment.pair);
                   const resumeResult = resumeResults[resumeKey];
+                  const pausePending = pending.has(pauseKey);
+                  const resumePending = pending.has(resumeKey);
                   return (
                     <tr key={key} data-testid={rowId(deployment.venue, deployment.pair)}>
                       <td>{deployment.pack_id}</td>
@@ -310,6 +381,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                           <button
                             type="button"
                             data-testid={pauseButtonId(deployment.venue, deployment.pair)}
+                            disabled={pausePending}
                             onClick={() => {
                               void handlePause(deployment.venue, deployment.pair);
                             }}
@@ -319,6 +391,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                           <button
                             type="button"
                             data-testid={resumeButtonId(deployment.venue, deployment.pair)}
+                            disabled={resumePending}
                             onClick={() => {
                               void handleResume(deployment.venue, deployment.pair);
                             }}
@@ -353,6 +426,15 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                             Refused: {pauseResult.code} — {pauseResult.message}
                           </p>
                         ) : null}
+                        {pauseErrors[pauseKey] ? (
+                          <p
+                            className="kbot-ops__row-result"
+                            role="alert"
+                            data-testid={pauseErrorId(deployment.venue, deployment.pair)}
+                          >
+                            {pauseErrors[pauseKey]}
+                          </p>
+                        ) : null}
                         {resumeResult && !resumeResult.ok ? (
                           <p
                             className="kbot-ops__row-result"
@@ -360,6 +442,15 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                             data-testid={resumeResultId(deployment.venue, deployment.pair)}
                           >
                             Refused: {resumeResult.code} — {resumeResult.message}
+                          </p>
+                        ) : null}
+                        {resumeErrors[resumeKey] ? (
+                          <p
+                            className="kbot-ops__row-result"
+                            role="alert"
+                            data-testid={resumeErrorId(deployment.venue, deployment.pair)}
+                          >
+                            {resumeErrors[resumeKey]}
                           </p>
                         ) : null}
                       </td>

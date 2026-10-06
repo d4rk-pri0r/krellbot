@@ -341,6 +341,163 @@ describe("OperationsView refresh failure after prior success", () => {
   });
 });
 
+describe("OperationsView pause/resume command failure", () => {
+  const deployment = {
+    venue: "kraken",
+    pair: "SUIUSD",
+    pack_id: "trend-follow",
+    pack_version: "1.0.0",
+    mode: "paper",
+    entries_paused: false,
+    promotion: { available: false, code: "live_disabled" },
+  };
+
+  function deploymentView(): OperationsViewModel {
+    return view({ deployments: [deployment] });
+  }
+
+  it("a rejected pause shows a row-scoped unknown-outcome alert, keeps the last known view, and does not refresh or invent a result", async () => {
+    const getOperations = vi.fn().mockResolvedValue(deploymentView());
+    const client = makeClient({
+      getOperations,
+      pauseEntries: vi.fn().mockRejectedValue(new Error("paper.pause_entries failed: 503")),
+    });
+    render(<OperationsView client={client} />);
+    const pause = await screen.findByTestId("ops-pause-kraken-SUIUSD");
+    fireEvent.click(pause);
+
+    const alert = await screen.findByTestId("ops-pause-error-kraken-SUIUSD");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toMatch(/pause/i);
+    expect(alert.textContent).toMatch(/unknown/i);
+    expect(alert.textContent).toContain("paper.pause_entries failed: 503");
+
+    // No fabricated server-confirmed refusal for the rejected command.
+    expect(alert.textContent).not.toMatch(/Refused/);
+    expect(screen.queryByTestId("ops-pause-result-kraken-SUIUSD")).toBeNull();
+
+    // The last known row is retained, not rewritten from a stale local guess.
+    const row = screen.getByTestId("ops-deployment-kraken-SUIUSD");
+    expect(row.textContent).toContain("trend-follow");
+    expect(row.textContent).toMatch(/active/i);
+
+    // A transport failure must not trigger a refresh of current server state.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(getOperations).toHaveBeenCalledTimes(1);
+  });
+
+  it("a rejected resume shows a row-scoped unknown-outcome alert without refreshing", async () => {
+    const getOperations = vi.fn().mockResolvedValue(deploymentView());
+    const client = makeClient({
+      getOperations,
+      resumeEntries: vi.fn().mockRejectedValue(new Error("paper.resume_entries failed: network")),
+    });
+    render(<OperationsView client={client} />);
+    const resume = await screen.findByTestId("ops-resume-kraken-SUIUSD");
+    fireEvent.click(resume);
+
+    const alert = await screen.findByTestId("ops-resume-error-kraken-SUIUSD");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toMatch(/resume/i);
+    expect(alert.textContent).toMatch(/unknown/i);
+    expect(alert.textContent).toContain("paper.resume_entries failed: network");
+    expect(screen.queryByTestId("ops-resume-result-kraken-SUIUSD")).toBeNull();
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(getOperations).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a prior server-confirmed refusal visible next to a later transport failure", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(deploymentView()),
+      pauseEntries: vi
+        .fn()
+        .mockResolvedValueOnce({
+          schema_version: "1",
+          code: "stored_mode_not_paper",
+          ok: false,
+          message: "stored mode is 'live'",
+          effect: "refused",
+        })
+        .mockRejectedValueOnce(new Error("paper.pause_entries failed: 503")),
+    });
+    render(<OperationsView client={client} />);
+    const pause = await screen.findByTestId("ops-pause-kraken-SUIUSD");
+    fireEvent.click(pause);
+    const refusal = await screen.findByTestId("ops-pause-result-kraken-SUIUSD");
+    expect(refusal.getAttribute("role")).toBe("status");
+    expect(refusal.textContent).toMatch(/Refused: stored_mode_not_paper/);
+    expect(screen.queryByTestId("ops-pause-error-kraken-SUIUSD")).toBeNull();
+
+    fireEvent.click(pause);
+    const alert = await screen.findByTestId("ops-pause-error-kraken-SUIUSD");
+    expect(alert.getAttribute("role")).toBe("alert");
+    // The earlier server-confirmed refusal is preserved, not overwritten by the transport error.
+    expect(screen.getByTestId("ops-pause-result-kraken-SUIUSD").textContent).toMatch(
+      /Refused: stored_mode_not_paper/,
+    );
+  });
+
+  it("sends at most one request while a pause or resume action is pending", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(deploymentView()),
+      pauseEntries: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+      resumeEntries: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+    });
+    render(<OperationsView client={client} />);
+    const pause = await screen.findByTestId("ops-pause-kraken-SUIUSD");
+    fireEvent.click(pause);
+    fireEvent.click(pause);
+    fireEvent.click(pause);
+    expect(client.pauseEntries).toHaveBeenCalledTimes(1);
+
+    const resume = screen.getByTestId("ops-resume-kraken-SUIUSD");
+    fireEvent.click(resume);
+    fireEvent.click(resume);
+    expect(client.resumeEntries).toHaveBeenCalledTimes(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(client.pauseEntries).toHaveBeenCalledTimes(1);
+    expect(client.resumeEntries).toHaveBeenCalledTimes(1);
+  });
+
+  it("after a rejected pause only an explicit retry sends another request, and it clears the error", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(deploymentView()),
+      pauseEntries: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("paper.pause_entries failed: 503"))
+        .mockResolvedValueOnce({
+          schema_version: "1",
+          code: "entries_paused",
+          ok: true,
+          message: "entries paused",
+        }),
+    });
+    render(<OperationsView client={client} />);
+    const pause = await screen.findByTestId("ops-pause-kraken-SUIUSD");
+    fireEvent.click(pause);
+    expect(await screen.findByTestId("ops-pause-error-kraken-SUIUSD")).toBeDefined();
+
+    // No automatic retry, and the control stays usable for an explicit one.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(client.pauseEntries).toHaveBeenCalledTimes(1);
+    expect((pause as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(pause);
+    await waitFor(() => {
+      expect(client.pauseEntries).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("ops-pause-error-kraken-SUIUSD")).toBeNull();
+    });
+    expect((client.pauseEntries as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+      ["kraken", "SUIUSD"],
+      ["kraken", "SUIUSD"],
+    ]);
+  });
+});
+
 describe("OperationsView alerts", () => {
   it("renders 'No alerts.' when the alert list is empty", async () => {
     const client = makeClient();
