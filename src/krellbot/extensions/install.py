@@ -7,7 +7,10 @@ The body is first written to a separate temp directory, then validated:
   * tar bodies with an entry name that escapes the staging directory
     (`..`, leading `/`, or backslash) are refused (Zip Slip);
   * tar bodies with a symlink whose target resolves outside the staging
-    directory are refused.
+    directory are refused;
+  * non-tar bodies must parse as a strict UTF-8 JSON object whose embedded
+    `id` equals the requested pack id, so an index entry cannot serve
+    different-pack content under a trusted name.
 
 Any refusal raises `kb_community.InstallPayloadError` *before* any
 `os.replace` to the destination, so a previous install file (if any) is
@@ -18,6 +21,7 @@ is atomic on POSIX.
 
 from __future__ import annotations
 
+import json
 import os
 import tarfile
 import tempfile
@@ -84,6 +88,41 @@ def _validate_tar(body: bytes, install_dir: Path) -> None:
                 )
 
 
+def _validate_raw_json_identity(body: bytes, pack_id: str) -> None:
+    """Refuse a non-tar body that is not a strict UTF-8 JSON object whose
+    `id` is exactly `pack_id`.
+
+    Runs before any staging or destination mutation, so a bad body leaves a
+    previous install untouched and creates nothing. Tar bodies never reach
+    this check: they are archive payloads, qualified by `_validate_tar`, and
+    must not be re-interpreted as JSON.
+    """
+    from krellbot import community as kb_community
+
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise kb_community.InstallPayloadError(
+            f"community pack body is not valid UTF-8: {exc}"
+        ) from exc
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise kb_community.InstallPayloadError(f"community pack body is not valid JSON: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise kb_community.InstallPayloadError(
+            f"community pack body must be a JSON object, got {type(data).__name__}"
+        )
+
+    embedded_id = data.get("id")
+    if embedded_id != pack_id:
+        raise kb_community.InstallPayloadError(
+            f"community pack body id {embedded_id!r} does not match requested pack id {pack_id!r}"
+        )
+
+
 def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
     """Stage `body` in a temp dir, validate, atomic-rename to install dir.
 
@@ -106,6 +145,14 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
         raise kb_community.InstallPayloadError(f"community pack body too large: {len(body)} > {MAX_BODY_BYTES}")
 
     install_dir = Path(home) / "packs" / "community"
+
+    # Identity check first: a non-archive body must already be a JSON object
+    # whose id is the requested pack id, before anything is staged or the
+    # install directory is created. Tar bodies skip it (`_validate_tar` owns
+    # archive qualification).
+    is_tar_body = _open_tar(body) is not None
+    if not is_tar_body:
+        _validate_raw_json_identity(body, pack_id)
 
     with tempfile.TemporaryDirectory(prefix="krellbot-install-") as staging_root:
         staging_dir = Path(staging_root)
@@ -132,7 +179,7 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
         # the reference for traversal and symlink-escape detection, so
         # the extracted/installed tree cannot be reached by a malicious
         # entry name.
-        if _open_tar(body) is not None:
+        if is_tar_body:
             _validate_tar(body, staging_dir)
 
         # All checks passed: publish into the install dir with a single

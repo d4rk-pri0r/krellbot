@@ -13,6 +13,15 @@ Three refusals are exercised end-to-end through `community.install`:
     staging directory;
   * body over the install size limit.
 
+Four more refusals/properties cover the raw (non-tar) body identity:
+
+  * malformed bytes — a body that is not strict UTF-8 JSON is refused;
+  * mismatched id — a JSON body whose embedded `id` is not the requested
+    pack id is refused, so an index entry cannot swap content under a
+    trusted name;
+  * no prior install — a refused body creates nothing;
+  * matching id — a valid pack installs byte-for-byte and needs no license.
+
 Each refusal raises `community.InstallPayloadError` before any write to
 the destination directory, so the destination tree is unchanged.
 """
@@ -27,6 +36,28 @@ import pytest
 
 PACK_URL = "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/main/evil-pack.json"
 INDEX_BODY = json.dumps({"packs": [{"id": "evil-pack", "url": PACK_URL}]}).encode("utf-8")
+
+EXAMPLE_URL = "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/main/example.json"
+EXAMPLE_INDEX_BODY = json.dumps({"packs": [{"id": "example", "url": EXAMPLE_URL}]}).encode("utf-8")
+
+
+def _example_pack_bytes() -> bytes:
+    """A complete, valid DSL pack whose id is exactly `example`."""
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "id": "example",
+            "version": "1.0.0",
+            "label": "Example",
+            "author": "Safe Author",
+            "timeframe": "1h",
+            "indicators": {"sma20": {"fn": "sma", "src": "close", "len": 20}},
+            "entry": ["close", ">", "sma20"],
+            "exit": ["close", "<", "sma20"],
+            "risk": {"max_account_pct": 25, "stop": {"type": "pct", "pct": 5}},
+            "markets": [{"venue": "kraken", "pair": "SUIUSD"}],
+        }
+    ).encode("utf-8")
 
 
 class _FakeTransport:
@@ -210,6 +241,95 @@ def test_install_previous_file_unchanged_on_failure(home):
     # Previous file bytes and mtime are unchanged.
     assert previous_path.read_bytes() == original_bytes
     assert previous_path.stat().st_mtime_ns == original_mtime
+
+
+def test_install_refuses_malformed_json_body_with_prior_install(home):
+    """A non-tar body that is not JSON at all is refused. A previous
+    install of the same id is left byte-for-byte unchanged, mtime included.
+    """
+    from krellbot import community as kb_community
+
+    community_dir = home / "packs" / "community"
+    community_dir.mkdir(parents=True, exist_ok=True)
+    previous_path = community_dir / "example.json"
+    previous_path.write_bytes(b'{"schema_version": 1, "id": "example", "version": "0.0.1"}')
+    original_bytes = previous_path.read_bytes()
+    original_mtime = previous_path.stat().st_mtime_ns
+
+    transport = _FakeTransport({kb_community.INDEX_URL: EXAMPLE_INDEX_BODY, EXAMPLE_URL: b"not-json"})
+
+    with pytest.raises(kb_community.InstallPayloadError):
+        kb_community.install("example", transport=transport, home=home)
+
+    assert previous_path.read_bytes() == original_bytes
+    assert previous_path.stat().st_mtime_ns == original_mtime
+
+
+def test_install_refuses_mismatched_embedded_id_with_prior_install(home):
+    """A non-tar JSON body whose embedded id is not the requested pack id is
+    refused. A previous install of the requested id survives unchanged.
+    """
+    from krellbot import community as kb_community
+
+    community_dir = home / "packs" / "community"
+    community_dir.mkdir(parents=True, exist_ok=True)
+    previous_path = community_dir / "example.json"
+    previous_path.write_bytes(b'{"schema_version": 1, "id": "example", "version": "0.0.1"}')
+    original_bytes = previous_path.read_bytes()
+    original_mtime = previous_path.stat().st_mtime_ns
+
+    body = json.dumps({"id": "different-pack"}).encode("utf-8")
+    transport = _FakeTransport({kb_community.INDEX_URL: EXAMPLE_INDEX_BODY, EXAMPLE_URL: body})
+
+    with pytest.raises(kb_community.InstallPayloadError):
+        kb_community.install("example", transport=transport, home=home)
+
+    assert previous_path.read_bytes() == original_bytes
+    assert previous_path.stat().st_mtime_ns == original_mtime
+    # The impostor is not installed under any other name either.
+    assert not (community_dir / "different-pack.json").exists()
+
+
+def test_install_refuses_bad_body_when_no_prior_install(home):
+    """With no previous install, a malformed or mismatched-id body must not
+    create one. Nothing lands under packs/community/.
+    """
+    from krellbot import community as kb_community
+
+    for body in (b"not-json", json.dumps({"id": "different-pack"}).encode("utf-8")):
+        transport = _FakeTransport({kb_community.INDEX_URL: EXAMPLE_INDEX_BODY, EXAMPLE_URL: body})
+
+        with pytest.raises(kb_community.InstallPayloadError):
+            kb_community.install("example", transport=transport, home=home)
+
+        community_dir = home / "packs" / "community"
+        assert not (community_dir / "example.json").exists()
+        assert not community_dir.exists() or not any(community_dir.iterdir())
+
+
+def test_install_matching_id_body_written_verbatim_and_importable_free(home):
+    """A valid raw JSON pack whose id matches the requested id installs
+    byte-for-byte and is usable with no paid account: it is discovered as a
+    DSL pack and requires no license.
+    """
+    from krellbot import catalog as kb_catalog
+    from krellbot import community as kb_community
+    from krellbot.pack import discover
+
+    body = _example_pack_bytes()
+    transport = _FakeTransport({kb_community.INDEX_URL: EXAMPLE_INDEX_BODY, EXAMPLE_URL: body})
+
+    target = kb_community.install("example", transport=transport, home=home)
+
+    assert target == home / "packs" / "community" / "example.json"
+    assert target.read_bytes() == body
+
+    found = {path: (kind, data) for path, kind, data in discover(home)}
+    assert target in found
+    kind, data = found[target]
+    assert kind == "dsl"
+    assert data["id"] == "example"
+    assert kb_catalog.requires_license_for(target, home) is False
 
 
 def test_install_payload_error_is_a_value_error(home):
