@@ -371,6 +371,9 @@ describe("App paper controls (NS10b)", () => {
     render(<WorkstationShell paperClient={paperClient} />);
     const panel = await screen.findByTestId("paper-status-panel");
     expect(panel.textContent).toMatch(/Paper status/);
+    // Await the confirmed unarmed response; the initial pending state must
+    // not claim anything about armed state.
+    expect(await screen.findByTestId("paper-status-empty")).toBeDefined();
     expect(panel.textContent).toMatch(/No pack armed/);
     // No controls while not armed.
     expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();

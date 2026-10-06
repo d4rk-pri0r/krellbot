@@ -211,6 +211,12 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               </button>
             </div>
           </>
+        ) : status === null ? (
+          // No response yet: availability is unknown, so no unarmed claim
+          // and no command controls until a real status arrives.
+          <p className="kbot-paper-status__empty" data-testid="paper-status-loading">
+            Checking paper status…
+          </p>
         ) : (
           <p
             className="kbot-paper-status__empty"

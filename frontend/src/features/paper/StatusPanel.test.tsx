@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatusPanel } from "./StatusPanel";
 import type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
@@ -400,5 +400,69 @@ describe("StatusPanel unavailable state", () => {
     expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+  });
+});
+
+describe("StatusPanel pending initial status", () => {
+  function deferred(): {
+    promise: Promise<PaperStatus>;
+    resolve: (value: PaperStatus) => void;
+    reject: (reason?: unknown) => void;
+  } {
+    let resolve!: (value: PaperStatus) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<PaperStatus>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("shows a truthful loading state with no controls and no unarmed claim while the initial getStatus is pending", async () => {
+    const gate = deferred();
+    const client = makeClient({ getStatus: vi.fn().mockReturnValue(gate.promise) });
+    render(<StatusPanel client={client} />);
+
+    // The initial lookup is still in flight: availability is unknown.
+    expect(screen.getByTestId("paper-status-panel")).toBeDefined();
+    expect(screen.getByTestId("paper-status-loading").textContent).toMatch(
+      /checking|loading|unavailable/i,
+    );
+    expect(screen.queryByTestId("paper-status-empty")).toBeNull();
+    expect(
+      screen.getByTestId("paper-status-panel").textContent ?? "",
+    ).not.toMatch(/No pack armed/);
+    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+
+    // A confirmed unarmed response is the only thing that may claim it.
+    await act(async () => {
+      gate.resolve({ schema_version: "1", armed: false });
+    });
+    expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
+      /No pack armed/,
+    );
+    expect(screen.queryByTestId("paper-status-loading")).toBeNull();
+  });
+
+  it("shows a truthful loading state with no controls while pending, then unavailable on rejection", async () => {
+    const gate = deferred();
+    const client = makeClient({ getStatus: vi.fn().mockReturnValue(gate.promise) });
+    render(<StatusPanel client={client} />);
+
+    expect(screen.getByTestId("paper-status-loading")).toBeDefined();
+    expect(screen.queryByTestId("paper-status-empty")).toBeNull();
+    expect(screen.queryByTestId("paper-status-unavailable")).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+
+    await act(async () => {
+      gate.reject(new Error("paper status failed: 503"));
+    });
+    expect(
+      screen.getByTestId("paper-status-unavailable").textContent,
+    ).toMatch(/unavailable/i);
+    expect(screen.queryByTestId("paper-status-empty")).toBeNull();
   });
 });
