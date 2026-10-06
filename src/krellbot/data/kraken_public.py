@@ -104,11 +104,20 @@ def _find_pair_key(result: dict, requested_pair: str) -> str:
 def import_kraken_ohlcvt_zip(path: str | Path, pair: str, tf: str) -> list[Candle]:
     """Stream a Kraken OHLCVT zip, parse matching members, return sorted candles.
 
-    A member is used only when its name contains `pair` AND the interval
-    minutes (`60`, `240`, `1440`). CSV rows are read lazily through the
-    ZipExtFile handle - never loaded fully into memory before filtering.
-    The first field of every row must be numeric; otherwise the row is
-    skipped (handles a header row without crashing).
+    A member is used only when its complete basename stem (case-insensitive)
+    is exactly `pair + '_' + interval minutes`, with a `.csv` suffix
+    (case-insensitive). The `.zip` suffix stays accepted for the legacy
+    fixture that stores a CSV payload under a zip name; nested zip payloads
+    are never unpacked. Directory entries are skipped, and the parent
+    directory cannot supply a missing pair or interval token: matching looks
+    at the basename only, never the full archive path. No alias, prefix or
+    substring matching - `SUIUSDT_60.csv` is not `SUIUSD_60.csv` and
+    `SUIUSD_160.csv` is not a 60-minute member.
+
+    CSV rows are read lazily through the ZipExtFile handle - never loaded
+    fully into memory before filtering. The first field of every row must be
+    numeric; otherwise the row is skipped (handles a header row without
+    crashing).
     """
     if tf not in OHLC_TF_MINUTES:
         raise ValueError(f"kraken zip: unsupported timeframe {tf!r}")
@@ -116,10 +125,7 @@ def import_kraken_ohlcvt_zip(path: str | Path, pair: str, tf: str) -> list[Candl
     candles: list[Candle] = []
     with zipfile.ZipFile(str(path), "r") as zf:
         for name in zf.namelist():
-            lname = name.lower()
-            if pair.lower() not in lname:
-                continue
-            if minutes not in name:
+            if not _member_matches(name, pair, minutes):
                 continue
             with zf.open(name, "r") as fh:
                 wrapper = io.TextIOWrapper(fh, encoding="utf-8", newline="")
@@ -145,6 +151,30 @@ def import_kraken_ohlcvt_zip(path: str | Path, pair: str, tf: str) -> list[Candl
                     )
     candles.sort(key=lambda c: c.ts_ms)
     return candles
+
+
+# `.csv` is the documented member name; `.zip` is kept only for the legacy
+# fixture that stores a CSV payload under a zip name.
+_MEMBER_SUFFIXES = (".csv", ".zip")
+
+
+def _member_matches(name: str, pair: str, minutes: str) -> bool:
+    """True when member `name` is the `pair`/`minutes` OHLCVT CSV by basename.
+
+    Only the basename (after the last `/`) is considered, so a directory
+    component never satisfies the identity. The stem must equal
+    `pair + '_' + minutes` exactly, case-insensitively; the requested pair and
+    interval tokens must be complete, so near-collisions such as `SUIUSDT`,
+    `160` for `60`, or a stem holding only one of the two tokens never match.
+    """
+    if name.endswith("/"):
+        return False
+    basename = name.rsplit("/", 1)[-1].lower()
+    for suffix in _MEMBER_SUFFIXES:
+        if basename.endswith(suffix):
+            stem = basename[: -len(suffix)]
+            return stem == f"{pair.lower()}_{minutes}"
+    return False
 
 
 def _is_numeric(s: str) -> bool:
