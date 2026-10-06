@@ -6,6 +6,10 @@ export type StudioNodeInspectorProps = {
   onChange: (nextPack: Record<string, unknown>) => void;
 };
 
+const MIN_INDICATOR_LEN = 2;
+const MAX_INDICATOR_LEN = 600;
+const INVALID_LEN_MESSAGE = "Enter a whole number between 2 and 600.";
+
 /**
  * Render a labeled input that lets the operator edit one indicator's
  * ``len`` on the in-memory saved pack. The inspector only mounts
@@ -14,7 +18,9 @@ export type StudioNodeInspectorProps = {
  *
  * ``onChange`` always receives a brand-new pack object: the parent's
  * React state update must be a new reference for downstream
- * ``useMemo`` dependencies to fire.
+ * ``useMemo`` dependencies to fire. Invalid input (empty, nonnumber,
+ * fractional or outside 2..600) never reaches ``onChange``; it shows a
+ * field error instead. The input's min/max attributes are a hint only.
  */
 export function StudioNodeInspector({
   nodeId,
@@ -25,10 +31,12 @@ export function StudioNodeInspector({
   const indicatorName = indicatorSpec?.name ?? null;
   const initialLen = indicatorSpec?.len ?? 0;
   const [draft, setDraft] = useState<string>(String(initialLen));
+  const [error, setError] = useState<string | null>(null);
 
   // Reset the draft whenever the selected indicator changes.
   useEffect(() => {
     setDraft(String(initialLen));
+    setError(null);
   }, [indicatorName, initialLen]);
 
   if (!indicatorSpec) {
@@ -38,10 +46,12 @@ export function StudioNodeInspector({
   const handleChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const next = event.target.value;
     setDraft(next);
-    const parsed = Number(next);
-    if (!Number.isFinite(parsed)) {
+    const parsed = parseIndicatorLen(next);
+    if (parsed === null) {
+      setError(INVALID_LEN_MESSAGE);
       return;
     }
+    setError(null);
     const indicators = pack.indicators;
     if (!indicators || typeof indicators !== "object" || Array.isArray(indicators)) {
       return;
@@ -76,11 +86,20 @@ export function StudioNodeInspector({
         data-testid="studio-indicator-len"
         className="kbot-studio-node-inspector__input"
         type="number"
-        min={2}
-        max={600}
+        min={MIN_INDICATOR_LEN}
+        max={MAX_INDICATOR_LEN}
         value={draft}
         onChange={handleChange}
       />
+      {error ? (
+        <p
+          data-testid="studio-indicator-len-error"
+          className="kbot-studio-node-inspector__error"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -89,6 +108,26 @@ type IndicatorSpec = {
   name: string;
   len: number;
 };
+
+/**
+ * Parse the input the browser actually reports for ``type="number"``.
+ * Browsers sanitize bad input (e.g. ``abc``) to the empty string, so an
+ * empty draft is always invalid: an empty field must never be read as
+ * ``Number("") === 0``.
+ */
+function parseIndicatorLen(raw: string): number | null {
+  if (typeof raw !== "string" || raw.trim() === "") {
+    return null;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+    return null;
+  }
+  if (parsed < MIN_INDICATOR_LEN || parsed > MAX_INDICATOR_LEN) {
+    return null;
+  }
+  return parsed;
+}
 
 function useIndicator(
   pack: Record<string, unknown>,
