@@ -176,12 +176,12 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
     triggerConnect("b");
     expect(onAddConnection).not.toHaveBeenCalled();
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("timeframe mismatch");
+    expect(alert.textContent).toContain("Timeframe mismatch");
     const walker = document.createTreeWalker(alert, NodeFilter.SHOW_TEXT);
     const exact: Text[] = [];
     let node = walker.nextNode();
     while (node) {
-      if (node.nodeValue === "timeframe mismatch") exact.push(node as Text);
+      if (node.nodeValue === "Timeframe mismatch") exact.push(node as Text);
       node = walker.nextNode();
     }
     expect(exact.length).toBeGreaterThanOrEqual(1);
@@ -215,7 +215,7 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
     triggerConnect("b");
     expect(onAddConnection).not.toHaveBeenCalled();
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("timeframe missing");
+    expect(alert.textContent).toContain("Timeframe missing");
   });
 
   it("refuses a connection when the target has no timeframe", () => {
@@ -246,7 +246,7 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
     triggerConnect("b");
     expect(onAddConnection).not.toHaveBeenCalled();
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("timeframe invalid");
+    expect(alert.textContent).toContain("Timeframe invalid");
   });
 
   it("dismisses the notice when the user clicks Dismiss edge refusal", () => {

@@ -255,12 +255,12 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
     fireEvent.click(screen.getByRole("button", { name: "Studio" }));
     triggerConnect("n1");
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("timeframe mismatch");
+    expect(alert.textContent).toContain("Timeframe mismatch");
     const walker = document.createTreeWalker(alert, NodeFilter.SHOW_TEXT);
     const exact: Text[] = [];
     let node = walker.nextNode();
     while (node) {
-      if (node.nodeValue === "timeframe mismatch") exact.push(node as Text);
+      if (node.nodeValue === "Timeframe mismatch") exact.push(node as Text);
       node = walker.nextNode();
     }
     expect(exact.length).toBeGreaterThanOrEqual(1);

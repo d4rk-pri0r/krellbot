@@ -1,4 +1,5 @@
 import type { EdgeRefusal } from "./edges";
+import { summarizeEdgeRefusal } from "./edgeRefusalLabel";
 
 type EdgeRefusalNoticeProps = {
   reason: EdgeRefusal;
@@ -11,7 +12,7 @@ export function EdgeRefusalNotice({
 }: EdgeRefusalNoticeProps) {
   return (
     <div role="alert">
-      <p>{reason}</p>
+      <p>{summarizeEdgeRefusal(reason).label}</p>
       <button type="button" onClick={onDismiss}>
         Dismiss edge refusal
       </button>

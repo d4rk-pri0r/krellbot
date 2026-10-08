@@ -5,34 +5,34 @@ import type { EdgeRefusal } from "./edges";
 
 afterEach(cleanup);
 
-const REASONS: EdgeRefusal[] = [
-  "timeframe missing",
-  "timeframe invalid",
-  "timeframe mismatch",
+const REASONS: { reason: EdgeRefusal; label: string }[] = [
+  { reason: "timeframe missing", label: "Timeframe missing" },
+  { reason: "timeframe invalid", label: "Timeframe invalid" },
+  { reason: "timeframe mismatch", label: "Timeframe mismatch" },
 ];
 
 describe("EdgeRefusalNotice", () => {
   it("renders the exact reason string verbatim", () => {
-    for (const reason of REASONS) {
+    for (const { reason, label } of REASONS) {
       cleanup();
       const { container } = render(
         <EdgeRefusalNotice reason={reason} onDismiss={() => {}} />,
       );
       const alert = screen.getByRole("alert");
-      expect(alert.textContent).toContain(reason);
+      expect(alert.textContent).toContain(label);
       const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
       const exactNodes: Text[] = [];
       let node = walker.nextNode();
       while (node) {
-        if (node.nodeValue === reason) exactNodes.push(node as Text);
+        if (node.nodeValue === label) exactNodes.push(node as Text);
         node = walker.nextNode();
       }
       expect(exactNodes.length).toBeGreaterThanOrEqual(1);
       const padded = ` ${alert.textContent ?? ""} `;
       for (const paraphrase of [
-        `Refused: ${reason}`,
-        `Refusal: ${reason}`,
-        `Cannot connect: ${reason}`,
+        `Refused: ${label}`,
+        `Refusal: ${label}`,
+        `Cannot connect: ${label}`,
       ]) {
         expect(padded).not.toContain(paraphrase);
       }

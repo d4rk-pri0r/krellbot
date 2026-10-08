@@ -147,12 +147,12 @@ describe("GraphCanvas — 200-node workload still refuses a bad edge", () => {
     triggerConnect("n199");
     expect(onAddConnection).not.toHaveBeenCalled();
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("timeframe mismatch");
+    expect(alert.textContent).toContain("Timeframe mismatch");
     const walker = document.createTreeWalker(alert, NodeFilter.SHOW_TEXT);
     const exact: Text[] = [];
     let node = walker.nextNode();
     while (node) {
-      if (node.nodeValue === "timeframe mismatch") exact.push(node as Text);
+      if (node.nodeValue === "Timeframe mismatch") exact.push(node as Text);
       node = walker.nextNode();
     }
     expect(exact.length).toBeGreaterThanOrEqual(1);
@@ -197,12 +197,12 @@ describe("GraphCanvas — 200-node workload still refuses a bad edge", () => {
       targetHandle: null,
     });
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("timeframe mismatch");
+    expect(alert.textContent).toContain("Timeframe mismatch");
     const walker = document.createTreeWalker(alert, NodeFilter.SHOW_TEXT);
     const exact: Text[] = [];
     let node = walker.nextNode();
     while (node) {
-      if (node.nodeValue === "timeframe mismatch") exact.push(node as Text);
+      if (node.nodeValue === "Timeframe mismatch") exact.push(node as Text);
       node = walker.nextNode();
     }
     expect(exact.length).toBeGreaterThanOrEqual(1);
