@@ -36,6 +36,7 @@ import { nodesFromPack } from "../features/studio/packNodes";
 import { applyExecutionEdit } from "../features/studio/executionEdit";
 import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
 import { OperationsView } from "../features/operations/OperationsView";
+import { LivePreflight } from "../features/deployments/LivePreflight";
 import { createHttpClient as createOperationsHttpClient } from "../features/operations/client";
 import type { OperationsClient } from "../features/operations/client";
 import { PackLibrary } from "../features/packs/PackLibrary";
@@ -767,6 +768,7 @@ export function WorkstationShell({
             </p>
           )
         ) : null}
+        {active === "deployments" ? <LivePreflight /> : null}
       </main>
       <CommandPalette
         open={paletteOpen}
