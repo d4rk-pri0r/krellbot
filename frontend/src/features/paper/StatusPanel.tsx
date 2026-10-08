@@ -745,16 +745,19 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
             Checking paper status…
           </p>
         ) : (
-          // Confirmed unarmed: offer the arm form and the rehearsal
-          // surface in the existing paper panel.
+          // Confirmed unarmed: offer the arm form.
           <>
             <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
               No pack armed
             </p>
             <ArmForm client={client} />
-            <RehearsalPanel client={rehearsalClient} />
           </>
         )}
+        {/* The isolated synthetic rehearsal surface is mounted exactly once
+            outside the armed/unarmed paper branch: its own client, commands
+            and disclosure stay accessible whatever the ordinary paper pack
+            state is, and it never remounts on a paper state transition. */}
+        <RehearsalPanel client={rehearsalClient} />
       </div>
     </section>
   );

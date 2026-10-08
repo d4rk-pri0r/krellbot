@@ -1,8 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatusPanel } from "./StatusPanel";
 import { summarizePaperCommandRefusal } from "./paperCommandRefusalSummary";
 import type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
+import type { RehearsalClient, RehearsalStatus } from "./rehearsalClient";
 
 afterEach(() => {
   cleanup();
@@ -746,6 +747,208 @@ describe("StatusPanel command transport failures", () => {
     expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
       /Entries active/,
     );
+  });
+});
+
+describe("StatusPanel rehearsal surface access while a paper pack state is armed", () => {
+  function rehearsalStatus(): RehearsalStatus {
+    return {
+      schema_version: "1",
+      label: "SYNTHETIC PAPER REHEARSAL — simulated fixture, not market data",
+      status: "idle",
+      cursor: 0,
+      total_bars: 20,
+      balances: { USD: "1000" },
+      position: "0",
+      resting_stop: null,
+      recent_fills: [],
+    };
+  }
+
+  function makeRehearsalClient(): RehearsalClient {
+    return {
+      getStatus: vi.fn().mockResolvedValue(rehearsalStatus()),
+      start: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      exit: vi.fn(),
+      stop: vi.fn(),
+    };
+  }
+
+  it("mounts the rehearsal surface with its controls while an owned paper pack is armed", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      createRehearsalClient: () => makeRehearsalClient(),
+    });
+    render(<StatusPanel client={client} />);
+
+    // The ordinary armed paper controls are still the primary surface…
+    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    expect(screen.getByRole("button", { name: /resume entries/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^disarm$/i })).toBeDefined();
+
+    // …and the honest isolated synthetic rehearsal surface with real status
+    // stays accessible alongside it.
+    const panel = await screen.findByTestId("rehearsal-panel");
+    await waitFor(() => {
+      expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
+    });
+    expect(panel.getAttribute("data-rehearsal-pending")).toBe("");
+    expect(panel.textContent ?? "").toMatch(/Synthetic paper rehearsal/i);
+    expect(panel.textContent ?? "").toMatch(/simulated/i);
+    for (const name of [
+      /start rehearsal/i,
+      /pause rehearsal/i,
+      /resume rehearsal/i,
+      /exit rehearsal/i,
+      /stop rehearsal/i,
+    ]) {
+      expect(within(panel).getByRole("button", { name })).toBeDefined();
+    }
+  });
+
+  it("mounts exactly one rehearsal surface in the armed state", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      createRehearsalClient: () => makeRehearsalClient(),
+    });
+    render(<StatusPanel client={client} />);
+    await screen.findByTestId("rehearsal-panel");
+    expect(screen.getAllByTestId("rehearsal-panel").length).toBe(1);
+    expect(screen.queryAllByTestId("rehearsal-unavailable").length).toBe(0);
+  });
+
+  // The paper surface keeps its own refresh control; the rehearsal surface
+  // has a separate one with the same accessible name.
+  function paperRefreshButton(): HTMLElement {
+    const candidates = screen.getAllByRole("button", { name: /refresh status/i });
+    const paper = candidates.find((button) =>
+      (button.className ?? "").includes("kbot-paper-status__action"),
+    );
+    if (paper === undefined) {
+      throw new Error("paper refresh button not found");
+    }
+    return paper;
+  }
+
+  it("keeps the rehearsal surface across the armed → unarmed transition after a confirmed disarm", async () => {
+    const rehearsal = makeRehearsalClient();
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      listOwnedDrafts: vi.fn().mockResolvedValue([]),
+      createRehearsalClient: () => rehearsal,
+    });
+    render(<StatusPanel client={client} />);
+
+    const panel = await screen.findByTestId("rehearsal-panel");
+    await waitFor(() => {
+      expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
+    });
+    const reads = (rehearsal.getStatus as ReturnType<typeof vi.fn>).mock.calls
+      .length;
+
+    // A backend-confirmed disarm is the real armed → unarmed transition.
+    fireEvent.click(screen.getByRole("button", { name: /^disarm$/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
+        /No pack armed/,
+      );
+    });
+
+    // The same mounted rehearsal surface stays: no remount (its single mount
+    // read is not repeated), no duplicate panel, state preserved.
+    expect(screen.getAllByTestId("rehearsal-panel").length).toBe(1);
+    expect(screen.queryAllByTestId("rehearsal-unavailable").length).toBe(0);
+    expect(
+      (rehearsal.getStatus as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBe(reads);
+    expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
+  });
+
+  it("keeps the rehearsal surface across the armed → unarmed transition via a paper status refresh", async () => {
+    const rehearsal = makeRehearsalClient();
+    const client = makeClient({
+      getStatus: vi
+        .fn()
+        .mockResolvedValueOnce(armedStatus())
+        .mockResolvedValueOnce({ schema_version: "1", armed: false }),
+      listOwnedDrafts: vi.fn().mockResolvedValue([]),
+      createRehearsalClient: () => rehearsal,
+    });
+    render(<StatusPanel client={client} />);
+
+    const panel = await screen.findByTestId("rehearsal-panel");
+    await waitFor(() => {
+      expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
+    });
+    const reads = (rehearsal.getStatus as ReturnType<typeof vi.fn>).mock.calls
+      .length;
+
+    fireEvent.click(paperRefreshButton());
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
+        /No pack armed/,
+      );
+    });
+
+    expect(screen.getAllByTestId("rehearsal-panel").length).toBe(1);
+    expect(
+      (rehearsal.getStatus as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBe(reads);
+    expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
+  });
+
+  it("shows the honest rehearsal-unavailable surface while paper status is unknown, and still offers retry", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockRejectedValue(new Error("paper status failed: 503")),
+      createRehearsalClient: () => makeRehearsalClient(),
+    });
+    render(<StatusPanel client={client} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-unavailable")).toBeDefined();
+    });
+    expect(await screen.findByTestId("rehearsal-panel")).toBeDefined();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeDefined();
+  });
+
+  it("keeps the rehearsal-unavailable surface honest when the injected client cannot create a rehearsal client, armed or not", async () => {
+    const armed = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+    });
+    render(<StatusPanel client={armed} />);
+    expect(await screen.findByTestId("rehearsal-unavailable")).toBeDefined();
+    expect(screen.getByRole("button", { name: /pause entries/i })).toBeDefined();
+    expect(screen.queryByTestId("rehearsal-panel")).toBeNull();
+  });
+
+  it("issues rehearsal commands through the isolated rehearsal client while armed, without touching ordinary paper commands", async () => {
+    const rehearsal = makeRehearsalClient();
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      createRehearsalClient: () => rehearsal,
+    });
+    render(<StatusPanel client={client} />);
+    const panel = await screen.findByTestId("rehearsal-panel");
+
+    fireEvent.click(
+      within(panel).getByRole("button", { name: /start rehearsal/i }),
+    );
+    await waitFor(() => {
+      expect(rehearsal.start).toHaveBeenCalledTimes(1);
+    });
+    expect(client.pauseEntries).not.toHaveBeenCalled();
+    expect(client.resumeEntries).not.toHaveBeenCalled();
+    expect(client.disarm).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: /pause entries/i }).getAttribute(
+        "disabled",
+      ),
+    ).toBeNull();
+    expect(
+      screen.getByTestId("paper-status-panel").getAttribute("data-pending"),
+    ).toBe("");
   });
 });
 
