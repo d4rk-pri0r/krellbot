@@ -64,7 +64,9 @@ describe("readOwnedStrategy", () => {
       id: "rehearsal-trend",
       pair: "SUIUSD",
       timeframe: "1h",
+      recipe: "close_vs_ma",
       kind: "sma",
+      fastLength: "",
       length: "3",
       entryComparison: ">",
       exitComparison: "<",
@@ -124,6 +126,57 @@ describe("readOwnedStrategy", () => {
     ).toBeNull();
   });
 
+  it("returns null for a two-average pack outside the generated crossover shape", () => {
+    // Two indicators that are not the generated fast/slow names.
+    expect(
+      readOwnedStrategy({
+        ...rehearsalPack,
+        indicators: {
+          fast: { fn: "sma", src: "close", len: 9 },
+          slow: { fn: "sma", src: "close", len: 21 },
+        },
+        entry: ["close", ">", "slow"],
+        exit: ["close", "<", "slow"],
+      }),
+    ).toBeNull();
+    // Mixed average kinds are not the generated one-kind crossover.
+    expect(
+      readOwnedStrategy({
+        ...rehearsalPack,
+        indicators: {
+          fast: { fn: "sma", src: "close", len: 9 },
+          slow: { fn: "ema", src: "close", len: 21 },
+        },
+        entry: ["fast", "crosses_above", "slow"],
+        exit: ["fast", "crosses_below", "slow"],
+      }),
+    ).toBeNull();
+    // An operand that is not the fast/slow pair.
+    expect(
+      readOwnedStrategy({
+        ...rehearsalPack,
+        indicators: {
+          fast: { fn: "sma", src: "close", len: 9 },
+          slow: { fn: "sma", src: "close", len: 21 },
+        },
+        entry: ["close", ">", "slow"],
+        exit: ["fast", "crosses_below", "slow"],
+      }),
+    ).toBeNull();
+    // Fast period not strictly below the slow period is not a crossover.
+    expect(
+      readOwnedStrategy({
+        ...rehearsalPack,
+        indicators: {
+          fast: { fn: "sma", src: "close", len: 21 },
+          slow: { fn: "sma", src: "close", len: 21 },
+        },
+        entry: ["fast", "crosses_above", "slow"],
+        exit: ["fast", "crosses_below", "slow"],
+      }),
+    ).toBeNull();
+  });
+
   it("returns null for an unsupported indicator fn (wma)", () => {
     expect(
       readOwnedStrategy({
@@ -173,6 +226,79 @@ describe("readOwnedStrategy", () => {
 });
 
 describe("buildOwnedStrategyPack", () => {
+  it("builds a two-average crossover pack from crossover form state", () => {
+    const seeded = seedOwnedStrategyPack("Plan");
+    const state = readOwnedStrategy(seeded) as OwnedStrategyFormState;
+    const crossover: OwnedStrategyFormState = {
+      ...state,
+      recipe: "ma_cross",
+      fastLength: "9",
+      length: "21",
+      entryComparison: "crosses_above",
+      exitComparison: "crosses_below",
+    };
+    const pack = buildOwnedStrategyPack(crossover, seeded) as Pack;
+    expect(pack.indicators).toEqual({
+      fast: { fn: "sma", src: "close", len: 9 },
+      slow: { fn: "sma", src: "close", len: 21 },
+    });
+    expect(pack.entry).toEqual(["fast", "crosses_above", "slow"]);
+    expect(pack.exit).toEqual(["fast", "crosses_below", "slow"]);
+    // Both generated indicators are real operands of the entry/exit leaves,
+    // not labels or frontend-only state.
+    expect(readOwnedStrategy(pack)?.recipe).toBe("ma_cross");
+    expect(readOwnedStrategy(pack)?.fastLength).toBe("9");
+    expect(readOwnedStrategy(pack)?.length).toBe("21");
+  });
+
+  it("builds an ema crossover pack with one shared kind", () => {
+    const seeded = seedOwnedStrategyPack("Plan");
+    const state = readOwnedStrategy(seeded) as OwnedStrategyFormState;
+    const pack = buildOwnedStrategyPack(
+      {
+        ...state,
+        recipe: "ma_cross",
+        kind: "ema",
+        fastLength: "12",
+        length: "26",
+      },
+      seeded,
+    ) as Pack;
+    expect(pack.indicators).toEqual({
+      fast: { fn: "ema", src: "close", len: 12 },
+      slow: { fn: "ema", src: "close", len: 26 },
+    });
+  });
+
+  it("refuses a fast length that is not strictly below the slow length", () => {
+    const seeded = seedOwnedStrategyPack("Plan");
+    const state = readOwnedStrategy(seeded) as OwnedStrategyFormState;
+    const crossover: OwnedStrategyFormState = {
+      ...state,
+      recipe: "ma_cross",
+      fastLength: "20",
+      length: "20",
+    };
+    expect(buildOwnedStrategyPack(crossover, seeded)).toBeNull();
+    expect(
+      buildOwnedStrategyPack({ ...crossover, fastLength: "30", length: "20" }, seeded),
+    ).toBeNull();
+  });
+
+  it("refuses invalid or nonfinite fast lengths instead of normalizing them", () => {
+    const seeded = seedOwnedStrategyPack("Plan");
+    const state = readOwnedStrategy(seeded) as OwnedStrategyFormState;
+    const crossover: OwnedStrategyFormState = {
+      ...state,
+      recipe: "ma_cross",
+      fastLength: "10",
+      length: "20",
+    };
+    for (const bad of ["", "1", "600", "2.5", "abc", "1e3", "Infinity", "NaN", "-5"]) {
+      expect(buildOwnedStrategyPack({ ...crossover, fastLength: bad }, seeded)).toBeNull();
+    }
+  });
+
   it("builds a pack from valid form state, preserving seeded id and author", () => {
     const seeded = seedOwnedStrategyPack("Plan");
     const state = readOwnedStrategy(seeded);

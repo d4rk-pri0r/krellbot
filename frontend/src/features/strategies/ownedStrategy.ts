@@ -1,8 +1,9 @@
 // Owned-strategy form model.
 //
 // This is a deliberately narrow, supported subset of the Pack DSL
-// (src/krellbot/pack/schema.json): one moving-average indicator over close,
-// leaf `close <op> <indicator>` entry and exit conditions, a percentage
+// (src/krellbot/pack/schema.json): a single-average recipe (close versus one
+// moving average) or a two-average crossover recipe (fast average crossing
+// slow average) over close, leaf entry and exit conditions, a percentage
 // protective stop, and a single Kraken market. Anything else — imported
 // packs with nested conditions, extra indicators, other venues or stop
 // kinds — is reported as unsupported (`readOwnedStrategy` returns null) so
@@ -11,6 +12,8 @@
 import type { Pack } from "./client";
 
 export const INDICATOR_NAME = "ma";
+export const FAST_INDICATOR_NAME = "fast";
+export const SLOW_INDICATOR_NAME = "slow";
 
 export const TIMEFRAMES = ["1h", "4h", "1d"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
@@ -18,6 +21,8 @@ export type Timeframe = (typeof TIMEFRAMES)[number];
 export const MOVING_AVERAGE_KINDS = ["sma", "ema"] as const;
 export type MovingAverageKind = (typeof MOVING_AVERAGE_KINDS)[number];
 
+export const RECIPE_NAMES = ["close_vs_ma", "ma_cross"] as const;
+export type RecipeName = (typeof RECIPE_NAMES)[number];
 export const COMPARISONS = [
   ">",
   "<",
@@ -33,7 +38,9 @@ export type OwnedStrategyField =
   | "id"
   | "pair"
   | "timeframe"
+  | "recipe"
   | "kind"
+  | "fastLength"
   | "length"
   | "entryComparison"
   | "exitComparison"
@@ -45,7 +52,9 @@ export type OwnedStrategyFormState = {
   id: string;
   pair: string;
   timeframe: Timeframe;
+  recipe: RecipeName;
   kind: MovingAverageKind;
+  fastLength: string;
   length: string;
   entryComparison: Comparison;
   exitComparison: Comparison;
@@ -121,6 +130,11 @@ export function validateOwnedStrategyField(
         return `Length must be a whole number between ${LENGTH_MIN} and ${LENGTH_MAX}`;
       }
       return undefined;
+    case "fastLength":
+      if (!integerIn(value, LENGTH_MIN, LENGTH_MAX)) {
+        return `Fast length must be a whole number between ${LENGTH_MIN} and ${LENGTH_MAX}`;
+      }
+      return undefined;
     case "maxAccountPct":
       if (!integerIn(value, 1, 100)) {
         return "Max account percent must be a whole number between 1 and 100";
@@ -158,13 +172,21 @@ function isComparison(value: unknown): value is Comparison {
   );
 }
 
+function isRecipe(value: unknown): value is RecipeName {
+  return (
+    typeof value === "string" && (RECIPE_NAMES as readonly string[]).includes(value)
+  );
+}
+
 export function seedOwnedStrategyForm(): OwnedStrategyFormState {
   return {
     name: "Moving average plan",
     id: slugify("moving-average-plan"),
     pair: DEFAULT_PAIR,
     timeframe: DEFAULT_TIMEFRAME,
+    recipe: "close_vs_ma",
     kind: "sma",
+    fastLength: "10",
     length: "20",
     entryComparison: ">",
     exitComparison: "<",
@@ -198,9 +220,12 @@ function isLeafCondition(value: unknown): value is LeafCondition {
 }
 
 /**
- * Read a pack into form state only when it is exactly the supported subset.
- * Anything unsupported returns null so callers keep the original bytes
- * untouched instead of guessing at a partial edit.
+ * Read a pack into form state only when it is exactly the supported subset —
+ * either the generated single-average shape (one `ma` indicator, close
+ * compared to it) or the generated two-average crossover shape (`fast` and
+ * `slow` indicators, fast compared to slow). Anything else returns null so
+ * callers keep the original bytes untouched instead of guessing at a partial
+ * edit.
  */
 export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | null {
   if (!pack || pack.schema_version !== 1) {
@@ -228,7 +253,7 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
     !indicators ||
     typeof indicators !== "object" ||
     Array.isArray(indicators) ||
-    Object.keys(indicators).length !== 1 ||
+    (Object.keys(indicators).length !== 1 && Object.keys(indicators).length !== 2) ||
     !Array.isArray(markets) ||
     markets.length !== 1 ||
     !markets[0] ||
@@ -240,34 +265,34 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
   if (market.venue !== "kraken" || typeof market.pair !== "string") {
     return null;
   }
-  const indicatorName = Object.keys(indicators)[0];
-  const indicator = (indicators as Record<string, unknown>)[indicatorName];
-  if (
-    !indicator ||
-    typeof indicator !== "object" ||
-    Array.isArray(indicator)
-  ) {
-    return null;
-  }
-  const params = indicator as { fn?: unknown; src?: unknown; len?: unknown };
-  if (
-    !isKind(params.fn) ||
-    params.src !== "close" ||
-    typeof params.len !== "number" ||
-    !Number.isInteger(params.len) ||
-    params.len < LENGTH_MIN ||
-    params.len > LENGTH_MAX ||
-    Object.keys(params).length !== 3
-  ) {
+  const indicatorEntries = Object.entries(indicators as Record<string, unknown>).map(
+    ([indicatorName, indicator]) => {
+      if (
+        !indicator ||
+        typeof indicator !== "object" ||
+        Array.isArray(indicator)
+      ) {
+        return null;
+      }
+      const params = indicator as { fn?: unknown; src?: unknown; len?: unknown };
+      if (
+        !isKind(params.fn) ||
+        params.src !== "close" ||
+        typeof params.len !== "number" ||
+        !Number.isInteger(params.len) ||
+        params.len < LENGTH_MIN ||
+        params.len > LENGTH_MAX ||
+        Object.keys(params).length !== 3
+      ) {
+        return null;
+      }
+      return { name: indicatorName, kind: params.fn, len: params.len };
+    },
+  );
+  if (indicatorEntries.some((entry) => entry === null)) {
     return null;
   }
   if (!isLeafCondition(entry) || !isLeafCondition(exit)) {
-    return null;
-  }
-  if (entry[0] !== "close" || entry[2] !== indicatorName) {
-    return null;
-  }
-  if (exit[0] !== "close" || exit[2] !== indicatorName) {
     return null;
   }
   if (!risk || typeof risk !== "object" || Array.isArray(risk)) {
@@ -315,17 +340,64 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
       return null;
     }
   }
-  return {
+  const common = {
     name,
     id,
     pair: market.pair,
     timeframe,
-    kind: params.fn,
-    length: String(params.len),
-    entryComparison: entry[1],
-    exitComparison: exit[1],
     maxAccountPct: String(riskRow.max_account_pct),
     stopPct: String(stop.pct),
+  };
+  if (indicatorEntries.length === 1) {
+    const [single] = indicatorEntries as [{ name: string; kind: MovingAverageKind; len: number }];
+    // Single-average shape: one indicator under any schema-valid name, with
+    // close on the left of both leaves. The name is preserved as-is on
+    // rebuild, so an imported `sma3`-style pack keeps its indicator name.
+    if (
+      entry[0] !== "close" ||
+      entry[2] !== single.name ||
+      exit[0] !== "close" ||
+      exit[2] !== single.name
+    ) {
+      return null;
+    }
+    return {
+      ...common,
+      recipe: "close_vs_ma",
+      kind: single.kind,
+      fastLength: "",
+      length: String(single.len),
+      entryComparison: entry[1],
+      exitComparison: exit[1],
+    };
+  }
+  const [fast, slow] = indicatorEntries as [
+    { name: string; kind: MovingAverageKind; len: number },
+    { name: string; kind: MovingAverageKind; len: number },
+  ];
+  // Two-average crossover shape: the generated `fast`/`slow` names, one
+  // shared average kind, fast strictly shorter than slow, and fast compared
+  // to slow in both leaves.
+  if (
+    fast.name !== FAST_INDICATOR_NAME ||
+    slow.name !== SLOW_INDICATOR_NAME ||
+    fast.kind !== slow.kind ||
+    fast.len >= slow.len ||
+    entry[0] !== FAST_INDICATOR_NAME ||
+    entry[2] !== SLOW_INDICATOR_NAME ||
+    exit[0] !== FAST_INDICATOR_NAME ||
+    exit[2] !== SLOW_INDICATOR_NAME
+  ) {
+    return null;
+  }
+  return {
+    ...common,
+    recipe: "ma_cross",
+    kind: fast.kind,
+    fastLength: String(fast.len),
+    length: String(slow.len),
+    entryComparison: entry[1],
+    exitComparison: exit[1],
   };
 }
 
@@ -346,6 +418,9 @@ export function buildOwnedStrategyPack(
     "maxAccountPct",
     "stopPct",
   ];
+  if (state.recipe === "ma_cross") {
+    fields.push("fastLength");
+  }
   for (const field of fields) {
     if (validateOwnedStrategyField(field, state[field]) !== undefined) {
       return null;
@@ -365,6 +440,48 @@ export function buildOwnedStrategyPack(
     typeof base.author === "string" && base.author.length > 0
       ? base.author.slice(0, AUTHOR_MAX)
       : DEFAULT_AUTHOR;
+  const risk = {
+    max_account_pct: Number(state.maxAccountPct),
+    stop: { type: "pct", pct: Number(state.stopPct) },
+  };
+  const markets = [{ venue: "kraken", pair: state.pair }];
+  if (state.recipe === "ma_cross") {
+    const fastLength = Number(state.fastLength);
+    const slowLength = Number(state.length);
+    // A "fast" average at or above the slow average is a contradiction, not a
+    // number-format error, so it is refused here rather than normalized.
+    if (fastLength >= slowLength) {
+      return null;
+    }
+    return {
+      schema_version: 1,
+      id: state.id,
+      version,
+      label: state.name,
+      author,
+      ...(typeof base.origin === "string" ? { origin: base.origin } : {}),
+      timeframe: state.timeframe,
+      indicators: {
+        [FAST_INDICATOR_NAME]: {
+          fn: state.kind,
+          src: "close",
+          len: fastLength,
+        },
+        [SLOW_INDICATOR_NAME]: {
+          fn: state.kind,
+          src: "close",
+          len: slowLength,
+        },
+      },
+      entry: [FAST_INDICATOR_NAME, state.entryComparison, SLOW_INDICATOR_NAME],
+      exit: [FAST_INDICATOR_NAME, state.exitComparison, SLOW_INDICATOR_NAME],
+      risk,
+      markets,
+    };
+  }
+  if (state.recipe !== "close_vs_ma") {
+    return null;
+  }
   return {
     schema_version: 1,
     id: state.id,
@@ -382,10 +499,7 @@ export function buildOwnedStrategyPack(
     },
     entry: ["close", state.entryComparison, INDICATOR_NAME],
     exit: ["close", state.exitComparison, INDICATOR_NAME],
-    risk: {
-      max_account_pct: Number(state.maxAccountPct),
-      stop: { type: "pct", pct: Number(state.stopPct) },
-    },
-    markets: [{ venue: "kraken", pair: state.pair }],
+    risk,
+    markets,
   };
 }
