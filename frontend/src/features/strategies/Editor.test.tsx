@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Editor, type StrategyClient } from "./Editor";
+import { seedOwnedStrategyPack } from "./ownedStrategy";
 
 afterEach(cleanup);
 
@@ -670,5 +671,270 @@ describe("Editor export", () => {
     createObjectURLSpy.mockRestore();
     revokeObjectURLSpy.mockRestore();
     createElementSpy.mockRestore();
+  });
+});
+
+const ownedUnsupportedImportedPack = {
+  schema_version: 1,
+  id: "imported-mix",
+  version: "1.2.0",
+  label: "Imported mixed pack",
+  author: "someone else",
+  origin: "Imported from a file. Ownership not verified.",
+  timeframe: "4h",
+  indicators: {
+    fast: { fn: "ema", src: "close", len: 12 },
+    slow: { fn: "sma", src: "close", len: 40 },
+  },
+  entry: { all: [["close", "crosses_above", "fast"], ["close", ">", "slow"]] },
+  exit: ["close", "<", "slow"],
+  risk: {
+    max_account_pct: 10,
+    stop: { type: "atr", len: 14, mult: 2 },
+  },
+  markets: [
+    { venue: "kraken", pair: "XXBTZUSD" },
+    { venue: "coinbase", pair: "BTC-USD" },
+  ],
+};
+
+describe("Editor owned-strategy form: no-JSON creation", () => {
+  it("Create new owned strategy seeds a full valid pack and Save sends it to client.create", async () => {
+    const client = makeClient();
+    render(<Editor client={client} />);
+
+    expect(screen.queryByTestId("owned-strategy-form")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: /create new owned strategy/i }),
+    );
+    expect(screen.getByTestId("owned-strategy-form")).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText(/strategy name/i), {
+      target: { value: "My trend plan" },
+    });
+    const seededJson = (
+      screen.getByLabelText(/raw json/i) as HTMLTextAreaElement
+    ).value;
+    expect(seededJson).not.toBe("");
+    const seeded = JSON.parse(seededJson);
+    expect(seeded.schema_version).toBe(1);
+    expect(seeded.indicators).toEqual({
+      ma: { fn: "sma", src: "close", len: 20 },
+    });
+    expect(seeded.entry).toEqual(["close", ">", "ma"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(client.create).toHaveBeenCalledTimes(1);
+    });
+    const pack = (client.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(pack.label).toBe("My trend plan");
+    expect(pack.entry).toEqual(["close", ">", "ma"]);
+    expect(pack.risk).toEqual({
+      max_account_pct: 25,
+      stop: { type: "pct", pct: 5 },
+    });
+    expect(client.edit).not.toHaveBeenCalled();
+  });
+
+  it("changing form parameters reaches the client payload, not just form state", async () => {
+    const client = makeClient();
+    render(<Editor client={client} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /create new owned strategy/i }),
+    );
+
+    fireEvent.change(screen.getByLabelText(/average length \(bars\)/i), {
+      target: { value: "50" },
+    });
+    fireEvent.change(screen.getByLabelText(/enter when/i), {
+      target: { value: "crosses_above" },
+    });
+    fireEvent.change(screen.getByLabelText(/exit when/i), {
+      target: { value: "crosses_below" },
+    });
+    fireEvent.change(screen.getByLabelText(/max account percent/i), {
+      target: { value: "40" },
+    });
+    fireEvent.change(screen.getByLabelText(/protective stop percent/i), {
+      target: { value: "2.5" },
+    });
+    fireEvent.change(screen.getByLabelText(/kraken pair/i), {
+      target: { value: "XETHZUSD" },
+    });
+    fireEvent.change(screen.getByLabelText(/average type/i), {
+      target: { value: "ema" },
+    });
+    fireEvent.change(screen.getByLabelText(/timeframe/i), {
+      target: { value: "4h" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(client.create).toHaveBeenCalledTimes(1);
+    });
+    const pack = (client.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(pack.indicators).toEqual({
+      ma: { fn: "ema", src: "close", len: 50 },
+    });
+    expect(pack.entry).toEqual(["close", "crosses_above", "ma"]);
+    expect(pack.exit).toEqual(["close", "crosses_below", "ma"]);
+    expect(pack.timeframe).toBe("4h");
+    expect(pack.risk).toEqual({
+      max_account_pct: 40,
+      stop: { type: "pct", pct: 2.5 },
+    });
+    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XETHZUSD" }]);
+  });
+
+  it("an invalid value refuses to generate a pack and keeps the last good payload for Save", async () => {
+    const client = makeClient();
+    render(<Editor client={client} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /create new owned strategy/i }),
+    );
+    const goodJson = (screen.getByLabelText(/raw json/i) as HTMLTextAreaElement)
+      .value;
+    expect(goodJson).not.toBe("");
+
+    fireEvent.change(screen.getByLabelText(/average length \(bars\)/i), {
+      target: { value: "600" },
+    });
+    const problems = await screen.findByTestId("owned-strategy-form-problems");
+    expect(problems.textContent).toMatch(/between 2 and 599/);
+    expect((screen.getByLabelText(/raw json/i) as HTMLTextAreaElement).value).toBe(
+      goodJson,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(client.create).toHaveBeenCalledTimes(1);
+    });
+    const pack = (client.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(pack.indicators).toEqual({
+      ma: { fn: "sma", src: "close", len: 20 },
+    });
+  });
+
+  it("Save after a form edit of a loaded supported revision uses the immutable parentId flow", async () => {
+    const client = makeClient();
+    const seeded = seedOwnedStrategyPack("Trend plan");
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-parent",
+          state: "validated",
+          bytes: JSON.stringify(seeded, null, 2),
+        }}
+      />,
+    );
+    expect(screen.getByTestId("owned-strategy-form")).toBeDefined();
+    fireEvent.change(screen.getByLabelText(/protective stop percent/i), {
+      target: { value: "7" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(client.edit).toHaveBeenCalledTimes(1);
+    });
+    const [parentId, pack] = (client.edit as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string, Record<string, unknown>];
+    expect(parentId).toBe("rev-parent");
+    expect(pack.risk).toEqual({
+      max_account_pct: 25,
+      stop: { type: "pct", pct: 7 },
+    });
+    expect(client.create).not.toHaveBeenCalled();
+    expect(seeded.risk).toEqual({
+      max_account_pct: 25,
+      stop: { type: "pct", pct: 5 },
+    });
+  });
+
+  it("an unsupported imported pack is not rewritten or stripped and the JSON round-trips byte for byte", () => {
+    const client = makeClient();
+    const importedBytes = JSON.stringify(ownedUnsupportedImportedPack, null, 2);
+    render(<Editor client={client} />);
+
+    fireEvent.change(screen.getByLabelText(/raw json/i), {
+      target: { value: importedBytes },
+    });
+    const notice = screen.getByTestId("owned-strategy-form-unsupported");
+    expect(notice.textContent).toMatch(/not supported by the form/i);
+    expect(
+      (screen.getByLabelText(/raw json/i) as HTMLTextAreaElement).value,
+    ).toBe(importedBytes);
+    expect(screen.queryByTestId("owned-strategy-form")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/^label$/i), {
+      target: { value: "Renamed import" },
+    });
+    const after = JSON.parse(
+      (screen.getByLabelText(/raw json/i) as HTMLTextAreaElement).value,
+    );
+    expect(after.label).toBe("Renamed import");
+    expect(after.entry).toEqual(ownedUnsupportedImportedPack.entry);
+    expect(after.indicators).toEqual(ownedUnsupportedImportedPack.indicators);
+    expect(after.risk).toEqual(ownedUnsupportedImportedPack.risk);
+    expect(after.markets).toEqual(ownedUnsupportedImportedPack.markets);
+    expect(after.origin).toBe(ownedUnsupportedImportedPack.origin);
+  });
+
+  it("Create new owned strategy after an unsupported import replaces the editor contents by explicit action", () => {
+    const client = makeClient();
+    const importedBytes = JSON.stringify(ownedUnsupportedImportedPack, null, 2);
+    render(<Editor client={client} />);
+    fireEvent.change(screen.getByLabelText(/raw json/i), {
+      target: { value: importedBytes },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /create new owned strategy/i }),
+    );
+    const seeded = JSON.parse(
+      (screen.getByLabelText(/raw json/i) as HTMLTextAreaElement).value,
+    );
+    expect(seeded.indicators).not.toEqual(ownedUnsupportedImportedPack.indicators);
+    expect(seeded.entry).toEqual(["close", ">", "ma"]);
+    expect(screen.queryByTestId("owned-strategy-form-unsupported")).toBeNull();
+  });
+
+  it("the form is seeded from a loaded supported revision with its real values", () => {
+    const client = makeClient();
+    const seeded = seedOwnedStrategyPack("Trend plan");
+    render(
+      <Editor
+        client={client}
+        initial={{
+          revision_id: "rev-parent",
+          state: "draft",
+          bytes: JSON.stringify(seeded, null, 2),
+        }}
+      />,
+    );
+    expect(screen.getByTestId("owned-strategy-form")).toBeDefined();
+    expect(
+      (screen.getByLabelText(/strategy name/i) as HTMLInputElement).value,
+    ).toBe("Trend plan");
+  });
+
+  it("creating a form-seeded strategy does not auto-arm and leaves Arm disabled", async () => {
+    const client = makeClient();
+    render(<Editor client={client} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /create new owned strategy/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(client.create).toHaveBeenCalledTimes(1);
+    });
+    expect(client.arm).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

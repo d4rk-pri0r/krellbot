@@ -7,6 +7,13 @@ import type {
   StrategyClient,
   ValidationError,
 } from "./client";
+import { OwnedStrategyForm } from "./OwnedStrategyForm";
+import {
+  readOwnedStrategy,
+  seedOwnedStrategyForm,
+  seedOwnedStrategyPack,
+  type OwnedStrategyFormState,
+} from "./ownedStrategy";
 
 export type { DraftState, DraftSummary, Pack, StrategyClient, ValidationError };
 
@@ -45,6 +52,9 @@ function readLabel(pack: Pack | null): string {
 export function Editor({ client, initial, onRevision }: EditorProps): JSX.Element {
   const initialRawJson = initial?.bytes ?? "";
   const [rawJson, setRawJson] = useState<string>(initialRawJson);
+  const [ownedForm, setOwnedForm] = useState<OwnedStrategyFormState | null>(() =>
+    readOwnedStrategy(parsePack(initialRawJson)),
+  );
   const [lastSummary, setLastSummary] = useState<DraftSummary | null>(() => {
     if (!initial) {
       return null;
@@ -68,6 +78,30 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
 
   const currentPack = useMemo(() => parsePack(rawJson), [rawJson]);
   const labelValue = readLabel(currentPack);
+  // The form is offered only when the current pack is exactly the supported
+  // subset. Anything else (imported, nested, extra indicators) keeps its
+  // bytes untouched; the user is told instead of the pack being rewritten.
+  const formSupported = useMemo(
+    () => (rawJson.trim() === "" ? true : readOwnedStrategy(currentPack) !== null),
+    [rawJson, currentPack],
+  );
+
+  const handleStartOwnedStrategy = (): void => {
+    const form = seedOwnedStrategyForm();
+    const pack = seedOwnedStrategyPack(form.name);
+    setOwnedForm({ ...form, id: pack.id as string });
+    setRawJson(JSON.stringify(pack, null, 2));
+    setImportError(null);
+  };
+
+  const handleOwnedApply = (pack: Pack | null): void => {
+    if (!pack) {
+      // Invalid form state: keep the last good payload in the JSON view so
+      // Save still sends a pack the schema accepts.
+      return;
+    }
+    setRawJson(JSON.stringify(pack, null, 2));
+  };
 
   const handleLabelChange = (nextLabel: string): void => {
     if (currentPack) {
@@ -208,8 +242,35 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
     >
       <header className="kbot-strategy-editor__head">
         <h2 className="kbot-strategy-editor__title">Strategy draft</h2>
+        <div className="kbot-strategy-editor__head-actions">
+          <button
+            type="button"
+            className="kbot-strategy-editor__action"
+            onClick={handleStartOwnedStrategy}
+          >
+            Create new owned strategy
+          </button>
+        </div>
       </header>
       <div className="kbot-strategy-editor__body">
+        {ownedForm && formSupported ? (
+          <OwnedStrategyForm
+            state={ownedForm}
+            basePack={currentPack}
+            onStateChange={setOwnedForm}
+            onApply={(pack) => handleOwnedApply(pack)}
+          />
+        ) : null}
+        {!formSupported ? (
+          <p
+            className="kbot-strategy-editor__unsupported"
+            data-testid="owned-strategy-form-unsupported"
+          >
+            This pack is not supported by the form (it uses features outside
+            the supported moving-average subset). Edit it as JSON below; the
+            form will not rewrite it. Imported pack ownership is not verified.
+          </p>
+        ) : null}
         <label
           className="kbot-strategy-editor__field"
           htmlFor="kbot-strategy-editor-label"
