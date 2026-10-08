@@ -31,6 +31,7 @@ from krellbot.api.security import (
 from krellbot.application import alerts as alerts_app
 from krellbot.application import live_gate
 from krellbot.application import operations as operations_view_app
+from krellbot.application import packs as app_packs
 from krellbot.application.live_preflight import SandboxTransport
 from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
 from krellbot.application.strategy import (
@@ -1025,6 +1026,28 @@ def create_app(
 
         body = _rehearsal_service(s).status_dict()
         return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/v1/packs")
+    async def packs(request: Request) -> Response:
+        """Return the closed-shape installed pack rows (installed pack library).
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF
+        required. The body is exactly the row list from
+        ``krellbot.application.packs.list_packs`` — one object per pack
+        with the closed keys ``bucket``, ``pack_id``, ``version``,
+        ``permissions``, ``rollback_ref``. The route is read-only: it
+        mounts no install, catalog, entitlement, or rollback surface,
+        and adds nothing to ``/api/v1/capabilities``.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = app_packs.list_packs(s.home)
+        return JSONResponse(body, status_code=200)
     @app.get("/api/v1/capabilities")
     async def capabilities(request: Request) -> Response:
         # The bootstrap token reaches the shell only through the

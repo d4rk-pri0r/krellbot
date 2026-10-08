@@ -25,6 +25,16 @@ export type PackRollbackResult = {
   message?: string;
 };
 
+export class PackLibraryHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "PackLibraryHttpError";
+    this.status = status;
+  }
+}
+
 export type PackLibraryClient = {
   listInstalled(): Promise<PackRow[]>;
   rollback(pack_id: string): Promise<PackRollbackResult>;
@@ -39,7 +49,7 @@ async function getJson(url: string): Promise<PackRow[]> {
     },
   });
   if (!response.ok) {
-    throw new Error(`pack library failed: ${response.status}`);
+    throw new PackLibraryHttpError(response.status, `pack library failed: ${response.status}`);
   }
   const raw = (await response.json()) as unknown;
   if (!Array.isArray(raw)) {
@@ -106,4 +116,12 @@ export function createHttpClient(): PackLibraryClient {
       return postRollback(pack_id);
     },
   };
+}
+
+/**
+ * Same client under the name the WorkstationShell imports; kept separate
+ * so existing `createHttpClient` callers are untouched.
+ */
+export function createPacksHttpClient(): PackLibraryClient {
+  return createHttpClient();
 }

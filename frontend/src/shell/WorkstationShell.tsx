@@ -37,6 +37,9 @@ import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
 import { OperationsView } from "../features/operations/OperationsView";
 import { createHttpClient as createOperationsHttpClient } from "../features/operations/client";
 import type { OperationsClient } from "../features/operations/client";
+import { PackLibrary } from "../features/packs/PackLibrary";
+import { createPacksHttpClient } from "../features/packs/client";
+import type { PackLibraryClient } from "../features/packs/client";
 import { recoverCsrf, redeemBootstrap } from "../session";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
@@ -117,6 +120,7 @@ export type WorkstationShellProps = {
   strategyClient?: StrategyClient;
   operationsClient?: OperationsClient;
   libraryClient?: LibraryClient;
+  packClient?: PackLibraryClient;
 };
 
 export function WorkstationShell({
@@ -125,6 +129,7 @@ export function WorkstationShell({
   strategyClient,
   operationsClient,
   libraryClient,
+  packClient,
 }: WorkstationShellProps = {}): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchRevision, setSearchRevision] = useState(0);
@@ -354,6 +359,11 @@ export function WorkstationShell({
     () => operationsClient ?? createOperationsHttpClient(),
     [operationsClient],
   );
+  const packs = useMemo(
+    () => packClient ?? createPacksHttpClient(),
+    [packClient],
+  );
+  const [packsOpen, setPacksOpen] = useState(false);
 
   const [bootstrapDone, setBootstrapDone] = useState(false);
 
@@ -590,6 +600,18 @@ export function WorkstationShell({
               bytes={savedRevision?.bytes ?? ""}
               revisionId={savedRevision?.revision_id ?? null}
             />
+            <button
+              type="button"
+              className="kbot-shell__packs-toggle"
+              data-testid="strategies-packs-toggle"
+              aria-pressed={packsOpen}
+              onClick={() => {
+                setPacksOpen((open) => !open);
+              }}
+            >
+              Packs
+            </button>
+            {packsOpen ? <PackLibrary client={packs} /> : null}
           </>
         ) : null}
         {active === "research" ? (
