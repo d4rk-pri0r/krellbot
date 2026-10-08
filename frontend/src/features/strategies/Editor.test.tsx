@@ -202,7 +202,7 @@ describe("Editor save", () => {
 });
 
 describe("Editor M2-WRITE save outcomes", () => {
-  it("unchanged save renders 'No change: revision <id> kept' and does not call onRevision", async () => {
+  it("unchanged save renders 'no change: revision <id> kept' and does not call onRevision", async () => {
     const onRevision = vi.fn();
     const client = makeClient({
       edit: vi.fn().mockResolvedValue({
@@ -227,11 +227,11 @@ describe("Editor M2-WRITE save outcomes", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     const outcome = await screen.findByTestId("editor-save-outcome");
-    expect(outcome.textContent).toMatch(/No change: revision rev-parent kept/);
+    expect(outcome.textContent).toMatch(/no change: revision rev-parent kept/);
     expect(onRevision).not.toHaveBeenCalled();
   });
 
-  it("created save renders 'Saved new revision <id>' and surfaces the outcome", async () => {
+  it("created save renders 'saved new revision <id>' and surfaces the outcome", async () => {
     const onRevision = vi.fn();
     const client = makeClient({
       edit: vi.fn().mockResolvedValue({
@@ -256,7 +256,7 @@ describe("Editor M2-WRITE save outcomes", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     const outcome = await screen.findByTestId("editor-save-outcome");
-    expect(outcome.textContent).toMatch(/Saved new revision rev-new/);
+    expect(outcome.textContent).toMatch(/saved new revision rev-new/);
     expect(onRevision).toHaveBeenCalledTimes(1);
   });
 
@@ -283,7 +283,7 @@ describe("Editor M2-WRITE save outcomes", () => {
     expect(alert.textContent).toMatch(/strategy_id_mismatch/);
   });
 
-  it("save with a missing server outcome renders 'Saved revision <id>' and never 'Saved new revision' (W3)", async () => {
+  it("save with a missing server outcome renders 'saved revision <id>' and never 'saved new revision' (W3)", async () => {
     const onRevision = vi.fn();
     const client = makeClient({
       edit: vi.fn().mockResolvedValue({
@@ -307,8 +307,8 @@ describe("Editor M2-WRITE save outcomes", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     const outcome = await screen.findByTestId("editor-save-outcome");
-    expect(outcome.textContent).toMatch(/Saved revision rev-no-outcome/);
-    expect(outcome.textContent).not.toMatch(/Saved new revision/);
+    expect(outcome.textContent).toMatch(/saved revision rev-no-outcome/);
+    expect(outcome.textContent).not.toMatch(/saved new revision/);
   });
 });
 

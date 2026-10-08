@@ -15,6 +15,7 @@ import {
   seedOwnedStrategyPack,
   type OwnedStrategyFormState,
 } from "./ownedStrategy";
+import { summarizeSaveOutcome } from "./saveOutcomeSummary";
 
 export type { DraftState, DraftSummary, Pack, StrategyClient, ValidationError };
 
@@ -150,16 +151,16 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
         ? await client.edit(parentId, pack)
         : await client.create(pack);
       if (summary.outcome === "unchanged") {
-        setSaveOutcome(`No change: revision ${summary.revision_id} kept`);
+        setSaveOutcome(summarizeSaveOutcome("unchanged", summary.revision_id).label);
         return;
       }
       if (summary.outcome === "existing") {
-        setSaveOutcome(`Selected existing revision ${summary.revision_id}`);
+        setSaveOutcome(summarizeSaveOutcome("existing", summary.revision_id).label);
       } else if (summary.outcome === "created") {
-        setSaveOutcome(`Saved new revision ${summary.revision_id}`);
+        setSaveOutcome(summarizeSaveOutcome("created", summary.revision_id).label);
       } else {
         // W3: missing server outcome must not render "Saved new".
-        setSaveOutcome(`Saved revision ${summary.revision_id}`);
+        setSaveOutcome(summarizeSaveOutcome("other", summary.revision_id).label);
       }
       setLastSummary(summary);
       onRevision?.(summary, rawJson);
