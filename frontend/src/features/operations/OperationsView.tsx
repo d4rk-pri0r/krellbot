@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useState, type JSX } from "react";
 import { DeploymentHistory } from "./DeploymentHistory";
 import type { OperationsClient, OperationsViewModel } from "./client";
 import { DeploymentsCsvExport } from "./DeploymentsCsvExport";
 import { AlertsCsvExport } from "./AlertsCsvExport";
 import { AcknowledgedAlertsList } from "./AcknowledgedAlertsList";
+import { useOperationsRefresh } from "./useOperationsRefresh";
 
 const DISABLED_BANNER =
   "Live trading is disabled in this build (KRELLBOT_ENABLE_LIVE is not 1).";
@@ -20,6 +21,12 @@ const STALE_SUFFIX =
   "showing last known state from the previous successful read — not current server state";
 const UNKNOWN_OUTCOME_TEXT =
   "outcome unknown: the command may not have been sent or applied — check state before retrying";
+const LAST_READ_NEVER_TEXT =
+  "Last successful read from this dashboard server: never — nothing has been read yet";
+const LAST_READ_PREFIX = "Last successful read from this dashboard server:";
+const LAST_READ_QUALIFIER =
+  "local server read age only — not exchange-candle freshness and not proof the bot is trading";
+const MANUAL_REFRESH_LABEL = "Refresh now";
 
 export type { OperationsClient } from "./client";
 export type OperationsViewProps = {
@@ -91,6 +98,16 @@ function killStateText(engaged: boolean, reason: string | null): string {
   return `Kill switch: engaged — ${reason ?? "(no reason)"}`;
 }
 
+function formatReadAge(ageMs: number): string {
+  const seconds = Math.floor(ageMs / 1000);
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const rem = seconds % 60;
+  return `${minutes}m ${rem}s ago`;
+}
+
 function renderLiveBanner(live: OperationsViewModel["live"]): JSX.Element {
   const { live_enabled, authorized } = live;
   if (!live_enabled) {
@@ -121,8 +138,6 @@ function renderLiveBanner(live: OperationsViewModel["live"]): JSX.Element {
 }
 
 export function OperationsView({ client }: OperationsViewProps): JSX.Element {
-  const [view, setView] = useState<OperationsViewModel | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const [killReason, setKillReason] = useState<string>("");
   const [promoteResults, setPromoteResults] = useState<
     Record<string, { code: string; message: string }>
@@ -137,19 +152,8 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
   const [resumeErrors, setResumeErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Set<string>>(new Set());
 
-  const refresh = useCallback(async (): Promise<void> => {
-    try {
-      const next = await client.getOperations();
-      setView(next);
-      setFetchError(null);
-    } catch (err) {
-      setFetchError(err instanceof Error ? err.message : String(err));
-    }
-  }, [client]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const { view, fetchError, lastSuccessAgeMs, refresh } =
+    useOperationsRefresh(client);
 
   const handlePromote = useCallback(
     async (venue: string, pair: string): Promise<void> => {
@@ -292,6 +296,21 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
     <section className="kbot-ops" data-testid="operations-view">
       <header className="kbot-ops__head">
         <h2 className="kbot-ops__title">Operations</h2>
+        <p className="kbot-ops__read-age" data-testid="ops-last-read-age">
+          {lastSuccessAgeMs === null
+            ? LAST_READ_NEVER_TEXT
+            : `${LAST_READ_PREFIX} ${formatReadAge(lastSuccessAgeMs)} (${LAST_READ_QUALIFIER})`}
+        </p>
+        <button
+          type="button"
+          className="kbot-ops__refresh"
+          data-testid="ops-refresh"
+          onClick={() => {
+            void refresh();
+          }}
+        >
+          {MANUAL_REFRESH_LABEL}
+        </button>
       </header>
       {fetchError !== null ? (
         <p className="kbot-ops__stale" role="alert" data-testid="ops-stale-warning">

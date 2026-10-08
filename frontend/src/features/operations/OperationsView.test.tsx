@@ -1,10 +1,14 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OperationsView } from "./OperationsView";
 import type {
   OperationsClient,
   OperationsViewModel,
 } from "./client";
+import {
+  OPERATIONS_READ_TIMEOUT_MS,
+  OPERATIONS_REFRESH_INTERVAL_MS,
+} from "./useOperationsRefresh";
 
 afterEach(() => {
   cleanup();
@@ -588,5 +592,207 @@ describe("OperationsView alerts", () => {
     await waitFor(() => {
       expect(client.ackAlert).toHaveBeenCalledWith("abc123");
     });
+  });
+});
+
+describe("OperationsView periodic freshness", () => {
+  const deploymentView = (paused: boolean): OperationsViewModel =>
+    view({
+      deployments: [
+        {
+          venue: "kraken",
+          pair: "SUIUSD",
+          pack_id: "trend-follow",
+          pack_version: "1.0.0",
+          mode: "paper",
+          entries_paused: paused,
+          promotion: { available: false, code: "live_disabled" },
+        },
+      ],
+    });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function settle(ms = 0): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  // With fake timers, RTL's findBy* polling never advances, so each test
+  // flushes the mount read itself and then uses synchronous queries.
+  async function rendered(): Promise<void> {
+    await settle();
+  }
+
+  it("updates the deployments table from a later periodic read without any action", async () => {
+    let calls = 0;
+    const client = makeClient({
+      getOperations: vi.fn().mockImplementation(async () => {
+        calls += 1;
+        return deploymentView(calls > 1);
+      }),
+    });
+    render(<OperationsView client={client} />);
+    await rendered();
+    const row = screen.getByTestId("ops-deployment-kraken-SUIUSD");
+    expect(row.textContent).toMatch(/active/i);
+
+    await settle(OPERATIONS_REFRESH_INTERVAL_MS);
+    expect(screen.getByTestId("ops-deployment-kraken-SUIUSD").textContent).toMatch(/paused/i);
+    expect(client.pauseEntries).not.toHaveBeenCalled();
+    expect(client.engageKill).not.toHaveBeenCalled();
+    expect(client.ackAlert).not.toHaveBeenCalled();
+  });
+
+  it("shows the last successful read age with the truthful qualifier, never a heartbeat claim", async () => {
+    const client = makeClient();
+    render(<OperationsView client={client} />);
+    await rendered();
+    const age = screen.getByTestId("ops-last-read-age");
+    expect(age.textContent).toContain("Last successful read from this dashboard server:");
+    expect(age.textContent).toMatch(/ago/);
+    expect(age.textContent).toContain(
+      "local server read age only — not exchange-candle freshness and not proof the bot is trading",
+    );
+    expect(age.textContent ?? "").not.toMatch(/heartbeat|exchange (is )?(connected|healthy)/i);
+  });
+
+  it("ages the read upward while reads fail, retaining the last known rows", async () => {
+    let calls = 0;
+    const client = makeClient({
+      getOperations: vi.fn().mockImplementation(async () => {
+        calls += 1;
+        if (calls > 1) {
+          throw new Error("operations view failed: 503");
+        }
+        return deploymentView(false);
+      }),
+    });
+    render(<OperationsView client={client} />);
+    await rendered();
+    expect(screen.getByTestId("ops-deployment-kraken-SUIUSD")).toBeDefined();
+    const firstAge = screen.getByTestId("ops-last-read-age").textContent ?? "";
+
+    await settle(OPERATIONS_REFRESH_INTERVAL_MS * 3);
+    const stale = screen.getByTestId("ops-stale-warning");
+    expect(stale.textContent).toContain("operations view failed: 503");
+    // The retained row is still the last known state, not wiped or invented.
+    expect(screen.getByTestId("ops-deployment-kraken-SUIUSD").textContent).toContain(
+      "trend-follow",
+    );
+    const laterAge = screen.getByTestId("ops-last-read-age").textContent ?? "";
+    expect(laterAge).not.toBe(firstAge);
+    const parse = (text: string): number | null => {
+      const m = text.match(/(\d+)s ago/);
+      return m ? Number(m[1]) : null;
+    };
+    const first = parse(firstAge);
+    const later = parse(laterAge);
+    if (first !== null && later !== null) {
+      expect(later).toBeGreaterThanOrEqual(first);
+    }
+  });
+
+  it("recovers via the manual Refresh button without reloading and clears the stale warning", async () => {
+    let calls = 0;
+    const client = makeClient({
+      getOperations: vi.fn().mockImplementation(async () => {
+        calls += 1;
+        if (calls === 2) {
+          throw new Error("operations view failed: 503");
+        }
+        return deploymentView(calls > 2);
+      }),
+    });
+    render(<OperationsView client={client} />);
+    await rendered();
+    await settle(OPERATIONS_REFRESH_INTERVAL_MS);
+    expect(screen.getByTestId("ops-stale-warning")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("ops-refresh"));
+    await settle();
+    expect(screen.queryByTestId("ops-stale-warning")).toBeNull();
+    expect(screen.getByTestId("ops-deployment-kraken-SUIUSD").textContent).toMatch(/paused/i);
+  });
+
+  it("keeps protective controls usable while the view is stale", async () => {
+    let calls = 0;
+    const client = makeClient({
+      getOperations: vi.fn().mockImplementation(async () => {
+        calls += 1;
+        if (calls > 1) {
+          throw new Error("operations view failed: 503");
+        }
+        return deploymentView(false);
+      }),
+      pauseEntries: vi.fn().mockResolvedValue({
+        schema_version: "1",
+        code: "entries_paused",
+        ok: true,
+      }),
+    });
+    render(<OperationsView client={client} />);
+    await rendered();
+    await settle(OPERATIONS_REFRESH_INTERVAL_MS);
+    expect(screen.getByTestId("ops-stale-warning")).toBeDefined();
+
+    const pause = screen.getByTestId("ops-pause-kraken-SUIUSD");
+    expect((pause as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(pause);
+    await settle();
+    expect(client.pauseEntries).toHaveBeenCalledWith("kraken", "SUIUSD");
+    // The kill switch input stays editable too.
+    const reason = screen.getByTestId("ops-kill-reason") as HTMLInputElement;
+    expect(reason.disabled).toBe(false);
+  });
+
+  it("a hung read visibly stales and then recovers on a later read", async () => {
+    let calls = 0;
+    const client = makeClient({
+      getOperations: vi.fn().mockImplementation(() => {
+        calls += 1;
+        if (calls === 1) {
+          return Promise.resolve(deploymentView(false));
+        }
+        if (calls === 2) {
+          return new Promise<OperationsViewModel>(() => undefined);
+        }
+        return Promise.resolve(deploymentView(true));
+      }),
+    });
+    render(<OperationsView client={client} />);
+    await rendered();
+    expect(screen.getByTestId("ops-deployment-kraken-SUIUSD")).toBeDefined();
+
+    await settle(OPERATIONS_REFRESH_INTERVAL_MS + OPERATIONS_READ_TIMEOUT_MS + 500);
+    const stale = screen.getByTestId("ops-stale-warning");
+    expect(stale.textContent).toMatch(/timed out after 4000ms/);
+    // The last known rows are retained while the read hangs.
+    expect(screen.getByTestId("ops-deployment-kraken-SUIUSD").textContent).toContain(
+      "trend-follow",
+    );
+
+    await settle(OPERATIONS_REFRESH_INTERVAL_MS);
+    expect(screen.queryByTestId("ops-stale-warning")).toBeNull();
+    expect(screen.getByTestId("ops-deployment-kraken-SUIUSD").textContent).toMatch(/paused/i);
+  });
+
+  it("stops reading after unmount", async () => {
+    const client = makeClient();
+    const { unmount } = render(<OperationsView client={client} />);
+    await rendered();
+    unmount();
+    const callsAfterUnmount = (client.getOperations as ReturnType<typeof vi.fn>).mock.calls.length;
+    await settle(OPERATIONS_REFRESH_INTERVAL_MS * 3);
+    expect((client.getOperations as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+      callsAfterUnmount,
+    );
   });
 });
