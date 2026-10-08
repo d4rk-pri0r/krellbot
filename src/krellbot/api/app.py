@@ -191,6 +191,220 @@ def _gate_get(request: Request, s: _AppState) -> Response | None:
     return None
 
 
+# ---- paper history projection (read-only) ---------------------------------
+
+PAPER_HISTORY_MAX_RUNS = 20
+PAPER_HISTORY_MAX_FILLS = 50
+
+
+def _read_journal_records(home: Path) -> list[dict]:
+    """Return every valid tick record under ``<home>/journal/*.jsonl``.
+
+    Malformed lines and unreadable files are skipped, never fatal: the
+    history view is read-only evidence over an append-only journal, so a
+    torn last line must not take the panel down.
+    """
+
+    journal_dir = Path(home) / "journal"
+    if not journal_dir.is_dir():
+        return []
+    records: list[dict] = []
+    for path in sorted(journal_dir.glob("*.jsonl")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if isinstance(record, dict):
+                records.append(record)
+    return records
+
+
+def _tick_refusal_code(record: dict) -> str | None:
+    """Return the refusal code a tick record carries, else ``None``.
+
+    Refusal paths in the engine write a literal code: the live gate and
+    store refusals carry ``detail.code``, per-pack send refusals carry
+    ``detail.intent_refused``, and an instrument-metadata refusal carries
+    ``detail.metadata_refusal``. A plain decision ``reason`` is NOT a
+    refusal, so it is never reported as one.
+    """
+
+    detail = record.get("detail")
+    if not isinstance(detail, dict):
+        return None
+    for key in ("code", "intent_refused", "metadata_refusal"):
+        value = detail.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _paper_state_fills(home: Path, venue: str) -> list[dict]:
+    """Return the paper state's ``recent_fills`` for ``venue``, with pair.
+
+    The returned items are internal: they keep ``pair`` so the caller can
+    bucket them per run. Exposure rule for the wire: only ``coid``,
+    ``side`` and ``ts_ms`` survive the projection — fill ``qty``/``price``
+    belong to the money plane the brief keeps off the wire, and the state
+    file's balances (owned cash) are never read here at all.
+    """
+
+    path = Path(home) / "run" / f"paper-{venue}.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return []
+    if not isinstance(raw, dict):
+        return []
+    fills_raw = raw.get("recent_fills")
+    if not isinstance(fills_raw, list):
+        return []
+    fills: list[dict] = []
+    for item in fills_raw:
+        if not isinstance(item, dict):
+            continue
+        pair = item.get("pair")
+        if not isinstance(pair, str) or not pair:
+            continue
+        fills.append(
+            {
+                "coid": str(item.get("coid", "")),
+                "side": str(item.get("side", "")),
+                "pair": pair,
+                "ts_ms": int(item.get("ts_ms", 0) or 0),
+            }
+        )
+    return fills
+
+
+def _paper_history_view(home: Path) -> dict:
+    """Build the closed-shape read-only paper history body.
+
+    A "run" is the journal's evidence for one ``(venue, pack, pair)``
+    triple — the identity the tick journal actually records. Runs sort
+    most-recent-first and cap at ``PAPER_HISTORY_MAX_RUNS``. ``status``
+    is ``"active"`` when the config still arms that triple, else
+    ``"closed"``. No cash, quantity, stop, cap, pack path, or pack
+    digest is read into or returned by this view.
+    """
+
+    home = Path(home)
+    runs: dict[tuple[str, str, str], dict] = {}
+    for record in _read_journal_records(home):
+        if record.get("kind") != "tick":
+            continue
+        venue = record.get("venue")
+        pack_id = record.get("pack")
+        if not isinstance(venue, str) or not isinstance(pack_id, str):
+            continue
+        detail = record.get("detail")
+        pair = detail.get("pair") if isinstance(detail, dict) else None
+        if not isinstance(pair, str) or not pair:
+            continue
+        ts = record.get("ts")
+        ts_ms = int(ts) * 1000 if isinstance(ts, (int, float)) else 0
+        key = (venue, pack_id, pair)
+        run = runs.setdefault(
+            key,
+            {
+                "venue": venue,
+                "pair": pair,
+                "pack_id": pack_id,
+                "pack_version": None,
+                "first_ts_ms": ts_ms,
+                "last_ts_ms": ts_ms,
+                "ticks_total": 0,
+                "last_refusal_code": None,
+                "mode": "paper",
+                "status": "closed",
+                "summary": "",
+                "recent_fills": [],
+                "_refusals": [],
+            },
+        )
+        run["first_ts_ms"] = min(run["first_ts_ms"], ts_ms)
+        run["last_ts_ms"] = max(run["last_ts_ms"], ts_ms)
+        run["ticks_total"] += 1
+        refusal = _tick_refusal_code(record)
+        if refusal is not None:
+            run["_refusals"].append((ts_ms, refusal))
+
+    try:
+        config = kb_config.load_config(home)
+    except (OSError, ValueError):
+        config = None
+    if config is not None:
+        for armed in config.armed:
+            key = (armed.venue, armed.pack_id, armed.pair)
+            run = runs.get(key)
+            if run is not None:
+                run["status"] = "active"
+                run["mode"] = armed.mode
+                run["pack_version"] = armed.pack_version
+
+    venue_fills: dict[str, list[dict]] = {}
+    body_runs: list[dict] = []
+    for run in runs.values():
+        # Paper fills carry no pack id; the state file is per venue, so
+        # bucket the venue's fills by pair and hand this run its bucket.
+        if run["venue"] not in venue_fills:
+            venue_fills[run["venue"]] = _paper_state_fills(home, run["venue"])
+        run_fills = [
+            fill
+            for fill in venue_fills[run["venue"]]
+            if fill["pair"] == run["pair"]
+        ]
+        refusal_code = None
+        if run["_refusals"]:
+            refusal_code = max(run["_refusals"], key=lambda item: item[0])[1]
+        parts = [
+            f"{run['ticks_total']} tick{'s' if run['ticks_total'] != 1 else ''}",
+            f"{len(run_fills)} fill{'s' if len(run_fills) != 1 else ''}",
+        ]
+        if refusal_code is not None:
+            parts.append(f"last refusal {refusal_code}")
+        else:
+            parts.append("no refusal")
+        parts.append(run["status"])
+        exposed_run: dict = {
+            "venue": run["venue"],
+            "pair": run["pair"],
+            "pack_id": run["pack_id"],
+            "first_ts_ms": run["first_ts_ms"],
+            "last_ts_ms": run["last_ts_ms"],
+            "ticks_total": run["ticks_total"],
+            "last_refusal_code": refusal_code,
+            "mode": run["mode"],
+            "status": run["status"],
+            "summary": ", ".join(parts),
+            "recent_fills": [
+                {
+                    "coid": fill["coid"],
+                    "side": fill["side"],
+                    "ts_ms": fill["ts_ms"],
+                }
+                for fill in run_fills[-PAPER_HISTORY_MAX_FILLS:]
+            ],
+        }
+        if run["pack_version"]:
+            exposed_run["pack_version"] = run["pack_version"]
+        body_runs.append(exposed_run)
+
+    body_runs.sort(key=lambda run: run["last_ts_ms"], reverse=True)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "runs": body_runs[:PAPER_HISTORY_MAX_RUNS],
+    }
+
+
 def _format_sse(event_id: str, event_name: str, data_payload: dict) -> bytes:
     """Render a single SSE frame. JSON-encode the payload as ``data:``."""
 
@@ -766,6 +980,51 @@ def create_app(
         }
         return JSONResponse(body, status_code=200)
 
+    @app.get("/api/v1/paper/history")
+    async def paper_history(request: Request) -> Response:
+        """Return the read-only "Last runs" projection (paper panel).
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF. The
+        body is read-only evidence over ``<home>/journal/*.jsonl`` plus
+        the paper state file ``<home>/run/paper-<venue>.json``: one run
+        per ``(venue, pack, pair)`` the journal records, capped at 20
+        runs with ``recent_fills`` capped at 50. The route never reads
+        or returns owned cash, quantity, stop, cap, or the pack path —
+        fill ``qty``/``price`` stay off the wire too — and there is no
+        control surface here: nothing edits, arms, or starts a run.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = _paper_history_view(s.home)
+        return JSONResponse(
+            body,
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/rehearsal/status")
+    async def rehearsal_status(request: Request) -> Response:
+        """Return the synthetic rehearsal projection.
+
+        Same gate as ``GET /api/v1/paper/status``: session cookie +
+        loopback Origin + loopback Host, no CSRF. The body is the closed
+        plain-JSON rehearsal projection — status, cursor, total bars,
+        balances, position, resting stop, recent fills — with the
+        explicit synthetic label, and never an internal service object.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = _rehearsal_service(s).status_dict()
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
     @app.get("/api/v1/capabilities")
     async def capabilities(request: Request) -> Response:
         # The bootstrap token reaches the shell only through the

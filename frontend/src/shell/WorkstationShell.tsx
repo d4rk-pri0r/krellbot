@@ -8,9 +8,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { Connection } from "@xyflow/react";
-import type { PaperClient } from "../features/paper/client";
+import type { PaperClient, PaperRunsClient } from "../features/paper/client";
 import { StatusPanel } from "../features/paper/StatusPanel";
 import { createHttpClient as createPaperHttpClient } from "../features/paper/client";
+import { LastRunsPanel } from "../features/paper/LastRunsPanel";
+import { createLastRunsHttpClient } from "../features/paper/client";
 import { ResearchView } from "../features/research/ResearchView";
 import { createHttpClient as createResearchHttpClient } from "../features/research/client";
 import type { ResearchClient } from "../features/research/client";
@@ -342,6 +344,12 @@ export function WorkstationShell({
     () => paperClient ?? createPaperHttpClient(),
     [paperClient],
   );
+  // LastRunsPanel needs listRuns guaranteed at the call site, even when
+  // a bare PaperClient prop is injected: layer the runs client on top.
+  const paperRuns = useMemo(
+    () => Object.assign({}, paper, createLastRunsHttpClient()),
+    [paper],
+  );
   const operations = useMemo(
     () => operationsClient ?? createOperationsHttpClient(),
     [operationsClient],
@@ -530,7 +538,10 @@ export function WorkstationShell({
           <>
             <h1 className="kbot-shell__heading">Paper workstation</h1>
             {bootstrapDone ? (
-              <StatusPanel client={paper} />
+              <>
+                <StatusPanel client={paper} />
+                <LastRunsPanel client={paperRuns} />
+              </>
             ) : (
               <p
                 className="kbot-paper-status__empty"

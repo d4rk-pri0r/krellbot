@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHttpClient } from "./client";
+import { createHttpClient, createLastRunsHttpClient } from "./client";
+import { getCsrf } from "../../session";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -126,5 +127,150 @@ describe("createHttpClient paper commands", () => {
       expect(payload.mode).toBeUndefined();
       expect(body.command).not.toMatch(/^live\./);
     }
+  });
+});
+
+describe("createHttpClient listRuns", () => {
+  it("GETs /api/v1/paper/history with credentials: include and the CSRF header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        runs: [
+          {
+            venue: "kraken",
+            pair: "SUIUSD",
+            pack_id: "trend-follow",
+            first_ts_ms: 1_760_000_100_000,
+            last_ts_ms: 1_760_000_200_000,
+            ticks_total: 2,
+            last_refusal_code: "store_full",
+            mode: "paper",
+            status: "closed",
+            summary: "2 ticks, 2 fills, last refusal store_full, closed",
+            recent_fills: [
+              { coid: "coid-entry-1", side: "buy", ts_ms: 1_000 },
+              { coid: "coid-exit-1", side: "sell", ts_ms: 2_000 },
+            ],
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const history = await createHttpClient().listRuns();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/paper/history");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    expect(init.headers).toEqual({ "X-Krellbot-CSRF": getCsrf() });
+    expect(history.schema_version).toBe("1");
+    expect(history.runs).toHaveLength(1);
+    const run = history.runs[0];
+    expect(run.venue).toBe("kraken");
+    expect(run.pair).toBe("SUIUSD");
+    expect(run.pack_id).toBe("trend-follow");
+    expect(run.pack_version).toBeUndefined();
+    expect(run.first_ts_ms).toBe(1_760_000_100_000);
+    expect(run.last_ts_ms).toBe(1_760_000_200_000);
+    expect(run.ticks_total).toBe(2);
+    expect(run.last_refusal_code).toBe("store_full");
+    expect(run.mode).toBe("paper");
+    expect(run.status).toBe("closed");
+    expect(run.summary).toBe("2 ticks, 2 fills, last refusal store_full, closed");
+    expect(run.recent_fills).toEqual([
+      { coid: "coid-entry-1", side: "buy", ts_ms: 1_000 },
+      { coid: "coid-exit-1", side: "sell", ts_ms: 2_000 },
+    ]);
+  });
+
+  it("parses an ok body with pack_version, null refusal, and no runs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        runs: [
+          {
+            venue: "kraken",
+            pair: "SUIUSD",
+            pack_id: "trend-follow",
+            pack_version: "3",
+            first_ts_ms: 5,
+            last_ts_ms: 6,
+            ticks_total: 1,
+            last_refusal_code: null,
+            mode: "paper",
+            status: "active",
+            summary: "1 tick, 0 fills, no refusal, active",
+            recent_fills: [],
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const history = await createHttpClient().listRuns();
+    const run = history.runs[0];
+    expect(run.pack_version).toBe("3");
+    expect(run.last_refusal_code).toBeNull();
+    expect(run.recent_fills).toEqual([]);
+  });
+
+  it("returns an empty runs list for the no-history body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1", runs: [] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const history = await createHttpClient().listRuns();
+    expect(history.runs).toEqual([]);
+  });
+
+  it("throws a PaperCommandResult-flavoured refusal error on a non-2xx body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        { schema_version: "1", code: "session_required", ok: false, message: "session required" },
+        403,
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listRuns()).rejects.toThrow(
+      "paper history refused: session_required",
+    );
+  });
+
+  it("falls back to the refusal message when no code is present", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ detail: "session required" }, 403),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listRuns()).rejects.toThrow(/403/);
+  });
+
+  it("falls back to the bare status when the error body is not JSON", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => {
+        throw new Error("not json");
+      },
+    } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listRuns()).rejects.toThrow(
+      "paper history refused: 500",
+    );
+  });
+
+  it("throws when the network request fails", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listRuns()).rejects.toThrow("fetch failed");
+  });
+
+  it("createLastRunsHttpClient exposes listRuns", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1", runs: [] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createLastRunsHttpClient();
+    expect(typeof client.listRuns).toBe("function");
+    const history = await client.listRuns();
+    expect(history.runs).toEqual([]);
   });
 });
