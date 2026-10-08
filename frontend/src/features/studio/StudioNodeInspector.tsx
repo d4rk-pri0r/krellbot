@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type JSX } from "react";
+import { IndicatorSpecJsonExport } from "./IndicatorSpecJsonExport";
 
 export type StudioNodeInspectorProps = {
   nodeId: string | null;
@@ -90,6 +91,9 @@ export function StudioNodeInspector({
         max={MAX_INDICATOR_LEN}
         value={draft}
         onChange={handleChange}
+      />
+      <IndicatorSpecJsonExport
+        spec={indicatorSpec ? { name: indicatorSpec.name, len: indicatorSpec.len } : null}
       />
       {error ? (
         <p
