@@ -1050,6 +1050,50 @@ def create_app(
             return denied
 
         body = _paper_history_view(s.home)
+
+        return JSONResponse(
+            body,
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/paper/armed")
+    async def paper_armed(request: Request) -> Response:
+        """Return the closed-shape list of every armed pack record.
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF
+        required. The service guarantees one armed record per
+        (venue, pair); unlike the single-record status projection this
+        view returns one row per armed record so the workstation can
+        show which packs are armed where. Each row carries only the
+        closed field set — venue, pair, mode, pack_id,
+        entries_paused — never cash, quantity, stop, cap, or the pack
+        path.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        config = kb_config.load_config(s.home)
+        records = [
+            {
+                "venue": record.venue,
+                "pair": record.pair,
+                "mode": record.mode,
+                "pack_id": record.pack_id,
+                "entries_paused": bool(record.entries_paused),
+            }
+            for record in config.armed
+        ]
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "armed": bool(records),
+            "records": records,
+        }
+
         return JSONResponse(
             body,
             status_code=200,

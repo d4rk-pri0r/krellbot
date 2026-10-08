@@ -8,11 +8,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { Connection } from "@xyflow/react";
-import type { PaperClient, PaperRunsClient } from "../features/paper/client";
+import type { PaperClient, PaperRunsClient, PaperArmedClient } from "../features/paper/client";
 import { StatusPanel } from "../features/paper/StatusPanel";
 import { createHttpClient as createPaperHttpClient } from "../features/paper/client";
 import { LastRunsPanel } from "../features/paper/LastRunsPanel";
 import { createLastRunsHttpClient } from "../features/paper/client";
+import { ArmedRecordsList } from "../features/paper/ArmedRecordsList";
 import { ResearchView } from "../features/research/ResearchView";
 import { createHttpClient as createResearchHttpClient } from "../features/research/client";
 import type { ResearchClient } from "../features/research/client";
@@ -551,6 +552,12 @@ export function WorkstationShell({
               <>
                 <StatusPanel client={paper} />
                 <LastRunsPanel client={paperRuns} />
+                {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
+                    an injected legacy client without listArmed renders the
+                    truthful unavailable state instead of crashing. */}
+                <ArmedRecordsList
+                  client={paper as PaperClient & PaperRunsClient & PaperArmedClient}
+                />
               </>
             ) : (
               <p

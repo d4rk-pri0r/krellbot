@@ -57,6 +57,24 @@ export type PaperRunsClient = {
   listRuns(): Promise<PaperHistory>;
 };
 
+export type PaperArmedRecord = {
+  venue: string;
+  pair: string;
+  mode: string;
+  pack_id: string;
+  entries_paused: boolean;
+};
+
+export type PaperArmedView = {
+  schema_version: string;
+  armed: boolean;
+  records: PaperArmedRecord[];
+};
+
+export type PaperArmedClient = {
+  listArmed(): Promise<PaperArmedView>;
+};
+
 async function getJson(url: string): Promise<PaperStatus> {
   const response = await fetch(url, {
     method: "GET",
@@ -184,10 +202,62 @@ async function listRuns(): Promise<PaperHistory> {
   return adaptHistory(raw);
 }
 
-export function createHttpClient(): PaperClient & PaperRunsClient {
+function adaptArmedView(raw: Record<string, unknown>): PaperArmedView {
+  const schema_version =
+    typeof raw.schema_version === "string" ? raw.schema_version : "1";
+  const rawRecords = Array.isArray(raw.records) ? raw.records : [];
+  const records: PaperArmedRecord[] = [];
+  for (const entry of rawRecords) {
+    if (entry === null || typeof entry !== "object") {
+      continue;
+    }
+    const row = entry as Record<string, unknown>;
+    if (
+      typeof row.venue !== "string" ||
+      typeof row.pair !== "string" ||
+      typeof row.mode !== "string" ||
+      typeof row.pack_id !== "string" ||
+      typeof row.entries_paused !== "boolean"
+    ) {
+      continue;
+    }
+    records.push({
+      venue: row.venue,
+      pair: row.pair,
+      mode: row.mode,
+      pack_id: row.pack_id,
+      entries_paused: row.entries_paused,
+    });
+  }
+  return {
+    schema_version,
+    armed: records.length > 0,
+    records,
+  };
+}
+
+async function getArmedJson(url: string): Promise<PaperArmedView> {
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`paper armed list failed: ${response.status}`);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  return adaptArmedView(raw);
+}
+
+export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedClient {
   return {
     getStatus(): Promise<PaperStatus> {
       return getJson("/api/v1/paper/status");
+    },
+    listArmed(): Promise<PaperArmedView> {
+      return getArmedJson("/api/v1/paper/armed");
     },
     pauseEntries(venue: string, pair: string): Promise<PaperCommandResult> {
       return postCommand("paper.pause_entries", { venue, pair });

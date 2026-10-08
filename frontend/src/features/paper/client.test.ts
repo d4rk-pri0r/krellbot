@@ -61,6 +61,143 @@ describe("createHttpClient getStatus", () => {
   });
 });
 
+describe("createHttpClient listArmed", () => {
+  it("GETs /api/v1/paper/armed with credentials: include and the CSRF header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        armed: true,
+        records: [
+          {
+            venue: "kraken",
+            pair: "SUIUSD",
+            mode: "paper",
+            pack_id: "trend-follow",
+            entries_paused: false,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const view = await createHttpClient().listArmed();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/paper/armed");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Krellbot-CSRF"]).toBe(getCsrf());
+    expect(view.armed).toBe(true);
+    expect(view.records).toHaveLength(1);
+    expect(view.records[0]).toEqual({
+      venue: "kraken",
+      pair: "SUIUSD",
+      mode: "paper",
+      pack_id: "trend-follow",
+      entries_paused: false,
+    });
+  });
+
+  it("parses the armed=false body to an empty PaperArmedView", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1", armed: false, records: [] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const view = await createHttpClient().listArmed();
+    expect(view.armed).toBe(false);
+    expect(view.records).toEqual([]);
+  });
+
+  it("returns multiple rows for multiple armed records", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        armed: true,
+        records: [
+          {
+            venue: "kraken",
+            pair: "SUIUSD",
+            mode: "paper",
+            pack_id: "trend-follow",
+            entries_paused: false,
+          },
+          {
+            venue: "coinbase",
+            pair: "BTC-USD",
+            mode: "paper",
+            pack_id: "mean-revert",
+            entries_paused: true,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const view = await createHttpClient().listArmed();
+    expect(view.armed).toBe(true);
+    expect(view.records).toHaveLength(2);
+    expect(view.records[1]?.entries_paused).toBe(true);
+  });
+
+  it("never carries cash, quantity, or stop fields on a row", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        armed: true,
+        records: [
+          {
+            venue: "kraken",
+            pair: "SUIUSD",
+            mode: "paper",
+            pack_id: "trend-follow",
+            entries_paused: false,
+            starting_cash: 1000,
+            owned_qty: 2.5,
+            stop: 9.75,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const view = await createHttpClient().listArmed();
+    const row = view.records[0] as unknown as Record<string, unknown>;
+    expect(view.records).toHaveLength(1);
+    expect(row.starting_cash).toBeUndefined();
+    expect(row.owned_qty).toBeUndefined();
+    expect(row.stop).toBeUndefined();
+    expect(row.cap).toBeUndefined();
+    expect(row.pack_path).toBeUndefined();
+  });
+
+  it("drops rows with unexpected shapes instead of coercing them", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        armed: true,
+        records: [
+          { venue: "kraken" },
+          {
+            venue: "coinbase",
+            pair: "BTC-USD",
+            mode: "paper",
+            pack_id: "mean-revert",
+            entries_paused: true,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const view = await createHttpClient().listArmed();
+    expect(view.records).toHaveLength(1);
+    expect(view.records[0]?.venue).toBe("coinbase");
+  });
+
+  it("throws on non-2xx response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 403));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listArmed()).rejects.toThrow(/403/);
+  });
+});
+
 describe("createHttpClient paper commands", () => {
   it("pauseEntries posts paper.pause_entries with venue/pair payload", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
