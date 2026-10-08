@@ -1,5 +1,6 @@
 import { useMemo, useState, type ChangeEvent, type JSX } from "react";
 import { EditorCsvExport } from "./EditorCsvExport";
+import { summarizeDraftState } from "./draftStateLabel";
 import type {
   DraftState,
   DraftSummary,
@@ -440,7 +441,7 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
             className="kbot-strategy-editor__revision"
             data-testid="editor-revision-id"
           >
-            revision: {lastSummary.revision_id} (state: {lastSummary.state})
+            revision: {lastSummary.revision_id} (state: {summarizeDraftState(lastSummary.state).label})
           </p>
         ) : null}
       </div>
