@@ -4,6 +4,7 @@ import type {
   OwnedDraftSummary,
 } from "./libraryClient";
 import { summarizeDraftState } from "./draftStateLabel";
+import { RevisionCompare } from "./RevisionCompare";
 
 export type {
   LibraryClient,
@@ -31,6 +32,7 @@ export function SavedStrategyLibrary({
   const [error, setError] = useState<string | null>(null);
   const [reopenError, setReopenError] = useState<string | null>(null);
   const [openingRevision, setOpeningRevision] = useState<string | null>(null);
+  const [compareRow, setCompareRow] = useState<OwnedDraftSummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,9 +166,29 @@ export function SavedStrategyLibrary({
               >
                 Reopen
               </button>
+              <button
+                type="button"
+                className="kbot-strategy-library__compare"
+                data-testid="library-row-compare"
+                onClick={() => {
+                  setCompareRow(row);
+                }}
+              >
+                Compare
+              </button>
             </li>
           ))}
         </ul>
+      ) : null}
+      {compareRow !== null && phase === "ready" ? (
+        <RevisionCompare
+          client={client}
+          rows={rows}
+          row={compareRow}
+          onClose={() => {
+            setCompareRow(null);
+          }}
+        />
       ) : null}
       {reopenError !== null ? (
         <p

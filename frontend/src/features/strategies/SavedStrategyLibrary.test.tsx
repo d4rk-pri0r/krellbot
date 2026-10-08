@@ -4,6 +4,7 @@ import {
   SavedStrategyLibrary,
   type LibraryClient,
   type OwnedDraftSummary,
+  type OwnedRevisionBytes,
 } from "./SavedStrategyLibrary";
 
 afterEach(cleanup);
@@ -179,3 +180,112 @@ describe("SavedStrategyLibrary — new owned strategy", () => {
     expect(onNewStrategy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("SavedStrategyLibrary — compare mount", () => {
+  const compareRows = [
+    summary({
+      revision_id: "rev-2",
+      label: "Edited",
+      state: "validated",
+      runnable: true,
+      created_at: "2026-10-07T12:00:00Z",
+      parent_revision_id: "rev-1",
+    }),
+    summary(),
+  ];
+
+  function compareClient(): LibraryClient & {
+    getJson: ReturnType<typeof vi.fn>;
+  } {
+    return {
+      listOwned: vi.fn().mockResolvedValue(compareRows),
+      getJson: vi.fn((revisionId: string): Promise<OwnedRevisionBytes> =>
+        Promise.resolve({
+          revision_id: revisionId,
+          state: "draft",
+          bytes:
+            revisionId === "rev-1"
+              ? '{"id":"trend-follow","label":"Trend follow","timeframe":"1h"}'
+              : '{"id":"trend-follow","label":"Edited","timeframe":"4h"}',
+        }),
+      ),
+    };
+  }
+
+  it("mounts the compare surface inside the library and keeps Reopen", async () => {
+    render(
+      <SavedStrategyLibrary
+        client={compareClient()}
+        onReopen={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getAllByTestId("library-row-compare").length).toBe(2),
+    );
+    expect(screen.getAllByRole("button", { name: /reopen/i }).length).toBe(2);
+    expect(screen.queryByTestId("revision-compare")).toBeNull();
+    fireEvent.click(screen.getAllByTestId("library-row-compare")[0]);
+    expect(screen.getByTestId("revision-compare")).toBeDefined();
+    expect(screen.getAllByRole("button", { name: /reopen/i }).length).toBe(2);
+  });
+
+  it("compares two actual saved revisions through the read client", async () => {
+    const client = compareClient();
+    render(<SavedStrategyLibrary client={client} onReopen={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("library-row-compare").length).toBe(2),
+    );
+    fireEvent.click(screen.getAllByTestId("library-row-compare")[0]);
+    fireEvent.click(screen.getByTestId("revision-compare-run"));
+    await waitFor(() =>
+      expect(screen.getByTestId("revision-compare-changes")).toBeDefined(),
+    );
+    expect(client.getJson).toHaveBeenCalledWith("rev-1");
+    expect(client.getJson).toHaveBeenCalledWith("rev-2");
+    const body = screen.getByTestId("revision-compare-changes").textContent ?? "";
+    expect(body).toContain("label");
+    expect(body).toContain("Trend follow");
+    expect(body).toContain("Edited");
+    expect(body).toContain("timeframe");
+  });
+
+  it("closes the compare surface and leaves the library intact", async () => {
+    render(
+      <SavedStrategyLibrary
+        client={compareClient()}
+        onReopen={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getAllByTestId("library-row-compare").length).toBe(2),
+    );
+    fireEvent.click(screen.getAllByTestId("library-row-compare")[0]);
+    fireEvent.click(screen.getByTestId("revision-compare-close"));
+    expect(screen.queryByTestId("revision-compare")).toBeNull();
+    expect(screen.getAllByRole("listitem").length).toBe(2);
+    expect(screen.getAllByRole("button", { name: /reopen/i }).length).toBe(2);
+  });
+
+  it("keeps Reopen working after a comparison", async () => {
+    const onReopen = vi.fn();
+    const client = compareClient();
+    render(
+      <SavedStrategyLibrary client={client} onReopen={onReopen} />,
+    );
+    await waitFor(() =>
+      expect(screen.getAllByTestId("library-row-compare").length).toBe(2),
+    );
+    fireEvent.click(screen.getAllByTestId("library-row-compare")[0]);
+    fireEvent.click(screen.getByTestId("revision-compare-run"));
+    await waitFor(() =>
+      expect(screen.getByTestId("revision-compare-changes")).toBeDefined(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: /reopen/i })[0]);
+    await waitFor(() => expect(onReopen).toHaveBeenCalledTimes(1));
+    expect(onReopen).toHaveBeenCalledWith(
+      compareRows[0],
+      '{"id":"trend-follow","label":"Edited","timeframe":"4h"}',
+    );
+  });
+});
+
