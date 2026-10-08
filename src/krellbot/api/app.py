@@ -1197,6 +1197,40 @@ def create_app(
 
         body = app_packs.list_packs(s.home)
         return JSONResponse(body, status_code=200)
+
+    @app.get("/api/v1/packs/starters")
+    async def packs_starters(request: Request) -> Response:
+        """Return the shipped read-only starter pack catalogue.
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF
+        required. The body is the frozen catalogue document from
+        ``krellbot.packs.catalogue`` — ``schema_version``,
+        ``catalogue_version``, and ``examples`` rows carrying exactly
+        ``id``, ``label``, ``description``, ``pack``. The examples are
+        ordinary valid DSL packs served from package resources. The
+        route is read-only: it installs nothing, validates no user
+        draft, arms nothing, starts nothing, overwrites nothing, and
+        edits no state. A user turns a starter into an owned editable
+        copy by POSTing ``pack`` through the existing drafts route.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        from krellbot.packs import catalogue as starter_catalogue
+
+        try:
+            body = starter_catalogue.catalogue_document()
+        except starter_catalogue.StarterCatalogueError as exc:
+            return JSONResponse(
+                {"detail": f"starter catalogue unavailable: {exc}"},
+                status_code=500,
+            )
+        return JSONResponse(body, status_code=200)
+
     @app.get("/api/v1/capabilities")
     async def capabilities(request: Request) -> Response:
         # The bootstrap token reaches the shell only through the

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "starter-mean-reversion-band",
+  "version": "1.0.0",
+  "label": "Mean reversion band (educational example)",
+  "author": "krellbot",
+  "origin": "Shipped starter example. A local copy becomes yours when you save it as a draft.",
+  "timeframe": "1h",
+  "indicators": {
+    "basis": {"fn": "sma", "src": "close", "len": 20},
+    "dev": {"fn": "stdev", "src": "close", "len": 20}
+  },
+  "entry": {
+    "all": [
+      ["close", "<", "basis"],
+      ["dev", ">", 0.75]
+    ]
+  },
+  "exit": ["close", ">=", "basis"],
+  "risk": {
+    "max_account_pct": 20,
+    "stop": {"type": "pct", "pct": 4}
+  },
+  "markets": [{"venue": "kraken", "pair": "SUIUSD"}]
+}

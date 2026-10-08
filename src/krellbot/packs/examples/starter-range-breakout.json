@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "starter-range-breakout",
+  "version": "1.0.0",
+  "label": "Range breakout (educational example)",
+  "author": "krellbot",
+  "origin": "Shipped starter example. A local copy becomes yours when you save it as a draft.",
+  "timeframe": "1h",
+  "indicators": {
+    "range_top": {"fn": "sma", "src": "high", "len": 20},
+    "range_floor": {"fn": "sma", "src": "low", "len": 20}
+  },
+  "entry": {
+    "all": [
+      ["close", ">", "range_top"],
+      ["volume", ">", 150]
+    ]
+  },
+  "exit": {
+    "any": [
+      ["close", "<", "range_floor"],
+      ["volume", "<=", 150]
+    ]
+  },
+  "risk": {
+    "max_account_pct": 20,
+    "stop": {"type": "atr", "len": 14, "mult": 2.5}
+  },
+  "markets": [{"venue": "kraken", "pair": "SUIUSD"}]
+}
