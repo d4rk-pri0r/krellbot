@@ -7,6 +7,7 @@ import {
   type JSX,
 } from "react";
 import type { ResearchClient, StoredResult } from "./client";
+import { TraceCsvExport } from "./TraceCsvExport";
 
 export type { ResearchClient, StoredResult } from "./client";
 
@@ -602,6 +603,7 @@ export function ResearchView({
         <ResultPanel
           receipt={storedResult.legacy_receipt}
           trace={trace}
+          jobId={jobId}
           selectedBarTs={selectedBarTs}
           onSelectBar={setSelectedBarTs}
           selectedBar={selectedBar}
@@ -651,6 +653,7 @@ export function ResearchView({
 type ResultPanelProps = {
   receipt: Record<string, unknown>;
   trace: TraceBar[];
+  jobId: string | null;
   selectedBarTs: string | null;
   onSelectBar: (barTs: string) => void;
   selectedBar: TraceBar | null;
@@ -659,6 +662,7 @@ type ResultPanelProps = {
 function ResultPanel({
   receipt,
   trace,
+  jobId,
   selectedBarTs,
   onSelectBar,
   selectedBar,
@@ -723,6 +727,10 @@ function ResultPanel({
       </dl>
       <div className="kbot-research__trace" data-testid="research-trace">
         <h2 className="kbot-research__trace-title">Trace</h2>
+        <TraceCsvExport
+          trace={trace as Array<Record<string, unknown>>}
+          jobId={jobId}
+        />
         <TraceList
           trace={trace}
           selectedBarTs={selectedBarTs}
