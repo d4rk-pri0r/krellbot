@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
 import type { OperationsClient, OperationsViewModel } from "./client";
+import { DeploymentsCsvExport } from "./DeploymentsCsvExport";
 import { AlertsCsvExport } from "./AlertsCsvExport";
 
 const DISABLED_BANNER =
@@ -465,6 +466,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
               )}
             </tbody>
           </table>
+          <DeploymentsCsvExport deployments={view.deployments} />
         </section>
 
         <section className="kbot-ops__panel" aria-label="Alerts">
