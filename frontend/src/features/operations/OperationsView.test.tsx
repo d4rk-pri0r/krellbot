@@ -194,7 +194,7 @@ describe("OperationsView deployments", () => {
     render(<OperationsView client={client} />);
     const row = await screen.findByTestId("ops-deployment-kraken-SUIUSD");
     expect(row.textContent).toContain("trend-follow");
-    expect(row.textContent).toContain("paper");
+    expect(row.textContent).toContain("Paper");
     expect(row.textContent).toMatch(/active/i);
     expect(screen.getByTestId("ops-promote-kraken-SUIUSD")).toBeDefined();
   });

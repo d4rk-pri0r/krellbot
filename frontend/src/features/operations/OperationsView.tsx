@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
 import { AlertsFilter } from "./AlertsFilter";
 import { DeploymentHistory } from "./DeploymentHistory";
+import { summarizeOperationMode } from "./operationModeLabel";
 import type { OperationsClient, OperationsViewModel } from "./client";
 import { DeploymentsCsvExport } from "./DeploymentsCsvExport";
 import { AlertsCsvExport } from "./AlertsCsvExport";
@@ -402,7 +403,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                       <td>{deployment.pack_id}</td>
                       <td>{deployment.venue}</td>
                       <td>{deployment.pair}</td>
-                      <td>{deployment.mode}</td>
+                      <td>{summarizeOperationMode(deployment.mode).label}</td>
                       <td>{deployment.entries_paused ? "paused" : "active"}</td>
                       <td>
                         <div className="kbot-ops__row-actions">
