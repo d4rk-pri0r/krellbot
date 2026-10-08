@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
+import { DeploymentHistory } from "./DeploymentHistory";
 import type { OperationsClient, OperationsViewModel } from "./client";
 import { DeploymentsCsvExport } from "./DeploymentsCsvExport";
 import { AlertsCsvExport } from "./AlertsCsvExport";
@@ -467,6 +468,10 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
             </tbody>
           </table>
           <DeploymentsCsvExport deployments={view.deployments} />
+        </section>
+
+        <section className="kbot-ops__panel" aria-label="Deployment history" data-testid="ops-deployment-history">
+          <DeploymentHistory client={client} />
         </section>
 
         <section className="kbot-ops__panel" aria-label="Alerts">

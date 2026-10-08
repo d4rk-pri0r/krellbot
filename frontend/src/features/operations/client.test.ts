@@ -138,3 +138,87 @@ describe("createHttpClient typed POST bodies", () => {
     await expect(createHttpClient().getOperations()).rejects.toThrow(/403/);
   });
 });
+
+describe("createHttpClient deployment history", () => {
+  const closedRow = {
+    deployment_id: "dep-1",
+    venue: "kraken",
+    pair: "SUIUSD",
+    created_at_ms: 1_700_000_010_000,
+    state: "paper",
+    config: { pack_id: "trend-follow", pack_version: "1.0.0", mode: "paper", entries_paused: false },
+    schedule: { timeframe: "1h", interval: 3600 },
+    last_execution_summary: "one tick, no entries",
+  };
+
+  it("listDeploymentRecords GETs /api/v1/operations/deployments with CSRF + credentials", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1", deployments: [closedRow] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await createHttpClient().listDeploymentRecords!();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/operations/deployments");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect("X-Krellbot-CSRF" in headers).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deployment_id).toBe("dep-1");
+    expect(rows[0].venue).toBe("kraken");
+    expect(rows[0].created_at_ms).toBe(1_700_000_010_000);
+    expect(rows[0].config.pack_id).toBe("trend-follow");
+    expect(rows[0].schedule.timeframe).toBe("1h");
+    expect(rows[0].last_execution_summary).toBe("one tick, no entries");
+  });
+
+  it("listDeploymentRecords drops malformed rows and returns [] when none parse", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        deployments: [closedRow, { deployment_id: 7 }, null, { deployment_id: "x" }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await createHttpClient().listDeploymentRecords!();
+    expect(rows.map((row) => row.deployment_id)).toEqual(["dep-1"]);
+  });
+
+  it("listDeploymentRecords throws on non-2xx", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 403));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listDeploymentRecords!()).rejects.toThrow(/403/);
+  });
+
+  it("getDeploymentRecord GETs the encoded id with CSRF and parses 2xx", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(closedRow));
+    vi.stubGlobal("fetch", fetchMock);
+    const row = await createHttpClient().getDeploymentRecord!("dep/1");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/operations/deployments/dep%2F1");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect("X-Krellbot-CSRF" in headers).toBe(true);
+    expect(row.deployment_id).toBe("dep-1");
+    expect(row.state).toBe("paper");
+  });
+
+  it("getDeploymentRecord throws with the 404 status and refusal code", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ code: "deployment_not_found", message: "deployment record not found" }, 404),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().getDeploymentRecord!("missing")).rejects.toThrow(
+      /404 deployment_not_found/,
+    );
+  });
+
+  it("getDeploymentRecord throws on an unusable 2xx body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ deployment_id: "no-fields" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().getDeploymentRecord!("dep-1")).rejects.toThrow(/unusable/);
+  });
+});

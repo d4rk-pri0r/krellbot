@@ -941,6 +941,54 @@ def create_app(
         body = operations_view_app.operations_view(s.home, now=_now_seconds())
         return JSONResponse(body, status_code=200)
 
+    @app.get("/api/v1/operations/deployments")
+    async def operations_deployment_history(request: Request) -> Response:
+        """Return the closed-shape deployment history rows (read-only).
+
+        Same session gate as ``GET /api/v1/operations`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF
+        required for the read. Rows are projected from the append-only
+        journal by ``operations_view_app.list_deployment_records`` and
+        are capped at the 50 most recent. The body never carries
+        ``cap``, ``stop``, ``starting_cash``, ``owned_qty``,
+        ``pack_path``, ``pack_sha256``, balance, or key material.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        rows = operations_view_app.list_deployment_records(s.home)
+        return JSONResponse(
+            {"schema_version": SCHEMA_VERSION, "deployments": rows},
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/operations/deployments/{deployment_id}")
+    async def operations_deployment_record(request: Request, deployment_id: str) -> Response:
+        """Return one closed-shape deployment history row, or 404.
+
+        Same session gate and same closed row shape as the list route.
+        An unknown ``deployment_id`` is a 404 with a typed refusal code;
+        there is no editing, starting, or promotion on this path.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        row = operations_view_app.get_deployment_record(s.home, deployment_id)
+        if row is None:
+            return JSONResponse(
+                {"code": "deployment_not_found", "message": "deployment record not found"},
+                status_code=404,
+                headers={"Cache-Control": "no-store"},
+            )
+        return JSONResponse(row, status_code=200, headers={"Cache-Control": "no-store"})
+
     @app.get("/api/v1/paper/status")
     async def paper_status(request: Request) -> Response:
         """Return the closed-shape paper status projection (NS10b).

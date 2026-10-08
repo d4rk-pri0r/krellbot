@@ -39,6 +39,17 @@ export type OperationsViewModel = {
   alerts: ReadonlyArray<AlertRow>;
 };
 
+export type DeploymentRecordRow = {
+  deployment_id: string;
+  venue: string;
+  pair: string;
+  created_at_ms: number;
+  state: string;
+  config: Readonly<Record<string, string | number | boolean>>;
+  schedule: Readonly<Record<string, string | number | boolean>>;
+  last_execution_summary: string;
+};
+
 export type CommandResult = {
   schema_version?: string;
   code?: string;
@@ -59,6 +70,8 @@ export type OperationsClient = {
   engageKill(reason: string): Promise<CommandResult>;
   releaseKill(): Promise<CommandResult>;
   ackAlert(alertId: string): Promise<CommandResult>;
+  listDeploymentRecords?(): Promise<DeploymentRecordRow[]>;
+  getDeploymentRecord?(deploymentId: string): Promise<DeploymentRecordRow>;
 };
 
 async function getJson(url: string): Promise<OperationsViewModel> {
@@ -212,10 +225,93 @@ function adaptOperations(raw: Record<string, unknown>): OperationsViewModel {
   };
 }
 
+function adaptDeploymentRecord(raw: unknown): DeploymentRecordRow | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  if (
+    typeof obj.deployment_id !== "string" ||
+    typeof obj.venue !== "string" ||
+    typeof obj.pair !== "string" ||
+    typeof obj.created_at_ms !== "number" ||
+    typeof obj.state !== "string"
+  ) {
+    return null;
+  }
+  return {
+    deployment_id: obj.deployment_id,
+    venue: obj.venue,
+    pair: obj.pair,
+    created_at_ms: obj.created_at_ms,
+    state: obj.state,
+    config: adaptSubset(obj.config),
+    schedule: adaptSubset(obj.schedule),
+    last_execution_summary:
+      typeof obj.last_execution_summary === "string" ? obj.last_execution_summary : "",
+  };
+}
+
+function adaptSubset(raw: unknown): Readonly<Record<string, string | number | boolean>> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const out: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+async function getDeploymentHistoryJson(url: string): Promise<unknown> {
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    let refusal = "";
+    try {
+      const errorBody = (await response.json()) as { code?: unknown };
+      if (typeof errorBody.code === "string") {
+        refusal = ` ${errorBody.code}`;
+      }
+    } catch {
+      // The error body is optional; the status alone identifies the refusal.
+    }
+    throw new Error(`deployment history failed: ${response.status}${refusal}`);
+  }
+  return response.json();
+}
+
 export function createHttpClient(): OperationsClient {
   return {
     getOperations(): Promise<OperationsViewModel> {
       return getJson("/api/v1/operations");
+    },
+    listDeploymentRecords(): Promise<DeploymentRecordRow[]> {
+      return getDeploymentHistoryJson("/api/v1/operations/deployments").then((raw) => {
+        const body = (raw ?? {}) as Record<string, unknown>;
+        const rows = Array.isArray(body.deployments) ? body.deployments : [];
+        return rows
+          .map(adaptDeploymentRecord)
+          .filter((row): row is DeploymentRecordRow => row !== null);
+      });
+    },
+    getDeploymentRecord(deploymentId: string): Promise<DeploymentRecordRow> {
+      return getDeploymentHistoryJson(
+        `/api/v1/operations/deployments/${encodeURIComponent(deploymentId)}`,
+      ).then((raw) => {
+        const row = adaptDeploymentRecord(raw);
+        if (row === null) {
+          throw new Error("deployment history returned an unusable record");
+        }
+        return row;
+      });
     },
     promote(venue, pair, revisionId): Promise<CommandResult> {
       return postCommand("live.promote", { venue, pair, revision_id: revisionId });
