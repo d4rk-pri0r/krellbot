@@ -9,6 +9,7 @@ import { AcknowledgedAlertsList } from "./AcknowledgedAlertsList";
 import { summarizeAlertKind } from "./alertKindLabel";
 import { useOperationsRefresh } from "./useOperationsRefresh";
 import type { OperationsClient, OperationsViewModel } from "./client";
+import { summarizeAlertSeverity } from "./alertSeverityLabel";
 
 const DISABLED_BANNER =
   "Live trading is disabled in this build (KRELLBOT_ENABLE_LIVE is not 1).";
@@ -513,7 +514,9 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                   data-testid={alertRowId(alert.id)}
                 >
                   <span className="kbot-ops__alert-kind">{summarizeAlertKind(alert.kind).label}</span>
-                  <span className="kbot-ops__alert-severity">{alert.severity}</span>
+                  <span className="kbot-ops__alert-severity">
+                    {summarizeAlertSeverity(alert.severity).label}
+                  </span>
                   <span className="kbot-ops__alert-code">{alert.code ?? "-"}</span>
                   <span className="kbot-ops__alert-target">
                     {alert.venue ?? "-"} {alert.pair ?? ""}
