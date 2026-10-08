@@ -2,6 +2,7 @@ import { useMemo, type ChangeEvent, type JSX } from "react";
 import {
   COMPARISONS,
   MOVING_AVERAGE_KINDS,
+  RECIPE_NAMES,
   TIMEFRAMES,
   buildOwnedStrategyPack,
   validateOwnedStrategyField,
@@ -9,6 +10,7 @@ import {
   type MovingAverageKind,
   type OwnedStrategyField,
   type OwnedStrategyFormState,
+  type RecipeName,
   type Timeframe,
 } from "./ownedStrategy";
 import type { Pack } from "./client";
@@ -29,15 +31,30 @@ const COMPARISON_LABELS: Record<Comparison, string> = {
   crosses_below: "close crosses below",
 };
 
+const CROSS_COMPARISON_LABELS: Record<Comparison, string> = {
+  ">": "fast average above slow",
+  "<": "fast average below slow",
+  ">=": "fast average at or above slow",
+  "<=": "fast average at or below slow",
+  crosses_above: "fast average crosses above slow",
+  crosses_below: "fast average crosses below slow",
+};
+
 const KIND_LABELS: Record<MovingAverageKind, string> = {
   sma: "SMA (simple)",
   ema: "EMA (exponential)",
+};
+
+const RECIPE_LABELS: Record<RecipeName, string> = {
+  close_vs_ma: "Close versus one average",
+  ma_cross: "Two-average crossover (fast vs slow)",
 };
 
 type TextFieldName =
   | "name"
   | "id"
   | "pair"
+  | "fastLength"
   | "length"
   | "maxAccountPct"
   | "stopPct";
@@ -46,6 +63,7 @@ const TEXT_FIELD_LABELS: Record<TextFieldName, string> = {
   name: "Strategy name",
   id: "Strategy id",
   pair: "Kraken pair",
+  fastLength: "Fast average length (bars)",
   length: "Average length (bars)",
   maxAccountPct: "Max account percent",
   stopPct: "Protective stop percent",
@@ -54,6 +72,7 @@ const TEXT_FIELD_LABELS: Record<TextFieldName, string> = {
 const TEXT_FIELD_HINTS: Partial<Record<TextFieldName, string>> = {
   id: "lowercase-with-hyphens, max 32 characters; editing it starts a different strategy",
   pair: "uppercase like XXBTZUSD or XETHZUSD",
+  fastLength: "must be shorter than the slow average length",
 };
 
 const VALIDATED_FIELDS: OwnedStrategyField[] = [
@@ -67,11 +86,27 @@ const VALIDATED_FIELDS: OwnedStrategyField[] = [
 
 function problemsFor(state: OwnedStrategyFormState): string[] {
   const problems: string[] = [];
-  for (const field of VALIDATED_FIELDS) {
+  const fields: OwnedStrategyField[] =
+    state.recipe === "ma_cross"
+      ? [...VALIDATED_FIELDS.slice(0, 3), "fastLength", ...VALIDATED_FIELDS.slice(3)]
+      : VALIDATED_FIELDS;
+  for (const field of fields) {
     const message = validateOwnedStrategyField(field, state[field]);
     if (message) {
       problems.push(`${TEXT_FIELD_LABELS[field as TextFieldName]}: ${message}`);
     }
+  }
+  // Only the crossover recipe has two averages to order; the single-average
+  // recipe keeps its existing behavior with the lone `length` field.
+  if (
+    state.recipe === "ma_cross" &&
+    Number.isFinite(Number(state.fastLength)) &&
+    Number.isFinite(Number(state.length)) &&
+    Number(state.fastLength) >= Number(state.length)
+  ) {
+    problems.push(
+      "Fast average length: must be shorter than the slow average length",
+    );
   }
   return problems;
 }
@@ -118,9 +153,17 @@ export function OwnedStrategyForm({
           ? (raw as Timeframe)
           : field === "kind"
             ? (raw as MovingAverageKind)
-            : (raw as Comparison);
+            : field === "recipe"
+              ? (raw as RecipeName)
+              : (raw as Comparison);
       update({ [field]: value } as Partial<OwnedStrategyFormState>);
     };
+
+  const crossover = state.recipe === "ma_cross";
+  const comparisonLabels = crossover ? CROSS_COMPARISON_LABELS : COMPARISON_LABELS;
+  const visibleTextFields = (Object.keys(TEXT_FIELD_LABELS) as TextFieldName[]).filter(
+    (field) => field !== "fastLength" || crossover,
+  );
 
   return (
     <section
@@ -131,12 +174,30 @@ export function OwnedStrategyForm({
     >
       <h3 className="kbot-owned-strategy-form__title">Owned strategy</h3>
       <p className="kbot-owned-strategy-form__hint">
-        A supported subset of the pack DSL: one moving average of close, a
-        close-versus-average entry and exit, a percentage protective stop, and
-        one Kraken market. Advanced JSON stays available below.
+        A supported subset of the pack DSL: close versus one moving average, or
+        a fast average crossing a slow average, plus a percentage protective
+        stop and one Kraken market. Advanced JSON stays available below.
       </p>
       <div className="kbot-owned-strategy-form__grid">
-        {(Object.keys(TEXT_FIELD_LABELS) as TextFieldName[]).map((field) => (
+        <label
+          className="kbot-owned-strategy-form__field"
+          htmlFor="kbot-owned-strategy-recipe"
+        >
+          <span className="kbot-owned-strategy-form__field-label">Recipe</span>
+          <select
+            id="kbot-owned-strategy-recipe"
+            className="kbot-owned-strategy-form__select"
+            value={state.recipe}
+            onChange={handleSelectChange("recipe")}
+          >
+            {RECIPE_NAMES.map((recipe) => (
+              <option key={recipe} value={recipe}>
+                {RECIPE_LABELS[recipe]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {visibleTextFields.map((field) => (
           <label
             key={field}
             className="kbot-owned-strategy-form__field"
@@ -184,7 +245,7 @@ export function OwnedStrategyForm({
           htmlFor="kbot-owned-strategy-kind"
         >
           <span className="kbot-owned-strategy-form__field-label">
-            Average type
+            {crossover ? "Average type (both averages)" : "Average type"}
           </span>
           <select
             id="kbot-owned-strategy-kind"
@@ -214,7 +275,7 @@ export function OwnedStrategyForm({
           >
             {COMPARISONS.map((comparison) => (
               <option key={comparison} value={comparison}>
-                {COMPARISON_LABELS[comparison]}
+                {comparisonLabels[comparison]}
               </option>
             ))}
           </select>
@@ -232,7 +293,7 @@ export function OwnedStrategyForm({
           >
             {COMPARISONS.map((comparison) => (
               <option key={comparison} value={comparison}>
-                {COMPARISON_LABELS[comparison]}
+                {comparisonLabels[comparison]}
               </option>
             ))}
           </select>

@@ -45,10 +45,29 @@ function setup(state: OwnedStrategyFormState = seedOwnedStrategyForm()) {
   return { onApply, basePack, state: aligned };
 }
 
+function lastCall(onApply: ReturnType<typeof vi.fn>): [
+  Record<string, unknown>,
+  string[],
+] {
+  const [pack, problems] = lastCallRaw(onApply);
+  expect(pack).not.toBeNull();
+  return [pack as Record<string, unknown>, problems];
+}
+
+function lastCallRaw(onApply: ReturnType<typeof vi.fn>): [
+  Record<string, unknown> | null,
+  string[],
+] {
+  const last = onApply.mock.calls.at(-1);
+  expect(last).toBeDefined();
+  return last as unknown as [Record<string, unknown> | null, string[]];
+}
+
 describe("OwnedStrategyForm", () => {
   it("renders every supported field", () => {
     setup();
     for (const label of [
+      /recipe/i,
       /strategy name/i,
       /strategy id/i,
       /kraken pair/i,
@@ -66,8 +85,87 @@ describe("OwnedStrategyForm", () => {
 
   it("reports which pack fields each control owns", () => {
     setup();
-    expect(screen.getByText(/one moving average of close/i)).toBeDefined();
+    expect(screen.getByText(/close versus one moving average/i)).toBeDefined();
+    expect(screen.getByText(/fast average crossing a slow average/i)).toBeDefined();
     expect(screen.getByText(/paper-trading only/i)).toBeDefined();
+  });
+
+  it("does not offer the fast length field on the single-average recipe", () => {
+    const { onApply } = setup();
+    expect(screen.queryByLabelText(/fast average length/i)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/^average length/i), {
+      target: { value: "30" },
+    });
+    const [pack] = lastCall(onApply);
+    expect(Object.keys(pack.indicators ?? {})).toEqual([INDICATOR_NAME]);
+  });
+
+  it("switching to the crossover recipe shows both periods and emits a two-indicator pack", () => {
+    const { onApply } = setup();
+    fireEvent.change(screen.getByLabelText(/^recipe/i), {
+      target: { value: "ma_cross" },
+    });
+    const fastField = screen.getByLabelText(/^fast average length/i);
+    expect(fastField).toBeDefined();
+    fireEvent.change(fastField, { target: { value: "9" } });
+    fireEvent.change(screen.getByLabelText(/^average length/i), {
+      target: { value: "21" },
+    });
+    fireEvent.change(screen.getByLabelText(/average type/i), {
+      target: { value: "ema" },
+    });
+    fireEvent.change(screen.getByLabelText(/enter when/i), {
+      target: { value: "crosses_above" },
+    });
+    fireEvent.change(screen.getByLabelText(/exit when/i), {
+      target: { value: "crosses_below" },
+    });
+
+    const [pack, problems] = lastCall(onApply);
+    expect(problems).toEqual([]);
+    // Two real generated indicator nodes, consumed by the entry and exit
+    // comparisons as operands.
+    expect(pack.indicators).toEqual({
+      fast: { fn: "ema", src: "close", len: 9 },
+      slow: { fn: "ema", src: "close", len: 21 },
+    });
+    expect(pack.entry).toEqual(["fast", "crosses_above", "slow"]);
+    expect(pack.exit).toEqual(["fast", "crosses_below", "slow"]);
+    expect(pack.risk).toEqual({
+      max_account_pct: 25,
+      stop: { type: "pct", pct: 5 },
+    });
+    expect(readOwnedStrategy(pack)).not.toBeNull();
+    expect(readOwnedStrategy(pack)?.recipe).toBe("ma_cross");
+  });
+
+  it("refuses a crossover with a fast period at or above the slow period", () => {
+    const { onApply } = setup();
+    fireEvent.change(screen.getByLabelText(/recipe/i), {
+      target: { value: "ma_cross" },
+    });
+    fireEvent.change(screen.getByLabelText(/fast average length/i), {
+      target: { value: "20" },
+    });
+    const [pack, problems] = lastCallRaw(onApply);
+    expect(pack).toBeNull();
+    expect(problems.join(" ")).toMatch(/shorter than the slow/i);
+    expect(
+      screen.getByTestId("owned-strategy-form-problems").textContent,
+    ).toMatch(/shorter than the slow/i);
+  });
+
+  it("refuses a non-numeric fast period instead of normalizing it", () => {
+    const { onApply } = setup();
+    fireEvent.change(screen.getByLabelText(/recipe/i), {
+      target: { value: "ma_cross" },
+    });
+    fireEvent.change(screen.getByLabelText(/fast average length/i), {
+      target: { value: "abc" },
+    });
+    const [pack, problems] = lastCallRaw(onApply);
+    expect(pack).toBeNull();
+    expect(problems.join(" ")).toMatch(/fast length/i);
   });
 
   it("edits length, entry and stop and emits a pack whose payload really changed", () => {
