@@ -81,7 +81,7 @@ describe("JobsDrawer", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /jobs/i }));
-    expect((await screen.findByTestId("job-row")).textContent).toContain("job-1 research.backtest succeeded");
+    expect((await screen.findByTestId("job-row")).textContent).toContain("job-1 Research backtest (succeeded)");
     expect(screen.queryByText("No jobs")).toBeNull();
   });
 
@@ -101,12 +101,12 @@ describe("JobsDrawer", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     resolveList([{ id: "job-1", kind: "research.backtest", state: "succeeded" }]);
     expect((await screen.findByTestId("job-row")).textContent).toContain(
-      "job-1 research.backtest succeeded",
+      "job-1 Research backtest (succeeded)",
     );
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
   });
 
-  it("shows each job's actual kind verbatim in backend order", async () => {
+  it("labels each job's kind in backend order", async () => {
     vi.stubGlobal(
       "fetch",
       stubJobsFetch({
@@ -120,8 +120,8 @@ describe("JobsDrawer", () => {
     openJobsDrawer();
     const rows = await screen.findAllByTestId("job-row");
     expect(rows.map((row) => row.textContent)).toEqual([
-      "job-7 research.mro.sweep queued",
-      "job-2 housekeeping.compact hibernating",
+      "job-7 Research mro sweep (queued)",
+      "job-2 Housekeeping compact (hibernating)",
     ]);
   });
 
@@ -193,8 +193,8 @@ describe("JobsDrawer", () => {
     openJobsDrawer();
     const rows = await screen.findAllByTestId("job-row");
     expect(rows.map((row) => row.textContent)).toEqual([
-      "job-2 research.backtest hibernating",
-      "job-1 research.backtest succeeded",
+      "job-2 Research backtest (hibernating)",
+      "job-1 Research backtest (succeeded)",
     ]);
   });
 
@@ -242,8 +242,8 @@ describe("JobsDrawer", () => {
     refreshJobs();
     expect(await screen.findAllByTestId("job-row")).toHaveLength(2);
     expect(jobTexts()).toEqual([
-      "job-3 housekeeping.compact running",
-      "job-1 research.backtest succeeded",
+      "job-3 Housekeeping compact (running)",
+      "job-1 Research backtest (succeeded)",
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/jobs", {
@@ -307,7 +307,7 @@ describe("JobsDrawer", () => {
     expect(screen.queryByText("No jobs")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     await resolveRows(gate, [{ id: "job-2", kind: "research.mro.sweep", state: "queued" }]);
-    expect(jobTexts()).toEqual(["job-2 research.mro.sweep queued"]);
+    expect(jobTexts()).toEqual(["job-2 Research mro sweep (queued)"]);
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
   });
 
@@ -323,9 +323,9 @@ describe("JobsDrawer", () => {
     refreshJobs();
     expect(screen.getByTestId("jobs-loading").textContent).toMatch(/loading/i);
     await resolveRows(newer, [{ id: "job-new", kind: "research.mro.sweep", state: "queued" }]);
-    expect(jobTexts()).toEqual(["job-new research.mro.sweep queued"]);
+    expect(jobTexts()).toEqual(["job-new Research mro sweep (queued)"]);
     await resolveRows(older, [{ id: "job-old", kind: "research.backtest", state: "succeeded" }]);
-    expect(jobTexts()).toEqual(["job-new research.mro.sweep queued"]);
+    expect(jobTexts()).toEqual(["job-new Research mro sweep (queued)"]);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
   });
@@ -341,9 +341,9 @@ describe("JobsDrawer", () => {
     openJobsDrawer();
     refreshJobs();
     await resolveRows(newer, [{ id: "job-new", kind: "research.backtest", state: "succeeded" }]);
-    expect(jobTexts()).toEqual(["job-new research.backtest succeeded"]);
+    expect(jobTexts()).toEqual(["job-new Research backtest (succeeded)"]);
     await rejectRequest(older, new Error("network reset"));
-    expect(jobTexts()).toEqual(["job-new research.backtest succeeded"]);
+    expect(jobTexts()).toEqual(["job-new Research backtest (succeeded)"]);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
     expect(screen.queryByText("No jobs")).toBeNull();
@@ -398,7 +398,7 @@ describe("JobsDrawer", () => {
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
     refreshJobs();
     expect(await screen.findAllByTestId("job-row")).toHaveLength(1);
-    expect(jobTexts()).toEqual(["job-2 research.mro.sweep queued"]);
+    expect(jobTexts()).toEqual(["job-2 Research mro sweep (queued)"]);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
@@ -411,7 +411,7 @@ describe("JobsDrawer", () => {
     openJobsDrawer();
     expect(await screen.findAllByTestId("job-row")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Jobs" }));
-    expect(jobTexts()).toEqual(["job-1 research.backtest succeeded"]);
+    expect(jobTexts()).toEqual(["job-1 Research backtest (succeeded)"]);
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(list).toHaveBeenCalledTimes(1);
@@ -434,7 +434,7 @@ describe("JobsDrawer", () => {
     expect(screen.queryByTestId("job-row")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     await resolveRows(fresh, [{ id: "job-fresh", kind: "research.mro.sweep", state: "queued" }]);
-    expect(jobTexts()).toEqual(["job-fresh research.mro.sweep queued"]);
+    expect(jobTexts()).toEqual(["job-fresh Research mro sweep (queued)"]);
     view.unmount();
     await settle();
     expect(screen.queryByTestId("job-row")).toBeNull();

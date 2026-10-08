@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import { JobsDrawerCsvExport } from "../features/studio/JobsDrawerCsvExport";
 import { getCsrf } from "../session";
+import { summarizeJobsKind } from "./jobsKindLabel";
 
 export type JobRow = {
   id: string;
@@ -154,7 +155,11 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
               <ul>
                 {jobs.map((job) => (
                   <li key={job.id} data-testid="job-row">
-                    {job.id} {job.kind} {job.state}
+                    {job.id}{" "}
+                    <span className="kbot-jobs__kind">
+                      {summarizeJobsKind(job.kind).label}
+                    </span>{" "}
+                    ({job.state})
                   </li>
                 ))}
               </ul>
