@@ -593,6 +593,7 @@ describe("OperationsView alerts", () => {
       expect(client.ackAlert).toHaveBeenCalledWith("abc123");
     });
   });
+<<<<<<< HEAD
 });
 
 describe("OperationsView periodic freshness", () => {
@@ -796,3 +797,141 @@ describe("OperationsView periodic freshness", () => {
     );
   });
 });
+=======
+
+  it("keeps every alert visible while the filter is untouched", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(
+        view({
+          alerts: [
+            {
+              id: "w1",
+              kind: "live_refused",
+              severity: "warning",
+              code: "live_disabled",
+              venue: "kraken",
+              pair: "SUIUSD",
+              count: 1,
+              first_ts: 1700000000,
+              last_ts: 1700000600,
+              acknowledged: false,
+            },
+            {
+              id: "c1",
+              kind: "pack_stale",
+              severity: "critical",
+              code: "pack_stale",
+              venue: "coinbase",
+              pair: "SUIUSD",
+              count: 1,
+              first_ts: 1700000000,
+              last_ts: 1700000600,
+              acknowledged: false,
+            },
+          ],
+        }),
+      ),
+    });
+    render(<OperationsView client={client} />);
+    await screen.findByTestId("ops-alert-w1");
+    const alerts = screen.getByTestId("ops-alerts");
+    expect(alerts.querySelectorAll('[data-testid^="ops-alert-"]:not([data-testid^="ops-alert-ack"])')).toHaveLength(2);
+    expect(screen.queryByTestId("ops-alerts-filter-clear")).toBeNull();
+  });
+});
+
+describe("OperationsView alerts filter mount", () => {
+  it("when filter narrows list, renders only matching alerts (severity-only)", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(
+        view({
+          alerts: [
+            {
+              id: "w1",
+              kind: "live_refused",
+              severity: "warning",
+              code: "live_disabled",
+              venue: "kraken",
+              pair: "SUIUSD",
+              count: 1,
+              first_ts: 1700000000,
+              last_ts: 1700000600,
+              acknowledged: false,
+            },
+            {
+              id: "c1",
+              kind: "pack_stale",
+              severity: "critical",
+              code: "pack_stale",
+              venue: "coinbase",
+              pair: "SUIUSD",
+              count: 1,
+              first_ts: 1700000000,
+              last_ts: 1700000600,
+              acknowledged: false,
+            },
+            {
+              id: "w2",
+              kind: "entries_paused",
+              severity: "warning",
+              code: "entries_paused",
+              venue: "kraken",
+              pair: "SUIUSD",
+              count: 3,
+              first_ts: 1700000000,
+              last_ts: 1700000600,
+              acknowledged: false,
+            },
+          ],
+        }),
+      ),
+    });
+    render(<OperationsView client={client} />);
+    await screen.findByTestId("ops-alert-w1");
+    fireEvent.change(screen.getByTestId("ops-alerts-filter-severity"), {
+      target: { value: "warning" },
+    });
+    const alerts = screen.getByTestId("ops-alerts");
+    const rows = alerts.querySelectorAll('[data-testid^="ops-alert-"]:not([data-testid^="ops-alert-ack"])');
+    expect(Array.from(rows).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "ops-alert-w1",
+      "ops-alert-w2",
+    ]);
+    expect(screen.queryByTestId("ops-alert-c1")).toBeNull();
+    expect(screen.queryByTestId("ops-alerts-empty")).toBeNull();
+  });
+
+  it("when filter narrows list to nothing, shows the empty row instead of alert rows", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(
+        view({
+          alerts: [
+            {
+              id: "w1",
+              kind: "live_refused",
+              severity: "warning",
+              code: "live_disabled",
+              venue: "kraken",
+              pair: "SUIUSD",
+              count: 1,
+              first_ts: 1700000000,
+              last_ts: 1700000600,
+              acknowledged: false,
+            },
+          ],
+        }),
+      ),
+    });
+    render(<OperationsView client={client} />);
+    await screen.findByTestId("ops-alert-w1");
+    fireEvent.change(screen.getByTestId("ops-alerts-filter-query"), {
+      target: { value: "no-such-code" },
+    });
+    expect(screen.queryByTestId("ops-alert-w1")).toBeNull();
+    expect(screen.getByTestId("ops-alerts-empty")).toBeTruthy();
+        fireEvent.click(screen.getByTestId("ops-alerts-filter-clear"));
+    await screen.findByTestId("ops-alert-w1");
+    expect(screen.queryByTestId("ops-alerts-empty")).toBeNull();
+  });
+});
+>>>>>>> 45f5aeb (feat(operations): add AlertsFilter to narrow visible alerts)

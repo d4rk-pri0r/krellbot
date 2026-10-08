@@ -1,4 +1,5 @@
-import { useCallback, useState, type JSX } from "react";
+import { useCallback, useEffect, useState, type JSX } from "react";
+import { AlertsFilter } from "./AlertsFilter";
 import { DeploymentHistory } from "./DeploymentHistory";
 import type { OperationsClient, OperationsViewModel } from "./client";
 import { DeploymentsCsvExport } from "./DeploymentsCsvExport";
@@ -496,11 +497,13 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
 
         <section className="kbot-ops__panel" aria-label="Alerts">
           <h3 className="kbot-ops__panel-title">Alerts</h3>
-          <ul className="kbot-ops__alerts" data-testid="ops-alerts">
-            {view.alerts.length === 0 ? (
-              <li className="kbot-ops__empty">{NO_ALERTS_TEXT}</li>
-            ) : (
-              view.alerts.map((alert: OperationsViewModel["alerts"][number]) => (
+          <AlertsFilter alerts={view.alerts}>
+            {(visible: OperationsViewModel["alerts"]) => (
+              <ul className="kbot-ops__alerts" data-testid="ops-alerts">
+                {view.alerts.length === 0 ? (
+                  <li className="kbot-ops__empty">{NO_ALERTS_TEXT}</li>
+                ) : (
+                  visible.map((alert: OperationsViewModel["alerts"][number]) => (
                 <li
                   key={alert.id}
                   className={`kbot-ops__alert kbot-ops__alert--${alert.severity}`}
@@ -532,7 +535,9 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                 </li>
               ))
             )}
-          </ul>
+              </ul>
+            )}
+          </AlertsFilter>
           <AlertsCsvExport alerts={view.alerts} />
         </section>
 
