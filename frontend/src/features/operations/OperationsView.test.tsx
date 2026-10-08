@@ -584,7 +584,7 @@ describe("OperationsView alerts", () => {
     });
     render(<OperationsView client={client} />);
     const row = await screen.findByTestId("ops-alert-abc123");
-    expect(row.textContent).toContain("live_refused");
+    expect(row.textContent).toContain("Live refused");
     expect(row.textContent).toContain("live_disabled");
     expect(row.textContent).toContain("×2");
     const ack = screen.getByTestId("ops-alert-ack-abc123");
@@ -592,6 +592,49 @@ describe("OperationsView alerts", () => {
     await waitFor(() => {
       expect(client.ackAlert).toHaveBeenCalledWith("abc123");
     });
+  });
+  it("renders title-cased alert kind labels for known and unknown kinds", async () => {
+    const client = makeClient({
+      getOperations: vi.fn().mockResolvedValue(
+        view({
+          alerts: [
+            {
+              id: "known1",
+              kind: "deploy_failed",
+              severity: "warning",
+              code: "deploy_failed",
+              venue: "kraken",
+              pair: "SUIUSD",
+              count: 1,
+              first_ts: 1700000000,
+              last_ts: 1700000600,
+              acknowledged: false,
+            },
+            {
+              id: "unknown1",
+              kind: "circuit_open_probe",
+              severity: "info",
+              code: null,
+              venue: null,
+              pair: null,
+              count: 1,
+              first_ts: 1700000000,
+              last_ts: 1700000600,
+              acknowledged: false,
+            },
+          ],
+        }),
+      ),
+    });
+    const { container } = render(<OperationsView client={client} />);
+    await screen.findByTestId("ops-alert-known1");
+    await screen.findByTestId("ops-alert-unknown1");
+    const kinds = Array.from(
+      container.querySelectorAll(".kbot-ops__alert-kind"),
+    ).map((el) => el.textContent);
+    expect(kinds).toEqual(["Deploy failed", "Circuit open probe"]);
+    expect(kinds).not.toContain("deploy_failed");
+    expect(kinds).not.toContain("circuit_open_probe");
   });
 });
 

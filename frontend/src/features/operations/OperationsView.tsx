@@ -6,6 +6,7 @@ import type { OperationsClient, OperationsViewModel } from "./client";
 import { DeploymentsCsvExport } from "./DeploymentsCsvExport";
 import { AlertsCsvExport } from "./AlertsCsvExport";
 import { AcknowledgedAlertsList } from "./AcknowledgedAlertsList";
+import { summarizeAlertKind } from "./alertKindLabel";
 import { useOperationsRefresh } from "./useOperationsRefresh";
 
 const DISABLED_BANNER =
@@ -510,7 +511,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                   className={`kbot-ops__alert kbot-ops__alert--${alert.severity}`}
                   data-testid={alertRowId(alert.id)}
                 >
-                  <span className="kbot-ops__alert-kind">{alert.kind}</span>
+                  <span className="kbot-ops__alert-kind">{summarizeAlertKind(alert.kind).label}</span>
                   <span className="kbot-ops__alert-severity">{alert.severity}</span>
                   <span className="kbot-ops__alert-code">{alert.code ?? "-"}</span>
                   <span className="kbot-ops__alert-target">
