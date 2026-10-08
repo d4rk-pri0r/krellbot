@@ -366,7 +366,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               >
                 {state.pending === "disarm" ? "Disarming…" : "Disarm"}
               </button>
-              <PaperStatusCsvExport status={status} />
+              <PaperStatusCsvExport status={state.status} />
               <button
                 type="button"
                 className="kbot-paper-status__action"
