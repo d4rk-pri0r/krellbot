@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState, type JSX } from "react";
 import { AlertsFilter } from "./AlertsFilter";
 import { DeploymentHistory } from "./DeploymentHistory";
 import { summarizeOperationMode } from "./operationModeLabel";
-import type { OperationsClient, OperationsViewModel } from "./client";
+import { summarizeDeploymentRefused } from "./deploymentRefusedSummary";
 import { DeploymentsCsvExport } from "./DeploymentsCsvExport";
 import { AlertsCsvExport } from "./AlertsCsvExport";
 import { AcknowledgedAlertsList } from "./AcknowledgedAlertsList";
 import { summarizeAlertKind } from "./alertKindLabel";
 import { useOperationsRefresh } from "./useOperationsRefresh";
+import type { OperationsClient, OperationsViewModel } from "./client";
 
 const DISABLED_BANNER =
   "Live trading is disabled in this build (KRELLBOT_ENABLE_LIVE is not 1).";
@@ -444,7 +445,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                             role="status"
                             data-testid={promoteResultId(deployment.venue, deployment.pair)}
                           >
-                            Refused: {promoteResult.code} — {promoteResult.message}
+                            Refused: {summarizeDeploymentRefused(promoteResult.code, promoteResult.message).label} — {promoteResult.message}
                           </p>
                         ) : null}
                         {pauseResult && !pauseResult.ok ? (
@@ -453,7 +454,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                             role="status"
                             data-testid={pauseResultId(deployment.venue, deployment.pair)}
                           >
-                            Refused: {pauseResult.code} — {pauseResult.message}
+                            Refused: {summarizeDeploymentRefused(pauseResult.code, pauseResult.message).label} — {pauseResult.message}
                           </p>
                         ) : null}
                         {pauseErrors[pauseKey] ? (
@@ -471,7 +472,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                             role="status"
                             data-testid={resumeResultId(deployment.venue, deployment.pair)}
                           >
-                            Refused: {resumeResult.code} — {resumeResult.message}
+                            Refused: {summarizeDeploymentRefused(resumeResult.code, resumeResult.message).label} — {resumeResult.message}
                           </p>
                         ) : null}
                         {resumeErrors[resumeKey] ? (

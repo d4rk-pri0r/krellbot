@@ -241,7 +241,7 @@ describe("OperationsView deployments", () => {
     });
     const result = await screen.findByTestId("ops-promote-result-kraken-SUIUSD");
     expect(result.getAttribute("role")).toBe("status");
-    expect(result.textContent).toMatch(/Refused: live_disabled/);
+    expect(result.textContent).toMatch(/Refused: Live disabled/);
   });
 
   it("shows refused line when pause returns ok=false on a live row", async () => {
@@ -276,7 +276,7 @@ describe("OperationsView deployments", () => {
       expect(client.pauseEntries).toHaveBeenCalledWith("kraken", "SUIUSD");
     });
     const result = await screen.findByTestId("ops-pause-result-kraken-SUIUSD");
-    expect(result.textContent).toMatch(/stored_mode_not_paper/);
+    expect(result.textContent).toMatch(/Stored mode not paper/);
   });
 });
 
@@ -430,7 +430,7 @@ describe("OperationsView pause/resume command failure", () => {
     fireEvent.click(pause);
     const refusal = await screen.findByTestId("ops-pause-result-kraken-SUIUSD");
     expect(refusal.getAttribute("role")).toBe("status");
-    expect(refusal.textContent).toMatch(/Refused: stored_mode_not_paper/);
+    expect(refusal.textContent).toMatch(/Refused: Stored mode not paper/);
     expect(screen.queryByTestId("ops-pause-error-kraken-SUIUSD")).toBeNull();
 
     // A new explicit attempt supersedes the earlier outcome: the old Refused
@@ -462,7 +462,7 @@ describe("OperationsView pause/resume command failure", () => {
     const resume = await screen.findByTestId("ops-resume-kraken-SUIUSD");
     fireEvent.click(resume);
     const refusal = await screen.findByTestId("ops-resume-result-kraken-SUIUSD");
-    expect(refusal.textContent).toMatch(/Refused: no_active_entries/);
+    expect(refusal.textContent).toMatch(/Refused: No active entries/);
 
     fireEvent.click(resume);
     const alert = await screen.findByTestId("ops-resume-error-kraken-SUIUSD");
@@ -487,7 +487,7 @@ describe("OperationsView pause/resume command failure", () => {
     fireEvent.click(pause);
     const refusal = await screen.findByTestId("ops-pause-result-kraken-SUIUSD");
     expect(refusal.getAttribute("role")).toBe("status");
-    expect(refusal.textContent).toMatch(/Refused: stored_mode_not_paper/);
+    expect(refusal.textContent).toMatch(/Refused: Stored mode not paper/);
     // A refusal is a server-confirmed answer, never presented as a transport error.
     expect(screen.queryByTestId("ops-pause-error-kraken-SUIUSD")).toBeNull();
     expect(client.pauseEntries).toHaveBeenCalledTimes(1);
