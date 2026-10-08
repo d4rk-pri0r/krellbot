@@ -7,11 +7,8 @@ import {
   type JSX,
 } from "react";
 import type { ResearchClient, StoredResult } from "./client";
-/* HEAD */
 import { TraceCsvExport } from "./TraceCsvExport";
-/* MID */
 import { summarizeResearchJobError } from "./researchJobErrorLabel";
-/* CAND */
 
 export type { ResearchClient, StoredResult } from "./client";
 
