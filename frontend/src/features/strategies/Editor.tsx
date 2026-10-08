@@ -1,4 +1,5 @@
 import { useMemo, useState, type ChangeEvent, type JSX } from "react";
+import { EditorCsvExport } from "./EditorCsvExport";
 import type {
   DraftState,
   DraftSummary,
@@ -348,6 +349,10 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
           >
             Export pack
           </button>
+          <EditorCsvExport
+            lastSummary={lastSummary}
+            currentPack={currentPack}
+          />
           <button
             type="button"
             className="kbot-strategy-editor__action"
