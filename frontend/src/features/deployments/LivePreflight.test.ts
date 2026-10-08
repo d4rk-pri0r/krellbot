@@ -127,7 +127,7 @@ describe("LivePreflight submission", () => {
     expect(payload.mode).toBe("live");
     expect(body.command).toBe("live.preflight");
     const result = screen.getByTestId("live-preflight-result");
-    expect(result.textContent ?? "").toMatch(/mode_not_sandbox/);
+    expect(result.textContent ?? "").toMatch(/code: Mode not sandbox/);
     expect(result.textContent ?? "").toMatch(/live mode is refused/);
   });
 });
@@ -148,7 +148,7 @@ describe("LivePreflight result rendering", () => {
     vi.stubGlobal("fetch", fetchMock);
     await renderAndSubmit(fetchMock);
     const result = screen.getByTestId("live-preflight-result");
-    expect(result.textContent ?? "").toMatch(/code: ok/);
+    expect(result.textContent ?? "").toMatch(/code: Ok/);
     expect(result.textContent ?? "").toMatch(/preflight ok/);
     expect(result.textContent ?? "").toMatch(/acct-1/);
     expect(result.textContent ?? "").toMatch(/rev-1/);
@@ -169,7 +169,7 @@ describe("LivePreflight result rendering", () => {
     vi.stubGlobal("fetch", fetchMock);
     await renderAndSubmit(fetchMock);
     const result = screen.getByTestId("live-preflight-result");
-    expect(result.textContent ?? "").toMatch(/code: account_mismatch/);
+    expect(result.textContent ?? "").toMatch(/code: Account mismatch/);
     expect(result.textContent ?? "").toMatch(/account mismatch: acct-x/);
   });
 });

@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent, type JSX } from "react";
 import { getCsrf } from "../../session";
+import { summarizePreflightCode } from "./preflightCodeLabel";
 
 export type LivePreflightResult = {
   schema_version?: string;
@@ -143,7 +144,7 @@ export function LivePreflight(): JSX.Element {
           data-testid="live-preflight-result"
         >
           <p className="kbot-live-preflight__result-line">
-            code: {result.code}
+            code: {summarizePreflightCode(result.code).label}
           </p>
           <p className="kbot-live-preflight__result-line">
             ok: {result.ok === true ? "true" : "false"}
