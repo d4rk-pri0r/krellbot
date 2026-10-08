@@ -3,6 +3,7 @@ import { DeploymentHistory } from "./DeploymentHistory";
 import type { OperationsClient, OperationsViewModel } from "./client";
 import { DeploymentsCsvExport } from "./DeploymentsCsvExport";
 import { AlertsCsvExport } from "./AlertsCsvExport";
+import { AcknowledgedAlertsList } from "./AcknowledgedAlertsList";
 
 const DISABLED_BANNER =
   "Live trading is disabled in this build (KRELLBOT_ENABLE_LIVE is not 1).";
@@ -515,6 +516,8 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
           </ul>
           <AlertsCsvExport alerts={view.alerts} />
         </section>
+
+        <AcknowledgedAlertsList client={client} />
       </div>
     </section>
   );

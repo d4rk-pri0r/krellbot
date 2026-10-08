@@ -1,5 +1,9 @@
 import { useEffect, useState, type JSX } from "react";
-import type { PaperClient, PaperStatus } from "./client";
+import {
+  PaperCommandRefusalError,
+  type PaperClient,
+  type PaperStatus,
+} from "./client";
 import { PaperStatusCsvExport } from "./PaperStatusCsvExport";
 
 export type { PaperClient, PaperStatus } from "./client";
@@ -14,11 +18,60 @@ function sentenceFor(entries_paused: boolean | undefined): EntriesSentence {
   return entries_paused ? "Entries paused" : "Entries active";
 }
 
+type ExportReason =
+  | "not armed"
+  | "pack stored in live mode"
+  | "venue/pair unavailable"
+  | "";
+
+function exportDisabledReason(status: PaperStatus | null): ExportReason {
+  if (status === null || !status.armed) {
+    return "not armed";
+  }
+  if (status.mode !== "paper") {
+    return "pack stored in live mode";
+  }
+  if (!status.venue || !status.pair) {
+    return "venue/pair unavailable";
+  }
+  return "";
+}
+
+function ExportButton({
+  reason,
+  pending,
+  onExport,
+}: {
+  reason: ExportReason;
+  pending: boolean;
+  onExport: () => void;
+}): JSX.Element {
+  const disabledByStatus = reason !== "";
+  return (
+    <button
+      type="button"
+      data-testid="paper-export-btn"
+      className="kbot-paper-status__action kbot-paper-status__action--export"
+      disabled={disabledByStatus || pending}
+      data-reason={disabledByStatus ? reason : undefined}
+      onClick={onExport}
+    >
+      {pending
+        ? "Downloading…"
+        : disabledByStatus
+          ? `Download pack — ${reason}`
+          : "Download pack"}
+    </button>
+  );
+}
+
 export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
   const [status, setStatus] = useState<PaperStatus | null>(null);
   const [sentence, setSentence] = useState<EntriesSentence>("Entries active");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [exportPending, setExportPending] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const applyStatus = (next: PaperStatus): void => {
     setStatus(next);
@@ -117,6 +170,53 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
     }
   };
 
+  const handleExport = async (): Promise<void> => {
+    if (exportPending) {
+      return;
+    }
+    const reason = exportDisabledReason(status);
+    if (reason !== "") {
+      setExportError(`Download pack — ${reason}`);
+      return;
+    }
+    const venue = status?.venue ?? "";
+    const pair = status?.pair ?? "";
+    setExportError(null);
+    setExportPending(true);
+    try {
+      const exported = await client.exportPaperPack?.(venue, pair);
+      if (!exported) {
+        // A client without export support must not pretend a download happened.
+        setExportError("paper export is unavailable in this build");
+        return;
+      }
+      const blob = new Blob([exported.bytes], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      // No filename fabrication: the response's pack_id names the file when
+      // present; only a response that truly omits it falls back to venue/pair.
+      anchor.download =
+        exported.filename ?? `krellbot-pack-${venue}-${pair}.json`;
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (thrown) {
+      if (thrown instanceof PaperCommandRefusalError) {
+        // The backend's own code and message explain the refusal truthfully.
+        setExportError(
+          `Download refused (${thrown.code}): ${thrown.message}`,
+        );
+      } else {
+        setExportError("Download failed: unexpected error");
+      }
+    } finally {
+      setExportPending(false);
+    }
+  };
+
   const paperControls =
     status?.armed === true &&
     status.venue &&
@@ -178,6 +278,24 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               </button>
               <PaperStatusCsvExport status={status} />
             </div>
+            <div className="kbot-paper-status__export">
+              <ExportButton
+                reason={exportDisabledReason(status)}
+                pending={exportPending}
+                onExport={() => {
+                  void handleExport();
+                }}
+              />
+              {exportError !== null ? (
+                <p
+                  className="kbot-paper-status__error"
+                  role="alert"
+                  data-testid="paper-export-error"
+                >
+                  {exportError}
+                </p>
+              ) : null}
+            </div>
             {errorMessage !== null ? (
               <p
                 className="kbot-paper-status__error"
@@ -189,9 +307,27 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
             ) : null}
           </>
         ) : status?.armed ? (
-          <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
-            Controls unavailable
-          </p>
+          <div className="kbot-paper-status__export">
+            <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
+              Controls unavailable
+            </p>
+            <ExportButton
+              reason={exportDisabledReason(status)}
+              pending={exportPending}
+              onExport={() => {
+                void handleExport();
+              }}
+            />
+            {exportError !== null ? (
+              <p
+                className="kbot-paper-status__error"
+                role="alert"
+                data-testid="paper-export-error"
+              >
+                {exportError}
+              </p>
+            ) : null}
+          </div>
         ) : unavailable ? (
           <>
             <p
@@ -220,12 +356,30 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
             Checking paper status…
           </p>
         ) : (
-          <p
-            className="kbot-paper-status__empty"
-            data-testid="paper-status-empty"
-          >
-            No pack armed
-          </p>
+          <div className="kbot-paper-status__export">
+            <p
+              className="kbot-paper-status__empty"
+              data-testid="paper-status-empty"
+            >
+              No pack armed
+            </p>
+            <ExportButton
+              reason={exportDisabledReason(status)}
+              pending={exportPending}
+              onExport={() => {
+                void handleExport();
+              }}
+            />
+            {exportError !== null ? (
+              <p
+                className="kbot-paper-status__error"
+                role="alert"
+                data-testid="paper-export-error"
+              >
+                {exportError}
+              </p>
+            ) : null}
+          </div>
         )}
       </div>
     </section>

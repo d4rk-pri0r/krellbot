@@ -1,7 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatusPanel } from "./StatusPanel";
-import type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
+import {
+  PaperCommandRefusalError,
+  type PaperClient,
+  type PaperCommandResult,
+  type PaperStatus,
+} from "./client";
 
 afterEach(() => {
   cleanup();
@@ -46,6 +51,7 @@ function makeClient(overrides: Partial<PaperClient> = {}): PaperClient {
       revision_before: "before",
       revision_after: "after",
     } satisfies PaperCommandResult),
+    exportPaperPack: vi.fn().mockResolvedValue({ filename: null, bytes: "{}" }),
     ...overrides,
   };
 }
@@ -464,5 +470,214 @@ describe("StatusPanel pending initial status", () => {
       screen.getByTestId("paper-status-unavailable").textContent,
     ).toMatch(/unavailable/i);
     expect(screen.queryByTestId("paper-status-empty")).toBeNull();
+  });
+});
+
+describe("StatusPanel export button availability", () => {
+  function exportButton(): HTMLButtonElement {
+    return screen.getByTestId("paper-export-btn") as HTMLButtonElement;
+  }
+
+  it("is enabled only when armed, mode is paper, and venue/pair are present", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+    });
+    render(<StatusPanel client={client} />);
+    await screen.findByTestId("paper-status-entries");
+    const button = exportButton();
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toMatch(/^Download pack$/);
+  });
+
+  it("is disabled with 'Download pack — not armed' when status.armed is false", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue({ schema_version: "1", armed: false }),
+    });
+    render(<StatusPanel client={client} />);
+    await screen.findByTestId("paper-status-empty");
+    const button = exportButton();
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toMatch(/Download pack — not armed/);
+    expect(button.getAttribute("data-reason")).toBe("not armed");
+  });
+
+  it("is disabled with 'Download pack — pack stored in live mode' when mode is live", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus({ mode: "live" })),
+    });
+    render(<StatusPanel client={client} />);
+    await screen.findByText(/Controls unavailable/);
+    const button = exportButton();
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toMatch(/Download pack — pack stored in live mode/);
+  });
+
+  it("is disabled with 'Download pack — venue/pair unavailable' when venue or pair is empty", async () => {
+    const missingVenue = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus({ venue: undefined })),
+    });
+    render(<StatusPanel client={missingVenue} />);
+    await screen.findByText(/Controls unavailable/);
+    let button = exportButton();
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toMatch(/Download pack — venue\/pair unavailable/);
+    cleanup();
+
+    const missingPair = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus({ pair: undefined })),
+    });
+    render(<StatusPanel client={missingPair} />);
+    await screen.findByText(/Controls unavailable/);
+    button = exportButton();
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toMatch(/Download pack — venue\/pair unavailable/);
+  });
+});
+
+describe("StatusPanel export download", () => {
+  const urlProps = { createObjectURL: "createObjectURL", revokeObjectURL: "revokeObjectURL" };
+  let created: Blob[];
+  let revoked: string[];
+  let clicked: HTMLAnchorElement[];
+  let clickSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    created = [];
+    revoked = [];
+    clicked = [];
+    const urlRecord = URL as unknown as Record<string, unknown>;
+    urlRecord.createObjectURL = vi.fn((blob: Blob) => {
+      created.push(blob);
+      return "blob:paper-pack-1";
+    });
+    urlRecord.revokeObjectURL = vi.fn((url: string) => {
+      revoked.push(url);
+    });
+    clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function handleClick(this: HTMLAnchorElement) {
+        clicked.push(this);
+      },
+    );
+  });
+
+  afterEach(() => {
+    const urlRecord = URL as unknown as Record<string, unknown>;
+    delete urlRecord[urlProps.createObjectURL];
+    delete urlRecord[urlProps.revokeObjectURL];
+    void clickSpy;
+    void revoked;
+  });
+
+  it("clicking the enabled button calls exportPaperPack with the armed venue and pair", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+    });
+    render(<StatusPanel client={client} />);
+    const button = await screen.findByTestId("paper-export-btn");
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(client.exportPaperPack).toHaveBeenCalledTimes(1);
+    });
+    expect(client.exportPaperPack).toHaveBeenCalledWith("kraken", "SUIUSD");
+  });
+
+  it("disables the button and shows a pending text while the export is in flight", async () => {
+    let release: (value: { filename: string | null; bytes: string }) => void = () => {};
+    const gate = new Promise<{ filename: string | null; bytes: string }>((resolve) => {
+      release = resolve;
+    });
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      exportPaperPack: vi.fn().mockReturnValue(gate),
+    });
+    render(<StatusPanel client={client} />);
+    const button = (await screen.findByTestId("paper-export-btn")) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect((screen.getByTestId("paper-export-btn") as HTMLButtonElement).disabled).toBe(true);
+    });
+    expect(screen.getByTestId("paper-export-btn").textContent).toMatch(/Downloading/i);
+    // No download while pending.
+    expect(clicked).toHaveLength(0);
+    await act(async () => {
+      release({ filename: null, bytes: "{}" });
+    });
+    await waitFor(() => {
+      expect((screen.getByTestId("paper-export-btn") as HTMLButtonElement).disabled).toBe(false);
+    });
+  });
+
+  it("triggers a browser download of the pack bytes with the fallback venue/pair filename", async () => {
+    const bytes = JSON.stringify({ schema_version: "1", id: "trend-follow" });
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      exportPaperPack: vi.fn().mockResolvedValue({ filename: null, bytes }),
+    });
+    render(<StatusPanel client={client} />);
+    fireEvent.click(await screen.findByTestId("paper-export-btn"));
+    await waitFor(() => {
+      expect(clicked).toHaveLength(1);
+    });
+    const anchor = clicked[0];
+    // The response carried no pack_id, so only the venue/pair fallback names it.
+    expect(anchor.download).toBe("krellbot-pack-kraken-SUIUSD.json");
+    expect(anchor.href).toBe("blob:paper-pack-1");
+    expect(created).toHaveLength(1);
+    expect(created[0].type).toBe("application/json");
+    expect(await created[0].text()).toBe(bytes);
+    expect(revoked).toEqual(["blob:paper-pack-1"]);
+    // No refusal text on success.
+    expect(screen.queryByTestId("paper-export-error")).toBeNull();
+  });
+
+  it("uses the response-provided filename when the export result carries one", async () => {
+    const bytes = JSON.stringify({ schema_version: "1", id: "trend-follow" });
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      exportPaperPack: vi.fn().mockResolvedValue({ filename: "trend-follow", bytes }),
+    });
+    render(<StatusPanel client={client} />);
+    fireEvent.click(await screen.findByTestId("paper-export-btn"));
+    await waitFor(() => {
+      expect(clicked).toHaveLength(1);
+    });
+    expect(clicked[0].download).toBe("trend-follow");
+  });
+
+  it.each(["not_armed", "unknown_venue", "stored_mode_not_paper", "invalid_pack"])(
+    "surfaces the %s refusal without crashing the panel",
+    async (code) => {
+      const client = makeClient({
+        getStatus: vi.fn().mockResolvedValue(armedStatus()),
+        exportPaperPack: vi
+          .fn()
+          .mockRejectedValue(new PaperCommandRefusalError(code, `refused: ${code}`)),
+      });
+      render(<StatusPanel client={client} />);
+      fireEvent.click(await screen.findByTestId("paper-export-btn"));
+      const error = await screen.findByTestId("paper-export-error");
+      expect(error.textContent).toMatch(new RegExp(code));
+      expect(error.textContent).toMatch(/refused: /);
+      // The panel stays mounted and usable.
+      expect(screen.getByTestId("paper-status-panel")).toBeDefined();
+      expect(screen.getByTestId("paper-status-entries")).toBeDefined();
+      expect(clicked).toHaveLength(0);
+    },
+  );
+
+  it("surfaces a network failure honestly without retrying", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      exportPaperPack: vi
+        .fn()
+        .mockRejectedValue(new PaperCommandRefusalError("network_failure", "paper.export request failed")),
+    });
+    render(<StatusPanel client={client} />);
+    fireEvent.click(await screen.findByTestId("paper-export-btn"));
+    const error = await screen.findByTestId("paper-export-error");
+    expect(error.textContent).toMatch(/network_failure/);
+    expect(client.exportPaperPack).toHaveBeenCalledTimes(1);
+    expect(clicked).toHaveLength(0);
   });
 });

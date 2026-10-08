@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHttpClient, createLastRunsHttpClient } from "./client";
+import {
+  createHttpClient,
+  createLastRunsHttpClient,
+  PaperCommandRefusalError,
+  type PaperExportResult,
+} from "./client";
 import { getCsrf } from "../../session";
 
 afterEach(() => {
@@ -409,5 +414,135 @@ describe("createHttpClient listRuns", () => {
     expect(typeof client.listRuns).toBe("function");
     const history = await client.listRuns();
     expect(history.runs).toEqual([]);
+  });
+});
+
+describe("createHttpClient exportPaperPack", () => {
+  const exportedJson = JSON.stringify({ schema_version: "1", id: "trend-follow" });
+  const exportedB64 = btoa(exportedJson);
+
+  // The method is optional on PaperClient so existing clients keep
+  // typechecking; the tests assert the real HTTP client implements it.
+  function callExport(venue: string, pair: string): Promise<PaperExportResult> {
+    const method = createHttpClient().exportPaperPack;
+    if (method === undefined) {
+      throw new Error("exportPaperPack is not implemented");
+    }
+    return method(venue, pair);
+  }
+
+  function exportedResponse(overrides: Record<string, unknown> = {}): unknown {
+    const base: Record<string, unknown> = {
+      schema_version: "1",
+      correlation_id: "corr-1",
+      code: "exported",
+      ok: true,
+      message: "exported kraken SUIUSD",
+      effect: "unchanged",
+      revision_before: "rev",
+      revision_after: "rev",
+      pack_bytes_b64: exportedB64,
+      pack_sha256: "deadbeef",
+      pack_bytes_len: exportedJson.length,
+    };
+    for (const key of Object.keys(overrides)) {
+      if (overrides[key] === undefined) {
+        delete base[key];
+      } else {
+        base[key] = overrides[key];
+      }
+    }
+    return base;
+  }
+
+  it("posts the paper.export envelope and returns the decoded pack bytes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(exportedResponse()));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await callExport("kraken", "SUIUSD");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/commands");
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Krellbot-CSRF"]).toBeDefined();
+    expect(JSON.parse(String(init.body))).toEqual({
+      schema_version: "1",
+      command: "paper.export",
+      payload: { venue: "kraken", pair: "SUIUSD" },
+    });
+    // The bytes the engine has armed, verbatim — not a re-serialization.
+    expect(out.bytes).toBe(exportedJson);
+    // The envelope carries no pack_id, so no filename is fabricated here;
+    // the caller applies the venue/pair fallback.
+    expect(out.filename).toBeNull();
+  });
+
+  it("throws a typed refusal carrying the backend code and message", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        exportedResponse({
+          code: "not_armed",
+          ok: false,
+          message: "not armed: kraken SUIUSD",
+          effect: "refused",
+          pack_bytes_b64: undefined,
+          pack_sha256: undefined,
+          pack_bytes_len: undefined,
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const attempt = callExport("kraken", "SUIUSD");
+    await expect(attempt).rejects.toBeInstanceOf(PaperCommandRefusalError);
+    const error = (await attempt.catch((thrown: unknown) => thrown)) as PaperCommandRefusalError;
+    expect(error.code).toBe("not_armed");
+    expect(error.message).toMatch(/not armed: kraken SUIUSD/);
+    // No retry: exactly one request.
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it.each(["not_armed", "unknown_venue", "stored_mode_not_paper", "invalid_pack"])(
+    "surfaces the %s refusal without retrying",
+    async (code) => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(
+          exportedResponse({
+            code,
+            ok: false,
+            message: `refused: ${code}`,
+            effect: "refused",
+            pack_bytes_b64: undefined,
+            pack_sha256: undefined,
+            pack_bytes_len: undefined,
+          }),
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        callExport("kraken", "SUIUSD"),
+      ).rejects.toMatchObject({ code });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("surfaces a transport failure as a typed network_failure error", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    vi.stubGlobal("fetch", fetchMock);
+    const attempt = callExport("kraken", "SUIUSD");
+    await expect(attempt).rejects.toBeInstanceOf(PaperCommandRefusalError);
+    const error = (await attempt.catch((thrown: unknown) => thrown)) as PaperCommandRefusalError;
+    expect(error.code).toBe("network_failure");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("surfaces a non-2xx HTTP status as a typed network_failure error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 403));
+    vi.stubGlobal("fetch", fetchMock);
+    const attempt = callExport("kraken", "SUIUSD");
+    await expect(attempt).rejects.toBeInstanceOf(PaperCommandRefusalError);
+    const error = (await attempt.catch((thrown: unknown) => thrown)) as PaperCommandRefusalError;
+    expect(error.code).toBe("network_failure");
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

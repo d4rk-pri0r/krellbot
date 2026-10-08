@@ -20,11 +20,27 @@ export type PaperCommandResult = {
   revision_after?: string | null;
 };
 
+export type PaperExportResult = {
+  filename: string | null;
+  bytes: string;
+};
+
+export class PaperCommandRefusalError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "PaperCommandRefusalError";
+    this.code = code;
+  }
+}
+
 export type PaperClient = {
   getStatus(): Promise<PaperStatus>;
   pauseEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   resumeEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   disarm(venue: string, pair: string): Promise<PaperCommandResult>;
+  exportPaperPack?(venue: string, pair: string): Promise<PaperExportResult>;
 };
 
 export type PaperRunFill = {
@@ -111,6 +127,63 @@ async function postCommand(
     throw new Error(`${command} failed: ${response.status}`);
   }
   return (await response.json()) as PaperCommandResult;
+}
+
+const EXPORT_NETWORK_FAILURE = "network_failure";
+
+function decodePackBytes(b64: string): string {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+async function exportPaperPack(
+  venue: string,
+  pair: string,
+): Promise<PaperExportResult> {
+  let response: Response;
+  try {
+    response = await fetch("/api/v1/commands", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Krellbot-CSRF": getCsrf(),
+      },
+      body: JSON.stringify({
+        schema_version: "1",
+        command: "paper.export",
+        payload: { venue, pair },
+      }),
+    });
+  } catch {
+    // No retry: a single transport failure is surfaced as-is.
+    throw new PaperCommandRefusalError(
+      EXPORT_NETWORK_FAILURE,
+      "paper.export request failed",
+    );
+  }
+  if (!response.ok) {
+    throw new PaperCommandRefusalError(
+      EXPORT_NETWORK_FAILURE,
+      `paper.export failed: ${response.status}`,
+    );
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  if (raw.ok === false || raw.effect === "refused") {
+    const code = typeof raw.code === "string" ? raw.code : "unknown_refusal";
+    const message =
+      typeof raw.message === "string" ? raw.message : "paper export refused";
+    throw new PaperCommandRefusalError(code, message);
+  }
+  // The wire shape carries base64 (`pack_bytes_b64`); decoding reproduces the
+  // on-disk bytes the engine armed, byte for byte.
+  const b64 = typeof raw.pack_bytes_b64 === "string" ? raw.pack_bytes_b64 : "";
+  const filename = typeof raw.pack_id === "string" ? raw.pack_id : null;
+  return { filename, bytes: decodePackBytes(b64) };
 }
 
 function adaptStatus(raw: Record<string, unknown>): PaperStatus {
@@ -269,6 +342,9 @@ export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedCl
       return postCommand("paper.disarm", { venue, pair });
     },
     listRuns,
+    exportPaperPack(venue: string, pair: string): Promise<PaperExportResult> {
+      return exportPaperPack(venue, pair);
+    },
   };
 }
 
