@@ -8,6 +8,7 @@ import { AlertsCsvExport } from "./AlertsCsvExport";
 import { AcknowledgedAlertsList } from "./AcknowledgedAlertsList";
 import { summarizeAlertKind } from "./alertKindLabel";
 import { useOperationsRefresh } from "./useOperationsRefresh";
+import { summarizeAlertCode } from "./alertCodeLabel";
 import type { OperationsClient, OperationsViewModel } from "./client";
 import { summarizeAlertSeverity } from "./alertSeverityLabel";
 
@@ -517,7 +518,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                   <span className="kbot-ops__alert-severity">
                     {summarizeAlertSeverity(alert.severity).label}
                   </span>
-                  <span className="kbot-ops__alert-code">{alert.code ?? "-"}</span>
+                  <span className="kbot-ops__alert-code">{summarizeAlertCode(alert.code).label}</span>
                   <span className="kbot-ops__alert-target">
                     {alert.venue ?? "-"} {alert.pair ?? ""}
                   </span>

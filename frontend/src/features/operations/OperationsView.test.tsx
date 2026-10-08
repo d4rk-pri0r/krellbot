@@ -585,7 +585,8 @@ describe("OperationsView alerts", () => {
     render(<OperationsView client={client} />);
     const row = await screen.findByTestId("ops-alert-abc123");
     expect(row.textContent).toContain("Live refused");
-    expect(row.textContent).toContain("live_disabled");
+    expect(row.textContent).toContain("Live disabled");
+    expect(row.textContent).not.toContain("live_disabled");
     expect(row.textContent).toContain("×2");
     const ack = screen.getByTestId("ops-alert-ack-abc123");
     fireEvent.click(ack);
