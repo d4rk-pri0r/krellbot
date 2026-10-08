@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, type JSX } from "react";
 import type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
 import { PaperStatusCsvExport } from "./PaperStatusCsvExport";
+import { summarizePaperCommandRefusal } from "./paperCommandRefusalSummary";
 
 export type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
 
@@ -66,7 +67,7 @@ function refusalMessage(
   command: CommandName,
   result: PaperCommandResult | null | undefined,
 ): string {
-  return result?.message ?? result?.code ?? `${commandLabel(command)} refused`;
+  return summarizePaperCommandRefusal(commandLabel(command), result).label;
 }
 
 function unknownMessage(command: CommandName, reason: unknown): string {

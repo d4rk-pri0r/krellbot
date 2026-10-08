@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatusPanel } from "./StatusPanel";
+import { summarizePaperCommandRefusal } from "./paperCommandRefusalSummary";
 import type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
 
 afterEach(() => {
@@ -744,6 +745,62 @@ describe("StatusPanel command transport failures", () => {
     expect(client.getStatus).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
       /Entries active/,
+    );
+  });
+});
+
+describe("StatusPanel refusal error text", () => {
+  it("renders the server message verbatim when a refusal carries one", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      pauseEntries: vi.fn().mockResolvedValue({
+        schema_version: "1",
+        code: "venue_offline",
+        ok: false,
+        message: "venue down: kraken SUIUSD",
+        effect: "refused",
+      } satisfies PaperCommandResult),
+    });
+    render(<StatusPanel client={client} />);
+    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    fireEvent.click(pause);
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-error").textContent).toBe(
+        "venue down: kraken SUIUSD",
+      );
+    });
+  });
+
+  it("falls back to the known refusal copy when the server message is missing", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      pauseEntries: vi.fn().mockResolvedValue({
+        schema_version: "1",
+        code: "not_armed",
+        ok: false,
+        effect: "refused",
+      } satisfies PaperCommandResult),
+    });
+    render(<StatusPanel client={client} />);
+    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    fireEvent.click(pause);
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-error").textContent).toBe(
+        "Pause refused",
+      );
+    });
+  });
+
+  it("exposes the same contract a future Stop handler would render", () => {
+    // A future handler renders summarizePaperCommandRefusal("Stop", result).label.
+    // The helper must pass a server message through verbatim and fall back to
+    // "<command> refused" for any command name, known or not.
+    expect(summarizePaperCommandRefusal("Stop", { message: "x" }).label).toBe("x");
+    expect(summarizePaperCommandRefusal("Stop", undefined).label).toBe(
+      "Stop refused",
+    );
+    expect(summarizePaperCommandRefusal("Stop", undefined).isKnownCommand).toBe(
+      false,
     );
   });
 });
