@@ -1,12 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatusPanel } from "./StatusPanel";
-import {
-  PaperCommandRefusalError,
-  type PaperClient,
-  type PaperCommandResult,
-  type PaperStatus,
-} from "./client";
+import type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
 
 afterEach(() => {
   cleanup();
@@ -51,7 +46,6 @@ function makeClient(overrides: Partial<PaperClient> = {}): PaperClient {
       revision_before: "before",
       revision_after: "after",
     } satisfies PaperCommandResult),
-    exportPaperPack: vi.fn().mockResolvedValue({ filename: null, bytes: "{}" }),
     ...overrides,
   };
 }
@@ -473,211 +467,283 @@ describe("StatusPanel pending initial status", () => {
   });
 });
 
-describe("StatusPanel export button availability", () => {
-  function exportButton(): HTMLButtonElement {
-    return screen.getByTestId("paper-export-btn") as HTMLButtonElement;
-  }
+function commandGate() {
+  let resolve!: (value: PaperCommandResult) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<PaperCommandResult>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
-  it("is enabled only when armed, mode is paper, and venue/pair are present", async () => {
+describe("StatusPanel command pending guard", () => {
+  async function renderArmed(): Promise<PaperClient> {
     const client = makeClient({
       getStatus: vi.fn().mockResolvedValue(armedStatus()),
     });
     render(<StatusPanel client={client} />);
-    await screen.findByTestId("paper-status-entries");
-    const button = exportButton();
-    expect(button.disabled).toBe(false);
-    expect(button.textContent).toMatch(/^Download pack$/);
+    await screen.findByRole("button", { name: /pause entries/i });
+    return client;
+  }
+
+  it("a repeated pause click while pending sends the command exactly once", async () => {
+    const client = await renderArmed();
+    const gate = commandGate();
+    (client.pauseEntries as ReturnType<typeof vi.fn>).mockReturnValue(gate.promise);
+    // The initial load already consumed the default status; queue the
+    // post-command reconciliation read with the server's paused truth.
+    (client.getStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      armedStatus({ entries_paused: true }),
+    );
+    const pause = screen.getByRole("button", { name: /pause entries/i });
+
+    fireEvent.click(pause);
+    fireEvent.click(pause);
+    fireEvent.click(pause);
+
+    expect(client.pauseEntries).toHaveBeenCalledTimes(1);
+    expect(client.pauseEntries).toHaveBeenCalledWith("kraken", "SUIUSD");
+
+    // All controls are disabled while the command is in flight, and the
+    // pending command is announced.
+    expect(pause.getAttribute("disabled")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: /resume entries/i }).getAttribute("disabled"),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: /^disarm$/i }).getAttribute("disabled"),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: /refresh status/i }).getAttribute("disabled"),
+    ).not.toBeNull();
+    expect(screen.getByTestId("paper-status-panel").getAttribute("data-pending")).toBe(
+      "pause",
+    );
+
+    // No optimistic sentence change while the outcome is unknown.
+    expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
+      /Entries active/,
+    );
+
+    await act(async () => {
+      gate.resolve({
+        schema_version: "1",
+        code: "entries_paused",
+        ok: true,
+        message: "entries paused: kraken SUIUSD",
+      } satisfies PaperCommandResult);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
+        /Entries paused/,
+      );
+    });
+    // Pending cleared: controls usable again.
+    expect(pause.getAttribute("disabled")).toBeNull();
+    expect(screen.getByTestId("paper-status-panel").getAttribute("data-pending")).toBe("");
   });
 
-  it("is disabled with 'Download pack — not armed' when status.armed is false", async () => {
-    const client = makeClient({
-      getStatus: vi.fn().mockResolvedValue({ schema_version: "1", armed: false }),
-    });
-    render(<StatusPanel client={client} />);
-    await screen.findByTestId("paper-status-empty");
-    const button = exportButton();
-    expect(button.disabled).toBe(true);
-    expect(button.textContent).toMatch(/Download pack — not armed/);
-    expect(button.getAttribute("data-reason")).toBe("not armed");
-  });
+  it("a repeated disarm click while pending sends the command exactly once", async () => {
+    const client = await renderArmed();
+    const gate = commandGate();
+    (client.disarm as ReturnType<typeof vi.fn>).mockReturnValue(gate.promise);
+    const disarm = screen.getByRole("button", { name: /^disarm$/i });
 
-  it("is disabled with 'Download pack — pack stored in live mode' when mode is live", async () => {
-    const client = makeClient({
-      getStatus: vi.fn().mockResolvedValue(armedStatus({ mode: "live" })),
-    });
-    render(<StatusPanel client={client} />);
-    await screen.findByText(/Controls unavailable/);
-    const button = exportButton();
-    expect(button.disabled).toBe(true);
-    expect(button.textContent).toMatch(/Download pack — pack stored in live mode/);
-  });
+    fireEvent.click(disarm);
+    fireEvent.click(disarm);
 
-  it("is disabled with 'Download pack — venue/pair unavailable' when venue or pair is empty", async () => {
-    const missingVenue = makeClient({
-      getStatus: vi.fn().mockResolvedValue(armedStatus({ venue: undefined })),
-    });
-    render(<StatusPanel client={missingVenue} />);
-    await screen.findByText(/Controls unavailable/);
-    let button = exportButton();
-    expect(button.disabled).toBe(true);
-    expect(button.textContent).toMatch(/Download pack — venue\/pair unavailable/);
-    cleanup();
+    expect(client.disarm).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
+      /Entries active/,
+    );
 
-    const missingPair = makeClient({
-      getStatus: vi.fn().mockResolvedValue(armedStatus({ pair: undefined })),
+    await act(async () => {
+      gate.resolve({
+        schema_version: "1",
+        code: "disarmed",
+        ok: true,
+        message: "disarmed kraken SUIUSD",
+      } satisfies PaperCommandResult);
     });
-    render(<StatusPanel client={missingPair} />);
-    await screen.findByText(/Controls unavailable/);
-    button = exportButton();
-    expect(button.disabled).toBe(true);
-    expect(button.textContent).toMatch(/Download pack — venue\/pair unavailable/);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+    });
+    expect(screen.getByTestId("paper-status-empty").textContent).toMatch(/No pack armed/);
   });
 });
 
-describe("StatusPanel export download", () => {
-  const urlProps = { createObjectURL: "createObjectURL", revokeObjectURL: "revokeObjectURL" };
-  let created: Blob[];
-  let revoked: string[];
-  let clicked: HTMLAnchorElement[];
-  let clickSpy: ReturnType<typeof vi.spyOn>;
+describe("StatusPanel command transport failures", () => {
+  it("a pause transport failure shows an unknown outcome without optimistic success and without an automatic read", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      pauseEntries: vi.fn().mockRejectedValue(new Error("paper.pause_entries failed: 503")),
+    });
+    render(<StatusPanel client={client} />);
+    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    fireEvent.click(pause);
 
-  beforeEach(() => {
-    created = [];
-    revoked = [];
-    clicked = [];
-    const urlRecord = URL as unknown as Record<string, unknown>;
-    urlRecord.createObjectURL = vi.fn((blob: Blob) => {
-      created.push(blob);
-      return "blob:paper-pack-1";
-    });
-    urlRecord.revokeObjectURL = vi.fn((url: string) => {
-      revoked.push(url);
-    });
-    clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
-      function handleClick(this: HTMLAnchorElement) {
-        clicked.push(this);
-      },
+    const alert = await screen.findByTestId("paper-status-unknown");
+    expect(alert.textContent).toMatch(/Pause outcome unknown/i);
+    expect(alert.textContent).toMatch(/paper\.pause_entries failed: 503/);
+    expect(alert.textContent).toMatch(/refresh/i);
+    // No optimistic success and no fabricated state change.
+    expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
+      /Entries active/,
     );
-  });
-
-  afterEach(() => {
-    const urlRecord = URL as unknown as Record<string, unknown>;
-    delete urlRecord[urlProps.createObjectURL];
-    delete urlRecord[urlProps.revokeObjectURL];
-    void clickSpy;
-    void revoked;
-  });
-
-  it("clicking the enabled button calls exportPaperPack with the armed venue and pair", async () => {
-    const client = makeClient({
-      getStatus: vi.fn().mockResolvedValue(armedStatus()),
-    });
-    render(<StatusPanel client={client} />);
-    const button = await screen.findByTestId("paper-export-btn");
-    fireEvent.click(button);
-    await waitFor(() => {
-      expect(client.exportPaperPack).toHaveBeenCalledTimes(1);
-    });
-    expect(client.exportPaperPack).toHaveBeenCalledWith("kraken", "SUIUSD");
-  });
-
-  it("disables the button and shows a pending text while the export is in flight", async () => {
-    let release: (value: { filename: string | null; bytes: string }) => void = () => {};
-    const gate = new Promise<{ filename: string | null; bytes: string }>((resolve) => {
-      release = resolve;
-    });
-    const client = makeClient({
-      getStatus: vi.fn().mockResolvedValue(armedStatus()),
-      exportPaperPack: vi.fn().mockReturnValue(gate),
-    });
-    render(<StatusPanel client={client} />);
-    const button = (await screen.findByTestId("paper-export-btn")) as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
-    fireEvent.click(button);
-    await waitFor(() => {
-      expect((screen.getByTestId("paper-export-btn") as HTMLButtonElement).disabled).toBe(true);
-    });
-    expect(screen.getByTestId("paper-export-btn").textContent).toMatch(/Downloading/i);
-    // No download while pending.
-    expect(clicked).toHaveLength(0);
+    // No automatic retry or reconciliation read after the failure.
     await act(async () => {
-      release({ filename: null, bytes: "{}" });
+      await Promise.resolve();
     });
-    await waitFor(() => {
-      expect((screen.getByTestId("paper-export-btn") as HTMLButtonElement).disabled).toBe(false);
-    });
+    expect(client.getStatus).toHaveBeenCalledTimes(1);
+    // Pending cleared so the user may act again.
+    expect(pause.getAttribute("disabled")).toBeNull();
+    expect(screen.getByTestId("paper-status-panel").getAttribute("data-pending")).toBe("");
   });
 
-  it("triggers a browser download of the pack bytes with the fallback venue/pair filename", async () => {
-    const bytes = JSON.stringify({ schema_version: "1", id: "trend-follow" });
+  it("an explicit refresh after an unknown pause reconciles to the server state and clears the unknown alert", async () => {
     const client = makeClient({
-      getStatus: vi.fn().mockResolvedValue(armedStatus()),
-      exportPaperPack: vi.fn().mockResolvedValue({ filename: null, bytes }),
-    });
-    render(<StatusPanel client={client} />);
-    fireEvent.click(await screen.findByTestId("paper-export-btn"));
-    await waitFor(() => {
-      expect(clicked).toHaveLength(1);
-    });
-    const anchor = clicked[0];
-    // The response carried no pack_id, so only the venue/pair fallback names it.
-    expect(anchor.download).toBe("krellbot-pack-kraken-SUIUSD.json");
-    expect(anchor.href).toBe("blob:paper-pack-1");
-    expect(created).toHaveLength(1);
-    expect(created[0].type).toBe("application/json");
-    expect(await created[0].text()).toBe(bytes);
-    expect(revoked).toEqual(["blob:paper-pack-1"]);
-    // No refusal text on success.
-    expect(screen.queryByTestId("paper-export-error")).toBeNull();
-  });
-
-  it("uses the response-provided filename when the export result carries one", async () => {
-    const bytes = JSON.stringify({ schema_version: "1", id: "trend-follow" });
-    const client = makeClient({
-      getStatus: vi.fn().mockResolvedValue(armedStatus()),
-      exportPaperPack: vi.fn().mockResolvedValue({ filename: "trend-follow", bytes }),
-    });
-    render(<StatusPanel client={client} />);
-    fireEvent.click(await screen.findByTestId("paper-export-btn"));
-    await waitFor(() => {
-      expect(clicked).toHaveLength(1);
-    });
-    expect(clicked[0].download).toBe("trend-follow");
-  });
-
-  it.each(["not_armed", "unknown_venue", "stored_mode_not_paper", "invalid_pack"])(
-    "surfaces the %s refusal without crashing the panel",
-    async (code) => {
-      const client = makeClient({
-        getStatus: vi.fn().mockResolvedValue(armedStatus()),
-        exportPaperPack: vi
-          .fn()
-          .mockRejectedValue(new PaperCommandRefusalError(code, `refused: ${code}`)),
-      });
-      render(<StatusPanel client={client} />);
-      fireEvent.click(await screen.findByTestId("paper-export-btn"));
-      const error = await screen.findByTestId("paper-export-error");
-      expect(error.textContent).toMatch(new RegExp(code));
-      expect(error.textContent).toMatch(/refused: /);
-      // The panel stays mounted and usable.
-      expect(screen.getByTestId("paper-status-panel")).toBeDefined();
-      expect(screen.getByTestId("paper-status-entries")).toBeDefined();
-      expect(clicked).toHaveLength(0);
-    },
-  );
-
-  it("surfaces a network failure honestly without retrying", async () => {
-    const client = makeClient({
-      getStatus: vi.fn().mockResolvedValue(armedStatus()),
-      exportPaperPack: vi
+      getStatus: vi
         .fn()
-        .mockRejectedValue(new PaperCommandRefusalError("network_failure", "paper.export request failed")),
+        .mockResolvedValueOnce(armedStatus())
+        .mockResolvedValueOnce(armedStatus({ entries_paused: true })),
+      pauseEntries: vi.fn().mockRejectedValue(new Error("network error")),
     });
     render(<StatusPanel client={client} />);
-    fireEvent.click(await screen.findByTestId("paper-export-btn"));
-    const error = await screen.findByTestId("paper-export-error");
-    expect(error.textContent).toMatch(/network_failure/);
-    expect(client.exportPaperPack).toHaveBeenCalledTimes(1);
-    expect(clicked).toHaveLength(0);
+    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    fireEvent.click(pause);
+    await screen.findByTestId("paper-status-unknown");
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh status/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
+        /Entries paused/,
+      );
+    });
+    expect(client.getStatus).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("paper-status-unknown")).toBeNull();
+    expect(pause.getAttribute("disabled")).toBeNull();
+  });
+
+  it("a failing refresh keeps the last confirmed state instead of an unarmed claim and stays refreshable", async () => {
+    const client = makeClient({
+      getStatus: vi
+        .fn()
+        .mockResolvedValueOnce(armedStatus())
+        .mockRejectedValueOnce(new Error("paper status failed: 503")),
+      disarm: vi.fn().mockRejectedValue(new Error("paper.disarm failed: 503")),
+    });
+    render(<StatusPanel client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: /^disarm$/i }));
+    await screen.findByTestId("paper-status-unknown");
+    expect(screen.getByTestId("paper-status-unknown").textContent).toMatch(
+      /Disarm outcome unknown/i,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh status/i }));
+
+    await waitFor(() => {
+      expect(client.getStatus).toHaveBeenCalledTimes(2);
+    });
+    // The read failure is surfaced, the armed pack is still shown, and no
+    // unarmed state is fabricated.
+    const alert = await screen.findByTestId("paper-status-unknown");
+    expect(alert.textContent).toMatch(/Status refresh failed/i);
+    expect(screen.getByTestId("paper-status-pack").textContent).toMatch(/trend-follow/);
+    expect(screen.queryByTestId("paper-status-empty")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /refresh status/i }).getAttribute("disabled"),
+    ).toBeNull();
+  });
+
+  it("a malformed command response without an ok flag is treated as refused, not success", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      pauseEntries: vi.fn().mockResolvedValue({} satisfies PaperCommandResult),
+    });
+    render(<StatusPanel client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: /pause entries/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-error").textContent).toMatch(
+        /Pause refused/,
+      );
+    });
+    expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
+      /Entries active/,
+    );
+    expect(screen.getByTestId("paper-status-panel").getAttribute("data-pending")).toBe("");
+  });
+
+  it("a refused command clears pending and keeps the controls usable", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      pauseEntries: vi.fn().mockResolvedValue({
+        schema_version: "1",
+        code: "not_armed",
+        ok: false,
+        message: "not armed: kraken SUIUSD",
+      } satisfies PaperCommandResult),
+    });
+    render(<StatusPanel client={client} />);
+    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    fireEvent.click(pause);
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-error").textContent).toMatch(/not armed/);
+    });
+    expect(pause.getAttribute("disabled")).toBeNull();
+    expect(screen.getByTestId("paper-status-panel").getAttribute("data-pending")).toBe("");
+  });
+
+  it("a late command response after unmount does not update the panel", async () => {
+    const gate = commandGate();
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(armedStatus()),
+      pauseEntries: vi.fn().mockReturnValue(gate.promise),
+    });
+    const { unmount } = render(<StatusPanel client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: /pause entries/i }));
+    expect(client.pauseEntries).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    // Resolving the in-flight command after unmount must not throw when
+    // the retired handler tries to apply its (now stale) result.
+    await act(async () => {
+      gate.resolve({
+        schema_version: "1",
+        code: "entries_paused",
+        ok: true,
+        message: "entries paused: kraken SUIUSD",
+      } satisfies PaperCommandResult);
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId("paper-status-panel")).toBeNull();
+  });
+
+  it("a superseded response does not overwrite a later confirmed state", async () => {
+    const client = makeClient({
+      getStatus: vi
+        .fn()
+        .mockResolvedValueOnce(armedStatus({ entries_paused: true }))
+        .mockResolvedValueOnce(armedStatus({ entries_paused: false })),
+    });
+    render(<StatusPanel client={client} />);
+    const resume = await screen.findByRole("button", { name: /resume entries/i });
+    fireEvent.click(resume);
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
+        /Entries active/,
+      );
+    });
+    // The post-command reconciliation read confirms the same truth and
+    // never reverts the sentence to a stale value.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(client.getStatus).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
+      /Entries active/,
+    );
   });
 });
