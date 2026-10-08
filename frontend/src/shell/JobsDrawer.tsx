@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
+import { JobsDrawerCsvExport } from "../features/studio/JobsDrawerCsvExport";
 import { getCsrf } from "../session";
 
 export type JobRow = {
@@ -139,6 +140,7 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
           <button type="button" className="kbot-jobs__refresh" onClick={load}>
             Refresh jobs
           </button>
+          <JobsDrawerCsvExport jobs={jobs ?? []} />
           {error ? <p role="alert">{error}</p> : null}
           {jobs === null && !error ? (
             <p className="kbot-jobs__loading" data-testid="jobs-loading">
