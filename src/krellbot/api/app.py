@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hmac
 import json
 import sys
@@ -70,6 +72,7 @@ class _AppState:
     jobs: JobManager = field(default=None)  # type: ignore[assignment]
     draft_service: object = field(default=None)  # StrategyDraftService singleton per home
     paper_service: object = field(default=None)  # PaperService singleton per home
+    rehearsal_service: object = field(default=None)
     live_transport: object = field(default=None)  # SandboxTransport or test spy for live.preflight
 
 
@@ -93,6 +96,24 @@ def _paper_service(s: _AppState):
 
         s.paper_service = PaperService(home=s.home)
     return s.paper_service
+
+
+def _rehearsal_service(s: _AppState):
+    if s.rehearsal_service is None:
+        from krellbot.application.rehearsal import RehearsalService
+
+        s.rehearsal_service = RehearsalService(home=s.home)
+    return s.rehearsal_service
+
+
+def _rehearsal_wire(body: dict) -> dict:
+    """Adapt durable service truth to the existing rehearsalClient contract."""
+    # `exited` describes the trading outcome, not a terminal Stop. The
+    # existing UI disables Stop for `exited`; expose its true paused control
+    # phase so the user can explicitly Stop after the rule closes ownership.
+    return {**body, "position": body["position"]["qty"],
+            "status": "paused" if body["status"] == "exited" else body["status"],
+            "outcome": "exited" if body["status"] == "exited" else None}
 
 
 def _live_transport(s: _AppState):
@@ -442,9 +463,31 @@ def create_app(
         jobs=JobManager(home=Path(home), runner=runner),
     )
 
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI):
+        from krellbot.application.rehearsal import DRIVER_CADENCE_SECONDS
+
+        async def drive_rehearsal():
+            while True:
+                await asyncio.sleep(DRIVER_CADENCE_SECONDS)
+                # Deliberately synchronous on the API event loop. Commands,
+                # reads and driving cannot interleave inside the engine's
+                # scoped environment override; no thread executor is used.
+                _rehearsal_service(state).drive()
+
+        task = asyncio.create_task(drive_rehearsal())
+        print(f"Synthetic rehearsal cadence: one bar every {DRIVER_CADENCE_SECONDS:g}s while running; paused/stopped do not evaluate", flush=True)
+        try:
+            yield
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
     app = FastAPI(
         title="krellbot.api",
         version=SCHEMA_VERSION,
+        lifespan=lifespan,
     )
     app.state.krellbot = state
 
@@ -542,6 +585,20 @@ def create_app(
         if not isinstance(command, str) or not isinstance(inner, dict):
             return JSONResponse({"detail": "invalid body"}, status_code=400)
         correlation_id = payload.get("correlation_id") or ""
+
+        if command.startswith("rehearsal."):
+            from krellbot.application.rehearsal import COMMANDS
+
+            if inner.get("mode") == "live" or payload.get("mode") == "live":
+                return JSONResponse({"detail": "live orders are disabled"}, status_code=403)
+            if command not in COMMANDS:
+                return JSONResponse({"detail": f"unknown command {command}"}, status_code=403)
+            if inner:
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            result = _rehearsal_service(s).handle(command, inner)
+            # Keep the durable service envelope and supply the actual UI
+            # client's `status` readback. No synthetic success or fills.
+            return JSONResponse({**result, "status": _rehearsal_wire(result["rehearsal"])}, status_code=200)
 
         if command == "live.preflight":
             # ``live.preflight`` is the single carve-out from the prefix
@@ -1116,7 +1173,7 @@ def create_app(
         if denied is not None:
             return denied
 
-        body = _rehearsal_service(s).status_dict()
+        body = _rehearsal_wire(_rehearsal_service(s).status_dict())
         return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/packs")
