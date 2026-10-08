@@ -1,5 +1,6 @@
 import { useEffect, useState, type JSX } from "react";
 import type { PaperClient, PaperStatus } from "./client";
+import { PaperStatusCsvExport } from "./PaperStatusCsvExport";
 
 export type { PaperClient, PaperStatus } from "./client";
 
@@ -175,6 +176,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               >
                 Disarm
               </button>
+              <PaperStatusCsvExport status={status} />
             </div>
             {errorMessage !== null ? (
               <p
