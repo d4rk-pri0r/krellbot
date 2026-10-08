@@ -198,9 +198,7 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
     );
     triggerConnect("b");
     expect(onAddConnection).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe mismatch",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe mismatch");
   });
 
   it("refuses a connection when the source has no timeframe", () => {
@@ -229,9 +227,7 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
     );
     triggerConnect("b");
     expect(onAddConnection).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe missing",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe missing");
   });
 
   it("refuses an illegal timeframe (1m) with the timeframe invalid notice", () => {
@@ -282,13 +278,9 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
     );
     const captured = getCaptured();
     triggerConnect("b");
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe mismatch",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe mismatch");
     triggerConnect("c");
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe missing",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe missing");
     expect(onAddConnection).not.toHaveBeenCalled();
   });
 
@@ -315,9 +307,7 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
       sourceHandle: null,
       targetHandle: null,
     });
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe mismatch",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe mismatch");
   });
 
   it("renders exactly one element with role='alert' on a refusal", () => {
@@ -657,9 +647,7 @@ describe("GraphCanvas — duplicate edges are not re-added", () => {
     );
     triggerConnect("b");
     expect(onAddConnection).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe mismatch",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe mismatch");
   });
 
   it("does not mutate the edges prop when suppressing a duplicate", () => {
@@ -729,9 +717,7 @@ describe("GraphCanvas — duplicate edges are not re-added", () => {
       />,
     );
     triggerConnect("c");
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe mismatch",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe mismatch");
     triggerConnect("b");
     expect(onAddConnection).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("alert")).toBeNull();
@@ -751,9 +737,7 @@ describe("GraphCanvas — duplicate edges are not re-added", () => {
     expect(onAddConnection).toHaveBeenCalledTimes(1);
     triggerConnect("c");
     expect(onAddConnection).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe mismatch",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe mismatch");
     triggerConnect("b");
     expect(onAddConnection).toHaveBeenCalledTimes(1);
   });

@@ -294,9 +294,7 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
     expect(countText()).toMatch(/1/);
     triggerConnect("n1");
     expect(countText()).toMatch(/1/);
-    expect(screen.getByRole("alert").textContent).toContain(
-      "timeframe mismatch",
-    );
+    expect(screen.getByRole("alert").textContent).toContain("Timeframe mismatch");
   });
 
   it("workload=200 opens the studio with 200 nodes", () => {
