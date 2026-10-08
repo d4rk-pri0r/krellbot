@@ -18,6 +18,8 @@ export type SavedStrategyLibraryProps = {
   onReopen: (summary: OwnedDraftSummary, bytes: string) => void;
   /** Host starts a fresh, empty owned draft in the existing Editor. */
   onNewStrategy?: () => void;
+  /** Host seeds a new draft from a copy of this owned revision's bytes. */
+  onCopyAsNew?: (summary: OwnedDraftSummary, bytes: string) => void;
 };
 
 type LoadPhase = "loading" | "ready" | "error";
@@ -26,11 +28,13 @@ export function SavedStrategyLibrary({
   client,
   onReopen,
   onNewStrategy,
+  onCopyAsNew,
 }: SavedStrategyLibraryProps): JSX.Element {
   const [rows, setRows] = useState<ReadonlyArray<OwnedDraftSummary>>([]);
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [reopenError, setReopenError] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [openingRevision, setOpeningRevision] = useState<string | null>(null);
   const [compareRow, setCompareRow] = useState<OwnedDraftSummary | null>(null);
 
@@ -76,6 +80,30 @@ export function SavedStrategyLibrary({
       })
       .catch((err: unknown) => {
         setReopenError(
+          err instanceof Error ? err.message : String(err),
+        );
+      })
+      .finally(() => {
+        setOpeningRevision(null);
+      });
+  };
+
+  const handleCopyAsNew = (summary: OwnedDraftSummary): void => {
+    if (openingRevision !== null) {
+      return;
+    }
+    setCopyError(null);
+    setOpeningRevision(summary.revision_id);
+    client
+      .getJson(summary.revision_id)
+      .then((loaded) => {
+        // Copy only reads bytes: the origin revision's stored bytes,
+        // state and arm/deploy state are never touched, and no save,
+        // validate or arm happens here.
+        onCopyAsNew?.(summary, loaded.bytes);
+      })
+      .catch((err: unknown) => {
+        setCopyError(
           err instanceof Error ? err.message : String(err),
         );
       })
@@ -176,6 +204,19 @@ export function SavedStrategyLibrary({
               >
                 Compare
               </button>
+              {onCopyAsNew ? (
+                <button
+                  type="button"
+                  className="kbot-strategy-library__copy"
+                  data-testid="library-copy-as-new"
+                  onClick={() => {
+                    handleCopyAsNew(row);
+                  }}
+                  disabled={openingRevision !== null}
+                >
+                  Copy as new
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -197,6 +238,15 @@ export function SavedStrategyLibrary({
           data-testid="library-reopen-error"
         >
           Reopen failed: {reopenError}
+        </p>
+      ) : null}
+      {copyError !== null ? (
+        <p
+          className="kbot-strategy-library__error"
+          role="alert"
+          data-testid="library-copy-error"
+        >
+          Copy as new failed: {copyError}
         </p>
       ) : null}
     </section>

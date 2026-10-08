@@ -9,12 +9,18 @@ import type {
   ValidationError,
 } from "./client";
 import { OwnedStrategyForm } from "./OwnedStrategyForm";
+import { StarterPicker } from "./StarterPicker";
+import type { StarterExample } from "./StarterPicker.client";
 import {
   readOwnedStrategy,
   seedOwnedStrategyForm,
   seedOwnedStrategyPack,
   type OwnedStrategyFormState,
 } from "./ownedStrategy";
+import {
+  copyOriginLabel,
+  type OwnedCopyOrigin,
+} from "./ownedDraftCopy";
 import { summarizeSaveOutcome } from "./saveOutcomeSummary";
 
 export type { DraftState, DraftSummary, Pack, StrategyClient, ValidationError };
@@ -25,9 +31,18 @@ export type LoadedRevision = {
   bytes: string;
 };
 
+/** A new, unsaved draft seeded from a copied owned revision's real bytes. */
+export type CopiedDraft = {
+  bytes: string;
+  origin: OwnedCopyOrigin;
+  originLabel?: string | null;
+};
+
 export type EditorProps = {
   client: StrategyClient;
   initial?: LoadedRevision;
+  /** Mount-only: seed a fresh draft from copied owned bytes (create path). */
+  copiedDraft?: CopiedDraft;
   onRevision?: (summary: DraftSummary, bytes: string) => void;
 };
 
@@ -51,14 +66,16 @@ function readLabel(pack: Pack | null): string {
   return typeof value === "string" ? value : "";
 }
 
-export function Editor({ client, initial, onRevision }: EditorProps): JSX.Element {
-  const initialRawJson = initial?.bytes ?? "";
+export function Editor({ client, initial, copiedDraft, onRevision }: EditorProps): JSX.Element {
+  const initialRawJson = initial?.bytes ?? copiedDraft?.bytes ?? "";
   const [rawJson, setRawJson] = useState<string>(initialRawJson);
   const [ownedForm, setOwnedForm] = useState<OwnedStrategyFormState | null>(() =>
     readOwnedStrategy(parsePack(initialRawJson)),
   );
   const [lastSummary, setLastSummary] = useState<DraftSummary | null>(() => {
     if (!initial) {
+      // A copied draft is a NEW draft: no revision identity, no state,
+      // no forged validation. Saving it goes through client.create.
       return null;
     }
     const pack = parsePack(initial.bytes);
@@ -72,6 +89,10 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
   const [venue, setVenue] = useState("kraken");
   const [paperBalance, setPaperBalance] = useState("1000");
   const [importError, setImportError] = useState<string | null>(null);
+  // True after a starter example seeded the draft: the next Save must
+  // create a fresh revision even when an `initial` revision was
+  // previously loaded (a starter pick is never a reopen/edit).
+  const [seededFresh, setSeededFresh] = useState(false);
   const [saveOutcome, setSaveOutcome] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [validateError, setValidateError] = useState<string | null>(null);
@@ -115,6 +136,21 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
     }
   };
 
+  const handleStarterPick = (example: StarterExample): void => {
+    // A starter is a seed for a NEW owned copy, never a reopen: the
+    // previous revision identity is dropped so the next Save creates a
+    // fresh revision through client.create (never edit on the loaded
+    // parent), and transient errors from the prior draft do not leak
+    // into the seeded one.
+    setRawJson(JSON.stringify(example.pack, null, 2));
+    setLastSummary(null);
+    setSeededFresh(true);
+    setImportError(null);
+    setSaveOutcome(null);
+    setSaveError(null);
+    setValidateError(null);
+  };
+
   const handleRawJsonChange = (text: string): void => {
     setRawJson(text);
     if (importError !== null) {
@@ -145,11 +181,14 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
     }
     setSaveOutcome(null);
     setSaveError(null);
-    const parentId = lastSummary?.revision_id ?? initial?.revision_id;
+    const parentId = seededFresh
+      ? null
+      : lastSummary?.revision_id ?? initial?.revision_id;
     try {
       const summary = parentId
         ? await client.edit(parentId, pack)
         : await client.create(pack);
+      setSeededFresh(false);
       if (summary.outcome === "unchanged") {
         setSaveOutcome(summarizeSaveOutcome("unchanged", summary.revision_id).label);
         return;
@@ -312,6 +351,7 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
             spellCheck={false}
           />
         </label>
+        <StarterPicker onPick={handleStarterPick} />
         <label
           className="kbot-strategy-editor__field"
           htmlFor="kbot-strategy-editor-json"
@@ -341,6 +381,16 @@ export function Editor({ client, initial, onRevision }: EditorProps): JSX.Elemen
             onChange={handleFileChange}
           />
         </label>
+        {copiedDraft ? (
+          <p
+            className="kbot-strategy-editor__copy-origin"
+            data-testid="editor-copy-origin"
+          >
+            {lastSummary
+              ? `Copied from revision ${copiedDraft.origin.revision_id}`
+              : `${copyOriginLabel(copiedDraft.origin)} — unsaved draft; Save creates a new revision`}
+          </p>
+        ) : null}
         {importError !== null ? (
           <p
             className="kbot-strategy-editor__error"

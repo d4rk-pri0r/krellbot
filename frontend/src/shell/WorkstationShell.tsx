@@ -20,13 +20,14 @@ import type { ResearchClient } from "../features/research/client";
 import { Editor } from "../features/strategies/Editor";
 import { createHttpClient } from "../features/strategies/client";
 import type { StrategyClient } from "../features/strategies/client";
-import type { LoadedRevision } from "../features/strategies/Editor";
+import type { CopiedDraft, LoadedRevision } from "../features/strategies/Editor";
 import { SavedStrategyLibrary } from "../features/strategies/SavedStrategyLibrary";
 import type {
   LibraryClient,
   OwnedDraftSummary,
 } from "../features/strategies/libraryClient";
 import { createLibraryClient } from "../features/strategies/libraryClient";
+import { buildOwnedDraftCopy } from "../features/strategies/ownedDraftCopy";
 import { StrategyExplanation } from "../features/strategies/StrategyExplanation";
 import {
   GraphCanvas,
@@ -286,10 +287,15 @@ export function WorkstationShell({
   // outcome across its own ``onRevision`` saves, so a reopen remounts
   // it under a fresh key (the ResearchView portal pattern) instead of
   // mutating Editor internals. The key advances on an explicit library
-  // reopen / new-strategy only — never on the Editor's own saves.
+  // reopen / new-strategy / copy-as-new only — never on the Editor's
+  // own saves.
   const [editorEpoch, setEditorEpoch] = useState(0);
+  // Seeds a NEW draft from a copied owned revision's bytes; remounts
+  // the Editor with no revision identity so Save goes through create.
+  const [copiedDraft, setCopiedDraft] = useState<CopiedDraft | null>(null);
   const handleLibraryReopen = useCallback(
     (summary: OwnedDraftSummary, bytes: string): void => {
+      setCopiedDraft(null);
       setSavedRevision({
         revision_id: summary.revision_id,
         state: summary.state,
@@ -301,10 +307,38 @@ export function WorkstationShell({
     [],
   );
   const handleLibraryNewStrategy = useCallback((): void => {
+    setCopiedDraft(null);
     setSavedRevision(null);
     setEditedPack(null);
     setEditorEpoch((epoch: number) => epoch + 1);
   }, []);
+  const handleLibraryCopyAsNew = useCallback(
+    (summary: OwnedDraftSummary, bytes: string): void => {
+      // Derive the copy from the real fetched bytes; the origin
+      // revision's stored bytes/state stay untouched. A parse failure
+      // keeps the previous editor contents instead of substituting an
+      // empty draft.
+      const copy = buildOwnedDraftCopy(bytes, {
+        revision_id: summary.revision_id,
+        state: summary.state,
+        created_at: summary.created_at,
+        strategy_id: summary.strategy_id,
+        label: summary.label,
+      });
+      if (!copy) {
+        return;
+      }
+      setSavedRevision(null);
+      setEditedPack(null);
+      setCopiedDraft({
+        bytes: copy.bytes,
+        origin: copy.origin,
+        originLabel: copy.originLabel,
+      });
+      setEditorEpoch((epoch: number) => epoch + 1);
+    },
+    [],
+  );
   const loadedEditorFor = useRef<string | null>(null);
   useEffect(() => {
     if (!savedRevision || !client.loadEditor) {
@@ -589,12 +623,14 @@ export function WorkstationShell({
                 client={library}
                 onReopen={handleLibraryReopen}
                 onNewStrategy={handleLibraryNewStrategy}
+                onCopyAsNew={handleLibraryCopyAsNew}
               />
             ) : null}
             <Editor
               key={`editor-${editorEpoch}`}
               client={client}
               initial={savedRevision ?? undefined}
+              copiedDraft={copiedDraft ?? undefined}
               onRevision={(summary, bytes) => {
                 setSavedRevision({
                   revision_id: summary.revision_id,
