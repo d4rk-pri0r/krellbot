@@ -7,6 +7,7 @@ import {
   type JSX,
 } from "react";
 import type { ResearchClient, StoredResult } from "./client";
+import { ResearchDateWindow, utcFieldValueToMs } from "./ResearchDateWindow";
 import { TraceCsvExport } from "./TraceCsvExport";
 import { summarizeResearchJobError } from "./researchJobErrorLabel";
 
@@ -218,6 +219,18 @@ export function ResearchView({
   const [toMs, setToMs] = useState("");
   const [holdoutFrom, setHoldoutFrom] = useState("");
   const [holdoutTo, setHoldoutTo] = useState("");
+  // UTC date/time mirror state for the scored window and holdout bounds.
+  // ``editedUtcLast`` records which control drove the current value so a
+  // controlled edit in either direction is echoed losslessly into the
+  // other without a feedback loop or a silent reformat.
+  const [fromUtc, setFromUtc] = useState("");
+  const [toUtc, setToUtc] = useState("");
+  const [holdoutFromUtc, setHoldoutFromUtc] = useState("");
+  const [holdoutToUtc, setHoldoutToUtc] = useState("");
+  const [fromEditedUtcLast, setFromEditedUtcLast] = useState(false);
+  const [toEditedUtcLast, setToEditedUtcLast] = useState(false);
+  const [holdoutFromEditedUtcLast, setHoldoutFromEditedUtcLast] = useState(false);
+  const [holdoutToEditedUtcLast, setHoldoutToEditedUtcLast] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const [storedResult, setStoredResult] = useState<StoredResult | null>(null);
@@ -230,6 +243,37 @@ export function ResearchView({
 
   const handleSyntheticFixture = (): void => {
     setDatasetPath(SYNTHETIC_FIXTURE_PATH);
+  };
+
+  // UTC date/time <-> exact millisecond echoing. Each bound keeps a single
+  // source of truth: when the UTC control was edited last it owns the value
+  // and the advanced field shows its exact integer milliseconds (or is
+  // cleared when the text is not yet a valid UTC instant); when the advanced
+  // field was edited last it owns the value and the UTC control shows the
+  // exact UTC instant. No local-timezone conversion is ever applied.
+  const handleFromUtcChange = (text: string): void => {
+    setFromUtc(text);
+    setFromEditedUtcLast(true);
+    const ms = utcFieldValueToMs(text);
+    setFromMs(ms === null ? "" : String(ms));
+  };
+  const handleToUtcChange = (text: string): void => {
+    setToUtc(text);
+    setToEditedUtcLast(true);
+    const ms = utcFieldValueToMs(text);
+    setToMs(ms === null ? "" : String(ms));
+  };
+  const handleHoldoutFromUtcChange = (text: string): void => {
+    setHoldoutFromUtc(text);
+    setHoldoutFromEditedUtcLast(true);
+    const ms = utcFieldValueToMs(text);
+    setHoldoutFrom(ms === null ? "" : String(ms));
+  };
+  const handleHoldoutToUtcChange = (text: string): void => {
+    setHoldoutToUtc(text);
+    setHoldoutToEditedUtcLast(true);
+    const ms = utcFieldValueToMs(text);
+    setHoldoutTo(ms === null ? "" : String(ms));
   };
 
   const handleRun = async (): Promise<void> => {
@@ -497,9 +541,10 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={fromMs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setFromMs(event.target.value)
-            }
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              setFromMs(event.target.value);
+              setFromEditedUtcLast(false);
+            }}
             autoComplete="off"
             spellCheck={false}
           />
@@ -511,9 +556,10 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={toMs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setToMs(event.target.value)
-            }
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              setToMs(event.target.value);
+              setToEditedUtcLast(false);
+            }}
             autoComplete="off"
             spellCheck={false}
           />
@@ -525,9 +571,10 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={holdoutFrom}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setHoldoutFrom(event.target.value)
-            }
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              setHoldoutFrom(event.target.value);
+              setHoldoutFromEditedUtcLast(false);
+            }}
             autoComplete="off"
             spellCheck={false}
           />
@@ -539,13 +586,32 @@ export function ResearchView({
             className="kbot-research__input"
             type="text"
             value={holdoutTo}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setHoldoutTo(event.target.value)
-            }
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              setHoldoutTo(event.target.value);
+              setHoldoutToEditedUtcLast(false);
+            }}
             autoComplete="off"
             spellCheck={false}
           />
         </label>
+        <ResearchDateWindow
+          fromMsText={fromMs}
+          toMsText={toMs}
+          holdoutFromMsText={holdoutFrom}
+          holdoutToMsText={holdoutTo}
+          fromUtcText={fromUtc}
+          toUtcText={toUtc}
+          holdoutFromUtcText={holdoutFromUtc}
+          holdoutToUtcText={holdoutToUtc}
+          fromEditedUtcLast={fromEditedUtcLast}
+          toEditedUtcLast={toEditedUtcLast}
+          holdoutFromEditedUtcLast={holdoutFromEditedUtcLast}
+          holdoutToEditedUtcLast={holdoutToEditedUtcLast}
+          onFromUtcChange={handleFromUtcChange}
+          onToUtcChange={handleToUtcChange}
+          onHoldoutFromUtcChange={handleHoldoutFromUtcChange}
+          onHoldoutToUtcChange={handleHoldoutToUtcChange}
+        />
         <div className="kbot-research__actions">
           <button
             type="button"
