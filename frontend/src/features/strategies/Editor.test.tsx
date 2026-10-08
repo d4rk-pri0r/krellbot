@@ -409,7 +409,7 @@ describe("Editor validation", () => {
 
     // Last known revision/state is retained, not invented or promoted.
     expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
-      /rev-1 \(state: draft\)/,
+      /rev-1 \(state: Draft\)/,
     );
     expect(onRevision).not.toHaveBeenCalled();
     expect(
@@ -448,7 +448,7 @@ describe("Editor validation", () => {
     fireEvent.click(screen.getByRole("button", { name: /validate/i }));
     await waitFor(() => {
       expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
-        /rev-validated \(state: validated\)/,
+        /rev-validated \(state: Validated\)/,
       );
     });
     expect(screen.queryByTestId("editor-validate-error")).toBeNull();
@@ -497,7 +497,7 @@ describe("Editor arm", () => {
 
     // Validated revision/state is preserved; nothing is invented or promoted.
     expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
-      /rev-1 \(state: validated\)/,
+      /rev-1 \(state: Validated\)/,
     );
     expect(screen.queryByTestId("editor-save-outcome")).toBeNull();
     expect(onRevision).not.toHaveBeenCalled();
@@ -550,7 +550,7 @@ describe("Editor arm", () => {
 
     // Controls are restored without implying a deployment from stale local state.
     expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
-      /rev-1 \(state: validated\)/,
+      /rev-1 \(state: Validated\)/,
     );
     expect(screen.getByTestId("editor-revision-id").textContent).not.toMatch(
       /deployed/,
