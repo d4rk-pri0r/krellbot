@@ -5,6 +5,7 @@ import {
   type ConditionExplanation,
   type ExplainResult,
 } from "./explainPack";
+import { StrategyExplanationCsvExport } from "./StrategyExplanationCsvExport";
 
 export type StrategyExplanationProps = {
   /** Stored revision bytes, exactly as saved/imported. */
@@ -62,6 +63,7 @@ export function StrategyExplanation({
       <header>
         <h3>What this revision trades</h3>
         <p data-testid="strategy-explanation-revision">{savedLabel}</p>
+        <StrategyExplanationCsvExport result={explanation} disabled={!explanation.parsed} />
       </header>
 
       {!explanation.parsed ? (

@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { StrategyExplanation } from "./StrategyExplanation";
 
 afterEach(cleanup);
@@ -162,5 +162,55 @@ describe("StrategyExplanation unsupported and malformed content", () => {
     expect(
       screen.getByTestId("strategy-explanation-unparsed").textContent,
     ).toContain("cannot be explained");
+  });
+});
+
+describe("StrategyExplanation CSV export button", () => {
+  it("mounts the export button enabled once an explanation has been produced", () => {
+    render(
+      <StrategyExplanation bytes={JSON.stringify(supportedPack)} revisionId="rev-7" />,
+    );
+    const button = screen.getByTestId(
+      "strategies-explanation-csv-export",
+    ) as HTMLButtonElement;
+    expect(button.textContent).toBe("Export explanation");
+    expect(button.disabled).toBe(false);
+  });
+
+  it("disables the export button when the bytes do not parse", () => {
+    render(<StrategyExplanation bytes="not json at all" revisionId="rev-bad" />);
+    const button = screen.getByTestId(
+      "strategies-explanation-csv-export",
+    ) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it("clicking the export button downloads a CSV with the metadata and market rows", async () => {
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test-url");
+    const revokeObjectURL = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    try {
+      render(
+        <StrategyExplanation bytes={JSON.stringify(supportedPack)} revisionId="rev-7" />,
+      );
+      fireEvent.click(screen.getByTestId("strategies-explanation-csv-export"));
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      const csv = await blob.text();
+      expect(csv).toContain("section,key,value");
+      expect(csv).toContain("metadata,label,Trend follow");
+      expect(csv).toContain("indicator,sma20,");
+      expect(csv).toContain("market,kraken SUIUSD,SUIUSD");
+    } finally {
+      click.mockRestore();
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    }
   });
 });
