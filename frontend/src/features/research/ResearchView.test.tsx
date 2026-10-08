@@ -764,7 +764,7 @@ describe("ResearchView pollForResult (M2-CE)", () => {
       expect(getJob).toHaveBeenCalled();
     });
     const error = await screen.findByTestId("research-job-error");
-    expect(error.textContent).toMatch(/numeric_out_of_range/);
+    expect(error.textContent).toMatch(/Numeric out of range/);
     expect(error.textContent).toMatch(/equity out of range/);
     expect(getResult).not.toHaveBeenCalled();
   });

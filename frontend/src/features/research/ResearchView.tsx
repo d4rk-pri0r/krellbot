@@ -7,7 +7,11 @@ import {
   type JSX,
 } from "react";
 import type { ResearchClient, StoredResult } from "./client";
+/* HEAD */
 import { TraceCsvExport } from "./TraceCsvExport";
+/* MID */
+import { summarizeResearchJobError } from "./researchJobErrorLabel";
+/* CAND */
 
 export type { ResearchClient, StoredResult } from "./client";
 
@@ -635,7 +639,7 @@ export function ResearchView({
           role="alert"
           data-testid="research-job-error"
         >
-          {jobError.code}: {jobError.message}
+          {summarizeResearchJobError(jobError).label}: {jobError.message}
         </p>
       ) : null}
       {storedResult ? (
