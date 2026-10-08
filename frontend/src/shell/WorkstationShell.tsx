@@ -15,6 +15,7 @@ import { ResearchView } from "../features/research/ResearchView";
 import { createHttpClient as createResearchHttpClient } from "../features/research/client";
 import type { ResearchClient } from "../features/research/client";
 import { Editor } from "../features/strategies/Editor";
+import { StrategyExplanation } from "../features/strategies/StrategyExplanation";
 import { createHttpClient } from "../features/strategies/client";
 import type { StrategyClient } from "../features/strategies/client";
 import type { LoadedRevision } from "../features/strategies/Editor";
@@ -506,18 +507,24 @@ export function WorkstationShell({
           </>
         ) : null}
         {active === "strategies" ? (
-          <Editor
-            client={client}
-            initial={savedRevision ?? undefined}
-            onRevision={(summary, bytes) => {
-              setSavedRevision({
-                revision_id: summary.revision_id,
-                state: summary.state,
-                bytes,
-              });
-              setEditedPack(null);
-            }}
-          />
+          <>
+            <Editor
+              client={client}
+              initial={savedRevision ?? undefined}
+              onRevision={(summary, bytes) => {
+                setSavedRevision({
+                  revision_id: summary.revision_id,
+                  state: summary.state,
+                  bytes,
+                });
+                setEditedPack(null);
+              }}
+            />
+            <StrategyExplanation
+              bytes={savedRevision?.bytes ?? ""}
+              revisionId={savedRevision?.revision_id ?? null}
+            />
+          </>
         ) : null}
         {active === "research" ? (
           <div
