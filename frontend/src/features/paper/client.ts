@@ -1,4 +1,6 @@
 import { getCsrf } from "../../session";
+import type { RehearsalClient } from "./rehearsalClient";
+import { createRehearsalHttpClient } from "./rehearsalClient";
 
 export type PaperStatus = {
   schema_version: string;
@@ -35,12 +37,36 @@ export class PaperCommandRefusalError extends Error {
   }
 }
 
+/**
+ * The payload the ``paper.arm`` handler reads: ``revision_id`` addressing a
+ * saved draft, the venue, ``mode: "paper"`` and ``paper_balance`` as a
+ * decimal string (the backend parses it with ``Decimal``).
+ */
+export type PaperArmInput = {
+  revision_id: string;
+  venue: string;
+  mode: "paper";
+  paper_balance: string;
+};
+
+export type PaperArmDraftSummary = {
+  revision_id: string;
+  strategy_id: string;
+  state: string;
+  runnable: boolean;
+  label: string;
+  pair: string;
+};
+
 export type PaperClient = {
   getStatus(): Promise<PaperStatus>;
   pauseEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   resumeEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   disarm(venue: string, pair: string): Promise<PaperCommandResult>;
   exportPaperPack?(venue: string, pair: string): Promise<PaperExportResult>;
+  listOwnedDrafts?(): Promise<PaperArmDraftSummary[]>;
+  arm?(input: PaperArmInput): Promise<PaperCommandResult>;
+  createRehearsalClient?(): RehearsalClient;
 };
 
 export type PaperRunFill = {
@@ -127,6 +153,78 @@ async function postCommand(
     throw new Error(`${command} failed: ${response.status}`);
   }
   return (await response.json()) as PaperCommandResult;
+}
+
+/**
+ * POST a ``paper.arm`` addressed by revision. The handler can refuse with
+ * an HTTP 404 (``draft_not_found``) or 403 (``draft_not_runnable``) whose
+ * body is still a ``PaperCommandResult``: keep the refusal code/message on
+ * a typed error so the panel surfaces the backend's own words instead of
+ * a bare status line. No retry.
+ */
+async function armPaperPack(input: PaperArmInput): Promise<PaperCommandResult> {
+  const response = await fetch("/api/v1/commands", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: JSON.stringify({
+      schema_version: "1",
+      command: "paper.arm",
+      payload: {
+        revision_id: input.revision_id,
+        venue: input.venue,
+        mode: "paper",
+        paper_balance: input.paper_balance,
+      },
+    }),
+  });
+  if (!response.ok) {
+    let refusal: Record<string, unknown> = {};
+    try {
+      refusal = (await response.json()) as Record<string, unknown>;
+    } catch {
+      refusal = {};
+    }
+    const code = typeof refusal.code === "string" ? refusal.code : "http_error";
+    const message =
+      typeof refusal.message === "string"
+        ? refusal.message
+        : `paper.arm failed: ${response.status}`;
+    throw new PaperCommandRefusalError(code, message);
+  }
+  return (await response.json()) as PaperCommandResult;
+}
+
+function adaptDraftSummary(raw: Record<string, unknown>): PaperArmDraftSummary {
+  return {
+    revision_id: str(raw.revision_id),
+    strategy_id: str(raw.strategy_id),
+    state: str(raw.state, "draft"),
+    runnable: raw.runnable === true,
+    label: str(raw.label),
+    pair: str(raw.pair),
+  };
+}
+
+async function listOwnedDrafts(): Promise<PaperArmDraftSummary[]> {
+  const response = await fetch("/api/v1/strategies/drafts", {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`drafts list failed: ${response.status}`);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  const rows = Array.isArray(raw.drafts) ? raw.drafts : [];
+  return rows.map((row) =>
+    adaptDraftSummary((row ?? {}) as Record<string, unknown>),
+  );
 }
 
 const EXPORT_NETWORK_FAILURE = "network_failure";
@@ -344,6 +442,13 @@ export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedCl
     listRuns,
     exportPaperPack(venue: string, pair: string): Promise<PaperExportResult> {
       return exportPaperPack(venue, pair);
+    },
+    listOwnedDrafts,
+    arm(input: PaperArmInput): Promise<PaperCommandResult> {
+      return armPaperPack(input);
+    },
+    createRehearsalClient(): RehearsalClient {
+      return createRehearsalHttpClient();
     },
   };
 }

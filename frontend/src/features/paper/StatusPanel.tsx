@@ -1,9 +1,21 @@
-import { useEffect, useReducer, useRef, type JSX } from "react";
-import type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
+import { useEffect, useReducer, useRef, useState, type JSX } from "react";
+import type {
+  PaperArmDraftSummary,
+  PaperClient,
+  PaperCommandResult,
+  PaperStatus,
+} from "./client";
 import { PaperStatusCsvExport } from "./PaperStatusCsvExport";
+import { RehearsalPanel } from "./RehearsalPanel";
+import type { RehearsalClient } from "./rehearsalClient";
 import { summarizePaperCommandRefusal } from "./paperCommandRefusalSummary";
 
-export type { PaperClient, PaperCommandResult, PaperStatus } from "./client";
+export type {
+  PaperArmDraftSummary,
+  PaperClient,
+  PaperCommandResult,
+  PaperStatus,
+} from "./client";
 
 export type StatusPanelProps = {
   client: PaperClient;
@@ -12,6 +24,21 @@ export type StatusPanelProps = {
 type EntriesSentence = "Entries active" | "Entries paused";
 
 type CommandName = "pause" | "resume" | "disarm";
+
+/** Arm venues offered by the paper surface (paper mode only). */
+const ARM_VENUES: readonly string[] = ["kraken"];
+
+const DEFAULT_PAPER_BALANCE = "1000";
+
+/**
+ * A plain decimal string, the shape the backend parses with ``Decimal``.
+ * ``1``, ``1.5``, ``0.25`` — but not ``1e3``, ``.5`` or an empty string.
+ */
+const DECIMAL_PATTERN = /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
+
+export function isValidPaperBalance(value: string): boolean {
+  return DECIMAL_PATTERN.test(value);
+}
 
 type PanelState = {
   status: PaperStatus | null;
@@ -47,9 +74,10 @@ function sentenceFor(entries_paused: boolean | undefined): EntriesSentence {
   return entries_paused ? "Entries paused" : "Entries active";
 }
 
-function commandLabel(command: CommandName): string {
+function commandLabel(command: CommandName | "arm"): string {
   if (command === "pause") return "Pause";
   if (command === "resume") return "Resume";
+  if (command === "arm") return "Arm";
   return "Disarm";
 }
 
@@ -64,7 +92,7 @@ function isConfirmedOk(result: PaperCommandResult | null | undefined): boolean {
 }
 
 function refusalMessage(
-  command: CommandName,
+  command: CommandName | "arm",
   result: PaperCommandResult | null | undefined,
 ): string {
   return summarizePaperCommandRefusal(commandLabel(command), result).label;
@@ -124,6 +152,287 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
   }
 }
 
+/**
+ * The paper arm form: pick an existing owned, runnable revision, enter a
+ * paper balance and arm it through the authenticated ``paper.arm``
+ * command. Only backend-confirmed outcomes change the visible state; a
+ * refusal keeps the form, a transport failure is surfaced as unknown.
+ */
+function ArmForm({ client }: { client: PaperClient }): JSX.Element | null {
+  const canArm =
+    typeof client === "object" &&
+    client !== null &&
+    typeof client.arm === "function" &&
+    typeof client.listOwnedDrafts === "function";
+
+  const [drafts, setDrafts] = useState<PaperArmDraftSummary[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [revisionId, setRevisionId] = useState("");
+  const [venue, setVenue] = useState(ARM_VENUES[0]);
+  const [balance, setBalance] = useState(DEFAULT_PAPER_BALANCE);
+  const [pending, setPending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [unknownOutcome, setUnknownOutcome] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!canArm) {
+      return;
+    }
+    let cancelled = false;
+    const list = client.listOwnedDrafts;
+    if (list === undefined) {
+      return;
+    }
+    list
+      .call(client)
+      .then((rows) => {
+        if (cancelled) {
+          return;
+        }
+        // Only runnable (validated/deployed) revisions may be armed;
+        // the backend refuses the rest, so they are not offered.
+        const armable = rows.filter((row) => row.runnable === true);
+        setDrafts(armable);
+        setLoadError(null);
+        setRevisionId((current) =>
+          current === "" && armable.length > 0 ? armable[0].revision_id : current,
+        );
+      })
+      .catch((reason: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        // A failed listing is unknown, never an empty-list claim.
+        setDrafts(null);
+        setLoadError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, canArm]);
+
+  if (!canArm) {
+    // A legacy injected client without the arm surface: say so instead
+    // of pretending arming is possible.
+    return (
+      <div
+        className="kbot-paper-status__arm"
+        data-testid="paper-arm-unavailable"
+      >
+        <h3 className="kbot-paper-status__arm-title">Arm a paper pack</h3>
+        <p className="kbot-paper-status__empty">
+          Arming controls unavailable
+        </p>
+      </div>
+    );
+  }
+
+  const balanceValid = isValidPaperBalance(balance);
+  const armDisabled = pending || !balanceValid || revisionId === "";
+
+  const handleArm = async (): Promise<void> => {
+    const arm = client.arm;
+    if (arm === undefined || inFlightRef.current || revisionId === "") {
+      return;
+    }
+    inFlightRef.current = true;
+    setPending(true);
+    setErrorMessage(null);
+    setUnknownOutcome(null);
+    try {
+      let result: PaperCommandResult;
+      try {
+        result = await arm.call(client, {
+          revision_id: revisionId,
+          venue,
+          mode: "paper",
+          paper_balance: balance,
+        });
+      } catch (reason) {
+        // Transport threw or the backend refused with an HTTP error
+        // whose body the client kept on a typed error: the command may
+        // or may not have been applied. No optimistic state, no retry.
+        setUnknownOutcome(
+          reason instanceof Error ? reason.message : String(reason),
+        );
+        return;
+      }
+      if (!isConfirmedOk(result)) {
+        setErrorMessage(refusalMessage("arm", result));
+        return;
+      }
+      // The arm is confirmed by the backend. The visible armed state
+      // itself comes from the panel's status refresh, never from here.
+      setUnknownOutcome(null);
+      setErrorMessage(null);
+    } finally {
+      setPending(false);
+      inFlightRef.current = false;
+    }
+  };
+
+  return (
+    <div className="kbot-paper-status__arm" data-testid="paper-arm-form">
+      <h3 className="kbot-paper-status__arm-title">Arm a paper pack</h3>
+      {loadError !== null && drafts === null ? (
+        <>
+          <p
+            className="kbot-paper-status__empty"
+            role="alert"
+            data-testid="paper-arm-load-failed"
+          >
+            Saved revisions unavailable
+          </p>
+          <p className="kbot-paper-status__error" data-testid="paper-arm-error">
+            {loadError}
+          </p>
+          <button
+            type="button"
+            className="kbot-paper-status__action"
+            onClick={() => {
+              // An explicit retry is a new user action: reload the list.
+              const list = client.listOwnedDrafts;
+              if (list === undefined || inFlightRef.current) {
+                return;
+              }
+              setLoadError(null);
+              list
+                .call(client)
+                .then((rows) => {
+                  const armable = rows.filter((row) => row.runnable === true);
+                  setDrafts(armable);
+                  setRevisionId((current) =>
+                    current === "" && armable.length > 0
+                      ? armable[0].revision_id
+                      : current,
+                  );
+                })
+                .catch((reason: unknown) => {
+                  setDrafts(null);
+                  setLoadError(
+                    reason instanceof Error ? reason.message : String(reason),
+                  );
+                });
+            }}
+          >
+            Retry revisions
+          </button>
+        </>
+      ) : drafts === null ? (
+        <p className="kbot-paper-status__empty" data-testid="paper-arm-loading">
+          Loading saved revisions…
+        </p>
+      ) : drafts.length === 0 ? (
+        <p className="kbot-paper-status__empty" data-testid="paper-arm-empty">
+          No runnable saved revisions
+        </p>
+      ) : (
+        <>
+          <label
+            className="kbot-paper-status__field"
+            htmlFor="paper-arm-revision"
+          >
+            Saved revision
+            <select
+              id="paper-arm-revision"
+              className="kbot-paper-status__select"
+              data-testid="paper-arm-revision"
+              value={revisionId}
+              onChange={(event) => {
+                setRevisionId(event.target.value);
+              }}
+              disabled={pending}
+            >
+              {drafts.map((row) => (
+                <option key={row.revision_id} value={row.revision_id}>
+                  {row.revision_id}
+                  {row.label !== "" ? ` — ${row.label}` : ""}
+                  {row.pair !== "" ? ` (${row.pair})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="kbot-paper-status__field" htmlFor="paper-arm-venue">
+            Venue
+            <select
+              id="paper-arm-venue"
+              className="kbot-paper-status__select"
+              data-testid="paper-arm-venue"
+              value={venue}
+              onChange={(event) => {
+                setVenue(event.target.value);
+              }}
+              disabled={pending}
+            >
+              {ARM_VENUES.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label
+            className="kbot-paper-status__field"
+            htmlFor="paper-arm-balance"
+          >
+            Paper balance
+            <input
+              id="paper-arm-balance"
+              className="kbot-paper-status__input"
+              data-testid="paper-arm-balance"
+              type="text"
+              inputMode="decimal"
+              value={balance}
+              onChange={(event) => {
+                setBalance(event.target.value);
+              }}
+              disabled={pending}
+            />
+          </label>
+          {!balanceValid ? (
+            <p
+              className="kbot-paper-status__error"
+              data-testid="paper-arm-balance-error"
+            >
+              Enter the paper balance as a plain decimal, e.g. 1000 or 250.50
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="kbot-paper-status__action"
+            disabled={armDisabled}
+            onClick={() => {
+              void handleArm();
+            }}
+          >
+            {pending ? "Arming…" : "Arm paper pack"}
+          </button>
+          {unknownOutcome !== null ? (
+            <p
+              className="kbot-paper-status__unknown"
+              role="alert"
+              data-testid="paper-arm-unknown"
+            >
+              Arm outcome unknown: {unknownOutcome}. Refresh status to see the
+              server state before retrying.
+            </p>
+          ) : null}
+          {errorMessage !== null ? (
+            <p
+              className="kbot-paper-status__error"
+              role="alert"
+              data-testid="paper-arm-error"
+            >
+              {errorMessage}
+            </p>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   // Synchronous guard so a rapid double click cannot dispatch a duplicate
@@ -132,6 +441,19 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
   // Bumped on every request start and on unmount so a late response from a
   // superseded request never updates the panel.
   const epochRef = useRef(0);
+
+  // The rehearsal surface is a separate client behind the same paper
+  // panel: a legacy injected client without the factory renders the
+  // honest unavailable state instead of crashing.
+  const canRehearse =
+    typeof client === "object" &&
+    client !== null &&
+    typeof client.createRehearsalClient === "function";
+  const [rehearsalClient] = useState<RehearsalClient | null>(() =>
+    canRehearse
+      ? (client.createRehearsalClient as () => RehearsalClient)()
+      : null,
+  );
 
   useEffect(() => {
     const epoch = ++epochRef.current;
@@ -423,12 +745,15 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
             Checking paper status…
           </p>
         ) : (
-          <p
-            className="kbot-paper-status__empty"
-            data-testid="paper-status-empty"
-          >
-            No pack armed
-          </p>
+          // Confirmed unarmed: offer the arm form and the rehearsal
+          // surface in the existing paper panel.
+          <>
+            <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
+              No pack armed
+            </p>
+            <ArmForm client={client} />
+            <RehearsalPanel client={rehearsalClient} />
+          </>
         )}
       </div>
     </section>
