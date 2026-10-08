@@ -721,3 +721,186 @@ def test_drafts_live_under_home_not_under_packs(home: Path) -> None:
     assert rev["revision_id"] in {p.stem for p in drafts_root.rglob("*.json")}
     # Nothing leaked into <home>/packs.
     assert not packs_root.exists() or not list(packs_root.glob("*.json"))
+
+
+# ---------------------------------------------------------------------------
+# 8. Library list — GET /api/v1/strategies/drafts returns owned revisions
+# ---------------------------------------------------------------------------
+
+
+def _get_drafts_list(app, session: str) -> tuple[int, bytes]:
+    headers = [
+        ("Host", f"127.0.0.1:{TEST_PORT}"),
+        ("Origin", f"http://127.0.0.1:{TEST_PORT}"),
+        ("Cookie", f"krellbot_session={session}"),
+    ]
+    status, _hdrs, body, _cookies = asgi_call(
+        app,
+        method="GET",
+        path="/api/v1/strategies/drafts",
+        headers=headers,
+    )
+    return status, body
+
+
+def test_list_drafts_requires_session(home: Path) -> None:
+    """The list route is a read behind the same session gate as GET
+    ``/api/v1/strategies/drafts/{revision_id}``. A missing session
+    cookie is 403."""
+
+    app = _build_app(home)
+    headers = [
+        ("Host", f"127.0.0.1:{TEST_PORT}"),
+        ("Origin", f"http://127.0.0.1:{TEST_PORT}"),
+    ]
+    status, _hdrs, body, _cookies = asgi_call(
+        app,
+        method="GET",
+        path="/api/v1/strategies/drafts",
+        headers=headers,
+    )
+    assert status == 403, (status, body)
+
+
+def test_list_drafts_returns_only_owned_revisions(home: Path) -> None:
+    """Every revision the user created through the drafts API appears
+    exactly once; an imported pack file dropped under ``<home>/packs``
+    (no owned revision) does not."""
+
+    app = _build_app(home)
+    csrf, session = _bootstrap_via_test(app)
+
+    first = _create_revision(app, csrf, session, _valid_pack_dict())
+    legacy = _create_revision(app, csrf, session, _legacy_pack_dict())
+
+    # A pack imported on disk without going through the drafts API has
+    # no owned revision and must not appear in the library.
+    packs_root = home / "packs"
+    packs_root.mkdir(parents=True, exist_ok=True)
+    imported = _valid_pack_dict()
+    imported["id"] = "imported-only"
+    (packs_root / "imported-only.json").write_text(
+        json.dumps(imported), encoding="utf-8"
+    )
+
+    status, body = _get_drafts_list(app, session)
+    assert status == 200, body
+    decoded = json.loads(body)
+    drafts = decoded["drafts"]
+    ids = [row["revision_id"] for row in drafts]
+    assert first["revision_id"] in ids
+    assert legacy["revision_id"] in ids
+    assert "imported-only" not in {row["strategy_id"] for row in drafts}
+    assert len(ids) == len(set(ids))
+
+
+def test_list_drafts_excludes_unknown_directories(home: Path) -> None:
+    """Files directly under ``<home>/drafts`` and directories that hold
+    no stored revisions are not surfaced as rows."""
+
+    app = _build_app(home)
+    csrf, session = _bootstrap_via_test(app)
+    created = _create_revision(app, csrf, session, _valid_pack_dict())
+
+    drafts_root = home / "drafts"
+    (drafts_root / "stray.json").write_text("{}", encoding="utf-8")
+    (drafts_root / "empty-dir").mkdir(parents=True, exist_ok=True)
+
+    status, body = _get_drafts_list(app, session)
+    assert status == 200, body
+    rows = json.loads(body)["drafts"]
+    assert [row["revision_id"] for row in rows] == [created["revision_id"]]
+
+
+def test_list_drafts_summary_fields_sorted_created_at_desc(home: Path) -> None:
+    """Each row carries revision_id, strategy_id, state, created_at,
+    parent_revision_id, runnable and the canonical pack's
+    id/label/pair/timeframe, sorted by created_at descending."""
+
+    app = _build_app(home)
+    csrf, session = _bootstrap_via_test(app)
+
+    parent = _create_revision(app, csrf, session, _valid_pack_dict())
+    status, body = _put_draft(
+        app,
+        csrf,
+        session,
+        parent["revision_id"],
+        {**_valid_pack_dict(), "label": "Edited"},
+    )
+    assert status == 200, body
+    child = json.loads(body)
+
+    status, body = _get_drafts_list(app, session)
+    assert status == 200, body
+    rows = json.loads(body)["drafts"]
+    assert [row["revision_id"] for row in rows] == [
+        child["revision_id"],
+        parent["revision_id"],
+    ]
+
+    child_row = rows[0]
+    assert child_row["schema_version"] == "1"
+    assert child_row["strategy_id"] == "trend-follow"
+    assert child_row["parent_revision_id"] == parent["revision_id"]
+    assert child_row["state"] == "draft"
+    assert child_row["runnable"] is False
+    assert child_row["created_at"]
+    assert child_row["id"] == "trend-follow"
+    assert child_row["label"] == "Edited"
+    assert child_row["timeframe"] == "1h"
+    assert child_row["pair"] == "SUIUSD"
+    assert rows[1]["parent_revision_id"] is None
+
+
+def test_list_drafts_refuses_malformed_entries(home: Path) -> None:
+    """A revision file or meta file that fails to JSON-parse is skipped
+    silently; the list still returns the healthy revisions and the
+    route does not 500. The malformed bytes are left untouched."""
+
+    app = _build_app(home)
+    csrf, session = _bootstrap_via_test(app)
+    good = _create_revision(app, csrf, session, _valid_pack_dict())
+
+    drafts_root = home / "drafts"
+    strategy_dir = next(
+        p for p in drafts_root.iterdir() if (p / f"{good['revision_id']}.json").exists()
+    )
+    broken_dir = drafts_root / "broken-strategy"
+    broken_dir.mkdir(parents=True, exist_ok=True)
+    (broken_dir / "deadbeef.json").write_text("{ not json", encoding="utf-8")
+    (broken_dir / "deadbeef.meta.json").write_text("{}", encoding="utf-8")
+    (strategy_dir / "cafebabe.json").write_text("{}", encoding="utf-8")
+    (strategy_dir / "cafebabe.meta.json").write_text("{ not json", encoding="utf-8")
+
+    status, body = _get_drafts_list(app, session)
+    assert status == 200, body
+    rows = json.loads(body)["drafts"]
+    assert [row["revision_id"] for row in rows] == [good["revision_id"]]
+    assert (broken_dir / "deadbeef.json").read_text(encoding="utf-8") == "{ not json"
+
+
+def test_list_drafts_never_mutates_state_or_bytes(home: Path) -> None:
+    """Listing reads only: the revision bytes, meta state, and
+    created_at are byte-identical before and after the list call."""
+
+    app = _build_app(home)
+    csrf, session = _bootstrap_via_test(app)
+    created = _create_revision(app, csrf, session, _valid_pack_dict())
+    status, body = _validate_draft(app, csrf, session, created["revision_id"])
+    assert status == 200, body
+
+    rev_path = home / "drafts" / "trend-follow" / f"{created['revision_id']}.json"
+    meta_path = home / "drafts" / "trend-follow" / f"{created['revision_id']}.meta.json"
+    rev_before = rev_path.read_bytes()
+    meta_before = meta_path.read_bytes()
+
+    status, body = _get_drafts_list(app, session)
+    assert status == 200, body
+    rows = json.loads(body)["drafts"]
+    assert rows[0]["state"] == "validated"
+    assert rows[0]["runnable"] is True
+
+    assert rev_path.read_bytes() == rev_before
+    assert meta_path.read_bytes() == meta_before
+

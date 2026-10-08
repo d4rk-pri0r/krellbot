@@ -15,10 +15,16 @@ import { ResearchView } from "../features/research/ResearchView";
 import { createHttpClient as createResearchHttpClient } from "../features/research/client";
 import type { ResearchClient } from "../features/research/client";
 import { Editor } from "../features/strategies/Editor";
-import { StrategyExplanation } from "../features/strategies/StrategyExplanation";
 import { createHttpClient } from "../features/strategies/client";
 import type { StrategyClient } from "../features/strategies/client";
 import type { LoadedRevision } from "../features/strategies/Editor";
+import { SavedStrategyLibrary } from "../features/strategies/SavedStrategyLibrary";
+import type {
+  LibraryClient,
+  OwnedDraftSummary,
+} from "../features/strategies/libraryClient";
+import { createLibraryClient } from "../features/strategies/libraryClient";
+import { StrategyExplanation } from "../features/strategies/StrategyExplanation";
 import {
   GraphCanvas,
   type GraphCanvasNode,
@@ -108,6 +114,7 @@ export type WorkstationShellProps = {
   researchClient?: ResearchClient;
   strategyClient?: StrategyClient;
   operationsClient?: OperationsClient;
+  libraryClient?: LibraryClient;
 };
 
 export function WorkstationShell({
@@ -115,6 +122,7 @@ export function WorkstationShell({
   researchClient,
   strategyClient,
   operationsClient,
+  libraryClient,
 }: WorkstationShellProps = {}): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchRevision, setSearchRevision] = useState(0);
@@ -260,6 +268,34 @@ export function WorkstationShell({
     () => strategyClient ?? createHttpClient(),
     [strategyClient],
   );
+  const library = useMemo(
+    () => libraryClient ?? createLibraryClient(),
+    [libraryClient],
+  );
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  // The Editor reads ``initial`` at mount only and keeps its own save
+  // outcome across its own ``onRevision`` saves, so a reopen remounts
+  // it under a fresh key (the ResearchView portal pattern) instead of
+  // mutating Editor internals. The key advances on an explicit library
+  // reopen / new-strategy only — never on the Editor's own saves.
+  const [editorEpoch, setEditorEpoch] = useState(0);
+  const handleLibraryReopen = useCallback(
+    (summary: OwnedDraftSummary, bytes: string): void => {
+      setSavedRevision({
+        revision_id: summary.revision_id,
+        state: summary.state,
+        bytes,
+      });
+      setEditedPack(null);
+      setEditorEpoch((epoch: number) => epoch + 1);
+    },
+    [],
+  );
+  const handleLibraryNewStrategy = useCallback((): void => {
+    setSavedRevision(null);
+    setEditedPack(null);
+    setEditorEpoch((epoch: number) => epoch + 1);
+  }, []);
   const loadedEditorFor = useRef<string | null>(null);
   useEffect(() => {
     if (!savedRevision || !client.loadEditor) {
@@ -508,7 +544,26 @@ export function WorkstationShell({
         ) : null}
         {active === "strategies" ? (
           <>
+            <button
+              type="button"
+              className="kbot-shell__library-toggle"
+              data-testid="library-toggle"
+              aria-pressed={libraryOpen}
+              onClick={() => {
+                setLibraryOpen((open: boolean) => !open);
+              }}
+            >
+              Library
+            </button>
+            {libraryOpen ? (
+              <SavedStrategyLibrary
+                client={library}
+                onReopen={handleLibraryReopen}
+                onNewStrategy={handleLibraryNewStrategy}
+              />
+            ) : null}
             <Editor
+              key={`editor-${editorEpoch}`}
               client={client}
               initial={savedRevision ?? undefined}
               onRevision={(summary, bytes) => {

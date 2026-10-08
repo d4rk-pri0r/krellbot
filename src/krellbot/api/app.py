@@ -927,6 +927,30 @@ def create_app(
             return JSONResponse({"detail": str(exc)}, status_code=400)
         return JSONResponse(summary, status_code=200)
 
+    @app.get("/api/v1/strategies/drafts")
+    async def list_drafts(request: Request) -> Response:
+        """List every owned revision the user has saved locally.
+
+        Read-only walk of ``<home>/drafts`` behind the same
+        session/loopback gate as ``GET
+        /api/v1/strategies/drafts/{revision_id}``. Rows are one summary
+        per revision (newest first); a revision whose stored bytes or
+        meta fail to parse is skipped rather than failing the request.
+        Imported packs that never became an owned revision live under
+        ``<home>/packs`` and never appear here. Nothing is armed,
+        rewritten, or state-changed by this route.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+        rows = _draft_service(s).list_owned_summaries()
+        body = {"schema_version": SCHEMA_VERSION, "drafts": rows}
+        return JSONResponse(
+            body, status_code=200, headers={"Cache-Control": "no-store"}
+        )
+
     # ---- research result download (lane E) ------------------------------
 
     @app.get("/api/v1/jobs/{job_id}/result/download")

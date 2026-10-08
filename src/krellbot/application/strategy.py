@@ -404,6 +404,82 @@ class StrategyDraftService:
 
         return self.revision_path(revision_id).read_bytes()
 
+    def list_owned_summaries(self) -> list[dict]:
+        """Return one read-only summary per owned revision, newest first.
+
+        The owned set is exactly what the drafts tree holds: every
+        ``<home>/drafts/<strategy_id>/<revision_id>.json`` with a
+        readable sibling meta file. Imported packs that never became an
+        owned revision live elsewhere (``<home>/packs``) and never
+        appear here.
+
+        A revision whose bytes or meta fail to JSON-parse — or whose
+        meta is not a mapping — is skipped, not fatal: the caller gets
+        the healthy rows and nothing on disk is rewritten. Rows carry
+        the canonical pack's ``id``/``label``/``pair``/``timeframe``
+        (``pair`` from the first market) next to the meta fields and
+        sort by ``created_at`` descending, revision id ascending as the
+        deterministic tiebreak.
+        """
+
+        drafts = self._drafts_root()
+        rows: list[dict] = []
+        if not drafts.exists():
+            return rows
+        for strategy_dir in sorted(drafts.iterdir()):
+            if not strategy_dir.is_dir():
+                continue
+            strategy_id = strategy_dir.name
+            for rev_path in sorted(strategy_dir.glob("*.json")):
+                if rev_path.name.endswith(".meta.json"):
+                    continue
+                revision_id = rev_path.stem
+                meta_path = self._meta_path(strategy_id, revision_id)
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    pack = json.loads(rev_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if not isinstance(meta, dict) or not isinstance(pack, dict):
+                    continue
+                markets = pack.get("markets")
+                pair = ""
+                if (
+                    isinstance(markets, list)
+                    and markets
+                    and isinstance(markets[0], dict)
+                    and isinstance(markets[0].get("pair"), str)
+                ):
+                    pair = markets[0]["pair"]
+                rows.append(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "strategy_id": str(meta.get("strategy_id", strategy_id)),
+                        "revision_id": revision_id,
+                        "parent_revision_id": meta.get("parent_revision_id"),
+                        "state": str(meta.get("state", STATE_DRAFT)),
+                        "runnable": bool(meta.get("runnable", False)),
+                        "created_at": str(meta.get("created_at", "")),
+                        "id": pack.get("id") if isinstance(pack.get("id"), str) else "",
+                        "label": (
+                            pack.get("label") if isinstance(pack.get("label"), str) else ""
+                        ),
+                        "pair": pair,
+                        "timeframe": (
+                            pack.get("timeframe")
+                            if isinstance(pack.get("timeframe"), str)
+                            else ""
+                        ),
+                    }
+                )
+        # Stable two-pass sort: revision id ascending first, then
+        # created_at descending on top of it so equal timestamps keep
+        # the deterministic revision-id order. An empty created_at is
+        # the smallest key under ``reverse`` and sorts last.
+        rows.sort(key=lambda row: row["revision_id"])
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows
+
     def pack_for_arm(self, revision_id: str) -> tuple[Path, dict]:
         """Return ``(path, pack)`` the paper service should arm.
 
