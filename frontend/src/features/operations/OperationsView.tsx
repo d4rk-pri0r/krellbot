@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
 import type { OperationsClient, OperationsViewModel } from "./client";
+import { AlertsCsvExport } from "./AlertsCsvExport";
 
 const DISABLED_BANNER =
   "Live trading is disabled in this build (KRELLBOT_ENABLE_LIVE is not 1).";
@@ -505,6 +506,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
               ))
             )}
           </ul>
+          <AlertsCsvExport alerts={view.alerts} />
         </section>
       </div>
     </section>
