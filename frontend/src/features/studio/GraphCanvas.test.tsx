@@ -21,6 +21,12 @@ import type { JSX } from "react";
 import { GraphCanvas } from "./GraphCanvas";
 import type { EdgeRefusal } from "./edges";
 
+const LABEL_FOR_REFUSAL: Record<string, string> = {
+  "timeframe missing": "Timeframe missing",
+  "timeframe invalid": "Timeframe invalid",
+  "timeframe mismatch": "Timeframe mismatch",
+};
+
 const here = dirname(fileURLToPath(import.meta.url));
 
 type CapturedReactFlowProps = {
@@ -384,7 +390,8 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
       );
       triggerConnect("b");
       const alert = screen.getByRole("alert");
-      expect(alert.textContent).toContain(reason);
+      const labeledRefusal = LABEL_FOR_REFUSAL[reason] ?? reason;
+      expect(alert.textContent).toContain(labeledRefusal);
       const walker = document.createTreeWalker(
         alert,
         NodeFilter.SHOW_TEXT,
@@ -392,7 +399,7 @@ describe("GraphCanvas — onConnect routes through refuseIncompatibleEdge", () =
       const exact: Text[] = [];
       let node = walker.nextNode();
       while (node) {
-        if (node.nodeValue === reason) exact.push(node as Text);
+        if (node.nodeValue === labeledRefusal) exact.push(node as Text);
         node = walker.nextNode();
       }
       expect(exact.length).toBeGreaterThanOrEqual(1);
