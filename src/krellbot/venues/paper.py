@@ -375,7 +375,7 @@ class PaperVenue:
     def owned_qty(self, pair: str) -> Decimal:
         """Return the base balance for the pair."""
         base, _ = _base_quote(pair)
-        return self._state["balances"].get(base, Decimal(0))
+        return Decimal(str(self._state["balances"].get(base, Decimal(0))))
 
     def resting_stop(self, pair: str) -> Decimal | None:
         """Return the stop price resting on this pair, or None."""
@@ -454,6 +454,9 @@ class PaperVenue:
         raw.setdefault("open_orders", [])
         raw.setdefault("recent_fills", [])
         raw.setdefault("seeded", True)
+        # JSON persistence writes Decimals as strings. Rehydrate at the
+        # load boundary so entry, exit and stop arithmetic share one type.
+        raw["balances"] = {asset: Decimal(str(value)) for asset, value in raw["balances"].items()}
         return raw
 
     def _persist(self) -> None:
