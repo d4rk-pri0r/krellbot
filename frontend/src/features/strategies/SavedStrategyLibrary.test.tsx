@@ -103,7 +103,7 @@ describe("SavedStrategyLibrary — rows", () => {
     expect(first.textContent).toContain("Edited");
     expect(first.textContent).toContain("SUIUSD");
     expect(first.textContent).toContain("1h");
-    expect(first.textContent).toContain("validated");
+    expect(first.textContent).toContain("Validated");
     expect(first.textContent).toContain("2026-10-07T12:00:00Z");
     expect(screen.getAllByRole("button", { name: /reopen/i }).length).toBe(2);
   });

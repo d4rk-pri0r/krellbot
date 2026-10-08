@@ -146,7 +146,7 @@ describe("WorkstationShell — saved strategy library", () => {
     expect(row.textContent).toContain("trend-follow");
     expect(row.textContent).toContain("Trend follow");
     expect(row.textContent).toContain("SUIUSD");
-    expect(row.textContent).toContain("validated");
+    expect(row.textContent).toContain("Validated");
   });
 
   it("hides the library again when the toggle is pressed twice", async () => {
@@ -175,7 +175,7 @@ describe("WorkstationShell — saved strategy library", () => {
       "rev-library-1",
     );
     expect(screen.getByTestId("editor-revision-id").textContent).toContain(
-      "validated",
+      "Validated",
     );
   });
 

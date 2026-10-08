@@ -3,6 +3,7 @@ import type {
   LibraryClient,
   OwnedDraftSummary,
 } from "./libraryClient";
+import { summarizeDraftState } from "./draftStateLabel";
 
 export type {
   LibraryClient,
@@ -148,7 +149,7 @@ export function SavedStrategyLibrary({
                 {row.timeframe || "(no timeframe)"}
               </span>
               <span className="kbot-strategy-library__cell">
-                {row.state}
+                {summarizeDraftState(row.state).label}
               </span>
               <span className="kbot-strategy-library__cell">
                 {row.created_at || "(unknown date)"}
