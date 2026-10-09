@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type JSX } from "react";
+import { getCsrf } from "../../session";
 import type {
   PaperArmDraftSummary,
   PaperClient,
@@ -23,7 +24,7 @@ export type StatusPanelProps = {
 
 type EntriesSentence = "Entries active" | "Entries paused";
 
-type CommandName = "pause" | "resume" | "disarm";
+type CommandName = "pause" | "resume" | "disarm" | "raise_stop";
 
 /** Arm venues offered by the paper surface (paper mode only). */
 const ARM_VENUES: readonly string[] = ["kraken"];
@@ -47,6 +48,8 @@ type PanelState = {
   unavailable: boolean;
   pending: CommandName | null;
   unknownOutcome: string | null;
+  /** Backend-confirmed raise-stop echo, mirrored verbatim from `message`. */
+  raiseStopEcho: string | null;
 };
 
 const INITIAL_STATE: PanelState = {
@@ -56,6 +59,7 @@ const INITIAL_STATE: PanelState = {
   unavailable: false,
   pending: null,
   unknownOutcome: null,
+  raiseStopEcho: null,
 };
 
 type PanelAction =
@@ -68,6 +72,7 @@ type PanelAction =
       type: "command-ok";
       status: PaperStatus | null;
       sentence?: EntriesSentence;
+      raiseStopEcho?: string | null;
     };
 
 function sentenceFor(entries_paused: boolean | undefined): EntriesSentence {
@@ -78,7 +83,26 @@ function commandLabel(command: CommandName | "arm"): string {
   if (command === "pause") return "Pause";
   if (command === "resume") return "Resume";
   if (command === "arm") return "Arm";
+  if (command === "raise_stop") return "Raise stop";
   return "Disarm";
+}
+
+/**
+ * The raise-stop read surface is closed-shape (no `stop` on status reads),
+ * so the backend's success message — ``stop set: <venue> <pair> -> <new>``
+ * — is the only in-tree source for the new resting stop. Mirror it verbatim;
+ * the visible sentence quotes it rather than recomputing a value.
+ */
+function raiseStopSentenceFromMessage(message: unknown): string | null {
+  if (typeof message !== "string") {
+    return null;
+  }
+  const arrow = message.lastIndexOf("-> ");
+  if (arrow === -1) {
+    return null;
+  }
+  const tail = message.slice(arrow + 3).trim();
+  return tail.length > 0 ? `raised stop to ${tail}` : null;
 }
 
 function transportDetail(reason: unknown): string {
@@ -105,6 +129,37 @@ function unknownMessage(command: CommandName, reason: unknown): string {
   );
 }
 
+/**
+ * POST ``paper.raise_stop`` with the same command envelope the paper client
+ * uses, dispatched directly from the panel: deliberately not a PaperClient
+ * method so this slice touches no client surface. Refusals arrive as
+ * HTTP 200 bodies with ``ok: false``; a non-2xx response is a transport
+ * failure and maps to the unknown-outcome path, exactly like disarm.
+ */
+async function postRaiseStop(
+  venue: string,
+  pair: string,
+  newStop: string,
+): Promise<PaperCommandResult> {
+  const response = await fetch("/api/v1/commands", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: JSON.stringify({
+      schema_version: "1",
+      command: "paper.raise_stop",
+      payload: { venue, pair, new_stop: newStop },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`paper.raise_stop failed: ${response.status}`);
+  }
+  return (await response.json()) as PaperCommandResult;
+}
+
 function reducer(state: PanelState, action: PanelAction): PanelState {
   switch (action.type) {
     case "status": {
@@ -128,6 +183,7 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
         pending: action.command,
         errorMessage: null,
         unknownOutcome: null,
+        raiseStopEcho: null,
       };
     }
     case "command-refused": {
@@ -147,6 +203,7 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
         unknownOutcome: null,
         status: action.status,
         sentence: action.sentence ?? state.sentence,
+        raiseStopEcho: action.raiseStopEcho ?? state.raiseStopEcho,
       };
     }
   }
@@ -554,6 +611,13 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
         type: "command-ok",
         status: applied.status,
         sentence: applied.sentence,
+        raiseStopEcho:
+          command === "raise_stop"
+            ? (raiseStopSentenceFromMessage(result.message) ??
+              (typeof result.message === "string" && result.message.length > 0
+                ? result.message
+                : null))
+            : undefined,
       });
       if (command !== "disarm") {
         // Reconcile the sentence with the server after a confirmed command:
@@ -610,6 +674,26 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
         status: { schema_version: "1", armed: false },
         sentence: "Entries active" as EntriesSentence,
       }),
+    );
+  };
+
+  const [raiseStopValue, setRaiseStopValue] = useState("");
+  const raiseStopValid = isValidPaperBalance(raiseStopValue);
+
+  const handleRaiseStop = (): Promise<void> => {
+    const current = state.status;
+    return runCommand(
+      "raise_stop",
+      () =>
+        postRaiseStop(
+          current?.venue ?? "",
+          current?.pair ?? "",
+          raiseStopValue,
+        ),
+      // The read surface never carries the stop, so the confirmed state
+      // stays as-is; the visible truth is the backend echo plus the
+      // follow-up reconciliation read inside runCommand.
+      () => ({ status: current }),
     );
   };
 
@@ -701,6 +785,58 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
                 Refresh status
               </button>
             </div>
+            {/* Raise the resting stop. Mounted only in the armed paper
+                branch: the closed-shape status read never carries the
+                current stop, so there is nothing to prefill and no
+                below-current check client-side — the backend's
+                invalid_stop refusal is the single validator. */}
+            <div
+              className="kbot-paper-status__raise-stop"
+              data-testid="paper-raise-stop"
+            >
+              <label
+                className="kbot-paper-status__field"
+                htmlFor="paper-raise-stop-input"
+              >
+                New resting stop
+                <input
+                  id="paper-raise-stop-input"
+                  className="kbot-paper-status__input"
+                  data-testid="paper-raise-stop-input"
+                  type="text"
+                  inputMode="decimal"
+                  value={raiseStopValue}
+                  onChange={(event) => {
+                    setRaiseStopValue(event.target.value);
+                  }}
+                  disabled={busy}
+                />
+              </label>
+              <button
+                type="button"
+                className="kbot-paper-status__action"
+                data-testid="paper-raise-stop-apply"
+                disabled={busy || !raiseStopValid}
+                onClick={() => {
+                  void handleRaiseStop();
+                }}
+              >
+                {state.pending === "raise_stop"
+                  ? "Raising…"
+                  : "Apply new stop"}
+              </button>
+              {!raiseStopValid ? (
+                <p
+                  className="kbot-paper-status__error"
+                  data-testid="paper-raise-stop-error"
+                >
+                  Enter the new stop as a plain decimal, e.g. 1050 or 250.50
+                </p>
+              ) : null}
+            </div>
+            {state.raiseStopEcho !== null ? (
+              <p data-testid="paper-raise-stop-ok">{state.raiseStopEcho}</p>
+            ) : null}
             {unknownAlert}
             {state.errorMessage !== null ? (
               <p
