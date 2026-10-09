@@ -1,5 +1,6 @@
 import { useMemo, useState, type ChangeEvent, type JSX } from "react";
 import { EditorCsvExport } from "./EditorCsvExport";
+import { EditorInlineStopControl, type PaperClient } from "./EditorInlineStopControl";
 import { summarizeDraftState } from "./draftStateLabel";
 import type {
   DraftState,
@@ -40,6 +41,8 @@ export type CopiedDraft = {
 
 export type EditorProps = {
   client: StrategyClient;
+  /** Paper command surface for the inline stop control; optional so hosts without one render unchanged. */
+  paperClient?: PaperClient;
   initial?: LoadedRevision;
   /** Mount-only: seed a fresh draft from copied owned bytes (create path). */
   copiedDraft?: CopiedDraft;
@@ -66,7 +69,7 @@ function readLabel(pack: Pack | null): string {
   return typeof value === "string" ? value : "";
 }
 
-export function Editor({ client, initial, copiedDraft, onRevision }: EditorProps): JSX.Element {
+export function Editor({ client, paperClient, initial, copiedDraft, onRevision }: EditorProps): JSX.Element {
   const initialRawJson = initial?.bytes ?? copiedDraft?.bytes ?? "";
   const [rawJson, setRawJson] = useState<string>(initialRawJson);
   const [ownedForm, setOwnedForm] = useState<OwnedStrategyFormState | null>(() =>
@@ -494,6 +497,9 @@ export function Editor({ client, initial, copiedDraft, onRevision }: EditorProps
           >
             revision: {lastSummary.revision_id} (state: {summarizeDraftState(lastSummary.state).label})
           </p>
+        ) : null}
+        {paperClient ? (
+          <EditorInlineStopControl paperClient={paperClient} />
         ) : null}
       </div>
     </section>
