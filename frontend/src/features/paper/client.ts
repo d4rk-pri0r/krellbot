@@ -63,6 +63,11 @@ export type PaperClient = {
   pauseEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   resumeEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   disarm(venue: string, pair: string): Promise<PaperCommandResult>;
+  raiseStop?(
+    venue: string,
+    pair: string,
+    newStop: string,
+  ): Promise<PaperCommandResult>;
   exportPaperPack?(venue: string, pair: string): Promise<PaperExportResult>;
   listOwnedDrafts?(): Promise<PaperArmDraftSummary[]>;
   arm?(input: PaperArmInput): Promise<PaperCommandResult>;
@@ -151,6 +156,38 @@ async function postCommand(
   });
   if (!response.ok) {
     throw new Error(`${command} failed: ${response.status}`);
+  }
+  return (await response.json()) as PaperCommandResult;
+}
+
+/**
+ * POST a ``paper.raise_stop``: ``new_stop`` travels as a plain decimal
+ * string (e.g. ``1``, ``1.5``, ``0.25``) because the backend parses the
+ * payload with ``Decimal``. Below-or-equal stops are refused server-side
+ * with ``CODE_INVALID_STOP``; the refusal body is still a
+ * ``PaperCommandResult`` and is returned as-is so callers surface the
+ * backend's own words. No retry.
+ */
+async function raiseStop(
+  venue: string,
+  pair: string,
+  newStop: string,
+): Promise<PaperCommandResult> {
+  const response = await fetch("/api/v1/commands", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: JSON.stringify({
+      schema_version: "1",
+      command: "paper.raise_stop",
+      payload: { venue, pair, new_stop: newStop },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`paper.raise_stop failed: ${response.status}`);
   }
   return (await response.json()) as PaperCommandResult;
 }
@@ -438,6 +475,13 @@ export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedCl
     },
     disarm(venue: string, pair: string): Promise<PaperCommandResult> {
       return postCommand("paper.disarm", { venue, pair });
+    },
+    raiseStop(
+      venue: string,
+      pair: string,
+      newStop: string,
+    ): Promise<PaperCommandResult> {
+      return raiseStop(venue, pair, newStop);
     },
     listRuns,
     exportPaperPack(venue: string, pair: string): Promise<PaperExportResult> {

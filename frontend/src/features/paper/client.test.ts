@@ -272,6 +272,97 @@ describe("createHttpClient paper commands", () => {
   });
 });
 
+describe("createHttpClient raiseStop", () => {
+  it("posts paper.raise_stop with venue/pair/new_stop and surfaces the success message", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        code: "stop_raised",
+        ok: true,
+        message: "stop set: kraken SUIUSD -> 1.75",
+        effect: "changed",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await createHttpClient().raiseStop("kraken", "SUIUSD", "1.75");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/commands");
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Krellbot-CSRF"]).toBe(getCsrf());
+    // new_stop travels as a plain decimal string for the backend Decimal parse.
+    expect(JSON.parse(String(init.body))).toEqual({
+      schema_version: "1",
+      command: "paper.raise_stop",
+      payload: { venue: "kraken", pair: "SUIUSD", new_stop: "1.75" },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe("stop_raised");
+    expect(result.message).toBe("stop set: kraken SUIUSD -> 1.75");
+  });
+
+  it("returns the backend refusal code/message as-is for a below-or-equal stop", async () => {
+    const refusal = {
+      schema_version: "1",
+      code: "invalid_stop",
+      ok: false,
+      message: "new stop must be strictly above the current stop",
+      effect: "refused",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(refusal));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await createHttpClient().raiseStop("kraken", "SUIUSD", "0.25");
+    expect(result).toEqual(refusal);
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("invalid_stop");
+    expect(result.message).toBe(
+      "new stop must be strictly above the current stop",
+    );
+  });
+
+  it("surfaces a transport failure as a thrown error and does not retry", async () => {
+    const fetchMock = vi
+      .fn<() => Promise<Response>>()
+      .mockRejectedValue(new Error("boom: network down"));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      createHttpClient().raiseStop("kraken", "SUIUSD", "2.5"),
+    ).rejects.toThrow(/boom: network down/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the typed decimal exactly as given, unnormalized, including fractional forms", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1", code: "stop_raised", ok: true }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createHttpClient();
+    await client.raiseStop("kraken", "SUIUSD", "1");
+    await client.raiseStop("kraken", "SUIUSD", "1.5");
+    await client.raiseStop("kraken", "SUIUSD", "0.25");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const sent = fetchMock.mock.calls.map((call) => {
+      const init = call[1] as RequestInit;
+      const body = JSON.parse(String(init.body)) as {
+        payload: { new_stop: string };
+      };
+      return body.payload.new_stop;
+    });
+    expect(sent).toEqual(["1", "1.5", "0.25"]);
+  });
+
+  it("throws on a non-2xx HTTP status with the status code in the message", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 403));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      createHttpClient().raiseStop("kraken", "SUIUSD", "1.75"),
+    ).rejects.toThrow(/paper\.raise_stop failed: 403/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("createHttpClient listRuns", () => {
   it("GETs /api/v1/paper/history with credentials: include and the CSRF header", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
