@@ -101,6 +101,9 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const [validateError, setValidateError] = useState<string | null>(null);
   const [armError, setArmError] = useState<string | null>(null);
   const [arming, setArming] = useState(false);
+  // Bumped only after a confirmed arm success: drives the inline stop
+  // control's refreshSignal so it reconciles status without a manual refresh.
+  const [armCounter, setArmCounter] = useState(0);
 
   const currentPack = useMemo(() => parsePack(rawJson), [rawJson]);
   const labelValue = readLabel(currentPack);
@@ -266,6 +269,10 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     setArming(true);
     try {
       await client.arm(lastSummary.revision_id, venue, paperBalance);
+      // Arm confirmed by the backend: nudge the inline stop control to
+      // re-read paper status so its Disarm/Pause/Resume reflect the new
+      // armed state without a manual "Refresh status" click.
+      setArmCounter((c) => c + 1);
     } catch (err) {
       // Keep the validated revision; never imply a deployment from stale local state.
       setArmError(
@@ -499,7 +506,10 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
           </p>
         ) : null}
         {paperClient ? (
-          <EditorInlineStopControl paperClient={paperClient} />
+          <EditorInlineStopControl
+            paperClient={paperClient}
+            refreshSignal={armCounter}
+          />
         ) : null}
       </div>
     </section>

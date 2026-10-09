@@ -10,6 +10,12 @@ export type { PaperClient } from "../paper/client";
 
 export type EditorInlineStopControlProps = {
   paperClient: PaperClient;
+  /**
+   * Parent-bumped counter that forces a fresh status fetch (e.g. right after
+   * the Editor's own Arm succeeds) without polling or a remount. Omitted or
+   * unchanged means the control fetches only on mount/client change.
+   */
+  refreshSignal?: number;
 };
 
 type EntriesSentence = "Entries active" | "Entries paused";
@@ -137,6 +143,7 @@ function reducer(state: InlineState, action: InlineAction): InlineState {
  */
 export function EditorInlineStopControl({
   paperClient,
+  refreshSignal,
 }: EditorInlineStopControlProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   // Synchronous guard so a rapid double click cannot dispatch a duplicate
@@ -167,7 +174,10 @@ export function EditorInlineStopControl({
     return () => {
       epochRef.current += 1;
     };
-  }, [paperClient]);
+    // `refreshSignal` is the only re-fetch trigger besides the client itself:
+    // a parent bump (Editor arm success) reconciles status exactly once. No
+    // timer, no polling.
+  }, [paperClient, refreshSignal]);
 
   const refreshStatus = async (): Promise<void> => {
     if (inFlightRef.current) {
