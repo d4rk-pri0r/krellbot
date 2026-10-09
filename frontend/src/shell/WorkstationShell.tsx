@@ -381,10 +381,15 @@ export function WorkstationShell({
     () => researchClient ?? createResearchHttpClient(),
     [researchClient],
   );
-  const paper = useMemo(
+  // The Editor's inline stop control needs a paper client in production
+  // too, where <WorkstationShell /> is mounted with no props: fall back
+  // to the same loopback default the Paper tab uses so the inline
+  // Disarm/Pause/Resume is available without any caller-side wiring.
+  const defaultWorkstationPaperClient = useMemo(
     () => paperClient ?? createPaperHttpClient(),
     [paperClient],
   );
+  const paper = defaultWorkstationPaperClient;
   // LastRunsPanel needs listRuns guaranteed at the call site, even when
   // a bare PaperClient prop is injected: layer the runs client on top.
   const paperRuns = useMemo(
@@ -629,6 +634,7 @@ export function WorkstationShell({
             <Editor
               key={`editor-${editorEpoch}`}
               client={client}
+              paperClient={defaultWorkstationPaperClient}
               initial={savedRevision ?? undefined}
               copiedDraft={copiedDraft ?? undefined}
               onRevision={(summary, bytes) => {
