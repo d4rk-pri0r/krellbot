@@ -629,6 +629,7 @@ export function WorkstationShell({
             <Editor
               key={`editor-${editorEpoch}`}
               client={client}
+              paperClient={paperClient}
               initial={savedRevision ?? undefined}
               copiedDraft={copiedDraft ?? undefined}
               onRevision={(summary, bytes) => {
