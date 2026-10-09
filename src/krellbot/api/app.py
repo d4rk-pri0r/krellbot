@@ -10,7 +10,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -805,10 +805,18 @@ def create_app(
                 correlation_id=correlation_id,
             )
         elif command == "paper.raise_stop":
+            if "new_stop" not in inner:
+                return JSONResponse({"detail": "invalid stop", "code": "invalid_stop"}, status_code=400)
+            try:
+                new_stop_value = Decimal(str(inner["new_stop"]))
+                if not new_stop_value.is_finite():
+                    return JSONResponse({"detail": "invalid stop", "code": "invalid_stop"}, status_code=400)
+            except (InvalidOperation, ValueError, TypeError):
+                return JSONResponse({"detail": "invalid stop", "code": "invalid_stop"}, status_code=400)
             result = service.raise_stop(
                 venue=inner["venue"],
                 pair=inner["pair"],
-                new_stop=Decimal(inner["new_stop"]),
+                new_stop=new_stop_value,
                 correlation_id=correlation_id,
             )
         elif command == "paper.export":

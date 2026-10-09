@@ -33,6 +33,8 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from tests.test_ns06_api import (
     TEST_PORT,
     _bootstrap_token,
@@ -406,6 +408,52 @@ def test_api_raise_stop_refuses_stored_live(home: Path) -> None:
     assert _config_bytes(home) == before
 
 
+@pytest.mark.parametrize("new_stop", ["Infinity", "NaN", "-Infinity"])
+def test_api_raise_stop_refuses_non_finite_stop(home: Path, new_stop: str) -> None:
+    _seed_stored_record(home, mode="paper", stop=Decimal(1))
+    token = _bootstrap_token(home)
+    app = _build_app(home, bootstrap_token=token)
+    session_value, csrf_token = _bootstrap_headers(app, token)
+
+    status, _h, body, _c = _post_json(
+        app,
+        "/api/v1/commands",
+        {
+            "schema_version": "1",
+            "command": "paper.raise_stop",
+            "payload": {"venue": "kraken", "pair": "SUIUSD", "new_stop": new_stop},
+        },
+        headers=_command_headers(session_value, csrf_token),
+    )
+
+    assert status == 400, (status, body)
+    result = json.loads(body)
+    assert result["code"] == "invalid_stop", result
+
+
+def test_api_raise_stop_refuses_missing_or_unparseable_stop(home: Path) -> None:
+    _seed_stored_record(home, mode="paper", stop=Decimal(1))
+    token = _bootstrap_token(home)
+    app = _build_app(home, bootstrap_token=token)
+    session_value, csrf_token = _bootstrap_headers(app, token)
+
+    for stop_payload in ({}, {"new_stop": None}, {"new_stop": {}}, {"new_stop": "not-a-decimal"}):
+        status, _h, body, _c = _post_json(
+            app,
+            "/api/v1/commands",
+            {
+                "schema_version": "1",
+                "command": "paper.raise_stop",
+                "payload": {"venue": "kraken", "pair": "SUIUSD", **stop_payload},
+            },
+            headers=_command_headers(session_value, csrf_token),
+        )
+
+        assert status == 400, (status, body)
+        result = json.loads(body)
+        assert result["code"] == "invalid_stop", result
+
+
 # ---- 4. paper.arm with mode=live stays refused -----------------------------
 
 
@@ -548,6 +596,12 @@ def test_api_paper_commands_succeed_against_stored_paper_record(home: Path) -> N
     )
     assert raise_stop[0] == 200, raise_stop
     assert json.loads(raise_stop[2])["code"] == "stop_raised"
+
+    from krellbot import config as cfg
+
+    assert json.loads(raise_stop[2])["ok"] is True
+    assert json.loads(raise_stop[2])["message"] == "stop set: kraken SUIUSD -> 10"
+    assert cfg.load_config(home).armed[0].stop == Decimal(10)
 
     disarm = _post_json(
         app,
