@@ -40,6 +40,51 @@ export function isValidPaperBalance(value: string): boolean {
   return DECIMAL_PATTERN.test(value);
 }
 
+/** Remembers the last successfully armed balance across mounts. */
+const LAST_ARMED_BALANCE_STORAGE_KEY = "krellbot.paper.lastArmedBalance";
+
+function readLastArmedBalance(): string | null {
+  if (
+    typeof window === "undefined" ||
+    typeof window.localStorage === "undefined"
+  ) {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem(LAST_ARMED_BALANCE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastArmedBalance(value: string): void {
+  if (
+    typeof window === "undefined" ||
+    typeof window.localStorage === "undefined"
+  ) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(LAST_ARMED_BALANCE_STORAGE_KEY, value);
+  } catch {
+    // Storage may be unavailable (quota, privacy mode): the affordance is
+    // best-effort and never blocks arming.
+  }
+}
+
+/** A stored value is offered again only as a usable decimal balance. */
+function initialArmBalance(): string {
+  const stored = readLastArmedBalance();
+  if (
+    stored !== null &&
+    isValidPaperBalance(stored) &&
+    Number(stored) > 0
+  ) {
+    return stored;
+  }
+  return DEFAULT_PAPER_BALANCE;
+}
+
 type PanelState = {
   status: PaperStatus | null;
   sentence: EntriesSentence;
@@ -169,7 +214,7 @@ function ArmForm({ client }: { client: PaperClient }): JSX.Element | null {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [revisionId, setRevisionId] = useState("");
   const [venue, setVenue] = useState(ARM_VENUES[0]);
-  const [balance, setBalance] = useState(DEFAULT_PAPER_BALANCE);
+  const [balance, setBalance] = useState(initialArmBalance);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [unknownOutcome, setUnknownOutcome] = useState<string | null>(null);
@@ -266,6 +311,8 @@ function ArmForm({ client }: { client: PaperClient }): JSX.Element | null {
       // itself comes from the panel's status refresh, never from here.
       setUnknownOutcome(null);
       setErrorMessage(null);
+      // Offer this balance again on the next arm attempt in this session.
+      writeLastArmedBalance(balance);
     } finally {
       setPending(false);
       inFlightRef.current = false;
@@ -385,7 +432,13 @@ function ArmForm({ client }: { client: PaperClient }): JSX.Element | null {
               inputMode="decimal"
               value={balance}
               onChange={(event) => {
-                setBalance(event.target.value);
+                const next = event.target.value;
+                if (next === "") {
+                  // An explicit clear is remembered: never silently refill
+                  // the field with a stale balance next time.
+                  writeLastArmedBalance("");
+                }
+                setBalance(next);
               }}
               disabled={pending}
             />
