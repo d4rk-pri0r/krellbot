@@ -352,10 +352,12 @@ export function EditorInlineStopControl({
       () => paperClient.disarm(current?.venue ?? "", current?.pair ?? ""),
       () => ({
         // The backend confirmed the disarm: the workstation has no armed
-        // pack anymore, so the controls disappear.
+        // pack anymore, so the controls disappear. The last raised stop is
+        // deliberately kept in memory so a re-arm in this same control
+        // re-displays it without a manual re-raise; a new confirmed raise
+        // overwrites it.
         status: { schema_version: "1", armed: false },
         sentence: "Entries active" as EntriesSentence,
-        stopAt: null,
       }),
     );
   };
