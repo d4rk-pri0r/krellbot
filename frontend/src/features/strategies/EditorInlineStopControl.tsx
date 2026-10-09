@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, type JSX } from "react";
+import { useEffect, useReducer, useRef, useState, type JSX } from "react";
 import type {
   PaperClient,
   PaperCommandResult,
@@ -14,7 +14,7 @@ export type EditorInlineStopControlProps = {
 
 type EntriesSentence = "Entries active" | "Entries paused";
 
-type CommandName = "pause" | "resume" | "disarm";
+type CommandName = "pause" | "resume" | "disarm" | "raise_stop";
 
 type InlineState = {
   status: PaperStatus | null;
@@ -23,6 +23,7 @@ type InlineState = {
   pending: CommandName | null;
   unavailable: boolean;
   unknownOutcome: string | null;
+  stopAt: string | null;
 };
 
 const INITIAL_STATE: InlineState = {
@@ -32,6 +33,7 @@ const INITIAL_STATE: InlineState = {
   pending: null,
   unavailable: false,
   unknownOutcome: null,
+  stopAt: null,
 };
 
 type InlineAction =
@@ -44,7 +46,39 @@ type InlineAction =
       type: "command-ok";
       status: PaperStatus | null;
       sentence?: EntriesSentence;
+      stopAt?: string | null;
     };
+
+/**
+ * A plain decimal string, the shape the backend parses with ``Decimal``:
+ * ``1``, ``1.5``, ``0.25`` — but not ``1e3``, ``.5``, ``NaN``,
+ * ``Infinity`` or an empty string.
+ */
+const STOP_DECIMAL_PATTERN = /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
+
+export function isValidRaiseStopDecimal(value: string): boolean {
+  return STOP_DECIMAL_PATTERN.test(value);
+}
+
+/**
+ * The read surface never carries the resting stop, so the only in-tree
+ * source for the new resting stop is the success message echo
+ * ``stop set: <venue> <pair> -> <new_stop>``.
+ */
+export function stopFromRaiseStopMessage(
+  message: string | undefined,
+): string | null {
+  if (typeof message !== "string") {
+    return null;
+  }
+  const marker = "->";
+  const at = message.lastIndexOf(marker);
+  if (at === -1) {
+    return null;
+  }
+  const value = message.slice(at + marker.length).trim();
+  return value.length > 0 ? value : null;
+}
 
 function sentenceFor(entries_paused: boolean | undefined): EntriesSentence {
   return entries_paused ? "Entries paused" : "Entries active";
@@ -53,6 +87,7 @@ function sentenceFor(entries_paused: boolean | undefined): EntriesSentence {
 function commandLabel(command: CommandName): string {
   if (command === "pause") return "Pause";
   if (command === "resume") return "Resume";
+  if (command === "raise_stop") return "Apply new stop";
   return "Disarm";
 }
 
@@ -122,6 +157,7 @@ function reducer(state: InlineState, action: InlineAction): InlineState {
         unknownOutcome: null,
         status: action.status,
         sentence: action.sentence ?? state.sentence,
+        stopAt: action.stopAt !== undefined ? action.stopAt : state.stopAt,
       };
     }
   }
@@ -139,6 +175,8 @@ export function EditorInlineStopControl({
   paperClient,
 }: EditorInlineStopControlProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  // Typed raise-stop input value; validation happens on Apply.
+  const [stopInput, setStopInput] = useState("");
   // Synchronous guard so a rapid double click cannot dispatch a duplicate
   // command before React re-renders the disabled buttons.
   const inFlightRef = useRef(false);
@@ -201,7 +239,13 @@ export function EditorInlineStopControl({
   const runCommand = async (
     command: CommandName,
     action: () => Promise<PaperCommandResult>,
-    onConfirmed: () => { status: PaperStatus | null; sentence?: EntriesSentence },
+    onConfirmed: (
+      result: PaperCommandResult,
+    ) => {
+      status: PaperStatus | null;
+      sentence?: EntriesSentence;
+      stopAt?: string | null;
+    },
   ): Promise<void> => {
     if (inFlightRef.current) {
       return;
@@ -240,22 +284,23 @@ export function EditorInlineStopControl({
         });
         return;
       }
-      const applied = onConfirmed();
+      const applied = onConfirmed(result);
       dispatch({
         type: "command-ok",
         status: applied.status,
         sentence: applied.sentence,
+        stopAt: applied.stopAt,
       });
       if (command !== "disarm") {
-        // Reconcile the sentence with the server after a confirmed command:
-        // a single follow-up read, not polling.
+        // Reconcile with the server after a confirmed command: a single
+        // follow-up read, not polling.
         try {
           const next = await paperClient.getStatus();
           if (epoch === epochRef.current) {
             dispatch({ type: "status", status: next });
           }
         } catch (reason) {
-          // The sentence already reflects the backend-confirmed command;
+          // The state already reflects the backend-confirmed command;
           // only the reconciliation read failed, so say so truthfully.
           if (epoch === epochRef.current) {
             dispatch({
@@ -300,6 +345,7 @@ export function EditorInlineStopControl({
         // pack anymore, so the controls disappear.
         status: { schema_version: "1", armed: false },
         sentence: "Entries active" as EntriesSentence,
+        stopAt: null,
       }),
     );
   };
@@ -310,6 +356,33 @@ export function EditorInlineStopControl({
     state.status.venue !== "" &&
     state.status.pair !== undefined &&
     state.status.pair !== "";
+
+  const stopInputValid = isValidRaiseStopDecimal(stopInput);
+  // The real HTTP client supplies raiseStop; a hand-rolled client that
+  // cannot raise stops leaves the Apply control inert rather than broken.
+  const canRaiseStop = armed && typeof paperClient.raiseStop === "function";
+
+  const handleRaiseStop = (): Promise<void> => {
+    const current = state.status;
+    const raise = paperClient.raiseStop;
+    // Local validation is shape-only: NaN/Infinity/1e3/.5/empty never
+    // reach the wire. Below-or-equal is backend-only (CODE_INVALID_STOP).
+    if (!stopInputValid || typeof raise !== "function") {
+      return Promise.resolve();
+    }
+    const newStop = stopInput;
+    return runCommand(
+      "raise_stop",
+      () => raise(current?.venue ?? "", current?.pair ?? "", newStop),
+      (result) => ({
+        status: current,
+        // The success message echo is the only in-tree source for the
+        // new resting stop ("stop set: <venue> <pair> -> <new_stop>").
+        stopAt: stopFromRaiseStopMessage(result.message),
+      }),
+    );
+  };
+
   const busy = state.pending !== null;
 
   return (
@@ -381,6 +454,54 @@ export function EditorInlineStopControl({
           </button>
         ) : null}
       </div>
+      {armed ? (
+        <div className="kbot-strategy-editor__inline-stop-raise">
+          <label
+            htmlFor="editor-inline-stop-new-stop"
+            data-testid="editor-inline-stop-new-stop-label"
+          >
+            New stop
+          </label>
+          <input
+            id="editor-inline-stop-new-stop"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            data-testid="editor-inline-stop-new-stop"
+            disabled={busy}
+            value={stopInput}
+            onChange={(event) => {
+              setStopInput(event.target.value);
+            }}
+            aria-invalid={!stopInputValid}
+            placeholder="e.g. 1.25"
+          />
+          <button
+            type="button"
+            data-testid="editor-inline-stop-apply"
+            disabled={!canRaiseStop || busy || !stopInputValid}
+            title={
+              !armed
+                ? "Apply new stop is disabled while no pack is armed"
+                : !canRaiseStop
+                  ? "This paper client cannot raise stops"
+                  : !stopInputValid
+                    ? "Enter the new stop as a plain decimal, e.g. 1, 1.5 or 0.25"
+                    : "Raise the resting stop to this value"
+            }
+            onClick={() => {
+              void handleRaiseStop();
+            }}
+          >
+            {state.pending === "raise_stop" ? "Applying…" : "Apply new stop"}
+          </button>
+          {armed && state.stopAt !== null ? (
+            <span data-testid="editor-inline-stop-at">
+              stop at {state.stopAt}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {state.unknownOutcome !== null ? (
         <p
           role="alert"
