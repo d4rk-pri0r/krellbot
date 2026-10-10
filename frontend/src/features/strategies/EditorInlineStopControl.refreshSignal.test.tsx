@@ -189,4 +189,49 @@ describe("EditorInlineStopControl refreshSignal", () => {
     expect(getStatus).toHaveBeenCalledTimes(1);
     expect(disarmButton().disabled).toBe(true);
   });
+
+  it("a refreshSignal bump after Arm success triggers the same one-shot automatic getStatus() as the on-Arm-success path (post_arm_refresh slot, no polling)", async () => {
+    const unarmed: PaperStatus = { schema_version: "1", armed: false };
+    const getStatus = vi
+      .fn<() => Promise<PaperStatus>>()
+      .mockResolvedValueOnce(unarmed)
+      .mockResolvedValue(armedStatus());
+    const paperClient = makePaperClient({ getStatus });
+
+    const view = render(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={0} />,
+    );
+    expect(await screen.findByTestId("editor-inline-stop-empty")).toBeDefined();
+    expect(getStatus).toHaveBeenCalledTimes(1);
+
+    // The same bump the Editor performs after its own confirmed Arm: the
+    // post-Arm path fires exactly one automatic read, then nothing more.
+    view.rerender(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={1} />,
+    );
+    await waitFor(() => {
+      expect(disarmButton().disabled).toBe(false);
+    });
+    expect(getStatus).toHaveBeenCalledTimes(2);
+
+    // Give any hypothetical poller ample time to fire: none may, and the
+    // pending slot has cleared so the controls are live.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 150);
+    });
+    expect(getStatus).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByTestId("editor-inline-stop-entries").textContent,
+    ).toMatch(/Entries active/);
+
+    // A re-render with an UNCHANGED signal is not another arm transition:
+    // still exactly one automatic read per bump.
+    view.rerender(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={1} />,
+    );
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    expect(getStatus).toHaveBeenCalledTimes(2);
+  });
 });

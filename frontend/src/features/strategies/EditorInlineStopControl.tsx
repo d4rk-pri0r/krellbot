@@ -22,11 +22,19 @@ type EntriesSentence = "Entries active" | "Entries paused";
 
 type CommandName = "pause" | "resume" | "disarm" | "raise_stop";
 
+/**
+ * The control's own pending slot: real paper commands, plus the one-shot
+ * post-Arm status read the Editor's ``refreshSignal`` bump triggers. It is
+ * NOT a CommandName because it never mutates server state — it only gates
+ * the buttons for the duration of the reconciliation read.
+ */
+type PendingName = CommandName | "post_arm_refresh";
+
 type InlineState = {
   status: PaperStatus | null;
   sentence: EntriesSentence;
   errorMessage: string | null;
-  pending: CommandName | null;
+  pending: PendingName | null;
   unavailable: boolean;
   unknownOutcome: string | null;
   stopAt: string | null;
@@ -45,7 +53,7 @@ const INITIAL_STATE: InlineState = {
 type InlineAction =
   | { type: "status"; status: PaperStatus }
   | { type: "unavailable" }
-  | { type: "command-start"; command: CommandName }
+  | { type: "command-start"; command: PendingName }
   | { type: "command-refused"; message: string }
   | { type: "unknown-outcome"; message: string }
   | {
@@ -101,6 +109,18 @@ function transportDetail(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
 }
 
+/**
+ * The one wording used for every failed status read — manual Refresh,
+ * post-command reconcile and post-Arm reconcile — so the unknown-outcome
+ * surface is identical across all paths that share it.
+ */
+function statusReadUnknownMessage(reason: unknown): string {
+  return (
+    `Status refresh failed: ${transportDetail(reason)}. ` +
+    "The last confirmed state is shown; refresh to reconcile."
+  );
+}
+
 function isConfirmedOk(result: PaperCommandResult | null | undefined): boolean {
   // Only an explicit backend `ok: true` counts as success; a malformed or
   // flag-less response is interpreted conservatively as not confirmed.
@@ -128,6 +148,9 @@ function reducer(state: InlineState, action: InlineAction): InlineState {
       return {
         ...state,
         status: next,
+        // A settled read ends any pending phase (including the post-Arm
+        // reconciliation read); button gating never outlives the read.
+        pending: null,
         unavailable: false,
         unknownOutcome: null,
         sentence: next.armed ? sentenceFor(next.entries_paused) : state.sentence,
@@ -190,9 +213,66 @@ export function EditorInlineStopControl({
   // Bumped on every request start and on unmount so a late response from a
   // superseded request never updates the control.
   const epochRef = useRef(0);
+  // Last (client, signal) pair this control observed. A signal change with
+  // the SAME client is the Editor's post-Arm bump: exactly one automatic
+  // getStatus() follows, gated by this ref so a re-render with an unchanged
+  // signal never re-fires it. A client change resets to mount semantics.
+  const postArmRefreshRef = useRef<{ client: PaperClient; signal: number } | null>(
+    null,
+  );
 
   useEffect(() => {
+    const observed: { client: PaperClient; signal: number } | null =
+      postArmRefreshRef.current;
+    const isPostArmBump =
+      observed !== null &&
+      observed.client === paperClient &&
+      observed.signal !== refreshSignal;
+    postArmRefreshRef.current = { client: paperClient, signal: refreshSignal ?? 0 };
+
+    if (isPostArmBump && inFlightRef.current) {
+      // A paper command is mid-flight; its own reconcile read is the fresher
+      // source. Issuing a parallel read here would supersede the command's
+      // epoch and silently drop its confirmed result, so the bump is
+      // absorbed with no second request and no epoch churn.
+      return;
+    }
+
     const epoch = ++epochRef.current;
+    if (isPostArmBump) {
+      // Arm-transition reconciliation: mark the pending slot so the action
+      // buttons stop acting on the pre-Arm (unarmed) state for the duration
+      // of the read. One read, no retry, no timer.
+      inFlightRef.current = true;
+      dispatch({ type: "command-start", command: "post_arm_refresh" });
+      paperClient
+        .getStatus()
+        .then((next) => {
+          if (epoch !== epochRef.current) {
+            return;
+          }
+          // applyStatus: armed:true + venue/pair + entries sentence mirror
+          // the fresh read; the remembered stopAt survives untouched.
+          dispatch({ type: "status", status: next });
+        })
+        .catch((reason) => {
+          if (epoch !== epochRef.current) {
+            return;
+          }
+          // Same unknown-outcome path as disarm/raise_stop transport
+          // failures: keep the last confirmed state, never auto-retry.
+          dispatch({
+            type: "unknown-outcome",
+            message: statusReadUnknownMessage(reason),
+          });
+        })
+        .finally(() => {
+          inFlightRef.current = false;
+        });
+      return () => {
+        epochRef.current += 1;
+      };
+    }
     paperClient
       .getStatus()
       .then((next) => {
@@ -237,9 +317,7 @@ export function EditorInlineStopControl({
       // its last confirmed state and stays explicitly refreshable.
       dispatch({
         type: "unknown-outcome",
-        message:
-          `Status refresh failed: ${transportDetail(reason)}. ` +
-          "The last confirmed state is shown; refresh to reconcile.",
+        message: statusReadUnknownMessage(reason),
       });
     } finally {
       inFlightRef.current = false;

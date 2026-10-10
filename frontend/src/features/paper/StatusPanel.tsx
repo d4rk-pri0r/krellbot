@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, type JSX } from "react";
 import { getCsrf } from "../../session";
 import type {
   PaperArmDraftSummary,
@@ -260,7 +260,18 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
  * command. Only backend-confirmed outcomes change the visible state; a
  * refusal keeps the form, a transport failure is surfaced as unknown.
  */
-function ArmForm({ client }: { client: PaperClient }): JSX.Element | null {
+function ArmForm({
+  client,
+  onArmConfirmed,
+}: {
+  client: PaperClient;
+  /**
+   * Fired exactly once per backend-confirmed arm (never on a refusal or an
+   * unknown transport outcome): the panel bumps its arm epoch and performs
+   * one bounded status read so the armed controls appear immediately.
+   */
+  onArmConfirmed: () => void;
+}): JSX.Element | null {
   const canArm =
     typeof client === "object" &&
     client !== null &&
@@ -370,6 +381,9 @@ function ArmForm({ client }: { client: PaperClient }): JSX.Element | null {
       setErrorMessage(null);
       // Offer this balance again on the next arm attempt in this session.
       writeLastArmedBalance(balance);
+      // Signal the panel: its post-arm read makes the armed controls render
+      // without a manual refresh, navigation or remount.
+      onArmConfirmed();
     } finally {
       setPending(false);
       inFlightRef.current = false;
@@ -587,6 +601,45 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
       epochRef.current += 1;
     };
   }, [client]);
+
+  // Bumped exactly once per backend-confirmed arm (never on refusal or
+  // unknown outcome): mirrors the epoch-guarded refreshSignal shape the
+  // Editor inline control uses. Zero until the first confirmed arm.
+  const [armEpoch, setArmEpoch] = useState(0);
+
+  useEffect(() => {
+    if (armEpoch === 0) {
+      return;
+    }
+    const epoch = ++epochRef.current;
+    let cancelled = false;
+    client
+      .getStatus()
+      .then((next) => {
+        if (cancelled || epoch !== epochRef.current) {
+          return;
+        }
+        dispatch({ type: "status", status: next });
+      })
+      .catch(() => {
+        if (cancelled || epoch !== epochRef.current) {
+          return;
+        }
+        // The post-arm read failed: availability is unknown, never an
+        // unarmed claim and never a second automatic read.
+        dispatch({ type: "unavailable" });
+      });
+    return () => {
+      cancelled = true;
+      epochRef.current += 1;
+    };
+    // `armEpoch` is the only automatic re-read trigger besides the client
+    // itself: one bounded read per confirmed arm, no timer, no polling.
+  }, [client, armEpoch]);
+
+  const handleArmConfirmed = useCallback((): void => {
+    setArmEpoch((current) => current + 1);
+  }, []);
 
   const refreshStatus = async (): Promise<void> => {
     if (inFlightRef.current) {
@@ -939,7 +992,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
             <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
               No pack armed
             </p>
-            <ArmForm client={client} />
+            <ArmForm client={client} onArmConfirmed={handleArmConfirmed} />
           </>
         )}
         {/* The isolated synthetic rehearsal surface is mounted exactly once
