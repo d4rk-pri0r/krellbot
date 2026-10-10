@@ -1,3 +1,4 @@
+import "./StudioNodeInspector.signal.css";
 import { useEffect, useMemo, useState, type ChangeEvent, type JSX } from "react";
 import { IndicatorSpecJsonExport } from "./IndicatorSpecJsonExport";
 
@@ -12,9 +13,9 @@ const MAX_INDICATOR_LEN = 600;
 const INVALID_LEN_MESSAGE = "Enter a whole number between 2 and 600.";
 
 /**
- * Render a labeled input that lets the operator edit one indicator's
- * ``len`` on the in-memory saved pack. The inspector only mounts
- * when ``nodeId`` is the id of an indicator; clicking an entry/exit
+ * Render the readable Signal inspector that lets the operator edit one
+ * indicator's ``len`` on the in-memory saved pack. The inspector only
+ * mounts when ``nodeId`` is the id of an indicator; clicking an entry/exit
  * node renders nothing so the brief stays strict.
  *
  * ``onChange`` always receives a brand-new pack object: the parent's
@@ -22,6 +23,13 @@ const INVALID_LEN_MESSAGE = "Enter a whole number between 2 and 600.";
  * ``useMemo`` dependencies to fire. Invalid input (empty, nonnumber,
  * fractional or outside 2..600) never reaches ``onChange``; it shows a
  * field error instead. The input's min/max attributes are a hint only.
+ *
+ * The header (eyebrow, node id title and badge, indicator-context
+ * label), the integer current-value display, the text status and the
+ * explicit Apply affordance (disabled while the draft is invalid) are
+ * presentation only: Apply re-runs the exact same validation and
+ * new-reference emit path as typing — no new save, refresh or
+ * validation rule.
  */
 export function StudioNodeInspector({
   nodeId,
@@ -44,15 +52,7 @@ export function StudioNodeInspector({
     return null;
   }
 
-  const handleChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const next = event.target.value;
-    setDraft(next);
-    const parsed = parseIndicatorLen(next);
-    if (parsed === null) {
-      setError(INVALID_LEN_MESSAGE);
-      return;
-    }
-    setError(null);
+  const emitLenChange = (parsed: number): void => {
     const indicators = pack.indicators;
     if (!indicators || typeof indicators !== "object" || Array.isArray(indicators)) {
       return;
@@ -74,36 +74,122 @@ export function StudioNodeInspector({
     onChange({ ...pack, indicators: nextIndicators });
   };
 
+  const handleChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const next = event.target.value;
+    setDraft(next);
+    const parsed = parseIndicatorLen(next);
+    if (parsed === null) {
+      setError(INVALID_LEN_MESSAGE);
+      return;
+    }
+    setError(null);
+    emitLenChange(parsed);
+  };
+
+  // Manual affordance over the current draft: identical validation and
+  // new-reference emit path as typing. Disabled while invalid; adds no
+  // save, refresh or validation rule of its own.
+  const handleApply = (): void => {
+    const parsed = parseIndicatorLen(draft);
+    if (parsed === null) {
+      setError(INVALID_LEN_MESSAGE);
+      return;
+    }
+    setError(null);
+    emitLenChange(parsed);
+  };
+
   return (
     <div className="kbot-studio-node-inspector">
-      <label
-        htmlFor="studio-indicator-len"
-        className="kbot-studio-node-inspector__label"
+      <header
+        data-testid="studio-node-inspector-header"
+        className="kbot-studio-node-inspector__header"
       >
-        Indicator length ({indicatorName})
-      </label>
-      <input
-        id="studio-indicator-len"
-        data-testid="studio-indicator-len"
-        className="kbot-studio-node-inspector__input"
-        type="number"
-        min={MIN_INDICATOR_LEN}
-        max={MAX_INDICATOR_LEN}
-        value={draft}
-        onChange={handleChange}
-      />
-      <IndicatorSpecJsonExport
-        spec={indicatorSpec ? { name: indicatorSpec.name, len: indicatorSpec.len } : null}
-      />
-      {error ? (
+        <p className="kbot-studio-node-inspector__eyebrow">Selected node</p>
+        <div className="kbot-studio-node-inspector__title-row">
+          <h3
+            data-testid="studio-node-inspector-title"
+            className="kbot-studio-node-inspector__title"
+          >
+            {indicatorSpec.name}
+          </h3>
+          <span
+            data-testid="studio-node-inspector-node-id"
+            className="kbot-studio-node-inspector__node-id"
+          >
+            {indicatorSpec.name}
+          </span>
+        </div>
         <p
-          data-testid="studio-indicator-len-error"
-          className="kbot-studio-node-inspector__error"
-          role="alert"
+          data-testid="studio-node-inspector-context"
+          className="kbot-studio-node-inspector__context"
         >
-          {error}
+          {indicatorContextLabel(indicatorSpec)}
         </p>
-      ) : null}
+      </header>
+      <div className="kbot-studio-node-inspector__summary">
+        <p className="kbot-studio-node-inspector__summary-label">Current length</p>
+        <p
+          data-testid="studio-node-inspector-value"
+          className="kbot-studio-node-inspector__summary-value"
+        >
+          {currentLenText(indicatorSpec.len)}
+        </p>
+        <p
+          data-testid="studio-node-inspector-status"
+          role="status"
+          className={
+            error === null
+              ? "kbot-studio-node-inspector__status kbot-studio-node-inspector__status--valid"
+              : "kbot-studio-node-inspector__status kbot-studio-node-inspector__status--invalid"
+          }
+        >
+          {error === null ? "Valid" : "Invalid"}
+        </p>
+      </div>
+      <div className="kbot-studio-node-inspector__field">
+        <label
+          htmlFor="studio-indicator-len"
+          className="kbot-studio-node-inspector__label"
+        >
+          Indicator length ({indicatorName})
+        </label>
+        <input
+          id="studio-indicator-len"
+          data-testid="studio-indicator-len"
+          className="kbot-studio-node-inspector__input"
+          type="number"
+          min={MIN_INDICATOR_LEN}
+          max={MAX_INDICATOR_LEN}
+          value={draft}
+          onChange={handleChange}
+        />
+        {error ? (
+          <p
+            data-testid="studio-node-inspector-len-error"
+            className="kbot-studio-node-inspector__error"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
+        <div className="kbot-studio-node-inspector__actions">
+          <button
+            type="button"
+            data-testid="studio-node-inspector-apply"
+            className="kbot-studio-node-inspector__apply"
+            disabled={error !== null}
+            onClick={handleApply}
+          >
+            Apply length
+          </button>
+          <IndicatorSpecJsonExport
+            spec={
+              indicatorSpec ? { name: indicatorSpec.name, len: indicatorSpec.len } : null
+            }
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -111,7 +197,33 @@ export function StudioNodeInspector({
 type IndicatorSpec = {
   name: string;
   len: number;
+  fn?: string;
+  src?: string;
 };
+
+/**
+ * Readable indicator context for the header: the real pack spec fields
+ * that exist, joined with middle dots. Presentation only — no invented
+ * node semantics.
+ */
+function indicatorContextLabel(spec: IndicatorSpec): string {
+  const parts: string[] = ["Indicator"];
+  if (typeof spec.fn === "string" && spec.fn !== "") {
+    parts.push(`fn ${spec.fn}`);
+  }
+  if (typeof spec.src === "string" && spec.src !== "") {
+    parts.push(`src ${spec.src}`);
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * The pack stores whole-number lengths; render the value as an integer
+ * (2, never 2.0) without inventing precision the pack does not carry.
+ */
+function currentLenText(len: number): string {
+  return String(len);
+}
 
 /**
  * Parse the input the browser actually reports for ``type="number"``.
@@ -154,6 +266,13 @@ function useIndicator(
     if (!Number.isFinite(len)) {
       return null;
     }
-    return { name: nodeId, len };
+    const fnRaw = (spec as Record<string, unknown>).fn;
+    const srcRaw = (spec as Record<string, unknown>).src;
+    return {
+      name: nodeId,
+      len,
+      fn: typeof fnRaw === "string" ? fnRaw : undefined,
+      src: typeof srcRaw === "string" ? srcRaw : undefined,
+    };
   }, [pack, nodeId]);
 }
