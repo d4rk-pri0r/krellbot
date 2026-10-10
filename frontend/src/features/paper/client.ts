@@ -60,6 +60,7 @@ export type PaperArmDraftSummary = {
 
 export type PaperClient = {
   getStatus(): Promise<PaperStatus>;
+  getPosition?(): Promise<PaperPosition>;
   pauseEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   resumeEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   disarm(venue: string, pair: string): Promise<PaperCommandResult>;
@@ -120,6 +121,30 @@ export type PaperArmedView = {
 
 export type PaperArmedClient = {
   listArmed(): Promise<PaperArmedView>;
+};
+
+/** One owned holding from the persisted paper state file. */
+export type PaperPositionHolding = {
+  symbol: string;
+  qty: string;
+};
+
+/**
+ * The closed-shape owned-position projection served by
+ * ``GET /api/v1/paper/position``. ``free_cash`` and ``qty`` are
+ * Decimal-as-string values read verbatim from
+ * ``<home>/run/paper-<venue>.json``; the projection fields exist only
+ * when the backend reports ``armed: true``.
+ */
+export type PaperPosition = {
+  schema_version: string;
+  armed: boolean;
+  venue?: string;
+  pair?: string;
+  mode?: string;
+  free_cash?: string;
+  holdings?: PaperPositionHolding[];
+  as_of_run?: string | null;
 };
 
 async function getJson(url: string): Promise<PaperStatus> {
@@ -459,10 +484,75 @@ async function getArmedJson(url: string): Promise<PaperArmedView> {
   return adaptArmedView(raw);
 }
 
+/**
+ * Decode the closed-shape ``GET /api/v1/paper/position`` body. The
+ * adapter is strict: an armed body without the projection fields, or a
+ * holdings row that is not a ``{symbol, qty}`` string pair, is refused
+ * with a thrown error rather than rendered as a zero position — the
+ * displayed sentence must quote the wire, never a repaired variant.
+ */
+function adaptPosition(raw: Record<string, unknown>): PaperPosition {
+  const armed = raw.armed === true;
+  const out: PaperPosition = {
+    schema_version: typeof raw.schema_version === "string" ? raw.schema_version : "1",
+    armed,
+  };
+  if (!armed) {
+    return out;
+  }
+  const pair = typeof raw.pair === "string" ? raw.pair : undefined;
+  const freeCash = typeof raw.free_cash === "string" ? raw.free_cash : undefined;
+  const holdingsRaw = Array.isArray(raw.holdings) ? raw.holdings : undefined;
+  if (pair === undefined || freeCash === undefined || holdingsRaw === undefined) {
+    throw new Error("paper position body missing projection fields");
+  }
+  const holdings: PaperPositionHolding[] = [];
+  for (const entry of holdingsRaw) {
+    if (entry === null || typeof entry !== "object") {
+      throw new Error("paper position holding row malformed");
+    }
+    const row = entry as Record<string, unknown>;
+    if (typeof row.symbol !== "string" || typeof row.qty !== "string") {
+      throw new Error("paper position holding row malformed");
+    }
+    holdings.push({ symbol: row.symbol, qty: row.qty });
+  }
+  out.pair = pair;
+  out.free_cash = freeCash;
+  out.holdings = holdings;
+  if (typeof raw.venue === "string") out.venue = raw.venue;
+  if (typeof raw.mode === "string") out.mode = raw.mode;
+  out.as_of_run = typeof raw.as_of_run === "string" ? raw.as_of_run : null;
+  return out;
+}
+
+/**
+ * GET ``/api/v1/paper/position``: the owned paper position (free cash +
+ * holdings) read from the persisted ``paper-<venue>.json`` state. Same
+ * authenticated GET envelope as the other paper reads; no retry.
+ */
+async function getPaperPosition(): Promise<PaperPosition> {
+  const response = await fetch("/api/v1/paper/position", {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`paper position failed: ${response.status}`);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  return adaptPosition(raw);
+}
+
 export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedClient {
   return {
     getStatus(): Promise<PaperStatus> {
       return getJson("/api/v1/paper/status");
+    },
+    getPosition(): Promise<PaperPosition> {
+      return getPaperPosition();
     },
     listArmed(): Promise<PaperArmedView> {
       return getArmedJson("/api/v1/paper/armed");

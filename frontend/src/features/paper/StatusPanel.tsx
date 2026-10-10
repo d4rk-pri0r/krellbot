@@ -4,6 +4,7 @@ import type {
   PaperArmDraftSummary,
   PaperClient,
   PaperCommandResult,
+  PaperPosition,
   PaperStatus,
 } from "./client";
 import { PaperStatusCsvExport } from "./PaperStatusCsvExport";
@@ -15,6 +16,7 @@ export type {
   PaperArmDraftSummary,
   PaperClient,
   PaperCommandResult,
+  PaperPosition,
   PaperStatus,
 } from "./client";
 
@@ -95,6 +97,10 @@ type PanelState = {
   unknownOutcome: string | null;
   /** Backend-confirmed raise-stop echo, mirrored verbatim from `message`. */
   raiseStopEcho: string | null;
+  /** Owned position read from `GET /api/v1/paper/position`; null = none read. */
+  position: PaperPosition | null;
+  /** Honest failure surface for a position read that did not decode. */
+  positionError: string | null;
 };
 
 const INITIAL_STATE: PanelState = {
@@ -105,6 +111,8 @@ const INITIAL_STATE: PanelState = {
   pending: null,
   unknownOutcome: null,
   raiseStopEcho: null,
+  position: null,
+  positionError: null,
 };
 
 type PanelAction =
@@ -113,6 +121,8 @@ type PanelAction =
   | { type: "command-start"; command: CommandName }
   | { type: "command-refused"; message: string }
   | { type: "unknown-outcome"; message: string }
+  | { type: "position"; position: PaperPosition }
+  | { type: "position-failed"; message: string }
   | {
       type: "command-ok";
       status: PaperStatus | null;
@@ -175,6 +185,23 @@ function unknownMessage(command: CommandName, reason: unknown): string {
 }
 
 /**
+ * The owned-position sentence the armed paper branch renders. Every value
+ * is quoted verbatim from the `GET /api/v1/paper/position` body — the
+ * decimal strings are never re-formatted or zero-trimmed, so the sentence
+ * is evidence about the persisted `paper-<venue>.json`, not a computation.
+ */
+function positionSentence(position: PaperPosition): string {
+  const parts = (position.holdings ?? []).map((row) => `${row.qty} ${row.symbol}`);
+  const owned = parts.length > 0 ? parts.join(", ") : "no open position";
+  const quote = position.pair !== undefined ? position.pair.slice(-3) : "";
+  const cash =
+    position.free_cash !== undefined
+      ? `${position.free_cash}${quote !== "" ? ` ${quote}` : ""}`
+      : "";
+  return cash !== "" ? `Owned position: ${owned} — free cash ${cash}` : `Owned position: ${owned}`;
+}
+
+/**
  * POST ``paper.raise_stop`` with the same command envelope the paper client
  * uses, dispatched directly from the panel: deliberately not a PaperClient
  * method so this slice touches no client surface. Refusals arrive as
@@ -215,12 +242,24 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
         unavailable: false,
         unknownOutcome: null,
         sentence: next.armed ? sentenceFor(next.entries_paused) : state.sentence,
+        // A confirmed disarm/unarmed read invalidates the cached owned
+        // position: the armed branch that renders it is gone, and the
+        // next arm must re-read rather than reuse a stale sentence.
+        position: next.armed ? state.position : null,
+        positionError: next.armed ? state.positionError : null,
       };
     }
     case "unavailable": {
       // Availability is unknown: drop the cached status rather than keep
       // acting on it, and never manufacture an unarmed response.
-      return { ...state, status: null, unavailable: true, unknownOutcome: null };
+      return {
+        ...state,
+        status: null,
+        unavailable: true,
+        unknownOutcome: null,
+        position: null,
+        positionError: null,
+      };
     }
     case "command-start": {
       return {
@@ -240,6 +279,14 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
       // never retry the command automatically.
       return { ...state, pending: null, unknownOutcome: action.message };
     }
+    case "position": {
+      return { ...state, position: action.position, positionError: null };
+    }
+    case "position-failed": {
+      // A refused wire variant or a failed read is surfaced, never
+      // rendered as a zero position.
+      return { ...state, position: null, positionError: action.message };
+    }
     case "command-ok": {
       return {
         ...state,
@@ -249,6 +296,8 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
         status: action.status,
         sentence: action.sentence ?? state.sentence,
         raiseStopEcho: action.raiseStopEcho ?? state.raiseStopEcho,
+        position: action.status?.armed ? state.position : null,
+        positionError: action.status?.armed ? state.positionError : null,
       };
     }
   }
@@ -565,6 +614,9 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
   // Bumped on every request start and on unmount so a late response from a
   // superseded request never updates the panel.
   const epochRef = useRef(0);
+  // Same discipline for the owned-position read, which is a separate
+  // request from the status read.
+  const positionEpochRef = useRef(0);
 
   // The rehearsal surface is a separate client behind the same paper
   // panel: a legacy injected client without the factory renders the
@@ -641,6 +693,49 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
     setArmEpoch((current) => current + 1);
   }, []);
 
+
+  // The owned position is a separate read from the status: the status body
+  // is closed-shape and never carries cash or quantity, so the armed branch
+  // reconciles the position sentence from `GET /api/v1/paper/position`
+  // whenever a confirmed status says a pack is armed. One read per confirmed
+  // armed status, never polling; a legacy client without the method keeps
+  // the honest unavailable line instead of a manufactured position.
+  const positionReadable =
+    typeof client === "object" &&
+    client !== null &&
+    typeof client.getPosition === "function";
+  useEffect(() => {
+    if (!positionReadable || state.status?.armed !== true) {
+      return;
+    }
+    const epoch = ++positionEpochRef.current;
+    const read = client.getPosition;
+    if (read === undefined) {
+      return;
+    }
+    read
+      .call(client)
+      .then((position) => {
+        if (epoch !== positionEpochRef.current) {
+          return;
+        }
+        dispatch({ type: "position", position });
+      })
+      .catch((reason: unknown) => {
+        if (epoch !== positionEpochRef.current) {
+          return;
+        }
+        // A refused wire variant or a failed transport is never rendered
+        // as a zero position: say the position is unavailable.
+        dispatch({
+          type: "position-failed",
+          message: transportDetail(reason),
+        });
+      });
+    return () => {
+      positionEpochRef.current += 1;
+    };
+  }, [client, positionReadable, state.status]);
   const refreshStatus = async (): Promise<void> => {
     if (inFlightRef.current) {
       return;
@@ -848,6 +943,41 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               {state.status?.pack_id} on {state.status?.venue}{" "}
               {state.status?.pair}
             </p>
+            {/* The owned position + free cash, read verbatim from the
+                persisted paper state via `GET /api/v1/paper/position`.
+                Quoted, never computed: a refused wire variant or a failed
+                read renders the honest unavailable line instead of a
+                zero position. */}
+            {state.positionError !== null ? (
+              <p
+                className="kbot-paper-status__empty"
+                role="alert"
+                data-testid="paper-position-unavailable"
+              >
+                Owned position unavailable: {state.positionError}
+              </p>
+            ) : state.position !== null ? (
+              <p
+                className="kbot-paper-status__position"
+                data-testid="paper-position"
+              >
+                {positionSentence(state.position)}
+              </p>
+            ) : positionReadable ? (
+              <p
+                className="kbot-paper-status__empty"
+                data-testid="paper-position-pending"
+              >
+                Reading owned position…
+              </p>
+            ) : (
+              <p
+                className="kbot-paper-status__empty"
+                data-testid="paper-position-unavailable"
+              >
+                Owned position unavailable
+              </p>
+            )}
             <div className="kbot-paper-status__actions">
               <button
                 type="button"

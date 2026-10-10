@@ -307,6 +307,35 @@ def _paper_state_fills(home: Path, venue: str) -> list[dict]:
     return fills
 
 
+def _paper_position_run_id(home: Path, venue: str, pair: str) -> str | None:
+    """Return the most recent journal run id for ``(venue, pair)``, or ``None``.
+
+    A run id is the ``"<venue>:<pack>:<pair>"`` triple of the latest tick
+    record the journal holds for the pair — the same run identity
+    ``_paper_history_view`` keys its runs by. ``None`` means the journal
+    has no tick record for the pair: the engine has never evaluated it,
+    so the persisted paper state cannot yet carry engine-produced money.
+    """
+
+    best: tuple[int, str] | None = None
+    for record in _read_journal_records(home):
+        if record.get("kind") != "tick":
+            continue
+        if record.get("venue") != venue:
+            continue
+        detail = record.get("detail")
+        if not isinstance(detail, dict) or detail.get("pair") != pair:
+            continue
+        pack_id = record.get("pack")
+        if not isinstance(pack_id, str) or not pack_id:
+            continue
+        ts = record.get("ts")
+        ts_value = int(ts) if isinstance(ts, (int, float)) else 0
+        if best is None or ts_value >= best[0]:
+            best = (ts_value, f"{venue}:{pack_id}:{pair}")
+    return best[1] if best is not None else None
+
+
 def _paper_history_view(home: Path) -> dict:
     """Build the closed-shape read-only paper history body.
 
@@ -1076,6 +1105,7 @@ def create_app(
             return JSONResponse(
                 {"schema_version": SCHEMA_VERSION, "armed": False},
                 status_code=200,
+                headers={"Cache-Control": "no-store"},
             )
 
         # The brief spells out a single armed-pack projection; the
@@ -1093,6 +1123,86 @@ def create_app(
             "pack_id": armed.pack_id,
         }
         return JSONResponse(body, status_code=200)
+
+    @app.get("/api/v1/paper/position")
+    async def paper_position(request: Request) -> Response:
+        """Return the owned paper position read from the persisted state file.
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF. The
+        body is the paper-only owned-position projection the workstation
+        displays verbatim:
+
+        * ``free_cash`` — the quote-asset balance string exactly as
+          ``<home>/run/paper-<venue>.json`` persists it (Decimal-as-string,
+          never re-formatted). ``"0"`` when no state file exists yet,
+          because the engine materialises the seeded balance into the
+          state file only on its first tick.
+        * ``holdings`` — one ``{"symbol", "qty"}`` row per non-quote
+          balance above zero, qty verbatim from the state file. The quote
+          asset is the pair's USD-style suffix, the same base/quote split
+          ``krellbot.venues.paper`` uses.
+        * ``as_of_run`` — ``"<venue>:<pack>:<pair>"`` of the most recent
+          journal tick run for the armed pair, or ``null`` when the
+          journal has no tick record for it (the engine has never run).
+
+        The route never writes, arms, or flattens anything, and the
+        closed-shape ``/api/v1/paper/status`` contract is untouched:
+        cash, quantity, stop, cap and pack path stay off that body. When
+        no pack is armed the body is ``{"schema_version": <v>,
+        "armed": false}`` and no state file is read.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        config = kb_config.load_config(s.home)
+        if not config.armed:
+            return JSONResponse(
+                {"schema_version": SCHEMA_VERSION, "armed": False},
+                status_code=200,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        armed = config.armed[0]
+        from krellbot.ui.server import _read_paper_state
+
+        state = _read_paper_state(s.home, armed.venue)
+        balances = state.get("balances") or {}
+        if not isinstance(balances, dict):
+            balances = {}
+        quote = armed.pair[-3:] if len(armed.pair) >= 3 else ""
+        free_cash_raw = balances.get(quote)
+        free_cash = (
+            str(free_cash_raw)
+            if isinstance(free_cash_raw, (str, int, float)) and str(free_cash_raw) != ""
+            else "0"
+        )
+        holdings: list[dict] = []
+        for symbol in sorted(balances):
+            if symbol == quote:
+                continue
+            raw = balances[symbol]
+            try:
+                if Decimal(str(raw)) <= 0:
+                    continue
+            except (InvalidOperation, ValueError, ArithmeticError):
+                continue
+            holdings.append({"symbol": symbol, "qty": str(raw)})
+
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "armed": True,
+            "venue": armed.venue,
+            "pair": armed.pair,
+            "mode": armed.mode,
+            "free_cash": free_cash,
+            "holdings": holdings,
+            "as_of_run": _paper_position_run_id(s.home, armed.venue, armed.pair),
+        }
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/paper/history")
     async def paper_history(request: Request) -> Response:
