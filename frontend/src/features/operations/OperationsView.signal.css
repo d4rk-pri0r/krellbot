@@ -1,0 +1,677 @@
+/*
+ * Operations surface — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted OperationsView. Everything is
+ * namespaced under `.kbot-ops` and most rules are written with a nested
+ * `.kbot-ops <element>` prefix so the shared shell's own `.kbot-ops__…` and
+ * `.kbot-shell button` rules (frontend/src/styles/shell.css) cannot flatten
+ * this hierarchy, whichever order the CSS chunks are emitted in. Every
+ * color/typography value comes from the shared tokens
+ * (frontend/src/styles/tokens.css); each token carries its approved Signal
+ * fallback so the surface still composes on bases where only the palette
+ * literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - desktop (1600px) is a two-column status row plus full-width panels;
+ *   - mobile (390px / <=640px) stacks every panel and keeps ordinary
+ *     controls at >=44px touch targets;
+ *   - long pack ids, venue/pair refs, alert codes and CSV headers wrap or
+ *     scroll inside their own region instead of widening the whole page;
+ *   - state is always carried by text (labels), with color as reinforcement.
+ */
+
+.kbot-ops {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops *,
+.kbot-ops *::before,
+.kbot-ops *::after {
+  box-sizing: border-box;
+}
+
+.kbot-ops h2,
+.kbot-ops h3,
+.kbot-ops p {
+  margin: 0;
+}
+
+/* ============ header ============ */
+
+.kbot-ops .kbot-ops__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__head-titles {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops .kbot-ops__read-age {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted, #abc4d8);
+  max-width: 72ch;
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops .kbot-ops__refresh {
+  flex: none;
+}
+
+/* ============ stale warning ============ */
+
+.kbot-ops .kbot-ops__stale {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  border: 1px solid var(--caution-border, #736044);
+  border-radius: var(--radius-panel, 11px);
+  background: color-mix(in srgb, var(--caution-bg, #2b271f) 55%, var(--surface, #14222e));
+  color: var(--caution-text, #e2c193);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* ============ body grid ============ */
+
+.kbot-ops .kbot-ops__body {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* ============ panels ============ */
+
+.kbot-ops .kbot-ops__panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+}
+
+.kbot-ops .kbot-ops__panel-title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__panel-head .kbot-ops__panel-title {
+  flex: none;
+}
+
+/* ============ status banner (live status + kill switch) ============ */
+
+.kbot-ops .kbot-ops__status {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__panel--status p,
+.kbot-ops .kbot-ops__panel--status span {
+  font-size: 12.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops .kbot-ops__kill-state {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops .kbot-ops__kill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__kill-label {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__kill-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 10px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  font: inherit;
+}
+
+.kbot-ops .kbot-ops__kill-row input::placeholder {
+  color: color-mix(in srgb, var(--muted, #abc4d8) 70%, transparent);
+}
+
+.kbot-ops .kbot-ops__kill-row input:focus-visible,
+.kbot-ops .kbot-ops__kill-buttons button:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 1px;
+}
+
+.kbot-ops .kbot-ops__kill-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.kbot-ops .kbot-ops__kill-helper {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+/* ============ mode header chips ============ */
+
+.kbot-ops .kbot-ops__mode-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__mode-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 35%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+/* ============ internal scroll regions ============ */
+
+.kbot-ops .kbot-ops__scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* ============ deployment cards ============ */
+
+.kbot-ops .kbot-ops__deployments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__deployment {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+}
+
+@media (min-width: 1100px) {
+  .kbot-ops .kbot-ops__deployments {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+}
+
+.kbot-ops .kbot-ops__deployment-identity,
+.kbot-ops .kbot-ops__deployment-facts {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__deployment-fact {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__fact-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__deployment-pack,
+.kbot-ops .kbot-ops__deployment-market {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__deployment-mode,
+.kbot-ops .kbot-ops__deployment-entries {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+/* Paused entries carry the caution tone alongside the word "paused". */
+.kbot-ops .kbot-ops__deployment-entries--paused {
+  color: var(--caution-text, #e2c193);
+}
+
+.kbot-ops .kbot-ops__row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* ============ grouped alerts ============ */
+
+.kbot-ops .kbot-ops__alerts,
+.kbot-ops .kbot-ops__alert-group-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__alert-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__alert-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__alert-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__alert-group-count {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__alert {
+  /* Neutralizes the shell's legacy seven-column flat row template: grouped
+     alert cards are a single stacking column with their own inner lines. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  align-content: start;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 30%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  font-size: 12px;
+}
+
+/* Critical alerts: coral-derived danger treatment; the severity label text
+   carries the state, the color only reinforces it. The row keeps base text
+   color so target/count/ts stay readable; only kind + severity go danger. */
+.kbot-ops .kbot-ops__alert--critical {
+  border-color: var(--danger-border, #7a5348);
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops .kbot-ops__alert--critical .kbot-ops__alert-kind,
+.kbot-ops .kbot-ops__alert--critical .kbot-ops__alert-severity {
+  color: var(--danger-text, #e0a296);
+}
+
+.kbot-ops .kbot-ops__alert--warning {
+  border-color: color-mix(in srgb, var(--caution-text, #e2c193) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--caution-bg, #2b271f) 40%, var(--surface, #14222e));
+}
+
+.kbot-ops .kbot-ops__alert--warning .kbot-ops__alert-severity {
+  color: var(--caution-text, #e2c193);
+}
+
+.kbot-ops .kbot-ops__alert-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__alert-kind {
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops .kbot-ops__alert-severity {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__alert-code {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops .kbot-ops__alert-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__alert-target,
+.kbot-ops .kbot-ops__alert-ts {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops .kbot-ops__alert-count {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops .kbot-ops__alert-ack {
+  font-style: italic;
+  color: var(--muted, #abc4d8);
+}
+
+/* ============ shared subcomponent restyling (filter, history, ack) ============ */
+
+.kbot-ops .kbot-ops__alerts-filter {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__alerts-filter label {
+  display: grid;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__alerts-filter select,
+.kbot-ops .kbot-ops__alerts-filter input {
+  min-height: 34px;
+  min-width: 0;
+  padding: 6px 10px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: normal;
+  text-transform: none;
+  font-weight: 400;
+}
+
+.kbot-ops .kbot-ops__alerts-filter input {
+  width: min(260px, 100%);
+}
+
+.kbot-ops .kbot-ops__alerts-empty {
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__alerts-export {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.kbot-ops .kbot-ops__table th,
+.kbot-ops .kbot-ops__table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops .kbot-ops__table th {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+  white-space: nowrap;
+}
+
+.kbot-ops .kbot-ops__history {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__history-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.kbot-ops .kbot-ops__history-detail {
+  min-width: 0;
+}
+
+.kbot-ops .kbot-ops__history-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+}
+
+.kbot-ops .kbot-ops__history-facts dt {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__history-facts dd {
+  margin: 0 0 4px;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+/* Refusal / unknown-outcome copy: caution tone, never a success color. */
+.kbot-ops .kbot-ops__row-result {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--caution-text, #e2c193);
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops .kbot-ops__empty {
+  margin: 0;
+  padding: 8px 4px;
+  font-size: 12px;
+  color: var(--muted, #abc4d8);
+}
+
+/* ============ focus visibility ============ */
+
+.kbot-ops :is(button, input, select, a):focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-ops {
+    gap: 12px;
+  }
+
+  .kbot-ops .kbot-ops__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kbot-ops .kbot-ops__status {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kbot-ops .kbot-ops__panel {
+    padding: 12px 12px 14px;
+  }
+
+  .kbot-ops .kbot-ops__panel-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  /* Ordinary controls keep 44px touch targets on narrow screens. */
+  .kbot-ops button,
+  .kbot-ops .kbot-ops__kill-row input,
+  .kbot-ops .kbot-ops__alerts-filter select,
+  .kbot-ops .kbot-ops__alerts-filter input {
+    min-height: 44px;
+  }
+
+  .kbot-ops .kbot-ops__kill-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .kbot-ops .kbot-ops__kill-buttons,
+  .kbot-ops .kbot-ops__row-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kbot-ops .kbot-ops__deployment-identity,
+  .kbot-ops .kbot-ops__deployment-facts,
+  .kbot-ops .kbot-ops__alert-line,
+  .kbot-ops .kbot-ops__alert-meta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .kbot-ops .kbot-ops__table {
+    min-width: 420px;
+  }
+}
