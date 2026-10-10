@@ -1,4 +1,5 @@
 import "@xyflow/react/dist/style.css";
+import "./GraphCanvas.signal.css";
 import { useEffect, useRef, useState, type JSX } from "react";
 import {
   ReactFlow,
@@ -114,7 +115,7 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
   };
 
   return (
-    <div data-testid="graph-canvas">
+    <div className="kbot-graph-canvas" data-testid="graph-canvas">
       <ReactFlow
         nodes={nodes}
         edges={edges}

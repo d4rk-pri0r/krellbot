@@ -1,0 +1,92 @@
+/*
+ * Graph studio host — Signal sizing slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * GraphCanvas renders a bare <ReactFlow>; ReactFlow measures 0px and
+ * logs error #004 ("parent container needs a width and a height")
+ * unless its parent carries an explicit height. This slice sizes the
+ * existing root host `<div data-testid="graph-canvas">`:
+ *
+ *   - an explicit responsive height (viewport-relative clamp, never a
+ *     fixed desktop pixel value) so the canvas surface is real at
+ *     1600px and 390px viewports alike;
+ *   - grid rows `minmax(0, 1fr) auto` so the ReactFlow pane gets the
+ *     measured box and the EdgeRefusalNotice reads as its own row
+ *     inside the same host;
+ *   - width containment (min-width 0, width 100%, contained internal
+ *     overflow) so dense node graphs never widen the whole page;
+ *   - the approved Signal tokens with their exact approved fallbacks
+ *     so the slice functions on this accepted base (no new theme, no
+ *     per-component color literals beyond those fallbacks);
+ *   - keyboard-visible seafoam focus and >=44px narrow targets for
+ *     the host's interactive children (the edge-refusal dismiss).
+ *
+ * Narrow layout keeps the surface reachable: the host shrinks its
+ * clamp band and interactive children keep touch-sized targets. The
+ * compound narrow selector out-ranks the shared shell's
+ * `.kbot-shell button` rule regardless of bundle order.
+ */
+
+.kbot-graph-canvas {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  height: clamp(420px, 62vh, 760px);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.kbot-graph-canvas *,
+.kbot-graph-canvas *::before,
+.kbot-graph-canvas *::after {
+  box-sizing: border-box;
+}
+
+/* The ReactFlow element itself has no intrinsic size in the library
+   stylesheet; it fills the sized host row so its own absolutely
+   positioned container/panes measure a real box. */
+.kbot-graph-canvas > .react-flow {
+  grid-row: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Dense studios scroll or clip inside the host, never the page. */
+.kbot-graph-canvas > .react-flow {
+  overflow: hidden;
+}
+
+/* Focus: keyboard-visible seafoam ring via --focus-ring, consistent
+   with the shared shell. */
+.kbot-graph-canvas :focus-visible {
+  outline: 2px solid var(--focus-ring, #a8d8d1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============ narrow / touch layout ============ */
+
+@media (max-width: 640px) {
+  .kbot-graph-canvas {
+    height: clamp(340px, 58vh, 560px);
+    padding: 8px;
+    gap: 8px;
+  }
+
+  /* >=44px touch targets for the host's interactive children (the
+     edge-refusal dismiss); (0,2,1) beats the shell's (0,1,1) button
+     rule regardless of bundle order. */
+  .kbot-graph-canvas > [role="alert"] button {
+    min-height: 44px;
+  }
+}
