@@ -10,6 +10,7 @@ import type { ResearchClient, StoredResult } from "./client";
 import { ResearchDateWindow, utcFieldValueToMs } from "./ResearchDateWindow";
 import { TraceCsvExport } from "./TraceCsvExport";
 import { summarizeResearchJobError } from "./researchJobErrorLabel";
+import "./ResearchView.signal.css";
 
 export type { ResearchClient, StoredResult } from "./client";
 
@@ -29,11 +30,74 @@ type TraceBar = {
   conditions?: TraceCondition[];
 };
 
+type MetricCell = {
+  label: string;
+  testId: string;
+  value: string;
+  source: string;
+};
+
 const SYNTHETIC_FIXTURE_PATH = "fixtures/synthetic.csv";
 
 const TRACE_ROW_HEIGHT = 24;
 const TRACE_OVERSCAN_ROWS = 8;
 const TRACE_VIEWPORT_HEIGHT = 480;
+
+/** Truthful placeholder for an unset in-use/config value. */
+const NOT_SET = "not set";
+
+/**
+ * KRELL-SIGNAL-20261010 research presentation. Every metric cell names the
+ * real receipt field it reads and its unit, so a reader can tell a
+ * percentage return from currency equity and an unavailable value from a
+ * real zero. Values come from the existing receipt readers unchanged.
+ */
+function buildMetricCells(receipt: Record<string, unknown>): MetricCell[] {
+  const equity = readEquity(receipt);
+  const maxDrawdown = readMaxDrawdown(receipt);
+  const totalReturn = readPercentageMetric(receipt, "total_return_pct");
+  const feeBps = formatMetric(receipt.fee_bps);
+  const tradeCount = readTradeCount(receipt);
+  const manifest = formatMetric(receipt.data_manifest_sha256);
+  return [
+    {
+      label: "Equity",
+      testId: "research-result-equity",
+      value: equity,
+      source: "receipt.equity · currency, absent in production receipts",
+    },
+    {
+      label: "Max drawdown",
+      testId: "research-result-max-drawdown",
+      value: maxDrawdown,
+      source: "metrics.max_drawdown_pct · percent",
+    },
+    {
+      label: "Total return (%)",
+      testId: "research-result-total-return-pct",
+      value: totalReturn,
+      source: "metrics.total_return_pct · percent",
+    },
+    {
+      label: "Fee basis points",
+      testId: "research-result-fee-bps",
+      value: feeBps,
+      source: "receipt.fee_bps · basis points",
+    },
+    {
+      label: "Trade count",
+      testId: "research-result-trade-count",
+      value: tradeCount,
+      source: "metrics.trade_count / trades · count",
+    },
+    {
+      label: "Data manifest sha256",
+      testId: "research-result-data-manifest-sha256",
+      value: manifest,
+      source: "receipt.data_manifest_sha256 · sha256",
+    },
+  ];
+}
 
 function readStringField(value: string): string {
   return value;
@@ -470,6 +534,24 @@ export function ResearchView({
       : trace.find((bar) => readBarTs(bar, trace.indexOf(bar)) === selectedBarTs) ??
         null;
 
+  // In-use strip: a truthful echo of what the NEXT Run submits — the exact
+  // current field texts, never a reformatted or inferred configuration.
+  const inUseStrategy = revisionId
+    ? `revision ${revisionId}`
+    : packPath.trim() === ""
+      ? NOT_SET
+      : packPath;
+  const inUseDataset = datasetPath.trim() === "" ? NOT_SET : datasetPath;
+  const inUseFee = feeBps.trim() === "" ? NOT_SET : feeBps.trim();
+  const inUseWindow =
+    fromMs.trim() === "" || toMs.trim() === ""
+      ? NOT_SET
+      : `${fromMs.trim()} → ${toMs.trim()}`;
+  const inUseHoldout =
+    holdoutFrom.trim() === "" && holdoutTo.trim() === ""
+      ? NOT_SET
+      : `${holdoutFrom.trim() || "…"} → ${holdoutTo.trim() || "…"}`;
+
   return (
     <section
       className="kbot-research"
@@ -477,195 +559,326 @@ export function ResearchView({
       aria-label="Research"
     >
       <h1 className="kbot-shell__heading">Research</h1>
-      <div className="kbot-research__form">
-        <label className="kbot-research__field" htmlFor="kbot-research-dataset">
-          <span className="kbot-research__field-label">Dataset path</span>
-          <input
-            id="kbot-research-dataset"
-            className="kbot-research__input"
-            type="text"
-            value={datasetPath}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setDatasetPath(event.target.value)
-            }
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="kbot-research__field" htmlFor="kbot-research-pack">
-          <span className="kbot-research__field-label">Pack path</span>
-          <input
-            id="kbot-research-pack"
-            className="kbot-research__input"
-            type="text"
-            value={packPath}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setPackPath(event.target.value)
-            }
-            autoComplete="off"
-            spellCheck={false}
-            disabled={revisionId != null}
-          />
-        </label>
-        {revisionId ? (
-          <p
-            className="kbot-research__hint"
-            data-testid="research-pack-hint"
+      <div className="kbot-research__intro">
+        <p>
+          Configure a backtest, run it against the local engine, then read the
+          stored receipt and inspect or export its trace. Results come only
+          from completed research jobs; nothing here is a live trading result.
+        </p>
+      </div>
+
+      <div className="kbot-research__setup">
+        <section
+          className="kbot-research__panel"
+          data-testid="research-setup-panel-strategy"
+          aria-labelledby="kbot-research-panel-strategy-title"
+        >
+          <h2
+            className="kbot-research__panel-title"
+            id="kbot-research-panel-strategy-title"
           >
-            Using revision {revisionId}
+            Strategy source
+          </h2>
+          <p className="kbot-research__panel-note">
+            A saved strategy revision, or a pack file on disk when no revision
+            is selected.
           </p>
-        ) : null}
-        {revisionId ? (
-          <p className="kbot-research__revision" data-testid="research-revision">
-            revision: {revisionId}
-          </p>
-        ) : null}
-        <label className="kbot-research__field" htmlFor="kbot-research-fee-bps">
-          <span className="kbot-research__field-label">Fee basis points</span>
-          <input
-            id="kbot-research-fee-bps"
-            className="kbot-research__input"
-            type="text"
-            value={feeBps}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setFeeBps(event.target.value)
-            }
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="kbot-research__field" htmlFor="kbot-research-from">
-          <span className="kbot-research__field-label">From</span>
-          <input
-            id="kbot-research-from"
-            className="kbot-research__input"
-            type="text"
-            value={fromMs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              setFromMs(event.target.value);
-              setFromEditedUtcLast(false);
-            }}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="kbot-research__field" htmlFor="kbot-research-to">
-          <span className="kbot-research__field-label">To</span>
-          <input
-            id="kbot-research-to"
-            className="kbot-research__input"
-            type="text"
-            value={toMs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              setToMs(event.target.value);
-              setToEditedUtcLast(false);
-            }}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="kbot-research__field" htmlFor="kbot-research-holdout-from">
-          <span className="kbot-research__field-label">Holdout from</span>
-          <input
-            id="kbot-research-holdout-from"
-            className="kbot-research__input"
-            type="text"
-            value={holdoutFrom}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              setHoldoutFrom(event.target.value);
-              setHoldoutFromEditedUtcLast(false);
-            }}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="kbot-research__field" htmlFor="kbot-research-holdout-to">
-          <span className="kbot-research__field-label">Holdout to</span>
-          <input
-            id="kbot-research-holdout-to"
-            className="kbot-research__input"
-            type="text"
-            value={holdoutTo}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              setHoldoutTo(event.target.value);
-              setHoldoutToEditedUtcLast(false);
-            }}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <ResearchDateWindow
-          fromMsText={fromMs}
-          toMsText={toMs}
-          holdoutFromMsText={holdoutFrom}
-          holdoutToMsText={holdoutTo}
-          fromUtcText={fromUtc}
-          toUtcText={toUtc}
-          holdoutFromUtcText={holdoutFromUtc}
-          holdoutToUtcText={holdoutToUtc}
-          fromEditedUtcLast={fromEditedUtcLast}
-          toEditedUtcLast={toEditedUtcLast}
-          holdoutFromEditedUtcLast={holdoutFromEditedUtcLast}
-          holdoutToEditedUtcLast={holdoutToEditedUtcLast}
-          onFromUtcChange={handleFromUtcChange}
-          onToUtcChange={handleToUtcChange}
-          onHoldoutFromUtcChange={handleHoldoutFromUtcChange}
-          onHoldoutToUtcChange={handleHoldoutToUtcChange}
-        />
-        <div className="kbot-research__actions">
-          <button
-            type="button"
-            className="kbot-research__action"
-            onClick={handleSyntheticFixture}
+          <label className="kbot-research__field" htmlFor="kbot-research-pack">
+            <span className="kbot-research__field-label">Pack path</span>
+            <input
+              id="kbot-research-pack"
+              className="kbot-research__input"
+              type="text"
+              value={packPath}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                setPackPath(event.target.value)
+              }
+              autoComplete="off"
+              spellCheck={false}
+              disabled={revisionId != null}
+            />
+          </label>
+          {revisionId ? (
+            <p
+              className="kbot-research__hint"
+              data-testid="research-pack-hint"
+            >
+              Using revision {revisionId}
+            </p>
+          ) : null}
+          {revisionId ? (
+            <p className="kbot-research__revision" data-testid="research-revision">
+              revision: {revisionId}
+            </p>
+          ) : null}
+        </section>
+
+        <section
+          className="kbot-research__panel"
+          data-testid="research-setup-panel-data"
+          aria-labelledby="kbot-research-panel-data-title"
+        >
+          <h2
+            className="kbot-research__panel-title"
+            id="kbot-research-panel-data-title"
           >
-            Synthetic fixture
-          </button>
+            Data source
+          </h2>
+          <p className="kbot-research__panel-note">
+            Path to a local candle CSV the engine will read for this run.
+          </p>
+          <label className="kbot-research__field" htmlFor="kbot-research-dataset">
+            <span className="kbot-research__field-label">Dataset path</span>
+            <input
+              id="kbot-research-dataset"
+              className="kbot-research__input"
+              type="text"
+              value={datasetPath}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                setDatasetPath(event.target.value)
+              }
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <div>
+            <button
+              type="button"
+              className="kbot-research__action"
+              onClick={handleSyntheticFixture}
+            >
+              Synthetic fixture
+            </button>
+          </div>
+        </section>
+
+        <section
+          className="kbot-research__panel"
+          data-testid="research-setup-panel-window"
+          aria-labelledby="kbot-research-panel-window-title"
+        >
+          <h2
+            className="kbot-research__panel-title"
+            id="kbot-research-panel-window-title"
+          >
+            Scored window &amp; holdout
+          </h2>
+          <p className="kbot-research__panel-note">
+            Exact epoch-millisecond bounds submitted to the engine. Holdout
+            bounds are optional but must be set as a pair.
+          </p>
+          <div className="kbot-research__window-grid">
+            <div className="kbot-research__window-ms">
+              <label className="kbot-research__field" htmlFor="kbot-research-from">
+                <span className="kbot-research__field-label">From</span>
+                <input
+                  id="kbot-research-from"
+                  className="kbot-research__input"
+                  type="text"
+                  value={fromMs}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    setFromMs(event.target.value);
+                    setFromEditedUtcLast(false);
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label className="kbot-research__field" htmlFor="kbot-research-to">
+                <span className="kbot-research__field-label">To</span>
+                <input
+                  id="kbot-research-to"
+                  className="kbot-research__input"
+                  type="text"
+                  value={toMs}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    setToMs(event.target.value);
+                    setToEditedUtcLast(false);
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label
+                className="kbot-research__field"
+                htmlFor="kbot-research-holdout-from"
+              >
+                <span className="kbot-research__field-label">Holdout from</span>
+                <input
+                  id="kbot-research-holdout-from"
+                  className="kbot-research__input"
+                  type="text"
+                  value={holdoutFrom}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    setHoldoutFrom(event.target.value);
+                    setHoldoutFromEditedUtcLast(false);
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label
+                className="kbot-research__field"
+                htmlFor="kbot-research-holdout-to"
+              >
+                <span className="kbot-research__field-label">Holdout to</span>
+                <input
+                  id="kbot-research-holdout-to"
+                  className="kbot-research__input"
+                  type="text"
+                  value={holdoutTo}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    setHoldoutTo(event.target.value);
+                    setHoldoutToEditedUtcLast(false);
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+            </div>
+            <ResearchDateWindow
+              fromMsText={fromMs}
+              toMsText={toMs}
+              holdoutFromMsText={holdoutFrom}
+              holdoutToMsText={holdoutTo}
+              fromUtcText={fromUtc}
+              toUtcText={toUtc}
+              holdoutFromUtcText={holdoutFromUtc}
+              holdoutToUtcText={holdoutToUtc}
+              fromEditedUtcLast={fromEditedUtcLast}
+              toEditedUtcLast={toEditedUtcLast}
+              holdoutFromEditedUtcLast={holdoutFromEditedUtcLast}
+              holdoutToEditedUtcLast={holdoutToEditedUtcLast}
+              onFromUtcChange={handleFromUtcChange}
+              onToUtcChange={handleToUtcChange}
+              onHoldoutFromUtcChange={handleHoldoutFromUtcChange}
+              onHoldoutToUtcChange={handleHoldoutToUtcChange}
+            />
+          </div>
+        </section>
+
+        <section
+          className="kbot-research__panel"
+          data-testid="research-setup-panel-costs"
+          aria-labelledby="kbot-research-panel-costs-title"
+        >
+          <h2
+            className="kbot-research__panel-title"
+            id="kbot-research-panel-costs-title"
+          >
+            Costs
+          </h2>
+          <p className="kbot-research__panel-note">
+            Fee assumption applied by the engine, in basis points per side.
+          </p>
+          <label className="kbot-research__field" htmlFor="kbot-research-fee-bps">
+            <span className="kbot-research__field-label">Fee basis points</span>
+            <input
+              id="kbot-research-fee-bps"
+              className="kbot-research__input"
+              type="text"
+              value={feeBps}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                setFeeBps(event.target.value)
+              }
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        </section>
+      </div>
+
+      <div
+        className="kbot-research__inuse"
+        data-testid="research-inuse"
+        aria-label="Configuration in use for the next run"
+      >
+        <div className="kbot-research__inuse-item">
+          <span className="kbot-research__inuse-label">Strategy</span>
+          <span className="kbot-research__inuse-value" data-testid="research-inuse-strategy">
+            {inUseStrategy}
+          </span>
+        </div>
+        <div className="kbot-research__inuse-item">
+          <span className="kbot-research__inuse-label">Data</span>
+          <span className="kbot-research__inuse-value" data-testid="research-inuse-dataset">
+            {inUseDataset}
+          </span>
+        </div>
+        <div className="kbot-research__inuse-item">
+          <span className="kbot-research__inuse-label">Window (ms)</span>
+          <span className="kbot-research__inuse-value" data-testid="research-inuse-window">
+            {inUseWindow}
+          </span>
+        </div>
+        <div className="kbot-research__inuse-item">
+          <span className="kbot-research__inuse-label">Holdout (ms)</span>
+          <span className="kbot-research__inuse-value" data-testid="research-inuse-holdout">
+            {inUseHoldout}
+          </span>
+        </div>
+        <div className="kbot-research__inuse-item">
+          <span className="kbot-research__inuse-label">Fee (bps)</span>
+          <span className="kbot-research__inuse-value" data-testid="research-inuse-fee">
+            {inUseFee}
+          </span>
+        </div>
+      </div>
+
+      <div className="kbot-research__runbar" data-testid="research-runbar">
+        <button
+          type="button"
+          className="kbot-research__action kbot-research__action--primary"
+          onClick={() => {
+            void handleRun();
+          }}
+        >
+          Run
+        </button>
+        {jobId ? (
           <button
             type="button"
             className="kbot-research__action"
             onClick={() => {
-              void handleRun();
+              void handleCancel();
             }}
           >
-            Run
+            Cancel
           </button>
-          {jobId ? (
-            <button
-              type="button"
-              className="kbot-research__action"
-              onClick={() => {
-                void handleCancel();
-              }}
-            >
-              Cancel
-            </button>
-          ) : null}
-          {jobId ? (
-            <button
-              type="button"
-              className="kbot-research__action"
-              onClick={() => {
-                void handleLoadResult();
-              }}
-            >
-              Load result
-            </button>
-          ) : null}
-        </div>
-        {submitError ? (
-          <p className="kbot-research__error" role="alert">
-            {submitError}
-          </p>
+        ) : null}
+        {jobId ? (
+          <button
+            type="button"
+            className="kbot-research__action"
+            onClick={() => {
+              void handleLoadResult();
+            }}
+          >
+            Load result
+          </button>
         ) : null}
         {jobId ? (
           <p
             className="kbot-research__job"
             data-testid="research-job-id"
           >
-            job: {jobId}
+            <b>job</b> {jobId}
+          </p>
+        ) : null}
+        {jobId && storedResult === null && jobError === null ? (
+          <p className="kbot-research__status" data-testid="research-job-status">
+            <span className="kbot-research__status-dot" aria-hidden="true" />
+            Waiting for the job result…
           </p>
         ) : null}
       </div>
+
+      {submitError ? (
+        <p className="kbot-research__error" role="alert">
+          {submitError}
+        </p>
+      ) : null}
+
       {storedResult ? (
         <ResultPanel
           receipt={storedResult.legacy_receipt}
@@ -676,6 +889,7 @@ export function ResearchView({
           selectedBar={selectedBar}
         />
       ) : null}
+
       {storedResult ? (
         <button
           type="button"
@@ -705,13 +919,20 @@ export function ResearchView({
           {summarizeResearchJobError(jobError).label}: {jobError.message}
         </p>
       ) : null}
+
       {storedResult ? (
-        <pre
-          className="kbot-research__export"
-          data-testid="research-export"
+        <details
+          className="kbot-research__receipt"
+          data-testid="research-receipt-detail"
         >
-          {JSON.stringify(storedResult)}
-        </pre>
+          <summary>Raw stored result (JSON, exactly as stored)</summary>
+          <pre
+            className="kbot-research__export"
+            data-testid="research-export"
+          >
+            {JSON.stringify(storedResult)}
+          </pre>
+        </details>
       ) : null}
     </section>
   );
@@ -734,70 +955,77 @@ function ResultPanel({
   onSelectBar,
   selectedBar,
 }: ResultPanelProps): JSX.Element {
+  const metrics = buildMetricCells(receipt);
+  // Result provenance: only what the stored receipt itself carries plus the
+  // job identity it was loaded under — never the (editable) setup fields.
+  const provenance: Array<{ label: string; value: string; testId: string }> = [
+    {
+      label: "Job",
+      value: jobId ?? "unavailable",
+      testId: "research-result-context-job",
+    },
+    {
+      label: "Fee (bps)",
+      value: formatMetric(receipt.fee_bps),
+      testId: "research-result-context-fee",
+    },
+    {
+      label: "Data manifest sha256",
+      value: formatMetric(receipt.data_manifest_sha256),
+      testId: "research-result-context-sha",
+    },
+  ];
   return (
     <div className="kbot-research__result" data-testid="research-result">
+      <div
+        className="kbot-research__result-context"
+        data-testid="research-result-context"
+        aria-label="Result provenance"
+      >
+        {provenance.map((item) => (
+          <div className="kbot-research__result-context-item" key={item.testId}>
+            <span className="kbot-research__result-context-label">
+              {item.label}
+            </span>
+            <span
+              className="kbot-research__result-context-value"
+              data-testid={item.testId}
+            >
+              {item.value}
+            </span>
+          </div>
+        ))}
+      </div>
       <dl className="kbot-research__metrics">
-        <div className="kbot-research__metric">
-          <dt className="kbot-research__metric-label">Equity</dt>
-          <dd
-            className="kbot-research__metric-value"
-            data-testid="research-result-equity"
+        {metrics.map((metric) => (
+          <div
+            className={
+              "kbot-research__metric" +
+              (metric.value === "unavailable"
+                ? " kbot-research__metric--unavailable"
+                : "")
+            }
+            key={metric.testId}
           >
-            {readEquity(receipt)}
-          </dd>
-        </div>
-        <div className="kbot-research__metric">
-          <dt className="kbot-research__metric-label">Max drawdown</dt>
-          <dd
-            className="kbot-research__metric-value"
-            data-testid="research-result-max-drawdown"
-          >
-            {readMaxDrawdown(receipt)}
-          </dd>
-        </div>
-        <div className="kbot-research__metric">
-          <dt className="kbot-research__metric-label">Total return (%)</dt>
-          <dd
-            className="kbot-research__metric-value"
-            data-testid="research-result-total-return-pct"
-          >
-            {readPercentageMetric(receipt, "total_return_pct")}
-          </dd>
-        </div>
-        <div className="kbot-research__metric">
-          <dt className="kbot-research__metric-label">Fee basis points</dt>
-          <dd
-            className="kbot-research__metric-value"
-            data-testid="research-result-fee-bps"
-          >
-            {formatMetric(receipt.fee_bps)}
-          </dd>
-        </div>
-        <div className="kbot-research__metric">
-          <dt className="kbot-research__metric-label">Trade count</dt>
-          <dd
-            className="kbot-research__metric-value"
-            data-testid="research-result-trade-count"
-          >
-            {readTradeCount(receipt)}
-          </dd>
-        </div>
-        <div className="kbot-research__metric">
-          <dt className="kbot-research__metric-label">Data manifest sha256</dt>
-          <dd
-            className="kbot-research__metric-value"
-            data-testid="research-result-data-manifest-sha256"
-          >
-            {formatMetric(receipt.data_manifest_sha256)}
-          </dd>
-        </div>
+            <dt className="kbot-research__metric-label">{metric.label}</dt>
+            <dd
+              className="kbot-research__metric-value"
+              data-testid={metric.testId}
+            >
+              {metric.value}
+            </dd>
+            <dd className="kbot-research__metric-source">{metric.source}</dd>
+          </div>
+        ))}
       </dl>
       <div className="kbot-research__trace" data-testid="research-trace">
-        <h2 className="kbot-research__trace-title">Trace</h2>
-        <TraceCsvExport
-          trace={trace as Array<Record<string, unknown>>}
-          jobId={jobId}
-        />
+        <div className="kbot-research__trace-head">
+          <h2 className="kbot-research__trace-title">Trace</h2>
+          <TraceCsvExport
+            trace={trace as Array<Record<string, unknown>>}
+            jobId={jobId}
+          />
+        </div>
         <TraceList
           trace={trace}
           selectedBarTs={selectedBarTs}
@@ -808,18 +1036,34 @@ function ResultPanel({
             className="kbot-research__bar-detail"
             data-testid="research-bar-detail"
           >
+            <p className="kbot-research__bar-detail-title">
+              Selected bar detail
+            </p>
             <p className="kbot-research__bar-close">
               close: {readBarClose(selectedBar)}
             </p>
             <ul className="kbot-research__conditions">
-              {(selectedBar.conditions ?? []).map((condition, index) => (
-                <li
-                  key={`cond-${index}`}
-                  className="kbot-research__condition"
-                >
-                  {readPath(condition)}: {readOutcome(condition)}
-                </li>
-              ))}
+              {(selectedBar.conditions ?? []).map((condition, index) => {
+                const outcome = readOutcome(condition);
+                return (
+                  <li
+                    key={`cond-${index}`}
+                    className="kbot-research__condition"
+                  >
+                    <span className="kbot-research__condition-path">
+                      {readPath(condition)}
+                    </span>
+                    <span
+                      className={
+                        "kbot-research__condition-outcome" +
+                        ` kbot-research__condition-outcome--${outcome}`
+                      }
+                    >
+                      {outcome}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ) : null}
@@ -895,7 +1139,11 @@ function TraceList({
 
   return (
     <>
-      <p className="kbot-research__trace-count" data-testid="research-trace-count">
+      <p
+        className="kbot-research__trace-count"
+        data-testid="research-trace-count"
+        aria-label="Trace rows in this result"
+      >
         {total}
       </p>
       <div
@@ -906,7 +1154,6 @@ function TraceList({
         style={{
           height: TRACE_VIEWPORT_HEIGHT,
           overflowY: "auto",
-          border: "1px solid var(--kbot-border, #ccc)",
           position: "relative",
         }}
       >
@@ -939,16 +1186,10 @@ function TraceList({
                 }
                 aria-pressed={active}
                 onClick={() => onSelectBar(label)}
+                /* Inline height stays the geometry source of truth; it must
+                   equal TRACE_ROW_HEIGHT and the CSS row rule. */
                 style={{
-                  display: "block",
-                  width: "100%",
                   height: TRACE_ROW_HEIGHT,
-                  textAlign: "left",
-                  padding: "0 8px",
-                  border: "none",
-                  background: active ? "#eef" : "transparent",
-                  cursor: "pointer",
-                  boxSizing: "border-box",
                 }}
               >
                 {label}
