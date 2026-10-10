@@ -1,0 +1,719 @@
+/*
+ * Strategy editor — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Component-scoped styles for the WorkstationShell Strategies → Editor
+ * surface. The editor composes the existing strategy form, starter
+ * picker, technical JSON/import, save/validation state and paper-run /
+ * risk-reduction controls into readable Signal groups (progressive
+ * configuration in the approved rules/start language).
+ *
+ * Typography is inherited from the host (Manrope via the shared shell;
+ * IBM Plex Mono only for restrained technical/numeric labels). This
+ * file consumes the approved named tokens, each with its exact approved
+ * fallback so the slice functions on this accepted base:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Selectors are nested under `.kbot-strategy-editor` so shared shell
+ * rules (`.kbot-shell button`, `.kbot-shell input`, …) cannot flatten
+ * the intended hierarchy. Sage stays the single affirmative primary
+ * action; caution/danger (coral-derived) stay distinct from success.
+ */
+
+.kbot-strategy-editor {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-strategy-editor *,
+.kbot-strategy-editor *::before,
+.kbot-strategy-editor *::after {
+  box-sizing: border-box;
+}
+
+.kbot-strategy-editor h2,
+.kbot-strategy-editor h3,
+.kbot-strategy-editor p {
+  margin: 0;
+}
+
+/* Dense content scrolls or wraps inside its group; never widens the page. */
+.kbot-strategy-editor {
+  overflow-wrap: break-word;
+}
+
+/* --- header --- */
+
+.kbot-strategy-editor__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.kbot-strategy-editor__head-copy {
+  min-width: 0;
+  max-width: 62ch;
+}
+
+.kbot-strategy-editor__title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.kbot-strategy-editor__intro {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-editor__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* --- grouped layout (readable rules column + state/risk rail) --- */
+
+.kbot-strategy-editor__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 332px;
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.kbot-strategy-editor__primary {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor__rail {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  align-content: start;
+}
+
+/* --- group panels --- */
+
+.kbot-strategy-editor__group {
+  display: grid;
+  gap: 13px;
+  padding: 15px 16px 16px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 11px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor__group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 11px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+}
+
+.kbot-strategy-editor__group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-editor__step {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--muted, #abc4d8) 45%, var(--line, #22465d));
+  border-radius: 50%;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 11px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-editor__group-note {
+  font-size: 11px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-editor__group-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
+}
+
+/* --- fields --- */
+
+.kbot-strategy-editor__field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor__field-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 92%, transparent);
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__input {
+  min-height: 36px;
+  padding: 7px 10px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 12.5px;
+  min-width: 0;
+  width: 100%;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__input:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* Technical bytes: mono, explicit internal scroll, never a page-wide blowout. */
+.kbot-strategy-editor .kbot-strategy-editor__textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 240px;
+  padding: 10px 12px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: auto;
+  resize: vertical;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__textarea:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+.kbot-strategy-editor__run-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor__hint {
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--muted, #abc4d8);
+}
+
+/* --- technical disclosure --- */
+
+.kbot-strategy-editor__technical {
+  padding: 0;
+  gap: 0;
+}
+
+.kbot-strategy-editor__technical-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 15px 16px;
+  cursor: pointer;
+  list-style: none;
+  border-bottom: 1px solid transparent;
+}
+
+.kbot-strategy-editor__technical-summary::-webkit-details-marker {
+  display: none;
+}
+
+.kbot-strategy-editor__technical[open] > .kbot-strategy-editor__technical-summary {
+  border-bottom-color: color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+}
+
+.kbot-strategy-editor__technical-summary:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: -2px;
+}
+
+.kbot-strategy-editor__chevron {
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-right: 2px solid var(--muted, #abc4d8);
+  border-bottom: 2px solid var(--muted, #abc4d8);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.kbot-strategy-editor__technical[open] .kbot-strategy-editor__chevron {
+  transform: rotate(45deg);
+}
+
+.kbot-strategy-editor__technical-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  min-width: 0;
+}
+
+/* --- actions --- */
+
+.kbot-strategy-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__action:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Sage carries the one affirmative primary action (Save). */
+.kbot-strategy-editor .kbot-strategy-editor__action--primary {
+  background: var(--sage, #b3dda8);
+  border-color: var(--sage, #b3dda8);
+  color: var(--action-primary-text, #172a1d);
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__action--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+}
+
+/* Seafoam supports the secondary inspection action (Validate). */
+.kbot-strategy-editor .kbot-strategy-editor__action--secondary {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 10%, var(--surface, #14222e));
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  color: var(--text, #e9f0f5);
+}
+
+/* Arm is a deliberate activation step, never a success-colored button. */
+.kbot-strategy-editor .kbot-strategy-editor__action--arm {
+  font-weight: 700;
+  background: color-mix(in srgb, var(--panel, #18354a) 60%, var(--surface, #14222e));
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 30%, var(--line, #22465d));
+}
+
+/* --- revision / state / outcome / errors --- */
+
+.kbot-strategy-editor__revision {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-editor__revision--empty {
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 12px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__outcome {
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 40%, transparent);
+  color: var(--sage, #b3dda8);
+  overflow-wrap: anywhere;
+}
+
+/* Errors/refusals stay coral-derived, never success-colored. */
+.kbot-strategy-editor .kbot-strategy-editor__error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__error-field {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-weight: 700;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__unsupported {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text, #e9f0f5);
+  background: color-mix(in srgb, var(--panel, #18354a) 35%, var(--navy, #0e1c29));
+  border: 1px dashed color-mix(in srgb, var(--muted, #abc4d8) 40%, var(--line, #22465d));
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__copy-origin {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* --- nested owned-strategy form --- */
+
+.kbot-strategy-editor .kbot-owned-strategy-form {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__field-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 92%, transparent);
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__field-hint {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 85%, transparent);
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__input,
+.kbot-strategy-editor .kbot-owned-strategy-form__select {
+  min-height: 34px;
+  padding: 6px 10px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 12.5px;
+  width: 100%;
+  min-width: 0;
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__problems {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-editor .kbot-owned-strategy-form__footnote {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+/* --- nested starter picker --- */
+
+.kbot-strategy-editor .kbot-starter-picker {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: color-mix(in srgb, var(--panel, #18354a) 25%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+  border-radius: 9px;
+}
+
+.kbot-strategy-editor .kbot-starter-picker__title {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.kbot-strategy-editor .kbot-starter-picker__hint,
+.kbot-strategy-editor .kbot-starter-picker__status,
+.kbot-strategy-editor .kbot-starter-picker__empty {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-editor .kbot-starter-picker__error {
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+}
+
+.kbot-strategy-editor .kbot-starter-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor .kbot-starter-picker__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.kbot-strategy-editor .kbot-starter-picker__item-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-editor .kbot-starter-picker__item-description {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-editor .kbot-starter-picker__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-strategy-editor .kbot-starter-picker__action:hover {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+}
+
+.kbot-strategy-editor .kbot-starter-picker__action:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* --- nested inline stop control (risk reduction, never success-colored) --- */
+
+.kbot-strategy-editor .kbot-strategy-editor__inline-stop {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 5%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 35%, var(--line, #22465d));
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__inline-stop-state {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__inline-stop-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__inline-stop-raise {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__inline-stop-raise input {
+  min-height: 34px;
+  min-width: 0;
+  width: 110px;
+  padding: 6px 10px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+}
+
+.kbot-strategy-editor .kbot-strategy-editor__inline-stop-raise input:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* --- responsive --- */
+
+@media (max-width: 1080px) {
+  .kbot-strategy-editor__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .kbot-strategy-editor {
+    gap: 12px;
+  }
+
+  .kbot-strategy-editor__group {
+    padding: 12px 12px 13px;
+    gap: 11px;
+  }
+
+  .kbot-strategy-editor__group-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .kbot-strategy-editor__head {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .kbot-strategy-editor__head-actions,
+  .kbot-strategy-editor__actions,
+  .kbot-strategy-editor__inline-stop-actions {
+    width: 100%;
+  }
+
+  .kbot-strategy-editor .kbot-strategy-editor__action,
+  .kbot-strategy-editor .kbot-starter-picker__action,
+  .kbot-strategy-editor .kbot-strategy-editor__inline-stop-actions button,
+  .kbot-strategy-editor .kbot-strategy-editor__input,
+  .kbot-strategy-editor .kbot-owned-strategy-form__input,
+  .kbot-strategy-editor .kbot-owned-strategy-form__select {
+    min-height: 44px;
+  }
+
+  .kbot-strategy-editor .kbot-strategy-editor__action {
+    flex: 1 1 auto;
+  }
+
+  .kbot-strategy-editor .kbot-strategy-editor__technical-summary {
+    padding: 13px 12px;
+  }
+
+  .kbot-strategy-editor__technical-body {
+    padding: 12px 12px 13px;
+  }
+
+  .kbot-strategy-editor .kbot-strategy-editor__textarea {
+    min-height: 200px;
+  }
+
+  .kbot-strategy-editor__run-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

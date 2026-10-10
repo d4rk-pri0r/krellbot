@@ -1,4 +1,5 @@
-import { useMemo, useState, type ChangeEvent, type JSX } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type JSX } from "react";
+import "./Editor.signal.css";
 import { EditorCsvExport } from "./EditorCsvExport";
 import { EditorInlineStopControl, type PaperClient } from "./EditorInlineStopControl";
 import { summarizeDraftState } from "./draftStateLabel";
@@ -285,6 +286,18 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
 
   const armDisabled = !lastSummary || lastSummary.state !== "validated" || arming;
 
+  // Progressive disclosure: the technical JSON section stays collapsed while
+  // the readable form covers the pack. It opens itself exactly when the user
+  // needs the raw bytes — an imported unsupported pack (the form will not
+  // rewrite it) or a JSON error. Opening is one-way per trigger: a manual
+  // collapse afterwards is respected until a new trigger arrives.
+  const technicalRef = useRef<HTMLDetailsElement | null>(null);
+  useEffect(() => {
+    if ((!formSupported || importError !== null) && technicalRef.current) {
+      technicalRef.current.open = true;
+    }
+  }, [formSupported, importError]);
+
   return (
     <section
       className="kbot-strategy-editor"
@@ -292,7 +305,13 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       aria-label="Strategy editor"
     >
       <header className="kbot-strategy-editor__head">
-        <h2 className="kbot-strategy-editor__title">Strategy draft</h2>
+        <div className="kbot-strategy-editor__head-copy">
+          <h2 className="kbot-strategy-editor__title">Strategy draft</h2>
+          <p className="kbot-strategy-editor__intro">
+            Read the rules first, then save and validate the revision. Nothing
+            saves, validates or arms by itself.
+          </p>
+        </div>
         <div className="kbot-strategy-editor__head-actions">
           <button
             type="button"
@@ -303,214 +322,343 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
           </button>
         </div>
       </header>
-      <div className="kbot-strategy-editor__body">
-        {ownedForm && formSupported ? (
-          <OwnedStrategyForm
-            state={ownedForm}
-            basePack={currentPack}
-            onStateChange={setOwnedForm}
-            onApply={(pack) => handleOwnedApply(pack)}
-          />
-        ) : null}
-        {!formSupported ? (
-          <p
-            className="kbot-strategy-editor__unsupported"
-            data-testid="owned-strategy-form-unsupported"
+      <div className="kbot-strategy-editor__layout">
+        <div className="kbot-strategy-editor__primary">
+          <section
+            className="kbot-strategy-editor__group"
+            aria-labelledby="kbot-strategy-editor-identity-title"
           >
-            This pack is not supported by the form (it uses features outside
-            the supported moving-average subset). Edit it as JSON below; the
-            form will not rewrite it. Imported pack ownership is not verified.
-          </p>
-        ) : null}
-        <label
-          className="kbot-strategy-editor__field"
-          htmlFor="kbot-strategy-editor-label"
-        >
-          <span className="kbot-strategy-editor__field-label">Label</span>
-          <input
-            id="kbot-strategy-editor-label"
-            className="kbot-strategy-editor__input"
-            type="text"
-            value={labelValue}
-            onChange={(event) => handleLabelChange(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="kbot-strategy-editor__field" htmlFor="kbot-strategy-editor-venue">
-          <span className="kbot-strategy-editor__field-label">Venue</span>
-          <input
-            id="kbot-strategy-editor-venue"
-            className="kbot-strategy-editor__input"
-            type="text"
-            value={venue}
-            onChange={(event) => setVenue(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="kbot-strategy-editor__field" htmlFor="kbot-strategy-editor-balance">
-          <span className="kbot-strategy-editor__field-label">Paper balance</span>
-          <input
-            id="kbot-strategy-editor-balance"
-            className="kbot-strategy-editor__input"
-            type="text"
-            value={paperBalance}
-            onChange={(event) => setPaperBalance(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <StarterPicker onPick={handleStarterPick} />
-        <label
-          className="kbot-strategy-editor__field"
-          htmlFor="kbot-strategy-editor-json"
-        >
-          <span className="kbot-strategy-editor__field-label">Raw JSON</span>
-          <textarea
-            id="kbot-strategy-editor-json"
-            className="kbot-strategy-editor__textarea"
-            value={rawJson}
-            onChange={(event) => handleRawJsonChange(event.target.value)}
-            spellCheck={false}
-            rows={12}
-          />
-        </label>
-        <label
-          className="kbot-strategy-editor__field"
-          htmlFor="kbot-strategy-editor-file"
-        >
-          <span className="kbot-strategy-editor__field-label">
-            Import pack file
-          </span>
-          <input
-            id="kbot-strategy-editor-file"
-            className="kbot-strategy-editor__input"
-            type="file"
-            accept="application/json,.json"
-            onChange={handleFileChange}
-          />
-        </label>
-        {copiedDraft ? (
-          <p
-            className="kbot-strategy-editor__copy-origin"
-            data-testid="editor-copy-origin"
+            <header className="kbot-strategy-editor__group-head">
+              <h3
+                className="kbot-strategy-editor__group-title"
+                id="kbot-strategy-editor-identity-title"
+              >
+                <span className="kbot-strategy-editor__step" aria-hidden="true">
+                  1
+                </span>
+                Strategy identity and readable rules
+              </h3>
+              <span className="kbot-strategy-editor__group-note">
+                Readable fields write the real pack bytes
+              </span>
+            </header>
+            <div className="kbot-strategy-editor__group-body">
+              {ownedForm && formSupported ? (
+                <OwnedStrategyForm
+                  state={ownedForm}
+                  basePack={currentPack}
+                  onStateChange={setOwnedForm}
+                  onApply={(pack) => handleOwnedApply(pack)}
+                />
+              ) : null}
+              {!formSupported ? (
+                <p
+                  className="kbot-strategy-editor__unsupported"
+                  data-testid="owned-strategy-form-unsupported"
+                >
+                  This pack is not supported by the form (it uses features outside
+                  the supported moving-average subset). Edit it as JSON below; the
+                  form will not rewrite it. Imported pack ownership is not verified.
+                </p>
+              ) : null}
+              {copiedDraft ? (
+                <p
+                  className="kbot-strategy-editor__copy-origin"
+                  data-testid="editor-copy-origin"
+                >
+                  {lastSummary
+                    ? `Copied from revision ${copiedDraft.origin.revision_id}`
+                    : `${copyOriginLabel(copiedDraft.origin)} — unsaved draft; Save creates a new revision`}
+                </p>
+              ) : null}
+              <label
+                className="kbot-strategy-editor__field"
+                htmlFor="kbot-strategy-editor-label"
+              >
+                <span className="kbot-strategy-editor__field-label">Label</span>
+                <input
+                  id="kbot-strategy-editor-label"
+                  className="kbot-strategy-editor__input"
+                  type="text"
+                  value={labelValue}
+                  onChange={(event) => handleLabelChange(event.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <StarterPicker onPick={handleStarterPick} />
+            </div>
+          </section>
+
+          <details
+            className="kbot-strategy-editor__group kbot-strategy-editor__technical"
+            data-testid="editor-technical-section"
+            role="region"
+            aria-labelledby="kbot-strategy-editor-technical-title"
+            ref={technicalRef}
           >
-            {lastSummary
-              ? `Copied from revision ${copiedDraft.origin.revision_id}`
-              : `${copyOriginLabel(copiedDraft.origin)} — unsaved draft; Save creates a new revision`}
-          </p>
-        ) : null}
-        {importError !== null ? (
-          <p
-            className="kbot-strategy-editor__error"
-            role="alert"
-            data-testid="editor-import-error"
-          >
-            {importError}
-          </p>
-        ) : null}
-        {saveOutcome !== null ? (
-          <p
-            className="kbot-strategy-editor__outcome"
-            data-testid="editor-save-outcome"
-          >
-            {saveOutcome}
-          </p>
-        ) : null}
-        {saveError !== null ? (
-          <p
-            className="kbot-strategy-editor__error"
-            role="alert"
-            data-testid="editor-save-error"
-          >
-            {saveError}
-          </p>
-        ) : null}
-        {validateError !== null ? (
-          <p
-            className="kbot-strategy-editor__error"
-            role="alert"
-            data-testid="editor-validate-error"
-          >
-            {validateError}
-          </p>
-        ) : null}
-        {armError !== null ? (
-          <p
-            className="kbot-strategy-editor__error"
-            role="alert"
-            data-testid="editor-arm-error"
-          >
-            {armError}
-          </p>
-        ) : null}
-        {lastSummary?.errors.map((err, index) => (
-          <ErrorBlock key={`${err.field ?? "root"}-${index}`} error={err} />
-        ))}
-        <div className="kbot-strategy-editor__actions">
-          <button
-            type="button"
-            className="kbot-strategy-editor__action"
-            onClick={() => {
-              void handleSave();
-            }}
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className="kbot-strategy-editor__action"
-            onClick={handleImport}
-          >
-            Import
-          </button>
-          <button
-            type="button"
-            className="kbot-strategy-editor__action"
-            onClick={handleExport}
-          >
-            Export pack
-          </button>
-          <EditorCsvExport
-            lastSummary={lastSummary}
-            currentPack={currentPack}
-          />
-          <button
-            type="button"
-            className="kbot-strategy-editor__action"
-            onClick={() => {
-              void handleValidate();
-            }}
-            disabled={!lastSummary}
-          >
-            Validate
-          </button>
-          <button
-            type="button"
-            className="kbot-strategy-editor__action"
-            onClick={() => {
-              void handleArm();
-            }}
-            disabled={armDisabled}
-          >
-            Arm
-          </button>
+            <summary className="kbot-strategy-editor__technical-summary">
+              <span
+                className="kbot-strategy-editor__group-title"
+                id="kbot-strategy-editor-technical-title"
+              >
+                <span className="kbot-strategy-editor__chevron" aria-hidden="true" />
+                <span className="kbot-strategy-editor__step" aria-hidden="true">
+                  2
+                </span>
+                Technical JSON, import and export
+              </span>
+              <span className="kbot-strategy-editor__group-note">
+                Raw bytes stay byte-preserved
+              </span>
+            </summary>
+            <div className="kbot-strategy-editor__technical-body">
+              <p className="kbot-strategy-editor__hint">
+                The raw pack is the source of truth. Imported packs that use
+                unsupported features are never converted or stripped — edit them
+                here as JSON only.
+              </p>
+              <label
+                className="kbot-strategy-editor__field"
+                htmlFor="kbot-strategy-editor-json"
+              >
+                <span className="kbot-strategy-editor__field-label">Raw JSON</span>
+                <textarea
+                  id="kbot-strategy-editor-json"
+                  className="kbot-strategy-editor__textarea"
+                  value={rawJson}
+                  onChange={(event) => handleRawJsonChange(event.target.value)}
+                  spellCheck={false}
+                  rows={12}
+                />
+              </label>
+              <label
+                className="kbot-strategy-editor__field"
+                htmlFor="kbot-strategy-editor-file"
+              >
+                <span className="kbot-strategy-editor__field-label">
+                  Import pack file
+                </span>
+                <input
+                  id="kbot-strategy-editor-file"
+                  className="kbot-strategy-editor__input"
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={handleFileChange}
+                />
+              </label>
+              <div className="kbot-strategy-editor__actions">
+                <button
+                  type="button"
+                  className="kbot-strategy-editor__action"
+                  onClick={handleImport}
+                >
+                  Import
+                </button>
+                <button
+                  type="button"
+                  className="kbot-strategy-editor__action"
+                  onClick={handleExport}
+                >
+                  Export pack
+                </button>
+                <EditorCsvExport
+                  lastSummary={lastSummary}
+                  currentPack={currentPack}
+                />
+              </div>
+            </div>
+          </details>
+          {importError !== null ? (
+            <p
+              className="kbot-strategy-editor__error"
+              role="alert"
+              data-testid="editor-import-error"
+            >
+              {importError}
+            </p>
+          ) : null}
         </div>
-        {lastSummary ? (
-          <p
-            className="kbot-strategy-editor__revision"
-            data-testid="editor-revision-id"
+
+        <aside className="kbot-strategy-editor__rail">
+          <section
+            className="kbot-strategy-editor__group"
+            aria-labelledby="kbot-strategy-editor-save-title"
           >
-            revision: {lastSummary.revision_id} (state: {summarizeDraftState(lastSummary.state).label})
-          </p>
-        ) : null}
-        {paperClient ? (
-          <EditorInlineStopControl
-            paperClient={paperClient}
-            refreshSignal={armCounter}
-          />
-        ) : null}
+            <header className="kbot-strategy-editor__group-head">
+              <h3
+                className="kbot-strategy-editor__group-title"
+                id="kbot-strategy-editor-save-title"
+              >
+                <span className="kbot-strategy-editor__step" aria-hidden="true">
+                  3
+                </span>
+                Save and validation
+              </h3>
+              <span className="kbot-strategy-editor__group-note">
+                Explicit actions only
+              </span>
+            </header>
+            <div className="kbot-strategy-editor__group-body">
+              {lastSummary ? (
+                <p
+                  className="kbot-strategy-editor__revision"
+                  data-testid="editor-revision-id"
+                >
+                  revision: {lastSummary.revision_id} (state:{" "}
+                  {summarizeDraftState(lastSummary.state).label})
+                </p>
+              ) : (
+                <p className="kbot-strategy-editor__revision kbot-strategy-editor__revision--empty">
+                  No saved revision yet — Save creates one.
+                </p>
+              )}
+              {saveOutcome !== null ? (
+                <p
+                  className="kbot-strategy-editor__outcome"
+                  data-testid="editor-save-outcome"
+                >
+                  {saveOutcome}
+                </p>
+              ) : null}
+              {saveError !== null ? (
+                <p
+                  className="kbot-strategy-editor__error"
+                  role="alert"
+                  data-testid="editor-save-error"
+                >
+                  {saveError}
+                </p>
+              ) : null}
+              {validateError !== null ? (
+                <p
+                  className="kbot-strategy-editor__error"
+                  role="alert"
+                  data-testid="editor-validate-error"
+                >
+                  {validateError}
+                </p>
+              ) : null}
+              {lastSummary?.errors.map((err, index) => (
+                <ErrorBlock key={`${err.field ?? "root"}-${index}`} error={err} />
+              ))}
+              <div className="kbot-strategy-editor__actions">
+                <button
+                  type="button"
+                  className="kbot-strategy-editor__action kbot-strategy-editor__action--primary"
+                  onClick={() => {
+                    void handleSave();
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="kbot-strategy-editor__action kbot-strategy-editor__action--secondary"
+                  onClick={() => {
+                    void handleValidate();
+                  }}
+                  disabled={!lastSummary}
+                >
+                  Validate
+                </button>
+              </div>
+              <p className="kbot-strategy-editor__hint">
+                Save creates a new revision or edits the loaded one; Validate
+                asks the backend to check the saved revision. Neither runs on
+                navigation.
+              </p>
+            </div>
+          </section>
+
+          <section
+            className="kbot-strategy-editor__group"
+            aria-labelledby="kbot-strategy-editor-run-title"
+          >
+            <header className="kbot-strategy-editor__group-head">
+              <h3
+                className="kbot-strategy-editor__group-title"
+                id="kbot-strategy-editor-run-title"
+              >
+                <span className="kbot-strategy-editor__step" aria-hidden="true">
+                  4
+                </span>
+                Paper run and risk reduction
+              </h3>
+              <span className="kbot-strategy-editor__group-note">
+                Arm needs a validated revision
+              </span>
+            </header>
+            <div className="kbot-strategy-editor__group-body">
+              <div className="kbot-strategy-editor__run-fields">
+                <label
+                  className="kbot-strategy-editor__field"
+                  htmlFor="kbot-strategy-editor-venue"
+                >
+                  <span className="kbot-strategy-editor__field-label">Venue</span>
+                  <input
+                    id="kbot-strategy-editor-venue"
+                    className="kbot-strategy-editor__input"
+                    type="text"
+                    value={venue}
+                    onChange={(event) => setVenue(event.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </label>
+                <label
+                  className="kbot-strategy-editor__field"
+                  htmlFor="kbot-strategy-editor-balance"
+                >
+                  <span className="kbot-strategy-editor__field-label">
+                    Paper balance
+                  </span>
+                  <input
+                    id="kbot-strategy-editor-balance"
+                    className="kbot-strategy-editor__input"
+                    type="text"
+                    value={paperBalance}
+                    onChange={(event) => setPaperBalance(event.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </label>
+              </div>
+              <p className="kbot-strategy-editor__hint">
+                The paper balance is a starting input for this draft, not a read
+                of any account. Arm is a deliberate action and never runs by
+                itself.
+              </p>
+              <div className="kbot-strategy-editor__actions">
+                <button
+                  type="button"
+                  className="kbot-strategy-editor__action kbot-strategy-editor__action--arm"
+                  onClick={() => {
+                    void handleArm();
+                  }}
+                  disabled={armDisabled}
+                >
+                  Arm
+                </button>
+              </div>
+              {armError !== null ? (
+                <p
+                  className="kbot-strategy-editor__error"
+                  role="alert"
+                  data-testid="editor-arm-error"
+                >
+                  {armError}
+                </p>
+              ) : null}
+              {paperClient ? (
+                <EditorInlineStopControl
+                  paperClient={paperClient}
+                  refreshSignal={armCounter}
+                />
+              ) : null}
+            </div>
+          </section>
+        </aside>
       </div>
     </section>
   );
