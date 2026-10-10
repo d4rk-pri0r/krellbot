@@ -52,19 +52,22 @@ export function CommandPalette({
       aria-label="Command palette"
       data-testid="command-palette"
     >
-      <label className="kbot-palette__label" htmlFor="kbot-palette-input">
-        Command
-      </label>
-      <input
-        id="kbot-palette-input"
-        ref={inputRef}
-        className="kbot-palette__input"
-        type="text"
-        autoComplete="off"
-        spellCheck={false}
-        placeholder="Type a command"
-        aria-label="Command input"
-      />
+      <div className="kbot-palette__box">
+        <label className="kbot-palette__label" htmlFor="kbot-palette-input">
+          Command
+        </label>
+        <input
+          id="kbot-palette-input"
+          ref={inputRef}
+          className="kbot-palette__input"
+          type="text"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Type a command"
+          aria-label="Command input"
+        />
+        <p className="kbot-palette__hint">Esc closes</p>
+      </div>
     </div>
   );
 }

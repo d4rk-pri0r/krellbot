@@ -129,42 +129,46 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
           aria-modal="true"
           aria-label="Jobs"
         >
-          <button
-            type="button"
-            className="kbot-jobs__close"
-            aria-label="Close jobs drawer"
-            onClick={close}
-          >
-            Close
-          </button>
-          <h2 className="kbot-jobs__title">Jobs</h2>
-          <button type="button" className="kbot-jobs__refresh" onClick={load}>
-            Refresh jobs
-          </button>
-          <JobsDrawerCsvExport jobs={jobs ?? []} />
-          {error ? <p role="alert">{error}</p> : null}
-          {jobs === null && !error ? (
-            <p className="kbot-jobs__loading" data-testid="jobs-loading">
-              Loading jobs…
-            </p>
-          ) : null}
-          {jobs !== null && !error ? (
-            jobs.length === 0 ? (
-              <p className="kbot-jobs__empty">No jobs</p>
-            ) : (
-              <ul>
-                {jobs.map((job) => (
-                  <li key={job.id} data-testid="job-row">
-                    {job.id}{" "}
-                    <span className="kbot-jobs__kind">
-                      {summarizeJobsKind(job.kind).label}
-                    </span>{" "}
-                    ({job.state})
-                  </li>
-                ))}
-              </ul>
-            )
-          ) : null}
+          <div className="kbot-jobs__dialog" data-testid="kbot-jobs-dialog">
+            <div className="kbot-jobs__head">
+              <h2 className="kbot-jobs__title">Jobs</h2>
+              <button
+                type="button"
+                className="kbot-jobs__close"
+                aria-label="Close jobs drawer"
+                onClick={close}
+              >
+                Close
+              </button>
+            </div>
+            <button type="button" className="kbot-jobs__refresh" onClick={load}>
+              Refresh jobs
+            </button>
+            <JobsDrawerCsvExport jobs={jobs ?? []} />
+            {error ? <p role="alert">{error}</p> : null}
+            {jobs === null && !error ? (
+              <p className="kbot-jobs__loading" data-testid="jobs-loading">
+                Loading jobs…
+              </p>
+            ) : null}
+            {jobs !== null && !error ? (
+              jobs.length === 0 ? (
+                <p className="kbot-jobs__empty">No jobs</p>
+              ) : (
+                <ul className="kbot-jobs__list">
+                  {jobs.map((job) => (
+                    <li key={job.id} className="kbot-jobs__row" data-testid="job-row">
+                      <span className="kbot-jobs__id">{job.id}</span>{" "}
+                      <span className="kbot-jobs__kind">
+                        {summarizeJobsKind(job.kind).label}
+                      </span>{" "}
+                      <span className="kbot-jobs__state">({job.state})</span>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+          </div>
         </div>
       ) : null}
     </>

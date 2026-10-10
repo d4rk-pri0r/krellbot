@@ -2,6 +2,10 @@
 
 Krellbot is an open-source local crypto workstation. Python services are shared by the CLI and local React/TypeScript GUI. Read README.md, SECURITY.md, and the relevant source/tests before editing. Product requirements live in docs/product-direction.md.
 
+## Design contract (KRELL-SIGNAL-20261010)
+
+All user-facing UI work implements the owner-approved Signal + Krell Asset Pack v2 design, contract `KRELL-SIGNAL-20261010`. Read `docs/design-system.md` first: its named tokens (`frontend/src/styles/tokens.css`), local Manrope/IBM Plex Mono fonts, compact product-led shell composition, color semantics (sage = affirmative, seafoam = selection/focus, coral = caution — never green for caution), and supplied brand-asset rules are binding for every relevant frontend change. Do not reintroduce the old neon-lime/cyan palette or invent substitute brand artwork.
+
 ## Working here
 
 - Implement the requested product task, not an orchestration framework. Use normal terminal, file-editing, and test tools.

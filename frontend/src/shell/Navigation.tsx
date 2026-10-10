@@ -28,6 +28,7 @@ export function Navigation({ active, onChange }: NavigationProps): JSX.Element {
       className="kbot-nav"
       role="navigation"
       aria-label="Workstation navigation"
+      data-testid="kbot-nav"
     >
       {VIEWS.map((view) => (
         <button

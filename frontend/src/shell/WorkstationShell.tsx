@@ -44,6 +44,7 @@ import { PackLibrary } from "../features/packs/PackLibrary";
 import { createPacksHttpClient } from "../features/packs/client";
 import type { PackLibraryClient } from "../features/packs/client";
 import { recoverCsrf, redeemBootstrap } from "../session";
+import { Wordmark } from "../components/brand/Wordmark";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
 import { JobsDrawer } from "./JobsDrawer";
@@ -579,11 +580,37 @@ export function WorkstationShell({
 
   return (
     <div className="kbot-shell" data-testid="kbot-shell" data-bootstrap-done={bootstrapDone ? "1" : "0"}>
-      <div className="kbot-shell__topbar">
-        <StatusStrip />
-        <JobsDrawer />
-      </div>
-      <Navigation active={active} onChange={setActive} />
+      <header className="kbot-shell__header">
+        <div className="kbot-shell__brandbar">
+          <button
+            type="button"
+            className="kbot-shell__brand"
+            data-testid="kbot-shell-brand"
+            onClick={() => {
+              setActive("workstation");
+            }}
+          >
+            <Wordmark />
+          </button>
+          <div className="kbot-shell__head-utils">
+            <StatusStrip />
+            <JobsDrawer />
+            <button
+              type="button"
+              className="kbot-shell__palette-hint"
+              data-testid="kbot-shell-palette-hint"
+              onClick={() => {
+                setPaletteOpen(true);
+              }}
+            >
+              <span aria-hidden="true">Search</span>
+              <span className="kbot-shell__palette-keys" aria-hidden="true">⌘K</span>
+              <span className="kbot-palette__label">Open command palette</span>
+            </button>
+          </div>
+        </div>
+        <Navigation active={active} onChange={setActive} />
+      </header>
       <main className="kbot-shell__main">
         {active === "workstation" ? (
           <>

@@ -1,204 +1,471 @@
-/* Workstation shell chrome.
+/*
+ * Workstation shell chrome — Signal + Krell Asset Pack v2.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
  *
  * Visual contract:
- *   - Lightweight layout (single column, ~two rows) so tests and screen readers
- *     can reach status, nav, inspector, jobs, and the palette without scrolling
- *     past a tall hero.
- *   - Uses only the four brand tokens declared in src/styles/tokens.css
- *     (--canvas, --signal, --warn, --ink). No remote font, no CDN, no UI kit.
- *   - Modal surfaces (jobs drawer, command palette) are full-viewport scrims so
- *     focus is unambiguously inside the dialog when it is open.
+ *   - Compact horizontal, product-led application header: supplied
+ *     outlined wordmark first, then status context, jobs, and the
+ *     command palette affordance; view navigation sits directly
+ *     beneath it. No marketing hero in the cockpit.
+ *   - Manrope for UI/body text; IBM Plex Mono only for restrained
+ *     technical/numeric labels. Not a terminal wall of monospace.
+ *   - Panels are readable: surface background, restrained line
+ *     borders, consistent radius. Focus/selection is seafoam.
+ *   - Sage is reserved for affirmative primary actions; caution and
+ *     danger stay coral-derived and semantically distinct.
+ *   - All colors come from tokens.css; no per-component literals.
+ *   - Modal surfaces (jobs drawer, command palette) are full-viewport
+ *     scrims so focus is unambiguously inside the dialog when open.
+ *   - Narrow layouts keep reachable controls and >=44px targets.
  */
+
+/* ============ base ============ */
 
 .kbot-shell {
   min-height: 100vh;
-  background: var(--canvas);
-  color: var(--ink);
+  background: var(--navy);
+  color: var(--text);
   display: grid;
-  grid-template-rows: auto auto 1fr;
-  gap: 12px;
-  padding: 16px 20px 24px;
+  grid-template-rows: auto 1fr;
+  gap: 18px;
+  padding: 14px 22px 28px;
   box-sizing: border-box;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
-.kbot-shell__topbar {
+.kbot-shell *,
+.kbot-shell *::before,
+.kbot-shell *::after {
+  box-sizing: border-box;
+}
+
+.kbot-shell h1,
+.kbot-shell h2,
+.kbot-shell h3,
+.kbot-shell p {
+  margin: 0;
+}
+
+.kbot-shell a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.kbot-shell button,
+.kbot-shell input,
+.kbot-shell select,
+.kbot-shell textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.kbot-shell button {
+  cursor: pointer;
+}
+
+.kbot-shell button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.kbot-shell :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============ header: brand bar + utilities ============ */
+
+.kbot-shell__header {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.kbot-shell__brandbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+  background: color-mix(in srgb, var(--surface) 55%, var(--navy));
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 12px 16px;
 }
 
-.kbot-shell__heading {
-  font-size: 18px;
-  margin: 0 0 12px;
-  letter-spacing: 0.02em;
+.kbot-shell__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 0;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: var(--radius-control);
+  min-height: 44px;
 }
+
+.kbot-wordmark {
+  display: block;
+  height: 19px;
+  width: auto;
+}
+
+.kbot-brandmark {
+  display: block;
+}
+
+.kbot-shell__head-utils {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Command palette affordance in the header */
+.kbot-shell__palette-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 12px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kbot-shell__palette-hint:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--seafoam) 40%, var(--line));
+}
+
+.kbot-shell__palette-keys {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--seafoam);
+  border: 1px solid color-mix(in srgb, var(--seafoam) 35%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.04em;
+}
+
+/* ============ status strip ============ */
+
+.kbot-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 45%, var(--navy));
+  font-size: 12px;
+}
+
+.kbot-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--seafoam);
+  flex: none;
+}
+
+.kbot-status__mode {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  color: var(--seafoam);
+}
+
+.kbot-status__divider {
+  color: color-mix(in srgb, var(--text) 30%, transparent);
+}
+
+.kbot-status__orders {
+  color: var(--muted);
+}
+
+/* ============ navigation ============ */
+
+.kbot-nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.kbot-nav__item {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: 8px 14px;
+  min-height: 36px;
+  font-weight: 600;
+  font-size: 13px;
+  position: relative;
+}
+
+.kbot-nav__item:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+}
+
+.kbot-nav__item--active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 80%, var(--navy));
+  box-shadow: inset 0 -2px 0 var(--seafoam);
+}
+
+/* ============ main / panels ============ */
 
 .kbot-shell__main {
   display: grid;
   gap: 16px;
   align-content: start;
+  min-width: 0;
 }
 
-/* --- status strip --- */
+.kbot-shell__heading {
+  font-size: 22px;
+  letter-spacing: -0.5px;
+  font-weight: 700;
+  margin: 4px 2px 6px;
+}
 
-.kbot-status {
+/*
+ * Readable real content panels. These descendant rules style the
+ * feature surfaces (paper status, runs, armed records, editor,
+ * research, packs, preflight…) that are mounted inside the shell
+ * without editing each feature file: surface background, restrained
+ * border, panel radius, and section headings.
+ */
+.kbot-shell__main > section,
+.kbot-shell__main section[class^="kbot-"],
+.kbot-shell__main section[class*=" kbot-"] {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+/* Panel titles across mounted feature surfaces */
+.kbot-shell__main h2[class^="kbot-"],
+.kbot-shell__main h2[class*=" kbot-"],
+.kbot-shell__main h3[class^="kbot-"],
+.kbot-shell__main h3[class*=" kbot-"] {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Empty / unavailable / hint copy stays muted but readable */
+.kbot-shell__main [class$="__empty"],
+.kbot-shell__main [class$="__loading"],
+.kbot-shell__main [class$="__hint"],
+.kbot-shell__main [class$="__note"] {
+  color: var(--muted);
+}
+
+.kbot-shell__main [class$="__error"],
+.kbot-shell__main [role="alert"] {
+  color: var(--danger-text);
+}
+
+.kbot-shell__error {
+  color: var(--danger-text);
+}
+
+.kbot-shell__outcome {
+  color: var(--sage);
+}
+
+/* ============ shared controls (buttons / inputs / selects) ============ */
+
+.kbot-shell button {
+  background: color-mix(in srgb, var(--panel) 40%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 7px 13px;
+  min-height: 34px;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 12.5px;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  border: 1px solid color-mix(in srgb, var(--signal) 35%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--signal) 6%, var(--canvas));
-}
-
-.kbot-status__mode {
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--signal);
-}
-
-.kbot-status__divider {
-  color: color-mix(in srgb, var(--ink) 35%, transparent);
-}
-
-.kbot-status__orders {
-  color: var(--ink);
-}
-
-/* --- navigation --- */
-
-.kbot-nav {
-  display: flex;
+  justify-content: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
-.kbot-nav__item {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font: inherit;
-  cursor: pointer;
+.kbot-shell button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--seafoam) 40%, var(--line));
 }
 
-.kbot-nav__item:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
+.kbot-shell button[aria-pressed="true"] {
+  border-color: var(--seafoam);
+  color: var(--seafoam);
 }
 
-.kbot-nav__item--active {
-  border-color: var(--signal);
-  color: var(--signal);
+.kbot-shell input:not([type="checkbox"]):not([type="radio"]),
+.kbot-shell select,
+.kbot-shell textarea {
+  background: var(--navy);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 7px 10px;
+  min-height: 34px;
 }
 
-/* --- inspector --- */
-
-.kbot-inspector {
-  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ink) 3%, var(--canvas));
-  padding: 12px 14px;
-  min-height: 96px;
+.kbot-shell textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
-.kbot-inspector__title {
-  font-size: 13px;
-  margin: 0 0 8px;
-  letter-spacing: 0.06em;
+.kbot-shell input::placeholder,
+.kbot-shell textarea::placeholder {
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+/* ============ tables (runs, armed records, ops, library) ============ */
+
+.kbot-shell table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.kbot-shell th,
+.kbot-shell td {
+  text-align: left;
+  padding: 7px 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+.kbot-shell th {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--ink) 70%, transparent);
+  font-weight: 700;
+  color: color-mix(in srgb, var(--muted) 85%, transparent);
 }
 
-.kbot-inspector__empty {
-  margin: 0;
-  color: color-mix(in srgb, var(--ink) 55%, transparent);
+/* Technical / numeric labels */
+.kbot-shell time,
+.kbot-shell [class$="__id"],
+.kbot-shell [class$="__revision"],
+.kbot-shell [class$="__version"] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* --- jobs drawer --- */
-
-.kbot-jobs__trigger {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.kbot-jobs__trigger:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
-}
+/* ============ jobs drawer ============ */
 
 .kbot-jobs__trigger[aria-expanded="true"] {
-  border-color: var(--signal);
-  color: var(--signal);
+  border-color: var(--seafoam);
+  color: var(--seafoam);
 }
 
 .kbot-jobs__scrim {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--canvas) 70%, transparent);
+  background: color-mix(in srgb, var(--navy) 72%, transparent);
   display: grid;
   align-content: start;
   justify-items: end;
-  padding: 24px;
+  padding: 20px;
   z-index: 10;
+  overflow-y: auto;
+}
+
+.kbot-jobs__dialog {
+  width: min(440px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 16px 18px 18px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  margin-top: 8px;
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 45%, transparent);
+}
+
+.kbot-jobs__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .kbot-jobs__title {
-  margin: 0 0 8px;
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--signal);
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
 }
 
 .kbot-jobs__close {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font: inherit;
-  cursor: pointer;
   justify-self: end;
 }
 
 .kbot-jobs__refresh {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font: inherit;
-  cursor: pointer;
   justify-self: start;
-  margin-bottom: 8px;
+  margin-bottom: 2px;
 }
 
-.kbot-jobs__refresh:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
-}
-
-.kbot-jobs__empty {
+.kbot-jobs__list {
+  list-style: none;
   margin: 0;
-  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  padding: 0;
+  display: grid;
+  gap: 6px;
 }
 
+.kbot-jobs__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: var(--radius-control);
+  font-size: 12.5px;
+}
+
+.kbot-jobs__id {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.kbot-jobs__kind {
+  color: var(--seafoam);
+  font-weight: 600;
+}
+
+.kbot-jobs__state {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.kbot-jobs__empty,
 .kbot-jobs__loading {
   margin: 0;
-  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  color: var(--muted);
 }
 
-/* --- command palette --- */
+/* ============ command palette ============ */
 
 .kbot-palette {
   position: fixed;
@@ -206,9 +473,21 @@
   display: grid;
   align-content: start;
   justify-items: center;
-  padding-top: 18vh;
-  background: color-mix(in srgb, var(--canvas) 60%, transparent);
+  padding: 16vh 16px 32px;
+  background: color-mix(in srgb, var(--navy) 68%, transparent);
   z-index: 20;
+  overflow-y: auto;
+}
+
+.kbot-palette__box {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 14px;
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 45%, transparent);
 }
 
 .kbot-palette__label {
@@ -224,25 +503,36 @@
 }
 
 .kbot-palette__input {
-  width: min(560px, 90vw);
-  padding: 10px 14px;
-  background: var(--canvas);
-  color: var(--ink);
-  border: 1px solid var(--signal);
-  border-radius: 6px;
-  font: inherit;
+  width: 100%;
+  padding: 11px 13px;
+  background: var(--navy);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.kbot-palette__input:focus {
+  border-color: var(--seafoam);
 }
 
 .kbot-palette__input:focus-visible {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
-/* --- operations view --- */
+.kbot-palette__hint {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* ============ operations view ============ */
 
 .kbot-ops {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   align-content: start;
 }
 
@@ -255,29 +545,29 @@
 .kbot-ops__title {
   font-size: 16px;
   margin: 0;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--ink) 80%, transparent);
+  letter-spacing: -0.2px;
+  font-weight: 700;
+  color: var(--text);
 }
 
 .kbot-ops__body {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .kbot-ops__panel {
-  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ink) 3%, var(--canvas));
-  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  padding: 14px 16px;
 }
 
 .kbot-ops__panel-title {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   font-size: 13px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--ink) 70%, transparent);
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .kbot-ops__kill-state {
@@ -297,54 +587,40 @@
   font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--ink) 65%, transparent);
+  color: var(--muted);
 }
 
 .kbot-ops__kill-row input {
   flex: 1;
-  padding: 6px 10px;
-  background: var(--canvas);
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
-  border-radius: 6px;
+  padding: 7px 10px;
+  background: var(--navy);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
   font: inherit;
 }
 
 .kbot-ops__kill-row input:focus-visible {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
 .kbot-ops__kill-buttons {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
   margin-bottom: 8px;
 }
 
-.kbot-ops__kill-buttons button {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font: inherit;
-  cursor: pointer;
-}
-
 .kbot-ops__kill-buttons button:focus-visible {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
-}
-
-.kbot-ops__kill-buttons button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .kbot-ops__kill-helper {
   margin: 0;
   font-size: 12px;
-  color: color-mix(in srgb, var(--ink) 60%, transparent);
+  color: var(--muted);
 }
 
 .kbot-ops__table {
@@ -357,14 +633,14 @@
 .kbot-ops__table td {
   text-align: left;
   padding: 6px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
 }
 
 .kbot-ops__table th {
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--ink) 65%, transparent);
+  color: var(--muted);
 }
 
 .kbot-ops__row-actions {
@@ -373,25 +649,11 @@
   flex-wrap: wrap;
 }
 
-.kbot-ops__row-actions button {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.kbot-ops__row-actions button:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 1px;
-}
-
 .kbot-ops__row-result {
   margin: 6px 0 0;
   font-size: 12px;
-  color: var(--warn);
+  /* Refusal/unknown-outcome copy: caution tone, not a success color. */
+  color: var(--caution-text);
 }
 
 .kbot-ops__alerts {
@@ -408,40 +670,110 @@
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
-  border-radius: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
   font-size: 12px;
 }
 
+/* Critical alerts: coral-derived danger treatment. */
 .kbot-ops__alert--critical {
-  border-color: var(--warn);
-  color: var(--warn);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--coral) 10%, var(--surface));
 }
 
 .kbot-ops__alert--warning {
-  border-color: color-mix(in srgb, var(--signal) 50%, transparent);
+  border-color: color-mix(in srgb, var(--caution-text) 45%, var(--line));
+  background: color-mix(in srgb, var(--caution-bg) 40%, var(--surface));
 }
 
 .kbot-ops__alert-kind {
   font-weight: 600;
 }
 
-.kbot-ops__alert button {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
-  border-radius: 6px;
-  padding: 2px 8px;
-  font: inherit;
-  cursor: pointer;
-}
-
 .kbot-ops__alert-ack {
   font-style: italic;
-  color: color-mix(in srgb, var(--ink) 65%, transparent);
+  color: var(--muted);
 }
 
 .kbot-ops__empty {
   margin: 0;
-  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  color: var(--muted);
+}
+
+/* ============ research portal host ============ */
+
+.kbot-research__host {
+  min-width: 0;
+}
+
+/* ============ narrow / mobile layout ============ */
+
+@media (max-width: 640px) {
+  .kbot-shell {
+    padding: 10px 12px 24px;
+    gap: 14px;
+  }
+
+  .kbot-shell__brandbar {
+    padding: 10px 12px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .kbot-shell__head-utils {
+    width: 100%;
+    align-items: center;
+  }
+
+  /* Reachable controls with >=44px touch targets on narrow screens. */
+  .kbot-shell__brand,
+  .kbot-shell__palette-hint,
+  .kbot-shell button {
+    min-height: 44px;
+  }
+
+  .kbot-nav {
+    width: 100%;
+  }
+
+  .kbot-nav__item {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+
+  .kbot-status {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+  }
+
+  .kbot-shell__main {
+    gap: 12px;
+  }
+
+  /* Dense tables scroll internally instead of widening the page. */
+  .kbot-shell table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .kbot-jobs__scrim {
+    padding: 12px;
+    justify-items: stretch;
+  }
+
+  .kbot-jobs__dialog {
+    width: 100%;
+  }
+
+  .kbot-palette {
+    padding: 12vh 12px 24px;
+  }
 }

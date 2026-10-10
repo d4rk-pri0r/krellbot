@@ -45,3 +45,13 @@ The standalone development checkout starts from accepted integration commit `8ec
 The migration pilot delivered Research session continuity across in-session navigation, with reset when the saved revision changes (verified product commit `e3f375743a1c8c502a66965ce81aa3f5f0e820f7`). This is not an instruction to repeat that completed task. Next identified work concerns truthful Jobs observation, refresh/recovery, and the combined Research/Jobs journey. Each task still needs a concrete acceptance test and independent review; they are not an automatically executing queue.
 
 Prior unresolved ownership, recovery, hardening and release findings remain unresolved. Migration does not reopen exhausted repair lanes or authorize live trading, billing, production migration or publication. Historical requirements/findings are preserved outside the development workspace by the operator, not imported as executable instructions.
+
+## Design reference (KRELL-SIGNAL-20261010)
+
+All product UI work follows the owner-approved Signal + Krell Asset Pack v2
+design, contract `KRELL-SIGNAL-20261010`. The portable design contract lives
+in `docs/design-system.md`; its tokens, fonts, shell composition and asset
+rules are binding for every new or newly scoped frontend task. Reference
+compositions are consulted from the approved reference kit (staged outside
+this repository); this document does not duplicate reference paths or private
+host locations.

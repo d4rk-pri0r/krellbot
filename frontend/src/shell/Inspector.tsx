@@ -11,7 +11,10 @@ export function Inspector(): JSX.Element {
         <h2 className="kbot-inspector__title">Inspector</h2>
       </header>
       <div className="kbot-inspector__body">
-        <p className="kbot-inspector__empty">Nothing selected</p>
+        <p className="kbot-inspector__empty">
+          Nothing selected — pick a revision on Strategies or a node in Studio
+          to inspect it here.
+        </p>
       </div>
     </section>
   );
