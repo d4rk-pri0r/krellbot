@@ -43,6 +43,27 @@ from pathlib import Path
 # instance) and produce a broken bundle.
 _SEP = ";" if sys.platform == "win32" else ":"
 
+# Installer / launch helpers staged verbatim into the one-dir bundle so
+# the extracted archive is installable without developer tooling. The
+# shell helper must land executable.
+_INSTALLER_FILES = (
+    "Install-Krellbot.cmd",
+    "Install-Krellbot.ps1",
+    "install-krellbot.sh",
+    "INSTALL.txt",
+)
+
+# Package data the runtime reads via importlib.resources. PyInstaller's
+# static analysis does not include non-Python package data on its own;
+# without these flags the frozen binary 500s on the starter catalogue
+# (ModuleNotFoundError: krellbot.packs.examples) and cannot lint packs
+# (schema.json) or run rehearsal fixtures (rehearsal_resources).
+_RUNTIME_DATA_PACKAGES = (
+    "krellbot.packs.examples",
+    "krellbot.pack",
+    "krellbot.application.rehearsal_resources",
+)
+
 
 def _build_args(*, entry: Path, dist_root: Path, work_root: Path, spec_root: Path, repo_root: Path) -> list[str]:
     """Assemble the PyInstaller CLI args for our one-dir build."""
@@ -96,6 +117,15 @@ def _build_args(*, entry: Path, dist_root: Path, work_root: Path, spec_root: Pat
         "krellbot.ui.server",
         "--hidden-import",
         "krellbot.ui.launch",
+        # Package data consumed through importlib.resources at runtime:
+        # the starter catalogue JSONs, the pack schema, and the
+        # rehearsal fixtures. These must resolve from the installed
+        # bundle, never from a source checkout.
+        *[
+            flag
+            for package in _RUNTIME_DATA_PACKAGES
+            for flag in ("--collect-data", package)
+        ],
         # The frozen entry point.
         str(entry.resolve()),
     ]
@@ -131,6 +161,35 @@ def _resolve_paths(repo_root: Path) -> tuple[Path, Path, Path, Path]:
     work_root = repo_root / "build" / "pyinstaller"
     spec_root = repo_root / "build" / "spec"
     return entry, dist_root, work_root, spec_root
+
+
+def _stage_installers(bundle: Path, *, repo_root: Path) -> Path:
+    """Copy the local-install helpers into the one-dir bundle root.
+
+    The extracted archive must be installable as-is: ``Install-Krellbot.cmd``
+    (Windows) and ``install-krellbot.sh`` (Linux) sit next to the frozen
+    executable, with ``INSTALL.txt`` documenting the no-developer-tools
+    flow. Staging happens here, inside ``freeze()``, so the packaging is
+    automatic — never a manual post-build hand-patching step.
+
+    Raises SystemExit when the helpers are missing from the repo (a
+    freeze that silently ships an un-installable archive is worse than
+    a loud failure). The shell helper is copied executable so users can
+    run it straight from the extracted archive.
+    """
+    source_dir = repo_root / "scripts" / "installers"
+    missing = [name for name in _INSTALLER_FILES if not (source_dir / name).is_file()]
+    if missing:
+        raise SystemExit(
+            "installer helpers missing from scripts/installers: "
+            f"{', '.join(missing)} (looked under {source_dir})"
+        )
+    for name in _INSTALLER_FILES:
+        target = bundle / name
+        shutil.copyfile(source_dir / name, target)
+        if name.endswith(".sh"):
+            target.chmod(0o755)
+    return bundle
 
 
 def freeze(*, repo_root: Path | None = None) -> Path:
@@ -188,6 +247,10 @@ def freeze(*, repo_root: Path | None = None) -> Path:
     bundle = dist_root / "krellbot"
     if not bundle.is_dir():
         raise SystemExit(f"expected bundle directory not found: {bundle}")
+
+    # Stage the local-install helpers beside the executable so the
+    # extracted archive is installable without any developer tooling.
+    _stage_installers(bundle, repo_root=repo_root)
 
     return bundle
 

@@ -378,3 +378,104 @@ def test_frozen_missing_bundle_yields_shell_not_built(tmp_path: Path, monkeypatc
     assert json.loads(body) == {"code": "shell_not_built"}, body
     # No HTML was synthesised on disk by the resolver or the route.
     assert not (missing_dist / "index.html").exists()
+
+
+# ---------------------------------------------------------------------------
+# App-bones installers (W1) — freeze packages installers + runtime resources
+# ---------------------------------------------------------------------------
+
+INSTALLER_FILES = (
+    "Install-Krellbot.cmd",
+    "Install-Krellbot.ps1",
+    "install-krellbot.sh",
+    "INSTALL.txt",
+)
+
+# Package-data directories the runtime reads with importlib.resources.
+# Demonstrated missing in a baseline build: the frozen binary raised
+# ModuleNotFoundError: No module named krellbot.packs.examples
+# from GET /api/v1/packs/starters before these flags existed.
+_RUNTIME_DATA_PACKAGES = (
+    "krellbot.packs.examples",
+    "krellbot.pack",
+    "krellbot.application.rehearsal_resources",
+)
+
+
+def test_build_args_collects_installer_runtime_package_data() -> None:
+    freeze = _load_freeze_module()
+    args = freeze._build_args(**_build_args_kwargs())
+
+    collected: list[str] = []
+    for index, token in enumerate(args):
+        if token == "--collect-data" and index + 1 < len(args):
+            collected.append(args[index + 1])
+    for package in _RUNTIME_DATA_PACKAGES:
+        assert package in collected, (
+            f"--collect-data {package} missing from _build_args; collected={collected!r}"
+        )
+
+
+def test_stage_installers_copies_helpers_into_bundle(tmp_path: Path) -> None:
+    freeze = _load_freeze_module()
+    bundle = tmp_path / "krellbot"
+    bundle.mkdir()
+
+    staged = freeze._stage_installers(bundle, repo_root=REPO_ROOT)
+
+    assert staged == bundle
+    for name in INSTALLER_FILES:
+        copied = bundle / name
+        assert copied.is_file(), f"{name} missing from bundle"
+        source = (REPO_ROOT / "scripts" / "installers" / name).read_bytes()
+        assert copied.read_bytes() == source, f"{name} drifted from scripts/installers"
+    mode = (bundle / "install-krellbot.sh").stat().st_mode & 0o777
+    assert mode & 0o111, f"install-krellbot.sh must be executable in the bundle; mode={mode:o}"
+
+
+def test_stage_installers_fails_when_repo_helpers_missing(tmp_path: Path) -> None:
+    freeze = _load_freeze_module()
+    bundle = tmp_path / "krellbot"
+    bundle.mkdir()
+
+    with pytest.raises(SystemExit):
+        freeze._stage_installers(bundle, repo_root=tmp_path / "no_such_repo")
+
+
+def _synthetic_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    (repo / "scripts" / "installers").mkdir(parents=True)
+    for name in INSTALLER_FILES:
+        source = REPO_ROOT / "scripts" / "installers" / name
+        data = source.read_bytes()
+        target = repo / "scripts" / "installers" / name
+        target.write_bytes(data)
+        if name.endswith(".sh"):
+            target.chmod(0o755)
+    (repo / "scripts" / "frozen_main.py").write_text("# entry\n", encoding="utf-8")
+    dist = repo / "frontend" / "dist"
+    dist.mkdir(parents=True)
+    (dist / "index.html").write_text("<html></html>", encoding="utf-8")
+    return repo
+
+
+def test_freeze_stages_installers_into_bundle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    freeze = _load_freeze_module()
+    repo = _synthetic_repo(tmp_path)
+
+    def _fake_invoke(args: list[str]) -> int:
+        distpath = Path(args[args.index("--distpath") + 1]).resolve()
+        bundle = distpath / "krellbot"
+        (bundle / "_internal").mkdir(parents=True, exist_ok=True)
+        (bundle / "krellbot").write_text("#!/bin/sh\n", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(freeze, "_invoke_pyinstaller", _fake_invoke)
+
+    bundle = freeze.freeze(repo_root=repo)
+
+    assert (bundle / "_internal").is_dir()
+    for name in INSTALLER_FILES:
+        assert (bundle / name).is_file(), f"{name} not staged by freeze()"
+    mode = (bundle / "install-krellbot.sh").stat().st_mode & 0o777
+    assert mode & 0o111, f"install-krellbot.sh not executable after freeze(); mode={mode:o}"
