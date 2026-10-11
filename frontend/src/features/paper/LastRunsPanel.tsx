@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
+import "./LastRunsPanel.signal.css";
 import type { PaperClient, PaperRun, PaperRunsClient } from "./client";
 
 export type { PaperClient, PaperRunsClient } from "./client";
@@ -26,6 +27,34 @@ function formatFillTime(ts_ms: number): string {
   }
   const pad = (value: number): string => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/** Run-count chip copy: the real total read from the wire. */
+function runCountLabel(count: number): string {
+  return count === 1 ? "1 run" : `${count} runs`;
+}
+
+/** Status chip tone: sage for an armed/active run, coral for a failed
+ *  one, neutral otherwise. The verbatim status word carries the state. */
+function statusChipTone(status: string): string {
+  if (status === "active") {
+    return "sage";
+  }
+  if (status === "failed") {
+    return "coral";
+  }
+  return "neutral";
+}
+
+/** Side badge tone: sage for buy, coral for sell, neutral otherwise. */
+function sideBadgeTone(side: string): string {
+  if (side === "buy") {
+    return "buy";
+  }
+  if (side === "sell") {
+    return "sell";
+  }
+  return "";
 }
 
 export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
@@ -98,7 +127,17 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
       data-testid="paper-last-runs-panel"
     >
       <header className="kbot-paper-runs__head">
-        <h2 className="kbot-paper-runs__title">Last runs</h2>
+        <div className="kbot-paper-runs__head-titles">
+          <h2 className="kbot-paper-runs__title">Paper runs</h2>
+          {runs !== null ? (
+            <p
+              className="kbot-paper-runs__count"
+              data-testid="paper-last-runs-count"
+            >
+              {runCountLabel(runs.length)}
+            </p>
+          ) : null}
+        </div>
         <button
           type="button"
           className="kbot-paper-runs__action"
@@ -110,67 +149,134 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
         </button>
       </header>
       <div className="kbot-paper-runs__body">
-        {errorMessage !== null ? (
-          <p
-            className="kbot-paper-runs__error"
-            role="alert"
-            data-testid="paper-last-runs-error"
-          >
-            {errorMessage}
-          </p>
-        ) : null}
-        {loading && runs === null ? (
-          <p
-            className="kbot-paper-runs__empty"
-            data-testid="paper-last-runs-loading"
-          >
-            Loading paper runs…
-          </p>
-        ) : runs !== null && runs.length === 0 ? (
-          <p className="kbot-paper-runs__empty" data-testid="paper-last-runs-empty">
-            No paper runs yet
-          </p>
-        ) : runs !== null ? (
-          <table className="kbot-paper-runs__table" data-testid="paper-last-runs-table">
-            <thead>
-              <tr>
-                <th scope="col">Venue</th>
-                <th scope="col">Pair</th>
-                <th scope="col">Started</th>
-                <th scope="col">Ended</th>
-                <th scope="col">Fills</th>
-                <th scope="col">Last refusal</th>
-                <th scope="col">Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => (
-                <tr
-                  key={`${run.venue}|${run.pair}|${run.pack_id}|${run.first_ts_ms}`}
-                  onClick={() => {
-                    handleSelectRun(run);
-                  }}
-                  data-testid={`paper-last-runs-row-${run.venue}-${run.pair}`}
-                >
-                  <td>{run.venue}</td>
-                  <td>{run.pair}</td>
-                  <td>{formatTime(run.first_ts_ms)}</td>
-                  <td>{formatTime(run.last_ts_ms)}</td>
-                  <td data-testid={`paper-last-runs-fills-${run.venue}-${run.pair}`}>
-                    {run.recent_fills.length}
-                  </td>
-                  <td>{run.last_refusal_code ?? "none"}</td>
-                  <td>{run.summary}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : null}
+        <section
+          className="kbot-paper-runs__panel"
+          aria-label="Paper run history list"
+          data-testid="paper-last-runs-list-panel"
+        >
+          <h3 className="kbot-paper-runs__panel-title">Runs</h3>
+          {errorMessage !== null ? (
+            <p
+              className="kbot-paper-runs__error"
+              role="alert"
+              data-testid="paper-last-runs-error"
+            >
+              {errorMessage}
+            </p>
+          ) : null}
+          {loading && runs === null ? (
+            <p
+              className="kbot-paper-runs__empty"
+              data-testid="paper-last-runs-loading"
+            >
+              Loading paper runs…
+            </p>
+          ) : runs !== null && runs.length === 0 ? (
+            <p className="kbot-paper-runs__empty" data-testid="paper-last-runs-empty">
+              No paper runs yet
+            </p>
+          ) : runs !== null ? (
+            <div
+              className="kbot-paper-runs__scroll"
+              data-testid="paper-last-runs-scroll"
+            >
+              <table className="kbot-paper-runs__table" data-testid="paper-last-runs-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Venue</th>
+                    <th scope="col">Pair</th>
+                    <th scope="col">Started</th>
+                    <th scope="col">Ended</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Fills</th>
+                    <th scope="col">Last refusal</th>
+                    <th scope="col">Result</th>
+                    <th scope="col">
+                      <span aria-hidden="true">Open</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((run) => {
+                    const tone = statusChipTone(run.status);
+                    const isSelected = selected === run;
+                    return (
+                      <tr
+                        key={`${run.venue}|${run.pair}|${run.pack_id}|${run.first_ts_ms}`}
+                        className={`kbot-paper-runs__row${
+                          isSelected ? " kbot-paper-runs__row--selected" : ""
+                        }`}
+                        tabIndex={0}
+                        aria-label={`Open run detail for ${run.venue} ${run.pair}`}
+                        onClick={() => {
+                          handleSelectRun(run);
+                        }}
+                        data-testid={`paper-last-runs-row-${run.venue}-${run.pair}`}
+                      >
+                        <td className="kbot-paper-runs__venue">{run.venue}</td>
+                        <td className="kbot-paper-runs__pair">{run.pair}</td>
+                        <td className="kbot-paper-runs__ts">
+                          {formatTime(run.first_ts_ms)}
+                        </td>
+                        <td className="kbot-paper-runs__ts">
+                          {formatTime(run.last_ts_ms)}
+                        </td>
+                        <td>
+                          <span
+                            className={`kbot-paper-runs__chip${
+                              tone === "neutral"
+                                ? ""
+                                : ` kbot-paper-runs__chip--${tone}`
+                            }`}
+                            data-testid={`paper-last-runs-status-${run.venue}-${run.pair}`}
+                          >
+                            {run.status}
+                          </span>
+                        </td>
+                        <td
+                          className="kbot-paper-runs__num"
+                          data-testid={`paper-last-runs-fills-${run.venue}-${run.pair}`}
+                        >
+                          {run.recent_fills.length}
+                        </td>
+                        <td
+                          className={`kbot-paper-runs__refusal${
+                            run.last_refusal_code !== null
+                              ? " kbot-paper-runs__refusal--present"
+                              : ""
+                          }`}
+                        >
+                          {run.last_refusal_code ?? "none"}
+                        </td>
+                        <td className="kbot-paper-runs__result">{run.summary}</td>
+                        <td className="kbot-paper-runs__row-open">
+                          <span aria-hidden="true">›</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
         {selected !== null ? (
-          <div
-            className="kbot-paper-runs__detail"
+          <section
+            className="kbot-paper-runs__panel kbot-paper-runs__detail"
+            aria-label="Selected paper run detail"
             data-testid="paper-last-runs-detail"
           >
+            <div className="kbot-paper-runs__detail-head">
+              <h3 className="kbot-paper-runs__panel-title">Run detail</h3>
+              <button
+                type="button"
+                className="kbot-paper-runs__action"
+                onClick={handleCloseDetail}
+                data-testid="paper-last-runs-detail-close"
+              >
+                Close detail
+              </button>
+            </div>
             <p
               className="kbot-paper-runs__summary"
               data-testid="paper-last-runs-detail-summary"
@@ -178,32 +284,52 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
               {selected.summary}
             </p>
             {selected.recent_fills.length > 0 ? (
-              <table
-                className="kbot-paper-runs__fills"
-                data-testid="paper-last-runs-fills-table"
+              <div
+                className="kbot-paper-runs__scroll"
+                data-testid="paper-last-runs-fills-scroll"
               >
-                <thead>
-                  <tr>
-                    <th scope="col">Time</th>
-                    <th scope="col">Pair</th>
-                    <th scope="col">Side</th>
-                    <th scope="col">Coid</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selected.recent_fills.map((fill, index) => (
-                    <tr key={`${fill.coid}|${fill.ts_ms}|${index}`}>
-                      <td>{formatFillTime(fill.ts_ms)}</td>
-                      {/* The paper-history wire carries pair at the run level,
-                          not on the adapted fill objects (see adaptHistory in
-                          client.ts), so every fill row reuses selected.pair. */}
-                      <td>{selected.pair}</td>
-                      <td>{fill.side}</td>
-                      <td>{fill.coid}</td>
+                <table
+                  className="kbot-paper-runs__fills"
+                  data-testid="paper-last-runs-fills-table"
+                >
+                  <thead>
+                    <tr>
+                      <th scope="col">Time</th>
+                      <th scope="col">Pair</th>
+                      <th scope="col">Side</th>
+                      <th scope="col">Coid</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {selected.recent_fills.map((fill, index) => {
+                      const sideTone = sideBadgeTone(fill.side);
+                      return (
+                        <tr key={`${fill.coid}|${fill.ts_ms}|${index}`}>
+                          <td className="kbot-paper-runs__ts">
+                            {formatFillTime(fill.ts_ms)}
+                          </td>
+                          {/* The paper-history wire carries pair at the run level,
+                              not on the adapted fill objects (see adaptHistory in
+                              client.ts), so every fill row reuses selected.pair. */}
+                          <td className="kbot-paper-runs__pair">{selected.pair}</td>
+                          <td>
+                            <span
+                              className={`kbot-paper-runs__side${
+                                sideTone === ""
+                                  ? ""
+                                  : ` kbot-paper-runs__side--${sideTone}`
+                              }`}
+                            >
+                              {fill.side}
+                            </span>
+                          </td>
+                          <td className="kbot-paper-runs__coid">{fill.coid}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <p
                 className="kbot-paper-runs__fills-empty"
@@ -212,15 +338,7 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                 no fills in this run
               </p>
             )}
-            <button
-              type="button"
-              className="kbot-paper-runs__action"
-              onClick={handleCloseDetail}
-              data-testid="paper-last-runs-detail-close"
-            >
-              Close detail
-            </button>
-          </div>
+          </section>
         ) : null}
       </div>
     </section>
