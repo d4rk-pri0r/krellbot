@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 
 export type View =
+  | "home"
   | "workstation"
   | "strategies"
   | "research"
@@ -9,6 +10,7 @@ export type View =
   | "deployments";
 
 const VIEWS: ReadonlyArray<{ id: View; label: string }> = [
+  { id: "home", label: "Home" },
   { id: "workstation", label: "Workstation" },
   { id: "strategies", label: "Strategies" },
   { id: "research", label: "Research" },

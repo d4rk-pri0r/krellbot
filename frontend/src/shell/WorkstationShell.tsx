@@ -45,6 +45,7 @@ import { createPacksHttpClient } from "../features/packs/client";
 import type { PackLibraryClient } from "../features/packs/client";
 import { recoverCsrf, redeemBootstrap } from "../session";
 import { Wordmark } from "../components/brand/Wordmark";
+import { AppHome } from "./AppHome";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
 import { JobsDrawer } from "./JobsDrawer";
@@ -158,8 +159,10 @@ export function WorkstationShell({
   // top of a saved pack; editing still operates on the real pack.
   const plainWorkload = workload === "200" && packParam === null;
   const workloadWithPack = workload === "200" && packParam === "1";
+  // A normal root launch opens the welcoming application Home. The
+  // synthetic workload deep links keep opening Studio directly.
   const initialActive: View =
-    plainWorkload || workloadWithPack ? "studio" : "workstation";
+    plainWorkload || workloadWithPack ? "studio" : "home";
   const [active, setActive] = useState<View>(initialActive);
   const [connections, setConnections] = useState<ReadonlyArray<Connection>>([]);
   const handleAddConnection = useCallback((connection: Connection): void => {
@@ -587,7 +590,7 @@ export function WorkstationShell({
             className="kbot-shell__brand"
             data-testid="kbot-shell-brand"
             onClick={() => {
-              setActive("workstation");
+              setActive("home");
             }}
           >
             <Wordmark />
@@ -612,6 +615,9 @@ export function WorkstationShell({
         <Navigation active={active} onChange={setActive} />
       </header>
       <main className="kbot-shell__main">
+        {active === "home" ? (
+          <AppHome onNavigate={setActive} sessionPending={!bootstrapDone} />
+        ) : null}
         {active === "workstation" ? (
           <>
             <h1 className="kbot-shell__heading">Paper workstation</h1>
@@ -731,6 +737,15 @@ export function WorkstationShell({
               }}
             />
             <p data-testid="studio-node-count">{studioNodes.length}</p>
+            {plainWorkload ? (
+              <p
+                className="app-home__note-copy kbot-shell__hint"
+                data-testid="studio-synthetic-label"
+              >
+                Synthetic preview canvas — {WORKLOAD_NODE_COUNT} sample nodes
+                for load testing, not a saved strategy.
+              </p>
+            ) : null}
             {savedPack && !plainWorkload ? (
               <p data-testid="studio-pack-id">{String(savedPack.id ?? "")}</p>
             ) : null}

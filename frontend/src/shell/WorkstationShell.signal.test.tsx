@@ -67,6 +67,7 @@ function renderShell(): void {
 afterEach(() => {
   cleanup();
   document.head.innerHTML = "";
+  window.history.pushState({}, "", "/");
   vi.restoreAllMocks();
 });
 
@@ -96,6 +97,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     const nav = screen.getByTestId("kbot-nav");
     expect(nav).toBeDefined();
     for (const label of [
+      "Home",
       "Workstation",
       "Strategies",
       "Research",
@@ -107,12 +109,102 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
         screen.getByRole("button", { name: label }).getAttribute(
           "aria-current",
         ),
-      ).toBe(label === "Workstation" ? "page" : null);
+      ).toBe(label === "Home" ? "page" : null);
     }
+  });
+
+  it("opens Home on a normal root launch instead of dense paper controls", () => {
+    renderShell();
+    expect(screen.getByTestId("app-home")).toBeDefined();
+    // The workstation operational panels stay unmounted behind Home.
+    expect(screen.queryByTestId("paper-status-panel")).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Paper workstation" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("react-flow-stub")).toBeNull();
+  });
+
+  it("returns to Home from any view through the brand button", () => {
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    expect(screen.queryByTestId("app-home")).toBeNull();
+    fireEvent.click(screen.getByTestId("kbot-shell-brand"));
+    expect(screen.getByTestId("app-home")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Home" }).getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
+  it("drives the whole user journey from the Home cards", async () => {
+    renderShell();
+    fireEvent.click(screen.getByTestId("app-home-card-strategies"));
+    expect(screen.getByTestId("library-toggle")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByTestId("app-home-card-research"));
+    expect(screen.getByTestId("research-host")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByTestId("app-home-card-studio"));
+    expect(screen.getByTestId("studio-node-count").textContent).toBe("3");
+
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByTestId("app-home-card-workstation"));
+    expect(screen.getByText("Paper workstation")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByTestId("app-home-card-operations"));
+    // Operations mounts after bootstrap resolves; wait for its view.
+    await waitFor(() =>
+      expect(screen.getByTestId("operations-view")).toBeDefined(),
+    );
+
+    fireEvent.click(screen.getByTestId("kbot-shell-brand"));
+    expect(screen.getByTestId("app-home")).toBeDefined();
+  });
+
+  it("keeps the Home overview mounted while the local session is starting", async () => {
+    renderShell();
+    // Home renders before the (mocked, instantly-resolving) bootstrap
+    // settles and remains mounted afterwards.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("kbot-shell").getAttribute("data-bootstrap-done"),
+      ).toBe("1"),
+    );
+    expect(screen.getByTestId("app-home")).toBeDefined();
+    expect(screen.queryByTestId("app-home-session")).toBeNull();
+    expect(screen.getByTestId("app-home-availability").textContent).toMatch(
+      /Live trading unavailable/i,
+    );
+  });
+
+  it("still opens Studio for the synthetic workload deep link and labels it honestly", () => {
+    window.history.pushState({}, "", "/?workload=200");
+    renderShell();
+    expect(screen.queryByTestId("app-home")).toBeNull();
+    expect(screen.getByTestId("studio-node-count").textContent).toBe("200");
+    expect(
+      screen
+        .getByRole("button", { name: "Studio" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen.getByTestId("studio-synthetic-label").textContent,
+    ).toMatch(/synthetic/i);
+    window.history.pushState({}, "", "/");
+  });
+
+  it("keeps the deploy preflight out of the Home view until Deploy is opened", () => {
+    renderShell();
+    expect(screen.queryByTestId("live-preflight-panel")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+    expect(screen.getByText("Live preflight")).toBeDefined();
   });
 
   it("switches views end-to-end without losing the shell", async () => {
     renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     expect(screen.getByText("Paper workstation")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
@@ -191,6 +283,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
 
   it("keeps the honest inspector empty state, not a marketing hero", () => {
     renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     const inspector = screen.getByRole("region", { name: "Inspector" });
     expect(inspector.textContent).toMatch(/Nothing selected/);
   });

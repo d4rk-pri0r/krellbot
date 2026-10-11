@@ -121,6 +121,64 @@ afterEach(() => {
 });
 
 describe("WorkstationShell — M2-CE bootstrap guard", () => {
+  it("renders the application Home immediately while bootstrap is pending", () => {
+    setBootstrapMeta("test-token-home-1");
+    const paper = makePaperClient();
+    render(
+      <WorkstationShell
+        paperClient={paper}
+        researchClient={makeResearchClient()}
+        strategyClient={makeStrategyClient()}
+      />,
+    );
+    expect(screen.getByTestId("app-home")).toBeDefined();
+    expect(screen.getByTestId("app-home-session").textContent).toMatch(
+      /starting the local session/i,
+    );
+    // Home is informational navigation only: no authenticated data call
+    // is made before the bootstrap resolves.
+    expect(paper.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("keeps Home mounted after bootstrap resolves without calling paper status", async () => {
+    setBootstrapMeta("test-token-home-2");
+    const paper = makePaperClient();
+    render(
+      <WorkstationShell
+        paperClient={paper}
+        researchClient={makeResearchClient()}
+        strategyClient={makeStrategyClient()}
+      />,
+    );
+    await act(async () => {
+      resolveBootstrapRef?.();
+    });
+    expect(screen.getByTestId("app-home")).toBeDefined();
+    expect(screen.queryByTestId("app-home-session")).toBeNull();
+    // Staying on Home does not fetch operational paper data.
+    expect(paper.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("navigating to Workstation after bootstrap resolves mounts the StatusPanel", async () => {
+    setBootstrapMeta("test-token-home-3");
+    const paper = makePaperClient();
+    render(
+      <WorkstationShell
+        paperClient={paper}
+        researchClient={makeResearchClient()}
+        strategyClient={makeStrategyClient()}
+      />,
+    );
+    await act(async () => {
+      resolveBootstrapRef?.();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("paper-status-panel")).toBeDefined();
+    });
+    expect(screen.queryByTestId("app-home")).toBeNull();
+  });
+
   it("does not call paperClient.getStatus before redeemBootstrap resolves", () => {
     setBootstrapMeta("test-token-1");
     const paper = makePaperClient();
@@ -131,6 +189,7 @@ describe("WorkstationShell — M2-CE bootstrap guard", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     // The shell must render the placeholder, not the live StatusPanel,
     // while the bootstrap call is pending.
     expect(screen.getByTestId("status-panel-pending")).toBeDefined();
@@ -148,6 +207,7 @@ describe("WorkstationShell — M2-CE bootstrap guard", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     expect(paper.getStatus).not.toHaveBeenCalled();
     expect(resolveBootstrapRef).not.toBeNull();
     await act(async () => {
@@ -170,6 +230,7 @@ describe("WorkstationShell — M2-CE bootstrap guard", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     await waitFor(() => {
       expect(paper.getStatus).toHaveBeenCalledTimes(1);
     });
