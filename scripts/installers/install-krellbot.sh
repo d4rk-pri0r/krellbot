@@ -108,6 +108,17 @@ if [ -d "$DEST" ]; then
     [ -z "$link_target" ] || fail "'$DEST' is a symbolic link; refusing to install through it."
 fi
 
+# Refuse a path the desktop entry cannot quote BEFORE touching the
+# destination, so a refusal over an existing installation leaves it
+# exactly as it was. Desktop-entry Exec values quote arguments; a single
+# desktop-file escape of spaces via quoted string is the widely
+# implemented form. Backslashes and quotes are rejected outright so the
+# quoting cannot be subverted.
+dest_exec=$DEST/krellbot
+case "$dest_exec" in
+    *\\*|*\"*|*\'*) fail "install path contains characters the desktop entry cannot quote safely: $dest_exec" ;;
+esac
+
 # --- install -----------------------------------------------------------------
 
 printf 'Installing Krellbot to: %s\n' "$DEST"
@@ -139,14 +150,6 @@ rm -rf -- "$DEST.old"
 apps_dir=$data_base/applications
 mkdir -p -- "$apps_dir"
 desktop_file=$apps_dir/krellbot.desktop
-dest_exec=$DEST/krellbot
-# Desktop-entry Exec values quote arguments and escape per the spec; a
-# single desktop-file escape of spaces via quoted string is the widely
-# implemented form. Backslashes and quotes are rejected outright so the
-# quoting cannot be subverted.
-case "$dest_exec" in
-    *\\*|*\"*|*\'*) fail "install path contains characters the desktop entry cannot quote safely: $dest_exec" ;;
-esac
 cat > "$desktop_file" <<DESKTOP
 [Desktop Entry]
 Type=Application

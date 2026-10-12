@@ -321,6 +321,59 @@ def test_linux_installer_refuses_symlink_destination(tmp_path: Path) -> None:
     assert list(outside.iterdir()) == []
 
 
+@pytest.mark.parametrize("unsafe", ['"', "\\", "'"])
+def test_linux_installer_quoting_refusal_leaves_existing_install_untouched(
+    tmp_path: Path, unsafe: str
+) -> None:
+    """A destination the desktop entry cannot quote must be refused BEFORE
+    the payload replaces an existing installation.
+
+    The refusal says "Nothing has been changed", so an install already at
+    that path must survive it byte for byte: same tree, same executable,
+    same runtime files, and no ``.old``/``.updating`` replacement residue.
+    """
+    _bash()
+    home = tmp_path / "home"
+    home.mkdir()
+    xdg_data = home / ".local" / "share"
+
+    payload = _make_payload(tmp_path / "src" / "krellbot")
+
+    existing = tmp_path / "apps" / f"Krell{unsafe}bot"
+    existing.mkdir(parents=True)
+    original_launcher = "#!/bin/sh\nprintf 'existing install\\n'\n"
+    (existing / "krellbot").write_text(original_launcher, encoding="utf-8")
+    (existing / "krellbot").chmod(0o755)
+    internal = existing / "_internal"
+    internal.mkdir()
+    (internal / "runtime.marker").write_text("EXISTING RUNTIME\n", encoding="utf-8")
+    (internal / "local-extra.txt").write_text("kept\n", encoding="utf-8")
+    before = sorted(str(p.relative_to(existing)) for p in existing.rglob("*"))
+
+    proc = _run_installer(
+        payload / "install-krellbot.sh",
+        home=home,
+        xdg_data=xdg_data,
+        xdg_config=home / ".config",
+        args=[str(existing)],
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "refused" in (proc.stdout + proc.stderr).lower()
+
+    # The pre-existing installation is untouched: same tree, same bytes.
+    after = sorted(str(p.relative_to(existing)) for p in existing.rglob("*"))
+    assert after == before
+    assert (existing / "krellbot").read_text(encoding="utf-8") == original_launcher
+    assert (existing / "krellbot").stat().st_mode & 0o111
+    assert (existing / "_internal" / "runtime.marker").read_text(encoding="utf-8") == "EXISTING RUNTIME\n"
+    assert (existing / "_internal" / "local-extra.txt").read_text(encoding="utf-8") == "kept\n"
+
+    # No half-replaced program left beside it, and no menu entry from the refused install.
+    assert not (existing.parent / f"{existing.name}.old").exists()
+    assert not any(existing.parent.glob("*.updating.*"))
+    assert not (xdg_data / "applications" / "krellbot.desktop").exists()
+
+
 def test_linux_installer_usage_for_bad_arguments(tmp_path: Path) -> None:
     _bash()
     home = tmp_path / "home"
