@@ -1,10 +1,15 @@
 import { Fragment, useCallback, useEffect, useState, type JSX } from "react";
+import "./DeploymentHistory.signal.css";
 import type { DeploymentRecordRow, OperationsClient } from "./client";
 
-const LOADING_TEXT = "Loading deployment history…";
-const EMPTY_TEXT = "No deployment history yet.";
-const LIST_ERROR_PREFIX = "Deployment history unavailable";
-const DETAIL_ERROR_PREFIX = "Deployment detail unavailable";
+const LOADING_TEXT = "Loading deployments…";
+const DETAIL_LOADING_TEXT = "Loading deployment…";
+const EMPTY_TEXT = "No deployments yet. Local preview only — live trading unavailable.";
+const LIST_ERROR_PREFIX = "Could not load deployments — check the workstation is running.";
+const DETAIL_ERROR_PREFIX = "Could not load deployment — check the workstation is running.";
+const RETRY_TEXT = "Retry";
+const LOCAL_PREVIEW_BADGE = "Local preview";
+const CLIENT_UNAVAILABLE = "history client is unavailable in this build";
 const READ_ONLY_HELPER =
   "Read-only: historical records can be inspected but not edited, started, or promoted.";
 
@@ -41,12 +46,12 @@ function renderDetailPanel(
     <div className="kbot-ops__history-detail" data-testid={detailTestId(detail.deployment_id)}>
       {pending ? (
         <p className="kbot-ops__empty" data-testid="ops-history-detail-loading">
-          Loading deployment detail…
+          {DETAIL_LOADING_TEXT}
         </p>
       ) : null}
       {error ? (
         <p className="kbot-ops__row-result" role="alert" data-testid="ops-history-detail-error">
-          {DETAIL_ERROR_PREFIX}: {error}
+          {DETAIL_ERROR_PREFIX} {error}
         </p>
       ) : null}
       {!pending && !error ? (
@@ -89,7 +94,7 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
     if (!fetchRows) {
       setLoading(false);
       setRows([]);
-      setError("history client is unavailable in this build");
+      setError(CLIENT_UNAVAILABLE);
       return;
     }
     setLoading(true);
@@ -123,7 +128,7 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
       setDetailError(null);
       const fetchDetail = client.getDeploymentRecord;
       if (!fetchDetail) {
-        setDetailError("history client is unavailable in this build");
+        setDetailError(CLIENT_UNAVAILABLE);
         return;
       }
       setDetailLoading(true);
@@ -145,7 +150,12 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
 
   return (
     <div className="kbot-ops__history">
-      <h3 className="kbot-ops__panel-title">Deployment history</h3>
+      <div className="kbot-ops__history-head">
+        <h3 className="kbot-ops__panel-title">Deployment history</h3>
+        <p className="kbot-ops__preview-badge" data-testid="ops-history-preview-badge">
+          {LOCAL_PREVIEW_BADGE}
+        </p>
+      </div>
       <div className="kbot-ops__history-toolbar">
         <button
           type="button"
@@ -168,7 +178,20 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
       ) : null}
       {!loading && error ? (
         <p className="kbot-ops__row-result" role="alert" data-testid="ops-history-error">
-          {LIST_ERROR_PREFIX}: {error}
+          {LIST_ERROR_PREFIX} {error}{" "}
+          <button
+            type="button"
+            className="kbot-ops__retry"
+            data-testid="ops-history-retry"
+            onClick={() => {
+              setExpandedId(null);
+              setDetail(null);
+              setDetailError(null);
+              void loadRows();
+            }}
+          >
+            {RETRY_TEXT}
+          </button>
         </p>
       ) : null}
       {!loading && !error ? (

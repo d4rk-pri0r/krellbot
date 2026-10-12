@@ -8,10 +8,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const LOADING_TEXT = "Loading deployment history…";
-const EMPTY_TEXT = "No deployment history yet.";
+const LOADING_TEXT = "Loading deployments…";
+const EMPTY_TEXT = "No deployments yet. Local preview only — live trading unavailable.";
 const READ_ONLY_HELPER =
   "Read-only: historical records can be inspected but not edited, started, or promoted.";
+const LIST_ERROR_PREFIX = "Could not load deployments — check the workstation is running.";
+const LOCAL_PREVIEW_BADGE = "Local preview";
 
 function record(over: Partial<DeploymentRecordRow> = {}): DeploymentRecordRow {
   return {
@@ -61,6 +63,7 @@ describe("DeploymentHistory loading / empty / rows", () => {
     const client = makeClient({ listDeploymentRecords: vi.fn().mockResolvedValue([]) });
     render(<DeploymentHistory client={client} />);
     expect(await screen.findByTestId("ops-history-empty").then((n) => n.textContent)).toBe(EMPTY_TEXT);
+    expect(screen.getByText(LOCAL_PREVIEW_BADGE)).toBeTruthy();
   });
 
   it("renders one row per record with id, venue, pair, created_at, state", async () => {
@@ -185,9 +188,10 @@ describe("DeploymentHistory refresh", () => {
     const client = makeClient({ listDeploymentRecords });
     render(<DeploymentHistory client={client} />);
     const error = await screen.findByTestId("ops-history-error");
+    expect(error.textContent).toContain(LIST_ERROR_PREFIX);
     expect(error.textContent).toContain("deployment history failed: 403 session required");
     expect(screen.queryByTestId("ops-history-table")).toBeNull();
-    fireEvent.click(screen.getByTestId("ops-history-refresh"));
+    fireEvent.click(screen.getByTestId("ops-history-retry"));
     await screen.findByTestId("ops-history-row-dep-1");
     expect(screen.queryByTestId("ops-history-error")).toBeNull();
   });
