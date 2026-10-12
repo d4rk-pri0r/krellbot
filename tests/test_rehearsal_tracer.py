@@ -137,7 +137,7 @@ def test_rehearsal_full_lifecycle_with_new_interpreter_restart(home: Path) -> No
     assert body["position"]["qty"] == "0"
     assert body["resting_stop"] is None
     assert body["recent_fills"] == []
-    assert Decimal(body["balances"]["USD"]) == Decimal("10000")
+    assert Decimal(body["balances"]["USD"]) == 10000
 
     # Starting arms the sample pack inside the isolated rehearsal home
     # and advances exactly one bar.
@@ -303,7 +303,7 @@ def test_rehearsal_isolation_from_existing_user_state(home: Path) -> None:
 
     user_venue_state = {
         "venue": "kraken",
-        "balances": {"USD": Decimal("777")},
+        "balances": {"USD": 777},
         "open_orders": [],
         "recent_fills": [],
         "seeded": True,
@@ -336,11 +336,11 @@ def test_rehearsal_isolation_from_existing_user_state(home: Path) -> None:
 
     assert (home / "config.json").read_bytes() == before
     after = json.loads((home / "run" / "paper-kraken.json").read_text(encoding="utf-8"))
-    assert Decimal(str(after["balances"]["USD"])) == Decimal("777")
+    assert Decimal(str(after["balances"]["USD"])) == 777
     assert after["recent_fills"] == []
     # The rehearsal's own venue state lives under <home>/rehearsal/run.
     rehearsal_state = _venue_state(home / "rehearsal")
-    assert Decimal(str(rehearsal_state["balances"]["USD"])) < Decimal("10000")
+    assert Decimal(str(rehearsal_state["balances"]["USD"])) < 10000
 
 
 def test_rehearsal_survives_new_backend_process(home: Path) -> None:
