@@ -65,7 +65,7 @@ def _generated_pack(fast_len: int, slow_len: int, fn: str) -> dict:
         "}"
     )
     module = (
-        "import * as m from 'file://" + str(GEN) + "';\n"
+        "import * as m from '" + GEN.as_uri() + "';\n"
         f"const state = {form_state};\n"
         "const pack = m.buildOwnedStrategyPack(state, {});\n"
         "if (pack === null) { process.exit(3); }\n"
