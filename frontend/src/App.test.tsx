@@ -239,6 +239,7 @@ describe("App navigation", () => {
 describe("App inspector", () => {
   it("renders an inspector region whose empty state reads 'Nothing selected'", () => {
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     const inspector = screen.getByRole("region", { name: "Inspector" });
     expect(inspector.textContent).toMatch(/Nothing selected/);
   });
@@ -299,8 +300,10 @@ describe("App command palette", () => {
 });
 
 describe("App view routing", () => {
-  it("starts on Workstation and renders the inspector", () => {
+  it("starts on Home and opens Workstation with its inspector", () => {
     render(<App />);
+    expect(screen.getByTestId("app-home")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     expect(screen.getByText("Paper workstation")).toBeDefined();
     expect(
       screen.getByRole("region", { name: "Inspector" }),
@@ -369,6 +372,7 @@ describe("App paper controls (NS10b)", () => {
   it("renders the Paper controls region on the workstation view with a no-armed-pack fallback", async () => {
     const paperClient = makePaperClient();
     render(<WorkstationShell paperClient={paperClient} />);
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     const panel = await screen.findByTestId("paper-status-panel");
     expect(panel.textContent).toMatch(/Paper status/);
     // Await the confirmed unarmed response; the initial pending state must
@@ -394,6 +398,7 @@ describe("App paper controls (NS10b)", () => {
       }),
     });
     render(<WorkstationShell paperClient={paperClient} />);
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     expect(
       await screen.findByRole("button", { name: /pause entries/i }),
     ).toBeDefined();
@@ -430,6 +435,7 @@ describe("App paper controls (NS10b)", () => {
       }),
     });
     render(<WorkstationShell paperClient={paperClient} />);
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     const panel = await screen.findByTestId("paper-status-panel");
     const buttons = panel.querySelectorAll("button");
     for (const btn of Array.from(buttons)) {
@@ -470,6 +476,7 @@ describe("App paper controls (NS10b)", () => {
       }),
     });
     render(<WorkstationShell paperClient={paperClient} />);
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     const pause = await screen.findByRole("button", { name: /pause entries/i });
     fireEvent.click(pause);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -508,6 +515,7 @@ describe("App paper controls (NS10b)", () => {
       }),
     });
     render(<WorkstationShell paperClient={paperClient} />);
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     const resume = await screen.findByRole("button", { name: /resume entries/i });
     fireEvent.click(resume);
     await new Promise((resolve) => setTimeout(resolve, 0));

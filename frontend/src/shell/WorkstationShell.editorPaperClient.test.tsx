@@ -192,13 +192,19 @@ afterEach(() => {
 });
 
 describe("WorkstationShell → Editor inline stop control wire-up", () => {
-  it("without a paperClient prop the inline stop control stays out of the Editor (backward-compat)", async () => {
+  it("with no paperClient prop the inline stop control still wires through the default loopback paper client", async () => {
     const strategyClient = makeStrategyClient();
     await openStrategiesView("test-token-editor-paper-1", { strategyClient });
 
     // Arm a validated revision; the Editor is otherwise fully usable.
     await armThroughEditor(strategyClient);
-    expect(screen.queryByTestId("editor-inline-stop")).toBeNull();
+    // The shell wires a default paper client (createPaperHttpClient) when no
+    // `paperClient` prop is supplied, so the inline stop control IS present
+    // even without an explicit caller-side prop. The dedicated default-client
+    // test file exercises its fetches end to end; this file only covers the
+    // explicit-prop wire-up.
+    const control = screen.queryByTestId("editor-inline-stop");
+    expect(control).not.toBeNull();
   });
 
   it("with a paperClient prop the inline stop control renders inside the Strategies Editor after arming", async () => {

@@ -113,6 +113,7 @@ describe("WorkstationShell strategies explanation", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-panel")).toBeDefined();
     });
