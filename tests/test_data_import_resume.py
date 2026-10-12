@@ -1267,12 +1267,20 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
         text=True,
         cwd=str(tmp_path),
     )
+    holder_stdout = holder.stdout
+    holder_stderr = holder.stderr
+    assert holder_stdout is not None and holder_stderr is not None
     try:
         # Bounded readiness probe: read the "held" line or fail loudly with
         # the holder's stderr so the test never hangs if the lock cannot be
         # acquired on the host platform.
         ready = _wait_for_held(holder, timeout=10.0)
-        assert ready == "held", f"holder never reported 'held' (stderr probe failed): {ready!r}"
+        if ready != "held":
+            if holder.poll() is None:
+                holder.kill()
+            holder.wait(timeout=10)
+            diagnostic = holder_stderr.read()
+            pytest.fail(f"holder never reported 'held': {ready!r}; stderr={diagnostic!r}")
 
         before = _tree_snapshot(home)
         rc = _import(home, zip_path)
@@ -1284,16 +1292,14 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
         assert before["cache"] == after["cache"]
         assert before["datasets"] == after["datasets"]
     finally:
-        # Capture stderr after a forced kill so a crash diagnostic is visible
-        # in the test output instead of dying silently on hold.
+        # Kill and close pipes on every path; NTFS retains open handles.
         try:
-            holder.kill()
+            if holder.poll() is None:
+                holder.kill()
+            holder.wait(timeout=30)
         finally:
-            try:
-                holder.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                holder.terminate()
-                holder.wait(timeout=10)
+            holder_stdout.close()
+            holder_stderr.close()
 
     # Process death released the OS advisory lock: the import now succeeds.
     capsys.readouterr()

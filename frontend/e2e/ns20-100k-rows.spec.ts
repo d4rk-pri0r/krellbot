@@ -93,6 +93,7 @@ test("100000-row inspection renders and scrolls", async ({ page }) => {
 
   // Save + validate the same fixture pack.
   await page.getByRole("button", { name: "Strategies" }).click();
+  await page.getByTestId("editor-technical-section").locator("summary").click();
   await page.getByLabel(/raw json/i).fill(
     JSON.stringify({
       schema_version: 1,
@@ -110,7 +111,7 @@ test("100000-row inspection renders and scrolls", async ({ page }) => {
   );
   await page.getByRole("button", { name: /^save$/i }).click();
   await page.getByRole("button", { name: /^validate$/i }).click();
-  await expect(page.getByTestId("editor-revision-id")).toContainText(/validated/);
+  await expect(page.getByTestId("editor-revision-id")).toContainText(/validated/i);
 
   // Run the 100k backtest.
   const rowsCsv = process.env.KRELLBOT_E2E_ROWS_CSV;

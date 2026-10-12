@@ -169,6 +169,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   // Session bootstrap finishes when the page stops making bootstrap
   // calls; we observe the strategies nav becoming clickable.
   await gotoStrategiesView(page);
+  await page.getByTestId("editor-technical-section").locator("summary").click();
   await expect(page.getByLabel(/raw json/i)).toBeVisible();
 
   // Save pack with sma2.len=2 -> revision A.
@@ -182,7 +183,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
 
   // Validate so the saved draft reaches the ``validated`` state.
   await page.getByRole("button", { name: /^validate$/i }).click();
-  await expect(page.getByTestId("editor-revision-id")).toContainText(/validated/);
+  await expect(page.getByTestId("editor-revision-id")).toContainText(/validated/i);
 
   // First backtest at sma2.len=2 -> result A.
   await gotoResearchView(page);
@@ -614,7 +615,7 @@ async function readJobIdAfterRun(page: Page): Promise<string> {
   const element = page.getByTestId("research-job-id");
   await expect(element).toBeVisible({ timeout: 30_000 });
   const text = (await element.innerText()).trim();
-  const match = text.match(/job:\s*(\S+)/);
+  const match = text.match(/^job\s+(\S+)$/);
   if (!match) {
     throw new Error(`could not parse job id from ${JSON.stringify(text)}`);
   }

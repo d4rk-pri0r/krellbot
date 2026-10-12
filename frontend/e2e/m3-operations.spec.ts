@@ -110,7 +110,8 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   });
   await waitForSessionReady(page);
 
-  await page.getByRole("button", { name: "Operations" }).click();
+  await page.getByRole("navigation", { name: "Workstation navigation" })
+    .getByRole("button", { name: "Operations", exact: true }).click();
   const opsView = page.getByTestId("operations-view");
   await expect(opsView).toBeVisible();
 
@@ -155,8 +156,9 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   expect(promoteResp.status()).toBe(200);
   const promoteBody = (await promoteResp.json()) as { ok: boolean; code: string };
   expect(promoteBody.ok).toBe(false);
+  expect(promoteBody.code).toBe("live_disabled");
   const promoteResult = page.getByTestId("ops-promote-result-kraken-SUIUSD");
-  await expect(promoteResult).toContainText(/Refused: live_disabled/);
+  await expect(promoteResult).toContainText(/Refused: Live disabled/);
 
   await page.getByTestId("ops-pause-kraken-SUIUSD").click();
   await expect(
@@ -182,7 +184,7 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   const killSwitchAlert = page
     .locator('[data-testid="ops-alerts"]')
     .locator('[data-testid^="ops-alert-"]')
-    .filter({ hasText: "kill_switch" });
+    .filter({ hasText: "Kill switch" });
   await expect(killSwitchAlert.first()).toBeVisible();
 
   const promoteResp2 = page.waitForResponse(
@@ -199,9 +201,10 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
     code: string;
   };
   expect(promoteBody2.ok).toBe(false);
+  expect(promoteBody2.code).toBe("kill_switch_engaged");
   await expect(
     page.getByTestId("ops-promote-result-kraken-SUIUSD"),
-  ).toContainText(/Refused: kill_switch_engaged/);
+  ).toContainText(/Refused: Kill switch engaged/);
 
   expect(readFileSync(configPath)).toEqual(cfgBefore);
 
@@ -212,7 +215,7 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   const liveRefusedAlert = page
     .locator('[data-testid="ops-alerts"]')
     .locator('[data-testid^="ops-alert-"]')
-    .filter({ hasText: "live_refused" })
+    .filter({ hasText: "Live refused" })
     .first();
   const liveRefusedId = await liveRefusedAlert.getAttribute("data-testid");
   expect(liveRefusedId).toBeTruthy();
@@ -226,7 +229,8 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   // Reload the page; the ack persists.
   await page.reload();
   await waitForSessionReady(page);
-  await page.getByRole("button", { name: "Operations" }).click();
+  await page.getByRole("navigation", { name: "Workstation navigation" })
+    .getByRole("button", { name: "Operations", exact: true }).click();
   await expect(
     page.getByTestId(`ops-alert-${ackId}`),
   ).toContainText(/acknowledged/);

@@ -346,8 +346,16 @@ def test_linux_installer_help_flag_is_usage(tmp_path: Path) -> None:
         xdg_data=home / ".local" / "share",
         args=["--help"],
     )
-    assert proc.returncode == 2, proc.stdout + proc.stderr
-    assert "Usage" in proc.stderr
+    if IS_LINUX:
+        assert proc.returncode == 2, proc.stdout + proc.stderr
+        assert "Usage" in proc.stderr
+    else:
+        # Native platform refusal precedes help processing. Preserve that
+        # refusal instead of requiring Linux behaviour on another host.
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert "this installer is for Linux" in proc.stderr
+        assert "Nothing has been changed" in proc.stderr
+        assert not (home / ".local" / "share" / "Krellbot").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +365,6 @@ def test_linux_installer_help_flag_is_usage(tmp_path: Path) -> None:
 
 def test_linux_installer_passes_bash_n() -> None:
     """The shipped helper must at least parse under bash."""
-    if not IS_LINUX:
-        pytest.skip("Bash parse of the POSIX installer helper is Linux-only")
     bash = _bash()
     proc = subprocess.run([bash, "-n", str(LINUX_INSTALLER)], capture_output=True, text=True, check=False, timeout=60)
     assert proc.returncode == 0, proc.stderr

@@ -283,15 +283,22 @@ def test_catalogue_survives_a_fresh_interpreter(tmp_path: Path) -> None:
         "from krellbot.packs import catalogue\n"
         "print(catalogue.list_examples())\n"
     )
-    env = {"KRELLBOT_HOME": str(tmp_path), "PATH": __import__("os").environ.get("PATH", "")}
+    env = {
+        "KRELLBOT_HOME": str(tmp_path),
+        "PATH": __import__("os").environ.get("PATH", ""),
+        "PYTHONUTF8": "1",
+    }
     proc = subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,
         cwd=tmp_path,
         env=env,
-        check=True,
+        encoding="utf-8",
+        timeout=30,
+        check=False,
     )
+    assert proc.returncode == 0, proc.stderr
     out = proc.stdout.strip()
     assert "starter-dual-ma-crossover" in out, (out, proc.stderr)
     assert "'id'" in out, out
