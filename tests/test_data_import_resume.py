@@ -1232,6 +1232,10 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
 
     lock_path = _slot_lock(home, zip_path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.touch()
+    # Windows byte-range locks forbid reading the locked byte, unlike
+    # POSIX advisory locks. Snapshot all bytes outside the held interval.
+    before = _tree_snapshot(home)
     # Holder uses the production ``SourceLock`` so the OS-level contention
     # exactly matches what the importer contends with on every host. Using
     # ``fcntl`` directly here would crash on Windows; importing ``msvcrt``
@@ -1282,15 +1286,10 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
             diagnostic = holder_stderr.read()
             pytest.fail(f"holder never reported 'held': {ready!r}; stderr={diagnostic!r}")
 
-        before = _tree_snapshot(home)
         rc = _import(home, zip_path)
         captured = capsys.readouterr()
         assert rc == 1, "same-source lock contention must refuse"
         assert "refus" in captured.err.lower(), captured.err
-        after = _tree_snapshot(home)
-        assert before["progress"] == after["progress"]
-        assert before["cache"] == after["cache"]
-        assert before["datasets"] == after["datasets"]
     finally:
         # Kill and close pipes on every path; NTFS retains open handles.
         try:
@@ -1300,6 +1299,13 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
         finally:
             holder_stdout.close()
             holder_stderr.close()
+
+    # Include the persistent lock file itself in the unchanged-byte proof,
+    # after death releases its mandatory Windows byte-range lock.
+    after = _tree_snapshot(home)
+    assert before["progress"] == after["progress"]
+    assert before["cache"] == after["cache"]
+    assert before["datasets"] == after["datasets"]
 
     # Process death released the OS advisory lock: the import now succeeds.
     capsys.readouterr()

@@ -288,6 +288,11 @@ def test_catalogue_survives_a_fresh_interpreter(tmp_path: Path) -> None:
         "PATH": __import__("os").environ.get("PATH", ""),
         "PYTHONUTF8": "1",
     }
+    # Windows Python needs its OS runtime root even in an isolated env;
+    # omitting it can fail entropy initialization before any import runs.
+    system_root = __import__("os").environ.get("SystemRoot")
+    if system_root is not None:
+        env["SystemRoot"] = system_root
     proc = subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
