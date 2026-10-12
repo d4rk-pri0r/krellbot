@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import "./PaperStatusCsvExport.signal.css";
 import type { PaperStatus } from "./client";
 
 export type { PaperStatus } from "./client";
@@ -71,14 +72,24 @@ export function PaperStatusCsvExport({
   };
 
   return (
-    <button
-      type="button"
-      id="paper-status-csv-export"
-      data-testid="paper-status-csv-export"
-      className="kbot-paper-status__action"
-      onClick={handleClick}
-    >
-      Export CSV
-    </button>
+    <div className="kbot-feature__paper-csv-root">
+      <p className="kbot-feature__paper-csv-root__meta">
+        <span
+          className="kbot-feature__paper-csv-root__badge"
+          data-testid="paper-status-csv-local-preview"
+        >
+          Local preview
+        </span>
+      </p>
+      <button
+        type="button"
+        id="paper-status-csv-export"
+        data-testid="paper-status-csv-export"
+        className="kbot-paper-status__action kbot-feature__paper-csv-root__action"
+        onClick={handleClick}
+      >
+        Export CSV
+      </button>
+    </div>
   );
 }
