@@ -245,6 +245,27 @@ jobs:
             --home "${{ runner.temp }}/krellbot-home" \
             --log workstation_smoke.log
 
+      - name: Install Chromium for native Windows installed-app qualification
+        if: matrix.os == 'windows-latest'
+        working-directory: frontend
+        run: npx playwright install chromium
+
+      - name: Native Windows install, reinstall, no-argument launch and Signal navigation
+        if: matrix.os == 'windows-latest'
+        env:
+          KRELLBOT_ENABLE_LIVE: "0"
+          KRELLBOT_LIVE: "0"
+        run: node scripts/ci_smoke_installed_preview.mjs dist/krellbot "${{ runner.temp }}/installed-preview-evidence"
+
+      - name: Preserve native Windows installed-app evidence
+        if: always() && matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installed-preview-evidence
+          path: ${{ runner.temp }}/installed-preview-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: "Verify immutable release base URL is configured"
         if: github.event_name != 'pull_request'
         # The manifest URL is built from $KRELLBOT_RELEASE_BASE_URL +

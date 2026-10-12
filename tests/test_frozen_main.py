@@ -267,10 +267,21 @@ import types
 sys.frozen = True
 sys._MEIPASS = r"{meipass}"
 
-# The source-launch fixture needs the Windows process-group equivalent
-# of Ctrl-C; keep the application's KeyboardInterrupt cleanup exercised.
+# Route the Windows console event through the application's actual
+# SIGINT handler rather than raising an uncaught KeyboardInterrupt.
 if sys.platform == "win32":
-    signal.signal(signal.SIGBREAK, signal.default_int_handler)
+    signal.signal(signal.SIGBREAK, lambda signum, frame: signal.getsignal(signal.SIGINT)(signum, frame))
+
+_register_signal = signal.signal
+
+def _record_signal(signum, handler):
+    result = _register_signal(signum, handler)
+    if signum == signal.SIGTERM:
+        with open(r"{marker}.ready", "w", encoding="utf-8") as fh:
+            fh.write("ready")
+    return result
+
+signal.signal = _record_signal
 
 urls = []
 
@@ -367,11 +378,18 @@ def test_frozen_no_args_launch_opens_loopback_url_via_webbrowser(tmp_path):
         proc.kill()
         pytest.fail(f"timed out waiting for workstation URL; output={printed!r}")
 
+    # The URL print precedes signal registration; wait for the exact fixture
+    # observation instead of racing that registration or using a fixed sleep.
+    ready = Path(str(marker) + ".ready")
+    while not ready.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert ready.exists(), "launcher must register its console-stop handler"
+
     # Give the atexit hook a moment is NOT acceptable on failure paths; the
     # interception must also be observable while the process is alive, so we
     # stop the child with the platform's console-interrupt event and then read.
     # Windows rejects send_signal(SIGINT); CTRL_BREAK_EVENT requires the
-    # isolated process group above and is mapped to KeyboardInterrupt by
+    # isolated process group above and is mapped to the real SIGINT handler by
     # the source-launch fixture, preserving the same cleanup assertions.
     interrupt = signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGINT
     proc.send_signal(interrupt)
