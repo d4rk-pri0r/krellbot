@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent, type JSX } from "react";
 import { getCsrf } from "../../session";
 import { summarizePreflightCode } from "./preflightCodeLabel";
+import "./LivePreflight.signal.css";
 
 export type LivePreflightResult = {
   schema_version?: string;
@@ -71,56 +72,65 @@ export function LivePreflight(): JSX.Element {
     }
   };
 
+  // Verdict reinforcement only: sage for an ok verdict, coral-derived
+  // for a refusal. The verbatim code label and ok flag carry the state.
+  const verdictModifier =
+    result?.ok === true
+      ? "kbot-feature__live-preflight-root__result-line--ok"
+      : "kbot-feature__live-preflight-root__result-line--refused";
+
   return (
     <section
-      className="kbot-live-preflight"
+      className="kbot-feature__live-preflight-root"
       role="region"
       aria-label="Live preflight"
       data-testid="live-preflight-panel"
     >
-      <header className="kbot-live-preflight__head">
-        <h2 className="kbot-live-preflight__title">Live preflight</h2>
+      <header className="kbot-feature__live-preflight-root__head">
+        <h2 className="kbot-feature__live-preflight-root__title">
+          Live preflight
+        </h2>
       </header>
       <form
-        className="kbot-live-preflight__form"
+        className="kbot-feature__live-preflight-root__form"
         onSubmit={(event) => {
           void handleSubmit(event);
         }}
       >
         <label
-          className="kbot-live-preflight__field"
+          className="kbot-feature__live-preflight-root__field"
           htmlFor="live-preflight-account-input"
         >
           Account ID
           <input
             id="live-preflight-account-input"
-            className="kbot-live-preflight__input"
+            className="kbot-feature__live-preflight-root__input"
             data-testid="live-preflight-account"
             value={accountId}
             onChange={handleAccountChange}
           />
         </label>
         <label
-          className="kbot-live-preflight__field"
+          className="kbot-feature__live-preflight-root__field"
           htmlFor="live-preflight-revision-input"
         >
           Revision ID
           <input
             id="live-preflight-revision-input"
-            className="kbot-live-preflight__input"
+            className="kbot-feature__live-preflight-root__input"
             data-testid="live-preflight-revision"
             value={revisionId}
             onChange={handleRevisionChange}
           />
         </label>
         <label
-          className="kbot-live-preflight__field"
+          className="kbot-feature__live-preflight-root__field"
           htmlFor="live-preflight-mode-select"
         >
           Mode
           <select
             id="live-preflight-mode-select"
-            className="kbot-live-preflight__input"
+            className="kbot-feature__live-preflight-root__input"
             data-testid="live-preflight-mode"
             value={mode}
             onChange={handleModeChange}
@@ -131,7 +141,7 @@ export function LivePreflight(): JSX.Element {
         </label>
         <button
           type="submit"
-          className="kbot-live-preflight__action"
+          className="kbot-feature__live-preflight-root__action"
           data-testid="live-preflight-submit"
           disabled={pending}
         >
@@ -140,29 +150,47 @@ export function LivePreflight(): JSX.Element {
       </form>
       {result !== null ? (
         <div
-          className="kbot-live-preflight__result"
+          className="kbot-feature__live-preflight-root__result"
           data-testid="live-preflight-result"
         >
-          <p className="kbot-live-preflight__result-line">
+          <p
+            className={
+              "kbot-feature__live-preflight-root__result-line " +
+              verdictModifier
+            }
+          >
             code: {summarizePreflightCode(result.code).label}
           </p>
-          <p className="kbot-live-preflight__result-line">
+          <p
+            className={
+              "kbot-feature__live-preflight-root__result-line " +
+              verdictModifier
+            }
+          >
             ok: {result.ok === true ? "true" : "false"}
           </p>
-          <p className="kbot-live-preflight__result-line">
+          <p className="kbot-feature__live-preflight-root__result-line">
             message: {result.message}
           </p>
-          <p className="kbot-live-preflight__result-line">
+          <p
+            className={
+              "kbot-feature__live-preflight-root__result-line kbot-feature__live-preflight-root__result-line--tech"
+            }
+          >
             account_id: {result.account_id}
           </p>
-          <p className="kbot-live-preflight__result-line">
+          <p
+            className={
+              "kbot-feature__live-preflight-root__result-line kbot-feature__live-preflight-root__result-line--tech"
+            }
+          >
             revision_id: {result.revision_id}
           </p>
         </div>
       ) : null}
       {errorMessage !== null ? (
         <p
-          className="kbot-live-preflight__error"
+          className="kbot-feature__live-preflight-root__error"
           role="alert"
           data-testid="live-preflight-error"
         >
