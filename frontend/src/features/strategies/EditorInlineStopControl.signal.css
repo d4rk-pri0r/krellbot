@@ -1,0 +1,362 @@
+/*
+ * EditorInlineStopControl — Signal presentation (KRELL-SIGNAL-20261010).
+ *
+ * Scoped presentation for the inline stop/pause/resume/disarm/raise-stop
+ * control the strategy Editor mounts on every Paper workstation open
+ * (frontend/src/features/strategies/Editor.tsx). It uses the shell's own
+ * `.kbot-shell__inline-stop-*` vocabulary — the same family as
+ * StatusStrip — instead of the retired `kbot-strategy-editor__inline-stop*`
+ * set, so the control reads as one Signal surface with the already
+ * migrated StatusStrip / AppHome / Navigation / StatusPanel.
+ *
+ * Every value comes from the shared tokens (frontend/src/styles/tokens.css),
+ * each carrying its approved Signal fallback:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution/kill)
+ *
+ * Composition contract:
+ *   - the shell's shared button/input base (styles/shell.css) composes
+ *     underneath; this file only layers the scoped Signal treatment;
+ *   - the status chip carries the state in its verbatim sentence, with
+ *     sage reinforcing "armed / entries active", coral-derived tones
+ *     reinforcing "entries paused" and the disarmed rest state — never
+ *     color alone;
+ *   - Disarm alone carries the coral-derived caution treatment (it is the
+ *     one destructive control here); Pause/Resume/Refresh stay restrained
+ *     seafoam selection affordances;
+ *   - the raise-stop Apply is the one affirmative primary while a stop is
+ *     remembered, sage-filled on a confirmed raise and coral-filled on a
+ *     refusal — the caption sentence carries the meaning;
+ *   - no fonts, remote assets, base64 payloads or keyframes: the only
+ *     animation is the opacity-only 120ms caption swap;
+ *   - at <=390px the row wraps, every control keeps a >=44px tap target,
+ *     and the caption stays <=14px and never widens the page.
+ */
+
+.kbot-shell__inline-stop-root,
+.kbot-shell__inline-stop-root * {
+  box-sizing: border-box;
+}
+
+.kbot-shell__inline-stop-root {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px 14px;
+  border: 1px solid
+    color-mix(in srgb, var(--coral, #cc9689) 28%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--panel, #18354a) 24%, var(--surface, #14222e));
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+/* ============ status chip ============ */
+
+/* Sage while armed and entries run; the verbatim sentence carries the
+   state and color only reinforces it (same chip geometry as the
+   StatusPanel entries chip). */
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid
+    color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Entries paused: the coral-derived caution chip on the same geometry. */
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-status--paused {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+/* Armed and running: explicit pin of the sage treatment so the modifier
+   vocabulary is complete even where it matches the base chip. */
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-status--armed {
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+}
+
+/* Disarmed / resting: restrained muted line on the panel surface. */
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-status--disarmed {
+  border-color: var(--line, #22465d);
+  background: color-mix(in srgb, var(--surface, #14222e) 80%, var(--navy, #0e1c29));
+  color: var(--muted, #abc4d8);
+}
+
+/* ============ state caption ============ */
+
+/* The human-readable state sentence. Refused -> coral-derived caution
+   tone; a confirmed stop echo -> sage; every other state stays muted.
+   The only animation in this file: an opacity-only 120ms swap. */
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-caption {
+  max-width: 100%;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+  transition: opacity 120ms ease;
+}
+
+/* ============ command row ============ */
+
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Ordinary paper controls: restrained seafoam selection affordances at
+   rest. They act on already-armed state; the affirmative sage primary is
+   reserved for the armed (enabled) row and the Apply outcome states. */
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-pause,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-resume,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid
+    color-mix(in srgb, var(--seafoam, #a8d8d1) 38%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-pause:hover:not(:disabled),
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-resume:hover:not(:disabled),
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-refresh:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 55%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 8%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+}
+
+/* The row is enabled exactly while the pack is confirmed armed, so the
+   enabled treatment is the armed treatment: the affirmative sage primary
+   replaces the resting seafoam. Declared after the equal-specificity
+   seafoam hovers above so sage wins for the armed pause/resume pair; the
+   Refresh control stays a seafoam selection affordance. No JS flag, no
+   extra vocabulary. */
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-pause:not(:disabled),
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-resume:not(:disabled) {
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-pause:not(:disabled):hover,
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-resume:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 60%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-pause:focus-visible,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-resume:focus-visible,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-refresh:focus-visible,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-input:focus-visible,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-apply:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-pause:disabled,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-resume:disabled,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-refresh:disabled,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-input:disabled,
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-apply:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Disarm: the one destructive control on this surface. */
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-disarm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid
+    color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-disarm:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 60%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-disarm:focus-visible {
+  outline: 2px solid var(--coral, #cc9689);
+  outline-offset: 2px;
+}
+
+/* ============ raise-stop field ============ */
+
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-raise {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 12px;
+  color: var(--muted, #abc4d8);
+}
+
+/* The remembered stop echo: the backend-confirmed raise-stop value. */
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-raise span {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--sage, #b3dda8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-input {
+  min-height: 34px;
+  min-width: 0;
+  width: 110px;
+  padding: 6px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-input[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 55%, var(--line, #22465d));
+}
+
+/* Apply: the one affirmative primary on this surface while armed. */
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-apply {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid
+    color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--sage, #b3dda8) 12%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-apply:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 60%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 18%, var(--surface, #14222e));
+}
+
+/* Sage-filled "applied" state: a backend-confirmed raise. */
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-apply--success {
+  border-color: var(--sage, #b3dda8);
+  background: var(--sage, #b3dda8);
+  color: var(--action-primary-text, #172a1d);
+}
+
+/* Coral-filled "refused" state: the caption sentence carries the reason. */
+.kbot-shell__inline-stop-root
+  .kbot-shell__inline-stop-apply--refused {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 65%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 16%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+/* ============ alerts (unknown outcome / refusal) ============ */
+
+/* The verbatim refusal and unknown-outcome sentences keep the shared
+   shell danger text; the scoped vocabulary only frames them. */
+.kbot-shell__inline-stop-root [role="alert"] {
+  margin: 0;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+/* ============ mobile (<=390px) ============ */
+
+@media (max-width: 390px) {
+  .kbot-shell__inline-stop-root {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .kbot-shell__inline-stop-root .kbot-shell__inline-stop-row {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    width: 100%;
+  }
+
+  .kbot-shell__inline-stop-root .kbot-shell__inline-stop-pause,
+  .kbot-shell__inline-stop-root .kbot-shell__inline-stop-resume,
+  .kbot-shell__inline-stop-root .kbot-shell__inline-stop-disarm,
+  .kbot-shell__inline-stop-root .kbot-shell__inline-stop-refresh,
+  .kbot-shell__inline-stop-root .kbot-shell__inline-stop-apply {
+    flex: 0 1 auto;
+    min-height: 44px;
+  }
+
+  .kbot-shell__inline-stop-root .kbot-shell__inline-stop-input {
+    min-height: 44px;
+    flex: 1 1 110px;
+  }
+
+  .kbot-shell__inline-stop-root .kbot-shell__inline-stop-caption {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+}
