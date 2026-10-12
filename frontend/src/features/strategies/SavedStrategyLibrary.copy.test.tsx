@@ -120,7 +120,7 @@ describe("SavedStrategyLibrary — copy as new owned draft", () => {
   });
 
   it("keeps rows disabled while a copy fetch is in flight and restores them after", async () => {
-    let release: ((value: OwnedRevisionBytesLike) => void) | null = null;
+    let release!: (value: OwnedRevisionBytesLike) => void;
     const pending = new Promise<OwnedRevisionBytesLike>((resolve) => {
       release = resolve;
     });
@@ -150,7 +150,7 @@ describe("SavedStrategyLibrary — copy as new owned draft", () => {
     fireEvent.click(copyButton);
     await waitFor(() => expect(copyButton.disabled).toBe(true));
     expect(reopenButton.disabled).toBe(true);
-    release?.({
+    release({
       revision_id: "rev-owned-9",
       state: "validated",
       bytes: ownedBytes,

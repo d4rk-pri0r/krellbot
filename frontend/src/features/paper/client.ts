@@ -546,7 +546,7 @@ async function getPaperPosition(): Promise<PaperPosition> {
   return adaptPosition(raw);
 }
 
-export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedClient {
+export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedClient & Required<Pick<PaperClient, "raiseStop">> {
   return {
     getStatus(): Promise<PaperStatus> {
       return getJson("/api/v1/paper/status");

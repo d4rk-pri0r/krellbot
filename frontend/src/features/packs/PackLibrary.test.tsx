@@ -176,7 +176,7 @@ describe("PackLibrary Refresh", () => {
   });
 
   it("keeps the previous rows visible while a refresh is in flight", async () => {
-    let release: (() => void) | null = null;
+    let release!: () => void;
     const listInstalled = vi.fn(async (): Promise<PackRow[]> => {
       if (listInstalled.mock.calls.length === 1) {
         return [row("alpha", "installed")];
@@ -192,9 +192,9 @@ describe("PackLibrary Refresh", () => {
     expect(screen.getByTestId("pack-library-row-alpha")).toBeDefined();
     expect(screen.getByTestId("pack-library-refresh").textContent).toMatch(/Refreshing/);
     await waitFor(() => {
-      expect(release).not.toBeNull();
+      expect(release).toBeTypeOf("function");
     });
-    (release as () => void)();
+    release();
     await waitFor(() => {
       expect(screen.queryByTestId("pack-library-row-alpha")).toBeNull();
     });

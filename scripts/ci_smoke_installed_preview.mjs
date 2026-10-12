@@ -29,7 +29,9 @@ function check(name, condition) {
   if (!condition) throw new Error(name);
 }
 function run(command, args, env) {
-  const result = spawnSync(command, args, {env, cwd: scratch, encoding: 'utf8', timeout: 120000});
+  // cmd.exe parses its own /c quotes; Node's normal Windows argv escaping
+  // turns the doubly quoted path into a different command (a UNC-like path).
+  const result = spawnSync(command, args, {env, cwd: scratch, encoding: 'utf8', timeout: 120000, windowsVerbatimArguments: windows && path.basename(command).toLowerCase() === 'cmd.exe'});
   if (result.error || result.status !== 0) throw new Error(`${command} failed: ${result.error || result.status}\n${result.stdout || ''}\n${result.stderr || ''}`);
   return result.stdout;
 }
