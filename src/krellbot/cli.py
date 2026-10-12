@@ -1842,9 +1842,14 @@ def cmd_ui(args):
 
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _on_signal)
 
     try:
-        stopped.wait()
+        # A Windows Event.wait(None) can defer Python console callbacks.
+        # Return periodically so Ctrl-C/Break reaches the cleanup path.
+        while not stopped.wait(timeout=0.2):
+            pass
     finally:
         server.stop()
         print("Stopped.")
@@ -1936,9 +1941,13 @@ def cmd_workstation(args):
 
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _on_signal)
 
     try:
-        stopped.wait()
+        # Keep Windows console signals responsive while waiting for stop.
+        while not stopped.wait(timeout=0.2):
+            pass
     finally:
         server.stop()
         print("Stopped.")
