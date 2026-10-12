@@ -1,4 +1,5 @@
 import { useEffect, useRef, type JSX } from "react";
+import "./CommandPalette.signal.css";
 
 type CommandPaletteProps = {
   open: boolean;
@@ -46,27 +47,40 @@ export function CommandPalette({
 
   return (
     <div
-      className="kbot-palette"
+      className="kbot-palette kbot-shell__palette-root"
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
       data-testid="command-palette"
     >
-      <div className="kbot-palette__box">
-        <label className="kbot-palette__label" htmlFor="kbot-palette-input">
-          Command
+      <div className="kbot-palette__box kbot-shell__palette-box">
+        <p className="kbot-shell__palette-meta">
+          <span
+            className="kbot-shell__palette-badge"
+            data-testid="command-palette-badge"
+          >
+            Local preview
+          </span>
+        </p>
+        <label
+          className="kbot-palette__label kbot-shell__palette-label"
+          htmlFor="kbot-palette-input"
+        >
+          Find an action, strategy, or view — local preview only.
         </label>
         <input
           id="kbot-palette-input"
           ref={inputRef}
-          className="kbot-palette__input"
+          className="kbot-palette__input kbot-shell__palette-input"
           type="text"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Type a command"
+          placeholder="Type to search actions, strategies, or views"
           aria-label="Command input"
         />
-        <p className="kbot-palette__hint">Esc closes</p>
+        <p className="kbot-palette__hint kbot-shell__palette-hint">
+          Press Esc to close · Ctrl+K from anywhere
+        </p>
       </div>
     </div>
   );
