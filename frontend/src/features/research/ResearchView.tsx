@@ -11,6 +11,7 @@ import { ResearchDateWindow, utcFieldValueToMs } from "./ResearchDateWindow";
 import { TraceCsvExport } from "./TraceCsvExport";
 import { summarizeResearchJobError } from "./researchJobErrorLabel";
 import "./ResearchView.signal.css";
+import "./ResearchView.local-preview.signal.css";
 
 export type { ResearchClient, StoredResult } from "./client";
 
@@ -45,6 +46,13 @@ const TRACE_VIEWPORT_HEIGHT = 480;
 
 /** Truthful placeholder for an unset in-use/config value. */
 const NOT_SET = "not set";
+
+const EMPTY_STATE_COPY =
+  "No research run yet. Submit a window to populate this view.";
+const LOCAL_PREVIEW_COPY = "Local preview only — live trading unavailable";
+const SUBMITTING_STATE_COPY = "Submitting research run…";
+const SUBMIT_FAILED_COPY =
+  "Could not submit research run — check the workstation is running.";
 
 /**
  * KRELL-SIGNAL-20261010 research presentation. Every metric cell names the
@@ -300,6 +308,12 @@ export function ResearchView({
   const [storedResult, setStoredResult] = useState<StoredResult | null>(null);
   const [selectedBarTs, setSelectedBarTs] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Honest-state tracking for the result area. ``submitting`` covers only
+  // the in-flight client.submitRun call; ``submitFailed`` is set only when
+  // that call rejects, so setup-validation refusals (which keep the real
+  // field-naming alert) are never mislabeled as a workstation failure.
+  const [submitting, setSubmitting] = useState(false);
+  const [submitFailed, setSubmitFailed] = useState(false);
   const [jobError, setJobError] = useState<
     { code: string; message: string } | null
   >(null);
@@ -422,15 +436,22 @@ export function ResearchView({
       if (holdoutToFilled) {
         request.holdoutToMs = Number(holdoutToTrimmed);
       }
-      const summary = await client.submitRun(request);
-      setJobId(summary.id);
-      jobIdRef.current = summary.id;
-      // Poll for the result so the UI auto-populates when the job
-      // succeeds. The brief's e2e path waits for ``research-result``
-      // without a manual Load result click; the original Load button
-      // is preserved for users who want to refetch.
-      void pollForResult(summary.id);
+      setSubmitting(true);
+      setSubmitFailed(false);
+      try {
+        const summary = await client.submitRun(request);
+        setJobId(summary.id);
+        jobIdRef.current = summary.id;
+        // Poll for the result so the UI auto-populates when the job
+        // succeeds. The brief's e2e path waits for ``research-result``
+        // without a manual Load result click; the original Load button
+        // is preserved for users who want to refetch.
+        void pollForResult(summary.id);
+      } finally {
+        setSubmitting(false);
+      }
     } catch (err) {
+      setSubmitFailed(true);
       setSubmitError(err instanceof Error ? err.message : String(err));
     }
   };
@@ -877,6 +898,57 @@ export function ResearchView({
         <p className="kbot-research__error" role="alert">
           {submitError}
         </p>
+      ) : null}
+
+      {storedResult ? null : submitting ? (
+        <div
+          className="kbot-research__state kbot-research__state--submitting"
+          data-testid="research-state-submitting"
+          role="status"
+        >
+          <span className="kbot-research__status-dot" aria-hidden="true" />
+          <p className="kbot-research__state-copy">{SUBMITTING_STATE_COPY}</p>
+        </div>
+      ) : submitFailed ? (
+        <div
+          className="kbot-research__state kbot-research__state--error"
+          data-testid="research-state-error"
+        >
+          <p className="kbot-research__state-copy">
+            {SUBMIT_FAILED_COPY}
+            {submitError ? (
+              <span
+                className="kbot-research__state-detail"
+                data-testid="research-state-error-detail"
+              >
+                {submitError}
+              </span>
+            ) : null}
+          </p>
+          <button
+            type="button"
+            className="kbot-research__action"
+            data-testid="research-submit-retry"
+            onClick={() => {
+              void handleRun();
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : jobId === null ? (
+        <div
+          className="kbot-research__state kbot-research__state--empty"
+          data-testid="research-state-empty"
+        >
+          <p className="kbot-research__state-copy">{EMPTY_STATE_COPY}</p>
+          <p
+            className="kbot-research__local-preview"
+            data-testid="research-local-preview"
+          >
+            {LOCAL_PREVIEW_COPY}
+          </p>
+        </div>
       ) : null}
 
       {storedResult ? (

@@ -1146,3 +1146,116 @@ describe("ResearchView setup refusal (BUILD-RESEARCH-INPUTS-01)", () => {
     }
   });
 });
+
+describe("ResearchView honest states: idle / submitting / submission failed", () => {
+  it("idle: with no summary, no error and not submitting, the panel says no research run yet with a local preview badge", () => {
+    render(<ResearchView client={makeClient()} />);
+
+    const empty = screen.getByTestId("research-state-empty");
+    expect(
+      empty.querySelector(".kbot-research__state-copy")?.textContent,
+    ).toBe("No research run yet. Submit a window to populate this view.");
+
+    const badge = screen.getByTestId("research-local-preview");
+    expect(badge.textContent).toContain("Local preview only");
+    expect(badge.textContent).toContain("live trading unavailable");
+
+    // Nothing has been submitted, so no result panel and no job identity.
+    expect(screen.queryByTestId("research-result")).toBeNull();
+    expect(screen.queryByTestId("research-job-id")).toBeNull();
+  });
+
+  it("submitting: while submitRun is in flight the panel says submitting, and the form stays editable", async () => {
+    let resolveSubmit: (value: { id: string }) => void = () => {};
+    const client = makeClient({
+      submitRun: vi.fn().mockImplementation(
+        () =>
+          new Promise<{ id: string }>((resolve) => {
+            resolveSubmit = resolve;
+          }),
+      ),
+    });
+    render(<ResearchView client={client} />);
+    fillForm();
+
+    fireEvent.change(screen.getByLabelText(/^from$/i), {
+      target: { value: "100" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+
+    const submitting = await screen.findByTestId("research-state-submitting");
+    expect(submitting.textContent).toContain("Submitting research run…");
+
+    // The form remains editable while the request is in flight.
+    expect(
+      (screen.getByLabelText(/dataset path/i) as HTMLInputElement).disabled,
+    ).toBe(false);
+    expect((screen.getByLabelText(/^to$/i) as HTMLInputElement).disabled).toBe(
+      false,
+    );
+    fireEvent.change(screen.getByLabelText(/^to$/i), {
+      target: { value: "2000" },
+    });
+    expect((screen.getByLabelText(/^to$/i) as HTMLInputElement).value).toBe(
+      "2000",
+    );
+
+    // The idle copy is gone while submitting.
+    expect(screen.queryByTestId("research-state-empty")).toBeNull();
+
+    resolveSubmit({ id: "job-abc" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("research-state-submitting")).toBeNull();
+    });
+  });
+
+  it("submission failed: when submitRun rejects, the panel explains the failure and Retry re-invokes the existing submit handler", async () => {
+    const client = makeClient({
+      submitRun: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("request failed: 503"))
+        .mockResolvedValueOnce({ id: "job-abc" }),
+    });
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+
+    const error = await screen.findByTestId("research-state-error");
+    expect(error.textContent).toContain(
+      "Could not submit research run — check the workstation is running.",
+    );
+    // The real client error stays visible alongside the guidance.
+    expect(error.textContent).toContain("request failed: 503");
+    expect(screen.queryByTestId("research-state-empty")).toBeNull();
+
+    const retry = screen.getByTestId("research-submit-retry");
+    expect(retry.textContent).toBe("Retry");
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(client.submitRun).toHaveBeenCalledTimes(2);
+    });
+    // Retry re-invokes the same handler: same form values, second attempt.
+    expect(client.submitRun).toHaveBeenLastCalledWith({
+      datasetPath: "fixtures/synthetic.csv",
+      feeBps: 40,
+      fromMs: 0,
+      toMs: 1000,
+      packPath: "",
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("research-state-error")).toBeNull();
+    });
+  });
+
+  it("the local preview badge is not shown once a real submission is in flight or failed", async () => {
+    const client = makeClient({
+      submitRun: vi.fn().mockRejectedValue(new Error("request failed: 503")),
+    });
+    render(<ResearchView client={client} />);
+    fillForm();
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await screen.findByTestId("research-state-error");
+    expect(screen.queryByTestId("research-local-preview")).toBeNull();
+  });
+});

@@ -1,0 +1,119 @@
+/*
+ * Research honest states — Signal + Krell Asset Pack v2
+ * (KRELL-SIGNAL-20261010).
+ *
+ * Shared-token styles for the empty / submitting / submission-failed
+ * panel and the "Local preview only" badge in the ResearchView result
+ * area. Every color, radius and font value resolves from the shared
+ * tokens in frontend/src/styles/tokens.css; no palette values are
+ * redefined here and no new tokens are introduced. The empty panel
+ * mirrors the reference kit's dashed evidence-empty composition.
+ */
+
+.kbot-research__state {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  justify-items: start;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--navy) 45%, var(--surface));
+}
+
+.kbot-research__state-copy {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  max-width: 62ch;
+  overflow-wrap: anywhere;
+}
+
+.kbot-research__state--submitting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.kbot-research__state--submitting .kbot-research__state-copy {
+  margin: 0;
+  color: var(--text);
+}
+
+.kbot-research__state--error {
+  border: 1px solid var(--danger-border);
+  background: color-mix(in srgb, var(--caution-bg) 40%, var(--surface));
+}
+
+.kbot-research__state--error .kbot-research__state-copy {
+  color: var(--danger-text);
+}
+
+.kbot-research__state-detail {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.kbot-research__state .kbot-research__action {
+  /* Same control vocabulary as the run bar actions; re-stated so the
+     shell's generic button rule cannot flatten this panel's button. */
+  min-height: 34px;
+  padding: 0 14px;
+  background: color-mix(in srgb, var(--panel) 55%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.kbot-research__state .kbot-research__action:hover:not(:disabled) {
+  border-color: var(--seafoam);
+  color: var(--seafoam);
+}
+
+/* "Local preview only" badge — same caution-toned truth vocabulary as
+   the Home availability badge; live trading is unavailable, so this
+   must never render as a success color. */
+.kbot-research__local-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--caution-text) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--caution-bg) 40%, var(--surface));
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--caution-text);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .kbot-research__state {
+    padding: 16px;
+  }
+
+  .kbot-research__state .kbot-research__action {
+    min-height: 44px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .kbot-research__local-preview {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
