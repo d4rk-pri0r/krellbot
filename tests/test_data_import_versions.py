@@ -32,6 +32,7 @@ import io
 import json
 import os
 import stat
+import sys
 import zipfile
 from decimal import Decimal
 from pathlib import Path
@@ -181,7 +182,7 @@ def test_stable_cache_replaced_by_second_import(home: Path, tmp_path: Path, caps
     """Stable replaceable-cache behavior stays intact: second import wins."""
     z1 = _write_zip(tmp_path / "first.zip", CLOSES_FIRST)
     z2 = _write_zip(tmp_path / "second.zip", CLOSES_SECOND)
-    stable, digest1 = _import_zip(home, z1, capsys)
+    stable, _digest1 = _import_zip(home, z1, capsys)
     csv1 = stable.read_bytes()
     stable, digest2 = _import_zip(home, z2, capsys)
 
@@ -220,7 +221,14 @@ def test_identical_reimport_reuses_existing_version_untouched(home: Path, tmp_pa
 
 
 def test_version_files_are_0600(home: Path, tmp_path: Path, capsys):
-    """Immutable version files are owner-only on POSIX."""
+    """Immutable version files are owner-only on POSIX.
+
+    Windows NTFS DACLs do not equate to POSIX mode bits, so the ``0o600``
+    assertion is POSIX-only. The version-file *existence* and *contents*
+    are exercised by the surrounding tests on every platform.
+    """
+    if sys.platform == "win32":
+        pytest.skip("owner-only POSIX mode bits (0o600) are POSIX-only")
     z = _write_zip(tmp_path / "first.zip", CLOSES_FIRST)
     _, digest = _import_zip(home, z, capsys)
     for p in (
@@ -365,7 +373,7 @@ def test_cli_backtest_explicit_data_first_version_still_runs(home: Path, tmp_pat
     pack = _write_pack(tmp_path / "pack.json")
     _, digest1 = _import_zip(home, z1, capsys)
     csv1 = cache_path(home, VENUE, PAIR, TF).read_bytes()
-    _, digest2 = _import_zip(home, z2, capsys)
+    _, _digest2 = _import_zip(home, z2, capsys)
     assert sha256_bytes(csv1) == digest1
     capsys.readouterr()
 
@@ -373,9 +381,7 @@ def test_cli_backtest_explicit_data_first_version_still_runs(home: Path, tmp_pat
     assert first_csv.exists(), f"retained first version missing at {first_csv}"
     assert first_csv.read_bytes() == csv1
 
-    rc = cli.main(
-        ["krellbot", "backtest", str(pack), "--venue", "kraken", "--data", str(first_csv), "--json"]
-    )
+    rc = cli.main(["krellbot", "backtest", str(pack), "--venue", "kraken", "--data", str(first_csv), "--json"])
     assert rc == 0, capsys.readouterr().err
     receipt = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert receipt["data_manifest_sha256"] == digest1

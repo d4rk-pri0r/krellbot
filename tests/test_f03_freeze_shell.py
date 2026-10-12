@@ -52,6 +52,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FREEZE_SCRIPT = REPO_ROOT / "scripts" / "freeze.py"
 
 SEP = ";" if sys.platform == "win32" else ":"
+IS_POSIX = sys.platform != "win32"
 
 
 # ---------------------------------------------------------------------------
@@ -411,9 +412,7 @@ def test_build_args_collects_installer_runtime_package_data() -> None:
         if token == "--collect-data" and index + 1 < len(args):
             collected.append(args[index + 1])
     for package in _RUNTIME_DATA_PACKAGES:
-        assert package in collected, (
-            f"--collect-data {package} missing from _build_args; collected={collected!r}"
-        )
+        assert package in collected, f"--collect-data {package} missing from _build_args; collected={collected!r}"
 
 
 def test_stage_installers_copies_helpers_into_bundle(tmp_path: Path) -> None:
@@ -429,8 +428,9 @@ def test_stage_installers_copies_helpers_into_bundle(tmp_path: Path) -> None:
         assert copied.is_file(), f"{name} missing from bundle"
         source = (REPO_ROOT / "scripts" / "installers" / name).read_bytes()
         assert copied.read_bytes() == source, f"{name} drifted from scripts/installers"
-    mode = (bundle / "install-krellbot.sh").stat().st_mode & 0o777
-    assert mode & 0o111, f"install-krellbot.sh must be executable in the bundle; mode={mode:o}"
+    if IS_POSIX:
+        mode = (bundle / "install-krellbot.sh").stat().st_mode & 0o777
+        assert mode & 0o111, f"install-krellbot.sh must be executable in the bundle; mode={mode:o}"
 
 
 def test_stage_installers_fails_when_repo_helpers_missing(tmp_path: Path) -> None:
@@ -477,5 +477,6 @@ def test_freeze_stages_installers_into_bundle(tmp_path: Path, monkeypatch: pytes
     assert (bundle / "_internal").is_dir()
     for name in INSTALLER_FILES:
         assert (bundle / name).is_file(), f"{name} not staged by freeze()"
-    mode = (bundle / "install-krellbot.sh").stat().st_mode & 0o777
-    assert mode & 0o111, f"install-krellbot.sh not executable after freeze(); mode={mode:o}"
+    if IS_POSIX:
+        mode = (bundle / "install-krellbot.sh").stat().st_mode & 0o777
+        assert mode & 0o111, f"install-krellbot.sh not executable after freeze(); mode={mode:o}"

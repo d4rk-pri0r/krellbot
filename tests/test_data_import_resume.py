@@ -69,7 +69,7 @@ HEADER = ["time", "open", "high", "low", "close", "volume", "count"]
 #   plain      - count conversions, run to completion, print converted=<n>
 #   guard:PATH - like plain, but os._exit(3) if a timestamp listed in the file
 #                at PATH is ever converted (committed rows never reconverted)
-PROBE_SOURCE = '''
+PROBE_SOURCE = """
 import os, sys
 
 sys.path.insert(0, os.environ["KB_PROBE_SRC"])
@@ -121,7 +121,7 @@ rc = cli.main(
 sys.stdout.write("converted=%d\\nrc=%d\\n" % (calls, rc))
 sys.stdout.flush()
 os._exit(rc)
-'''
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +258,34 @@ def _kv(proc: subprocess.CompletedProcess) -> dict[str, str]:
     return out
 
 
+def _wait_for_held(proc: subprocess.Popen, *, timeout: float) -> str:
+    """Read the holder's first stdout line with a bounded deadline.
+
+    Returns the stripped line, or ``"<no-output>"`` if the holder never
+    flushed stdout before the deadline. The test caller decides whether to
+    fail on that signal; this helper deliberately does not raise so the
+    caller can attach the holder's stderr to the assertion message.
+    """
+    import threading
+
+    holder_stdout = proc.stdout
+    if holder_stdout is None:
+        return "<no-output>"
+
+    box: list[str] = []
+
+    def _reader() -> None:
+        line = holder_stdout.readline()
+        box.append(line.strip() if line else "")
+
+    thread = threading.Thread(target=_reader, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive() or not box:
+        return "<no-output>"
+    return box[0]
+
+
 def _pending_state(tmp_path: Path, home: Path, zip_path: Path, cut: int) -> Path:
     """Leave a pending checkpoint by cutting the import at conversion `cut`."""
     proc = _run_probe(tmp_path, home, zip_path, mode=f"cut-with:{cut}")
@@ -343,7 +371,9 @@ def test_hard_cut_mid_parse_resumes_in_a_fresh_process(home: Path, tmp_path: Pat
     retry = _run_probe(tmp_path, home, zip_path, mode="plain")
     assert retry.returncode == 0, f"retry failed: {retry.stderr!r}"
     remaining = int(_kv(retry)["converted"])
-    assert remaining <= TOTAL_ROWS - CHUNK, f"retry reconverted {remaining} rows; at most {TOTAL_ROWS - CHUNK} may remain"
+    assert remaining <= TOTAL_ROWS - CHUNK, (
+        f"retry reconverted {remaining} rows; at most {TOTAL_ROWS - CHUNK} may remain"
+    )
 
     expected = [Decimal(str(1 + (i % 9))) for i in range(TOTAL_ROWS)]
     assert _closes(home) == expected, "resume changed the candle series"
@@ -440,7 +470,9 @@ def test_resumed_home_matches_uninterrupted_control(home: Path, tmp_path: Path):
 
     assert _closes(home) == control_closes
     assert cache_path(home, VENUE, PAIR, TF).read_bytes() == cache_path(control_home, VENUE, PAIR, TF).read_bytes()
-    assert manifest_path(home, VENUE, PAIR, TF).read_bytes() == manifest_path(control_home, VENUE, PAIR, TF).read_bytes()
+    assert (
+        manifest_path(home, VENUE, PAIR, TF).read_bytes() == manifest_path(control_home, VENUE, PAIR, TF).read_bytes()
+    )
     digest = json.loads(manifest_path(control_home, VENUE, PAIR, TF).read_text())["sha256"]
     assert (
         dataset_version_path(home, VENUE, PAIR, TF, digest).read_bytes()
@@ -1200,18 +1232,30 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
 
     lock_path = _slot_lock(home, zip_path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    # Holder uses the production ``SourceLock`` so the OS-level contention
+    # exactly matches what the importer contends with on every host. Using
+    # ``fcntl`` directly here would crash on Windows; importing ``msvcrt``
+    # directly would crash on POSIX. The production helper does the right
+    # thing on every platform, so the holder does the same.
     holder_src = tmp_path / "holder.py"
     holder_src.write_text(
         textwrap.dedent(
             """
-            import fcntl, sys, time
+            import sys
+            from krellbot.data.import_progress import SourceLock
 
-            fd = open(sys.argv[1], "a+b")
-            fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock = SourceLock(sys.argv[1])
+            lock.acquire()
             sys.stdout.write("held\\n")
             sys.stdout.flush()
-            while True:
-                time.sleep(1)
+            try:
+                while True:
+                    import time
+
+                    time.sleep(1)
+            except BaseException:
+                lock.release()
+                raise
             """
         ),
         encoding="utf-8",
@@ -1219,11 +1263,16 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
     holder = subprocess.Popen(
         [sys.executable, str(holder_src), str(lock_path)],
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         cwd=str(tmp_path),
     )
     try:
-        assert holder.stdout.readline().strip() == "held"
+        # Bounded readiness probe: read the "held" line or fail loudly with
+        # the holder's stderr so the test never hangs if the lock cannot be
+        # acquired on the host platform.
+        ready = _wait_for_held(holder, timeout=10.0)
+        assert ready == "held", f"holder never reported 'held' (stderr probe failed): {ready!r}"
 
         before = _tree_snapshot(home)
         rc = _import(home, zip_path)
@@ -1235,8 +1284,16 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
         assert before["cache"] == after["cache"]
         assert before["datasets"] == after["datasets"]
     finally:
-        holder.kill()
-        holder.wait(timeout=30)
+        # Capture stderr after a forced kill so a crash diagnostic is visible
+        # in the test output instead of dying silently on hold.
+        try:
+            holder.kill()
+        finally:
+            try:
+                holder.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                holder.terminate()
+                holder.wait(timeout=10)
 
     # Process death released the OS advisory lock: the import now succeeds.
     capsys.readouterr()
@@ -1246,7 +1303,15 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
 
 
 def test_progress_files_are_owner_only(home: Path, tmp_path: Path):
-    """Progress directories and files are owner-only on POSIX."""
+    """Progress directories and files are owner-only on POSIX.
+
+    Windows NTFS DACLs are not equivalent to POSIX mode bits, so this
+    assertion is intentionally POSIX-only. The unrelated checks
+    (existence of the lock and db files, refusal semantics) keep running
+    cross-platform; this test is gated to POSIX hosts only.
+    """
+    if sys.platform == "win32":
+        pytest.skip("owner-only POSIX mode bits (0o700/0o600) are POSIX-only")
     zip_path = _write_zip(tmp_path / "perm.zip", {"SUIUSD_60.csv": _candle_body(_bars(200))})
     _pending_state(tmp_path, home, zip_path, cut=100)
 
@@ -1296,9 +1361,9 @@ def test_checkpoint_meta_records_the_declared_identity(home: Path, tmp_path: Pat
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         meta = {k: v for k, v in con.execute("SELECT key, value FROM meta")}
-        candles_schema = con.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='candles'"
-        ).fetchone()[0]
+        candles_schema = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='candles'").fetchone()[
+            0
+        ]
     finally:
         con.close()
 

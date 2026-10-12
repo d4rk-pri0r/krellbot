@@ -33,6 +33,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,16 @@ LINUX_INSTALLER = INSTALLERS_DIR / "install-krellbot.sh"
 WINDOWS_CMD = INSTALLERS_DIR / "Install-Krellbot.cmd"
 WINDOWS_PS1 = INSTALLERS_DIR / "Install-Krellbot.ps1"
 INSTALL_TXT = INSTALLERS_DIR / "INSTALL.txt"
+
+# The success-path installer checks inspect POSIX ``mode & 0o111`` bits after
+# ``chmod 0o755`` and assert that the installed launcher binary is executable
+# on the host. Windows NTFS metadata does not honor POSIX x-bits, and the
+# companion .cmd/.ps1 install path is exercised in CI on Windows runners as a
+# separate, native ``Install-Krellbot.cmd`` job — never through this POSIX
+# helper. The refusal-path tests below keep running on every platform that
+# can find bash (Linux + macOS + Windows with bash on PATH) so the negative
+# coverage does not silently disappear off-host.
+IS_LINUX = sys.platform.startswith("linux")
 
 
 def _bash() -> str:
@@ -113,6 +124,8 @@ def _run_installer(
 def test_linux_installer_installs_payload_with_spaces_in_paths(tmp_path: Path) -> None:
     """A source path AND install path containing spaces install cleanly."""
     _bash()
+    if not IS_LINUX:
+        pytest.skip("POSIX installer x-bit check (mode & 0o111) is Linux-only")
     home = tmp_path / "home dir"
     home.mkdir()
     xdg_data = home / ".local" / "share"
@@ -140,6 +153,8 @@ def test_linux_installer_installs_payload_with_spaces_in_paths(tmp_path: Path) -
 def test_linux_installer_explicit_dest_with_spaces(tmp_path: Path) -> None:
     """An explicit DESTDIR argument with spaces is honoured verbatim."""
     _bash()
+    if not IS_LINUX:
+        pytest.skip("POSIX installer behavior under private HOME is Linux-only")
     home = tmp_path / "home"
     home.mkdir()
     xdg_data = home / ".local" / "share"
@@ -167,15 +182,15 @@ def test_linux_installer_creates_clickable_desktop_launcher(tmp_path: Path) -> N
     """When the user has a real XDG Desktop directory (declared through
     user-dirs.dirs), a clickable ``Launch-Krellbot`` file lands there."""
     _bash()
+    if not IS_LINUX:
+        pytest.skip("XDG desktop launcher creation is a Linux/POSIX behaviour")
     home = tmp_path / "home"
     home.mkdir()
     xdg_config = home / ".config"
     desktop_dir = home / "Desk top"
     desktop_dir.mkdir(parents=True)
     (xdg_config).mkdir(parents=True, exist_ok=True)
-    (xdg_config / "user-dirs.dirs").write_text(
-        'XDG_DESKTOP_DIR="$HOME/Desk top"\n', encoding="utf-8"
-    )
+    (xdg_config / "user-dirs.dirs").write_text('XDG_DESKTOP_DIR="$HOME/Desk top"\n', encoding="utf-8")
 
     xdg_data = home / ".local" / "share"
     payload = _make_payload(tmp_path / "src" / "krellbot")
@@ -186,8 +201,8 @@ def test_linux_installer_creates_clickable_desktop_launcher(tmp_path: Path) -> N
     launch = desktop_dir / "Launch-Krellbot.desktop"
     assert launch.is_file(), proc.stdout
     content = launch.read_text(encoding="utf-8")
-    assert 'Type=Application' in content
-    assert 'Name=Launch Krellbot' in content
+    assert "Type=Application" in content
+    assert "Name=Launch Krellbot" in content
     assert f'Exec="{xdg_data / "Krellbot" / "krellbot"}"' in content, content
 
 
@@ -195,6 +210,8 @@ def test_linux_installer_preserves_user_data_and_reinstalls(tmp_path: Path) -> N
     """Pre-existing user state survives both a fresh install and a
     reinstall over the installed program."""
     _bash()
+    if not IS_LINUX:
+        pytest.skip("User-data preservation under the Linux installer is Linux-only")
     home = tmp_path / "home"
     home.mkdir()
     xdg_data = home / ".local" / "share"
@@ -340,6 +357,8 @@ def test_linux_installer_help_flag_is_usage(tmp_path: Path) -> None:
 
 def test_linux_installer_passes_bash_n() -> None:
     """The shipped helper must at least parse under bash."""
+    if not IS_LINUX:
+        pytest.skip("Bash parse of the POSIX installer helper is Linux-only")
     bash = _bash()
     proc = subprocess.run([bash, "-n", str(LINUX_INSTALLER)], capture_output=True, text=True, check=False, timeout=60)
     assert proc.returncode == 0, proc.stderr
