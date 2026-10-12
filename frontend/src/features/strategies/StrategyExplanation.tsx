@@ -6,6 +6,7 @@ import {
   type ExplainResult,
 } from "./explainPack";
 import { StrategyExplanationCsvExport } from "./StrategyExplanationCsvExport";
+import "./StrategyExplanation.signal.css";
 
 export type StrategyExplanationProps = {
   /** Stored revision bytes, exactly as saved/imported. */
@@ -59,22 +60,41 @@ export function StrategyExplanation({
       role="region"
       aria-label="Strategy explanation"
       data-testid="strategy-explanation"
+      className="kbot-feature__strategy-explanation-root"
     >
-      <header>
-        <h3>What this revision trades</h3>
-        <p data-testid="strategy-explanation-revision">{savedLabel}</p>
-        <StrategyExplanationCsvExport result={explanation} disabled={!explanation.parsed} />
+      <header className="kbot-feature__strategy-explanation-head">
+        <h3 className="kbot-feature__strategy-explanation-title">
+          What this revision trades
+        </h3>
+        <p
+          className="kbot-feature__strategy-explanation-revision"
+          data-testid="strategy-explanation-revision"
+        >
+          {savedLabel}
+        </p>
+        <div className="kbot-feature__strategy-explanation-actions">
+          <StrategyExplanationCsvExport result={explanation} disabled={!explanation.parsed} />
+        </div>
       </header>
 
       {!explanation.parsed ? (
-        <p role="status" data-testid="strategy-explanation-unparsed">
+        <p
+          role="status"
+          className="kbot-feature__strategy-explanation-unparsed"
+          data-testid="strategy-explanation-unparsed"
+        >
           The saved content is not readable JSON, so its rules cannot be explained
           here. Nothing about it is assumed or invented.
         </p>
       ) : (
         <>
-          <h4>Stored details (as supplied, not verified)</h4>
-          <div data-testid="strategy-explanation-metadata">
+          <h4 className="kbot-feature__strategy-explanation-section">
+            Stored details (as supplied, not verified)
+          </h4>
+          <div
+            className="kbot-feature__strategy-explanation-metadata"
+            data-testid="strategy-explanation-metadata"
+          >
             <MetadataRow label="Label" value={explanation.metadata.label} />
             <MetadataRow label="Pack id" value={explanation.metadata.packId} />
             <MetadataRow label="Version" value={explanation.metadata.version} />
@@ -83,11 +103,17 @@ export function StrategyExplanation({
             <MetadataRow label="Timeframe" value={explanation.timeframe.text} />
           </div>
 
-          <h4>Indicators</h4>
-          <ul data-testid="strategy-explanation-indicators">
+          <h4 className="kbot-feature__strategy-explanation-section">
+            Indicators
+          </h4>
+          <ul
+            className="kbot-feature__strategy-explanation-list"
+            data-testid="strategy-explanation-indicators"
+          >
             {explanation.indicators.map((indicator, index) => (
               <li
                 key={indicator.name || `unknown-${index}`}
+                className="kbot-feature__strategy-explanation-list-item"
                 data-supported={indicator.supported ? "1" : "0"}
               >
                 {indicator.text}
@@ -95,36 +121,74 @@ export function StrategyExplanation({
             ))}
           </ul>
 
-          <h4>When it enters</h4>
-          <ul data-testid="strategy-explanation-entry">
+          <h4 className="kbot-feature__strategy-explanation-section">
+            When it enters
+          </h4>
+          <ul
+            className="kbot-feature__strategy-explanation-list kbot-feature__strategy-explanation-list--conditions"
+            data-testid="strategy-explanation-entry"
+          >
             <ConditionList condition={explanation.entry} />
           </ul>
 
-          <h4>When it exits</h4>
-          <ul data-testid="strategy-explanation-exit">
+          <h4 className="kbot-feature__strategy-explanation-section">
+            When it exits
+          </h4>
+          <ul
+            className="kbot-feature__strategy-explanation-list kbot-feature__strategy-explanation-list--conditions"
+            data-testid="strategy-explanation-exit"
+          >
             <ConditionList condition={explanation.exit} />
           </ul>
 
-          <h4>Markets</h4>
-          <ul data-testid="strategy-explanation-markets">
+          <h4 className="kbot-feature__strategy-explanation-section">
+            Markets
+          </h4>
+          <ul
+            className="kbot-feature__strategy-explanation-list"
+            data-testid="strategy-explanation-markets"
+          >
             {explanation.markets.map((market, index) => (
-              <li key={`${market.venue}-${market.pair}-${index}`} data-supported={market.supported ? "1" : "0"}>
+              <li
+                key={`${market.venue}-${market.pair}-${index}`}
+                className="kbot-feature__strategy-explanation-list-item"
+                data-supported={market.supported ? "1" : "0"}
+              >
                 {market.text}
               </li>
             ))}
           </ul>
 
-          <h4>Allocation and protection</h4>
-          <p data-testid="strategy-explanation-allocation">{explanation.allocation.text}</p>
-          <p data-testid="strategy-explanation-stop">{explanation.stop.text}</p>
+          <h4 className="kbot-feature__strategy-explanation-section">
+            Allocation and protection
+          </h4>
+          <p
+            className="kbot-feature__strategy-explanation-detail"
+            data-testid="strategy-explanation-allocation"
+          >
+            {explanation.allocation.text}
+          </p>
+          <p
+            className="kbot-feature__strategy-explanation-detail"
+            data-testid="strategy-explanation-stop"
+          >
+            {explanation.stop.text}
+          </p>
 
-          <p data-testid="strategy-explanation-performance">
+          <p
+            className="kbot-feature__strategy-explanation-performance"
+            data-testid="strategy-explanation-performance"
+          >
             Costs, research results and performance are not provided by this
             revision and are not stated here.
           </p>
 
           {explanation.hasUnknowns ? (
-            <p role="status" data-testid="strategy-explanation-unknowns">
+            <p
+              role="status"
+              className="kbot-feature__strategy-explanation-unknowns"
+              data-testid="strategy-explanation-unknowns"
+            >
               Some parts of this revision are unsupported in this explanation and
               shown as unknown above. The view does not decide whether the
               revision is valid or safe to run.
