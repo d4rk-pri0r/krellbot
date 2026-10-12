@@ -12,7 +12,6 @@ Educational rule configuration only: this test checks mechanics, not returns.
 from __future__ import annotations
 
 import subprocess
-import sys
 from decimal import Decimal
 from pathlib import Path
 

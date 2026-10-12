@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 from decimal import ROUND_DOWN, Decimal
-from pathlib import Path
 
 from krellbot.application.rehearsal import RehearsalService, load_sample_candles
 from tests.test_ns06_api import TEST_PORT, _bootstrap_and_get_csrf, _build_app, _post_json, asgi_call

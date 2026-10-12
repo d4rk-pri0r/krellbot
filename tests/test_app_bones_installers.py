@@ -33,7 +33,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -175,7 +174,7 @@ def test_linux_installer_creates_clickable_desktop_launcher(tmp_path: Path) -> N
     desktop_dir.mkdir(parents=True)
     (xdg_config).mkdir(parents=True, exist_ok=True)
     (xdg_config / "user-dirs.dirs").write_text(
-        f'XDG_DESKTOP_DIR="$HOME/Desk top"\n', encoding="utf-8"
+        'XDG_DESKTOP_DIR="$HOME/Desk top"\n', encoding="utf-8"
     )
 
     xdg_data = home / ".local" / "share"
