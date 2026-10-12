@@ -395,6 +395,11 @@ def test_windows_ps1_content_safety() -> None:
     assert "start-bitstransfer" not in low
     assert "-verb runas" not in low
     assert "set-executionpolicy" not in low
+    # The real Windows installation failed with robocopy exit 16 when
+    # the job-summary flag was misspelled as /NYS. Native CI also runs
+    # this entire installer against the actual frozen payload.
+    assert "/njs" in low
+    assert "/nys" not in low
     # Never writes the user's data home: no path construction targeting
     # it (mentioning it in a "we never touch this" comment is fine).
     for forbidden in ("krellbot_home =", "$env:krellbot_home", "join-path $home", "join-path $env:home"):

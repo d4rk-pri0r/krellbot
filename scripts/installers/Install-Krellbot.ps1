@@ -84,9 +84,9 @@ Write-Host "Installing Krellbot to: $Destination"
 New-Item -ItemType Directory -Path $Destination -Force | Out-Null
 
 # Robocopy mirrors the full one-dir payload; /E includes empty dirs,
-# /NFL /NDL /NJH /NYS keep the console readable. Exit codes 0-7 are
+# /NFL /NDL /NJH /NJS keep the console readable. Exit codes 0-7 are
 # success for robocopy; anything else is a real failure.
-& robocopy $Source $Destination /E /NFL /NDL /NJH /NYS /NP | Out-Null
+& robocopy $Source $Destination /E /NFL /NDL /NJH /NJS /NP /R:2 /W:1 | Out-Null
 if ($LASTEXITCODE -ge 8) {
     Fail "robocopy failed with exit code $LASTEXITCODE."
 }
