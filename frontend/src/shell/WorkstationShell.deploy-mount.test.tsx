@@ -150,8 +150,8 @@ describe("WorkstationShell — deployments live preflight mount", () => {
     await act(async () => {
       resolveBootstrapRef?.();
     });
+    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     await waitFor(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
       expect(screen.getByTestId("paper-status-panel")).toBeDefined();
     });
     expect(screen.queryByTestId("live-preflight-panel")).toBeNull();

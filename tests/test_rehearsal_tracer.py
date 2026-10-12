@@ -24,7 +24,7 @@ import json
 import os
 import subprocess
 import sys
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 
 import pytest
@@ -174,7 +174,11 @@ def test_rehearsal_full_lifecycle_with_new_interpreter_restart(home: Path) -> No
     fills = body["recent_fills"]
     entry_fills = [f for f in fills if f["side"] == "buy"]
     assert len(entry_fills) == 1
-    expected_buy = (entry_bar_close * (Decimal(1) + Decimal("0.0005"))).quantize(Decimal("0.0001"))
+    # PaperVenue uses explicit venue-precision ROUND_DOWN, independent of
+    # the ambient Decimal context. Keep the exact fill-price assertion.
+    expected_buy = (entry_bar_close * (Decimal(1) + Decimal("0.0005"))).quantize(
+        Decimal("0.0001"), rounding=ROUND_DOWN
+    )
     assert Decimal(entry_fills[0]["price"]) == expected_buy
     assert Decimal(body["position"]["qty"]) > 0
     assert body["position"]["pair"] == "SUIUSD"
@@ -231,7 +235,9 @@ def test_rehearsal_full_lifecycle_with_new_interpreter_restart(home: Path) -> No
     assert len(sell_fills) == 1
     exit_cursor = exited["rehearsal"]["cursor"]
     exit_close = Decimal(str(candles[exit_cursor].close))
-    expected_sell = (exit_close * (Decimal(1) - Decimal("0.0005"))).quantize(Decimal("0.0001"))
+    expected_sell = (exit_close * (Decimal(1) - Decimal("0.0005"))).quantize(
+        Decimal("0.0001"), rounding=ROUND_DOWN
+    )
     assert Decimal(sell_fills[0]["price"]) == expected_sell
     exit_ts = candles[exit_cursor].ts_ms
     exit_tick = next(t for t in _tick_records(rehearsal_home) if t["kind"] == "tick" and t["bar_ts"] == exit_ts)

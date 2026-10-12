@@ -81,7 +81,12 @@ def built_dist() -> Path:
 
 def _iter_built_files(dist: Path) -> list[Path]:
     files: list[Path] = [dist / "index.html"]
-    files.extend(sorted((dist / "assets").iterdir()))
+    # Locally bundled fonts/images are binary, not UTF-8 source documents.
+    files.extend(
+        path
+        for path in sorted((dist / "assets").iterdir())
+        if path.suffix in {".js", ".css", ".html", ".json", ".svg"}
+    )
     return files
 
 

@@ -175,7 +175,8 @@ def test_root_returns_built_index_html(home: Path, built_dist: Path, monkeypatch
     assets_dir = built_dist / "assets"
     bundle_text = ""
     for path in sorted(assets_dir.iterdir()):
-        bundle_text += path.read_text(encoding="utf-8")
+        if path.suffix in {".js", ".css", ".html", ".json", ".svg"}:
+            bundle_text += path.read_text(encoding="utf-8")
     assert SHELL_PROMISE in bundle_text, "JS bundle is missing the shell copy"
 
 
