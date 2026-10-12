@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import "./ArmedRecordsList.signal.css";
 import type { PaperArmedClient, PaperArmedRecord } from "./client";
 
@@ -121,6 +121,35 @@ export function ArmedRecordsList({
   };
 
   const rows = state.kind === "ready" ? state.records : [];
+
+  // Pointer and keyboard toggle the exact same selection state.
+  const toggleRow = (row: PaperArmedRecord): void => {
+    setSelected(
+      selected !== null && rowKey(selected) === rowKey(row) ? null : row,
+    );
+  };
+
+  // Keyboard activation with native-button semantics: plain and Shift
+  // chords of Enter/Space toggle the detail, Ctrl/Meta/Alt chords and
+  // auto-repeats are left alone, unrelated keys keep their default.
+  // Space is canceled on every press (repeats included) so a focused
+  // row never scrolls the page.
+  const handleRowKeyDown = (
+    event: ReactKeyboardEvent<HTMLTableRowElement>,
+    row: PaperArmedRecord,
+  ): void => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    if (event.repeat) {
+      return;
+    }
+    toggleRow(row);
+  };
 
   return (
     <section
@@ -251,11 +280,10 @@ export function ArmedRecordsList({
                           tabIndex={0}
                           aria-label={`Toggle armed record detail for ${row.venue} ${row.pair}`}
                           onClick={() => {
-                            setSelected(
-                              selected !== null && rowKey(selected) === rowKey(row)
-                                ? null
-                                : row,
-                            );
+                            toggleRow(row);
+                          }}
+                          onKeyDown={(event) => {
+                            handleRowKeyDown(event, row);
                           }}
                         >
                           <td className="kbot-paper-armed__mono">{row.venue}</td>
