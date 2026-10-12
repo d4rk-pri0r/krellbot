@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type JSX } from "react";
+import "./StatusPanel.signal.css";
 import { getCsrf } from "../../session";
 import type {
   PaperArmDraftSummary,
@@ -456,7 +457,7 @@ function ArmForm({
           </p>
           <button
             type="button"
-            className="kbot-paper-status__action"
+            className="kbot-paper-status__action kbot-feature__status-panel-root__action"
             onClick={() => {
               // An explicit retry is a new user action: reload the list.
               const list = client.listOwnedDrafts;
@@ -503,7 +504,7 @@ function ArmForm({
             Saved revision
             <select
               id="paper-arm-revision"
-              className="kbot-paper-status__select"
+              className="kbot-paper-status__select kbot-feature__status-panel-root__control"
               data-testid="paper-arm-revision"
               value={revisionId}
               onChange={(event) => {
@@ -524,7 +525,7 @@ function ArmForm({
             Venue
             <select
               id="paper-arm-venue"
-              className="kbot-paper-status__select"
+              className="kbot-paper-status__select kbot-feature__status-panel-root__control"
               data-testid="paper-arm-venue"
               value={venue}
               onChange={(event) => {
@@ -546,7 +547,7 @@ function ArmForm({
             Paper balance
             <input
               id="paper-arm-balance"
-              className="kbot-paper-status__input"
+              className="kbot-paper-status__input kbot-feature__status-panel-root__control"
               data-testid="paper-arm-balance"
               type="text"
               inputMode="decimal"
@@ -573,7 +574,7 @@ function ArmForm({
           ) : null}
           <button
             type="button"
-            className="kbot-paper-status__action"
+            className="kbot-paper-status__action kbot-feature__status-panel-root__action"
             disabled={armDisabled}
             onClick={() => {
               void handleArm();
@@ -918,7 +919,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
 
   return (
     <section
-      className="kbot-paper-status"
+      className="kbot-paper-status kbot-feature__status-panel-root"
       role="region"
       aria-label="Paper controls"
       data-testid="paper-status-panel"
@@ -926,12 +927,34 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
     >
       <header className="kbot-paper-status__head">
         <h2 className="kbot-paper-status__title">Paper status</h2>
+        {/* Honest preview identity in the same seafoam badge + caption
+            vocabulary as Navigation / PaperStatusCsvExport: purely
+            presentational, it never gates any control below. */}
+        <p className="kbot-feature__status-panel-root__meta">
+          <span
+            className="kbot-feature__status-panel-root__badge"
+            data-testid="paper-status-local-preview"
+          >
+            Local preview
+          </span>
+          <span
+            className="kbot-feature__status-panel-root__note"
+            data-testid="paper-status-live-unavailable"
+          >
+            Live trading unavailable
+          </span>
+        </p>
       </header>
       <div className="kbot-paper-status__body">
         {paperControls ? (
           <>
             <p
-              className="kbot-paper-status__entries"
+              className={
+                "kbot-paper-status__entries kbot-feature__status-panel-root__entries" +
+                (state.sentence === "Entries paused"
+                  ? " kbot-feature__status-panel-root__entries--paused"
+                  : "")
+              }
               data-testid="paper-status-entries"
             >
               {state.sentence}
@@ -981,7 +1004,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
             <div className="kbot-paper-status__actions">
               <button
                 type="button"
-                className="kbot-paper-status__action"
+                className="kbot-paper-status__action kbot-feature__status-panel-root__action"
                 disabled={busy}
                 onClick={() => {
                   void handlePause();
@@ -991,7 +1014,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               </button>
               <button
                 type="button"
-                className="kbot-paper-status__action"
+                className="kbot-paper-status__action kbot-feature__status-panel-root__action"
                 disabled={busy}
                 onClick={() => {
                   void handleResume();
@@ -1001,7 +1024,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               </button>
               <button
                 type="button"
-                className="kbot-paper-status__action"
+                className="kbot-paper-status__action kbot-feature__status-panel-root__action kbot-feature__status-panel-root__action--danger"
                 disabled={busy}
                 onClick={() => {
                   void handleDisarm();
@@ -1012,7 +1035,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               <PaperStatusCsvExport status={state.status} />
               <button
                 type="button"
-                className="kbot-paper-status__action"
+                className="kbot-paper-status__action kbot-feature__status-panel-root__action"
                 disabled={busy}
                 onClick={() => {
                   void refreshStatus();
@@ -1037,7 +1060,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
                 New resting stop
                 <input
                   id="paper-raise-stop-input"
-                  className="kbot-paper-status__input"
+                  className="kbot-paper-status__input kbot-feature__status-panel-root__control"
                   data-testid="paper-raise-stop-input"
                   type="text"
                   inputMode="decimal"
@@ -1050,7 +1073,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               </label>
               <button
                 type="button"
-                className="kbot-paper-status__action"
+                className="kbot-paper-status__action kbot-feature__status-panel-root__action"
                 data-testid="paper-raise-stop-apply"
                 disabled={busy || !raiseStopValid}
                 onClick={() => {
@@ -1071,7 +1094,12 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               ) : null}
             </div>
             {state.raiseStopEcho !== null ? (
-              <p data-testid="paper-raise-stop-ok">{state.raiseStopEcho}</p>
+              <p
+                className="kbot-feature__status-panel-root__ok"
+                data-testid="paper-raise-stop-ok"
+              >
+                {state.raiseStopEcho}
+              </p>
             ) : null}
             {unknownAlert}
             {state.errorMessage !== null ? (
@@ -1100,7 +1128,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
             <div className="kbot-paper-status__actions">
               <button
                 type="button"
-                className="kbot-paper-status__action"
+                className="kbot-paper-status__action kbot-feature__status-panel-root__action"
                 onClick={() => {
                   void refreshStatus();
                 }}

@@ -1,0 +1,451 @@
+/*
+ * Paper status — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Scoped presentation for the mounted StatusPanel, the central status
+ * surface of the Workstation paper column
+ * (frontend/src/features/paper/StatusPanel.tsx). The panel keeps its
+ * shared `kbot-paper-status__…` classes (and the shell's own
+ * `.kbot-shell__main section` / `.kbot-shell button` rules in
+ * frontend/src/styles/shell.css compose underneath) and layers the
+ * approved Signal composition on top of them through the single
+ * `.kbot-feature__status-panel-root` scope this component renders.
+ * Every rule is prefixed with that scope so nothing leaks and no
+ * palette is redefined globally. Every color and typography value
+ * comes from the shared tokens (frontend/src/styles/tokens.css); each
+ * token carries its approved Signal fallback so the surface still
+ * composes on bases where only the palette literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - the header names the panel ("Paper status") and carries the
+ *     honest preview identity — the seafoam "Local preview" badge plus
+ *     the "Live trading unavailable" caption in the same badge
+ *     vocabulary as Navigation / StatusStrip / PaperStatusCsvExport.
+ *     It is purely presentational and renders in every paper state;
+ *   - the persistent owned-position / armed-state truth table: the
+ *     entries sentence renders as a status chip — sage for "Entries
+ *     active", coral-derived for "Entries paused" — with the verbatim
+ *     sentence carrying the state, color only reinforcing it. The pack
+ *     line and the owned-position sentence quote the wire verbatim
+ *     (technical identifiers in restrained IBM Plex Mono with tabular
+ *     numerals), so the table reads as evidence, never computation;
+ *   - the command row keeps ordinary controls as seafoam-accented
+ *     selection affordances; Disarm alone carries the coral-derived
+ *     danger treatment (the destructive control), matching
+ *     ArmedRecordsList's chip vocabulary;
+ *   - the raise-stop field keeps the decimal input and its quiet
+ *     validation copy in the coral-derived caution tone; the
+ *     backend-confirmed raise-stop echo renders in the affirmative
+ *     sage-derived success tone;
+ *   - loading / unavailable / unknown-outcome copy sits on a muted
+ *     panel surface; refusals and alerts keep the coral-derived
+ *     danger text, never sage;
+ *   - Manrope is the primary face (shared --font-ui token); every
+ *     button and input keeps a >=44px tap target on small viewports
+ *     (<=640px) and a 2px seafoam focus-visible ring.
+ */
+
+.kbot-feature__status-panel-root {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-feature__status-panel-root *,
+.kbot-feature__status-panel-root *::before,
+.kbot-feature__status-panel-root *::after {
+  box-sizing: border-box;
+}
+
+.kbot-feature__status-panel-root h2,
+.kbot-feature__status-panel-root h3,
+.kbot-feature__status-panel-root p {
+  margin: 0;
+}
+
+/* ============ header: title + honest preview identity ============ */
+
+.kbot-feature__status-panel-root .kbot-paper-status__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-feature__status-panel-root .kbot-paper-status__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-feature__status-panel-root .kbot-feature__status-panel-root__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Same seafoam "Local preview" badge vocabulary as Navigation /
+   StatusStrip / PaperStatusCsvExport: pill chrome on the
+   panel/surface mix, seafoam text. */
+.kbot-feature__status-panel-root .kbot-feature__status-panel-root__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border: 1px solid
+    color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--panel, #18354a) 45%,
+    var(--surface, #14222e)
+  );
+  color: var(--seafoam, #a8d8d1);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.kbot-feature__status-panel-root .kbot-feature__status-panel-root__note {
+  min-width: 0;
+  color: var(--muted, #abc4d8);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+
+/* ============ body ============ */
+
+.kbot-feature__status-panel-root .kbot-paper-status__body {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* ============ truth table: entries sentence chip ============ */
+
+/* Sage while entries run, coral-derived while they are paused. The
+   verbatim sentence carries the state; color only reinforces it, so
+   the chip vocabulary matches ArmedRecordsList's entries chip. */
+.kbot-feature__status-panel-root .kbot-feature__status-panel-root__entries {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: start;
+  padding: 3px 10px;
+  border: 1px solid
+    color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.kbot-feature__status-panel-root
+  .kbot-feature__status-panel-root__entries--paused {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+/* ============ pack line + owned position (quoted wire evidence) ============ */
+
+.kbot-feature__status-panel-root .kbot-paper-status__pack {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__status-panel-root .kbot-paper-status__position {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+/* ============ loading / unavailable / unknown indicators ============ */
+
+/* Muted panel surface: loading, unavailable and pending reads sit on a
+   restrained surface card rather than floating copy. */
+.kbot-feature__status-panel-root .kbot-paper-status__empty {
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 85%, transparent);
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* The unavailable branch (read failed or wire refused) reinforces the
+   coral-derived caution border; the sentence carries the state. */
+.kbot-feature__status-panel-root .kbot-paper-status__empty[role="alert"] {
+  border: 1px solid
+    color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+}
+
+/* Unknown-outcome copy keeps the muted panel surface with the
+   coral-derived border; the message text carries the state. */
+.kbot-feature__status-panel-root .kbot-paper-status__unknown {
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px solid
+    color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+/* ============ alerts / refusals (coral-derived, never sage) ============ */
+
+.kbot-feature__status-panel-root .kbot-paper-status__error {
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px solid
+    color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+/* Backend-confirmed raise-stop echo: the affirmative sage-derived
+   success tone, distinct from every caution surface above. */
+.kbot-feature__status-panel-root .kbot-feature__status-panel-root__ok {
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--sage, #b3dda8) 8%, var(--surface, #14222e));
+  border: 1px solid
+    color-mix(in srgb, var(--sage, #b3dda8) 40%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--sage, #b3dda8);
+  overflow-wrap: anywhere;
+}
+
+/* ============ command row ============ */
+
+.kbot-feature__status-panel-root .kbot-paper-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Ordinary paper controls: seafoam-accented selection affordances —
+   they select and act on already-armed paper state, they do not
+   create it (sage stays reserved for the editor's primary actions
+   and the arm form below). */
+.kbot-feature__status-panel-root .kbot-feature__status-panel-root__action {
+  min-height: 34px;
+  padding: 7px 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid
+    color-mix(in srgb, var(--seafoam, #a8d8d1) 38%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.kbot-feature__status-panel-root
+  .kbot-feature__status-panel-root__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 55%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 8%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-feature__status-panel-root
+  .kbot-feature__status-panel-root__action:active:not(:disabled) {
+  border-color: var(--seafoam, #a8d8d1);
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 14%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-feature__status-panel-root
+  .kbot-feature__status-panel-root__action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Disarm: the one destructive control on this surface, carrying the
+   coral-derived danger treatment. The label carries the meaning; the
+   border tint only reinforces it. */
+.kbot-feature__status-panel-root
+  .kbot-feature__status-panel-root__action--danger {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+}
+
+.kbot-feature__status-panel-root
+  .kbot-feature__status-panel-root__action--danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 60%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+.kbot-feature__status-panel-root
+  .kbot-feature__status-panel-root__action--danger:active:not(:disabled) {
+  border-color: var(--coral, #cc9689);
+  background: color-mix(in srgb, var(--coral, #cc9689) 16%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+/* ============ raise-stop field ============ */
+
+.kbot-feature__status-panel-root .kbot-paper-status__raise-stop {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  justify-items: start;
+  min-width: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--panel, #18354a) 22%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+}
+
+.kbot-feature__status-panel-root .kbot-paper-status__field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  max-width: 320px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-feature__status-panel-root .kbot-feature__status-panel-root__control {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  width: 100%;
+}
+
+.kbot-feature__status-panel-root
+  .kbot-feature__status-panel-root__control:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* ============ arm form (unarmed branch) ============ */
+
+.kbot-feature__status-panel-root .kbot-paper-status__arm {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  background: color-mix(in srgb, var(--panel, #18354a) 22%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+}
+
+.kbot-feature__status-panel-root .kbot-paper-status__arm-title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+/* The arm form's own submit button keeps the shared
+   kbot-paper-status__action class and inherits the ordinary
+   seafoam-accented control chrome above. */
+
+/* ============ focus visibility ============ */
+
+.kbot-feature__status-panel-root :is(button, a):focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-feature__status-panel-root {
+    gap: 12px;
+  }
+
+  .kbot-feature__status-panel-root .kbot-paper-status__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kbot-feature__status-panel-root .kbot-feature__status-panel-root__meta {
+    justify-content: flex-start;
+  }
+
+  /* Every existing affordance keeps a >=44px tap target on small
+     viewports: the command row, the arm submit, the stop-decimal
+     input and its select siblings. */
+  .kbot-feature__status-panel-root .kbot-feature__status-panel-root__action,
+  .kbot-feature__status-panel-root .kbot-feature__status-panel-root__control {
+    min-height: 44px;
+  }
+
+  .kbot-feature__status-panel-root .kbot-paper-status__actions,
+  .kbot-feature__status-panel-root .kbot-paper-status__raise-stop {
+    justify-items: stretch;
+  }
+
+  .kbot-feature__status-panel-root .kbot-paper-status__field,
+  .kbot-feature__status-panel-root .kbot-feature__status-panel-root__control,
+  .kbot-feature__status-panel-root .kbot-paper-status__raise-stop
+    .kbot-feature__status-panel-root__action {
+    width: 100%;
+    max-width: none;
+  }
+}
