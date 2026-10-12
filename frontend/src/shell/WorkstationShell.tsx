@@ -596,7 +596,7 @@ export function WorkstationShell({
             <Wordmark />
           </button>
           <div className="kbot-shell__head-utils">
-            <StatusStrip />
+            <StatusStrip live={bootstrapDone ? undefined : null} />
             <JobsDrawer />
             <button
               type="button"
