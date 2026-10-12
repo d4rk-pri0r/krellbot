@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, type JSX } from "react";
+import "./RehearsalPanel.signal.css";
 import type {
   RehearsalClient,
   RehearsalCommandResult,
@@ -18,6 +19,7 @@ import {
   rehearsalBalances,
   stopSentence,
   type RehearsalCommandName,
+  type RehearsalLifecycle,
 } from "./rehearsalModel";
 
 export type { RehearsalClient, RehearsalStatus } from "./rehearsalClient";
@@ -85,6 +87,47 @@ function isConfirmedOk(result: RehearsalCommandResult | null | undefined): boole
   // Only an explicit backend `ok: true` counts as success; anything
   // else (malformed, flag-less, refused) is treated conservatively.
   return result?.ok === true;
+}
+
+/**
+ * Signal state-chip tone (KRELL-SIGNAL-20261010): sage carries the
+ * running loop, coral carries a status that cannot be confirmed, and
+ * every other lifecycle stays neutral. The chip always shows the
+ * verbatim lifecycle word, so the state is never color-only.
+ */
+function stateChipTone(
+  lifecycle: RehearsalLifecycle | "unavailable",
+): "sage" | "coral" | "neutral" {
+  if (lifecycle === "running") {
+    return "sage";
+  }
+  if (lifecycle === "unknown" || lifecycle === "unavailable") {
+    return "coral";
+  }
+  return "neutral";
+}
+
+function stateChipClass(
+  lifecycle: RehearsalLifecycle | "unavailable",
+): string {
+  const tone = stateChipTone(lifecycle);
+  return `kbot-rehearsal__chip${
+    tone === "neutral" ? "" : ` kbot-rehearsal__chip--${tone}`
+  }`;
+}
+
+/**
+ * Side badge tone for a rehearsal fill: sage for buy, coral for sell,
+ * neutral otherwise. The verbatim side word carries the meaning.
+ */
+function fillSideTone(side: string): string {
+  if (side === "buy") {
+    return "buy";
+  }
+  if (side === "sell") {
+    return "sell";
+  }
+  return "";
 }
 
 function reducer(state: PanelState, action: PanelAction): PanelState {
@@ -308,7 +351,16 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
         data-testid="rehearsal-unavailable"
       >
         <header className="kbot-rehearsal__head">
-          <h2 className="kbot-rehearsal__title">Synthetic paper rehearsal</h2>
+          <div className="kbot-rehearsal__head-titles">
+            <p className="kbot-rehearsal__eyebrow">Isolated rehearsal</p>
+            <h2 className="kbot-rehearsal__title">Synthetic paper rehearsal</h2>
+            <span
+              className={stateChipClass("unavailable")}
+              data-testid="rehearsal-state-chip"
+            >
+              unavailable
+            </span>
+          </div>
         </header>
         <p className="kbot-rehearsal__empty">
           Rehearsal controls unavailable
@@ -335,7 +387,18 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
       data-rehearsal-pending={state.pending ?? ""}
     >
       <header className="kbot-rehearsal__head">
-        <h2 className="kbot-rehearsal__title">Synthetic paper rehearsal</h2>
+        <div className="kbot-rehearsal__head-titles">
+          <p className="kbot-rehearsal__eyebrow" data-testid="rehearsal-eyebrow">
+            Isolated rehearsal
+          </p>
+          <h2 className="kbot-rehearsal__title">Synthetic paper rehearsal</h2>
+          <span
+            className={stateChipClass(lifecycle)}
+            data-testid="rehearsal-state-chip"
+          >
+            {lifecycle}
+          </span>
+        </div>
         <p className="kbot-rehearsal__label" data-testid="rehearsal-label">
           {label}
         </p>
@@ -365,125 +428,214 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
           </>
         ) : (
           <>
-            <p
-              className="kbot-rehearsal__sentence"
-              data-testid="rehearsal-sentence"
-            >
-              {lifecycleSentence(lifecycle)}
-            </p>
+            {state.status === null ? (
+              <p
+                className="kbot-rehearsal__loading"
+                data-testid="rehearsal-loading"
+              >
+                Reading rehearsal status…
+              </p>
+            ) : (
+              <p
+                className="kbot-rehearsal__sentence"
+                data-testid="rehearsal-sentence"
+              >
+                {lifecycleSentence(lifecycle)}
+              </p>
+            )}
             {state.status !== null ? (
-              <dl className="kbot-rehearsal__facts">
-                <div>
-                  <dt>Cursor</dt>
-                  <dd data-testid="rehearsal-cursor">{cursorSentence(state.status)}</dd>
-                </div>
-                <div>
-                  <dt>Position</dt>
-                  <dd data-testid="rehearsal-position">{positionSentence(state.status)}</dd>
-                </div>
-                <div>
-                  <dt>Stop</dt>
-                  <dd data-testid="rehearsal-stop">{stopSentence(state.status)}</dd>
-                </div>
-                {balances !== null
-                  ? balances.entries.map((entry) => (
-                      <div key={entry.asset}>
-                        <dt>Balance {entry.asset}</dt>
-                        <dd data-testid="rehearsal-balance">{entry.amount}</dd>
-                      </div>
-                    ))
-                  : null}
-              </dl>
+              <section
+                className="kbot-rehearsal__panel"
+                aria-label="Rehearsal holdings and cash"
+                data-testid="rehearsal-holdings-panel"
+              >
+                <h3 className="kbot-rehearsal__panel-title">
+                  Holdings / cash
+                </h3>
+                <dl className="kbot-rehearsal__facts">
+                  <div>
+                    <dt>Cursor</dt>
+                    <dd
+                      className="kbot-rehearsal__num"
+                      data-testid="rehearsal-cursor"
+                    >
+                      {cursorSentence(state.status)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Position</dt>
+                    <dd
+                      className="kbot-rehearsal__num"
+                      data-testid="rehearsal-position"
+                    >
+                      {positionSentence(state.status)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Stop</dt>
+                    <dd
+                      className="kbot-rehearsal__num"
+                      data-testid="rehearsal-stop"
+                    >
+                      {stopSentence(state.status)}
+                    </dd>
+                  </div>
+                  {balances !== null
+                    ? balances.entries.map((entry) => (
+                        <div key={entry.asset}>
+                          <dt>Balance {entry.asset}</dt>
+                          <dd
+                            className="kbot-rehearsal__num"
+                            data-testid="rehearsal-balance"
+                          >
+                            {entry.amount}
+                          </dd>
+                        </div>
+                      ))
+                    : null}
+                </dl>
+              </section>
             ) : null}
-            {state.status !== null && state.status.recent_fills.length > 0 ? (
-              <table className="kbot-rehearsal__fills">
-                <caption className="kbot-rehearsal__fills-caption">
-                  Simulated fills
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Time</th>
-                    <th scope="col">Side</th>
-                    <th scope="col">Qty</th>
-                    <th scope="col">Price</th>
-                    <th scope="col">Coid</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.status.recent_fills.map((fill) => (
-                    <tr key={`${fill.coid}-${fill.ts_ms}`} data-testid="rehearsal-fill">
-                      <td>{formatFillTs(fill.ts_ms)}</td>
-                      <td>{fill.side}</td>
-                      <td>{fill.qty}</td>
-                      <td>{fill.price}</td>
-                      <td>{fill.coid}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {state.status !== null ? (
+              <section
+                className="kbot-rehearsal__panel"
+                aria-label="Rehearsal simulated fill history"
+                data-testid="rehearsal-fills-panel"
+              >
+                {state.status.recent_fills.length > 0 ? (
+                  <div
+                    className="kbot-rehearsal__scroll"
+                    data-testid="rehearsal-fills-scroll"
+                  >
+                    <table className="kbot-rehearsal__fills">
+                      <caption className="kbot-rehearsal__fills-caption">
+                        Simulated fills
+                      </caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Time</th>
+                          <th scope="col">Side</th>
+                          <th scope="col">Qty</th>
+                          <th scope="col">Price</th>
+                          <th scope="col">Coid</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {state.status.recent_fills.map((fill) => {
+                          const sideTone = fillSideTone(fill.side);
+                          return (
+                            <tr
+                              key={`${fill.coid}-${fill.ts_ms}`}
+                              data-testid="rehearsal-fill"
+                            >
+                              <td className="kbot-rehearsal__ts">
+                                {formatFillTs(fill.ts_ms)}
+                              </td>
+                              <td>
+                                <span
+                                  className={`kbot-rehearsal__side${
+                                    sideTone === ""
+                                      ? ""
+                                      : ` kbot-rehearsal__side--${sideTone}`
+                                  }`}
+                                >
+                                  {fill.side}
+                                </span>
+                              </td>
+                              <td className="kbot-rehearsal__num">
+                                {fill.qty}
+                              </td>
+                              <td className="kbot-rehearsal__num">
+                                {fill.price}
+                              </td>
+                              <td className="kbot-rehearsal__coid">
+                                {fill.coid}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p
+                    className="kbot-rehearsal__fills-empty"
+                    data-testid="rehearsal-fills-empty"
+                  >
+                    No simulated fills in this rehearsal yet
+                  </p>
+                )}
+              </section>
             ) : null}
-            <div className="kbot-rehearsal__actions">
-              <button
-                type="button"
-                className="kbot-rehearsal__action"
-                disabled={busy || !canStart(lifecycle)}
-                onClick={() => {
-                  void runCommand("start", () => client.start());
-                }}
-              >
-                {state.pending === "start" ? "Starting…" : "Start rehearsal"}
-              </button>
-              <button
-                type="button"
-                className="kbot-rehearsal__action"
-                disabled={busy || !canPause(lifecycle)}
-                onClick={() => {
-                  void runCommand("pause", () => client.pause());
-                }}
-              >
-                {state.pending === "pause" ? "Pausing…" : "Pause rehearsal"}
-              </button>
-              <button
-                type="button"
-                className="kbot-rehearsal__action"
-                disabled={busy || !canResume(lifecycle)}
-                onClick={() => {
-                  void runCommand("resume", () => client.resume());
-                }}
-              >
-                {state.pending === "resume" ? "Resuming…" : "Resume rehearsal"}
-              </button>
-              <button
-                type="button"
-                className="kbot-rehearsal__action"
-                disabled={busy || !canExit(lifecycle)}
-                onClick={() => {
-                  void runCommand("exit", () => client.exit());
-                }}
-              >
-                {state.pending === "exit" ? "Exiting…" : "Exit rehearsal"}
-              </button>
-              <button
-                type="button"
-                className="kbot-rehearsal__action"
-                disabled={busy || !canStop(lifecycle)}
-                onClick={() => {
-                  void runCommand("stop", () => client.stop());
-                }}
-              >
-                {state.pending === "stop" ? "Stopping…" : "Stop rehearsal"}
-              </button>
-              <button
-                type="button"
-                className="kbot-rehearsal__action"
-                disabled={busy}
-                onClick={() => {
-                  void refreshStatus();
-                }}
-              >
-                Refresh status
-              </button>
-            </div>
+            <section
+              className="kbot-rehearsal__panel kbot-rehearsal__commands"
+              aria-label="Rehearsal commands"
+              data-testid="rehearsal-commands-panel"
+            >
+              <h3 className="kbot-rehearsal__panel-title">Rehearsal commands</h3>
+              <div className="kbot-rehearsal__actions">
+                <button
+                  type="button"
+                  className="kbot-rehearsal__action kbot-rehearsal__action--primary"
+                  disabled={busy || !canStart(lifecycle)}
+                  onClick={() => {
+                    void runCommand("start", () => client.start());
+                  }}
+                >
+                  {state.pending === "start" ? "Starting…" : "Start rehearsal"}
+                </button>
+                <button
+                  type="button"
+                  className="kbot-rehearsal__action"
+                  disabled={busy || !canPause(lifecycle)}
+                  onClick={() => {
+                    void runCommand("pause", () => client.pause());
+                  }}
+                >
+                  {state.pending === "pause" ? "Pausing…" : "Pause rehearsal"}
+                </button>
+                <button
+                  type="button"
+                  className="kbot-rehearsal__action"
+                  disabled={busy || !canResume(lifecycle)}
+                  onClick={() => {
+                    void runCommand("resume", () => client.resume());
+                  }}
+                >
+                  {state.pending === "resume" ? "Resuming…" : "Resume rehearsal"}
+                </button>
+                <button
+                  type="button"
+                  className="kbot-rehearsal__action"
+                  disabled={busy || !canExit(lifecycle)}
+                  onClick={() => {
+                    void runCommand("exit", () => client.exit());
+                  }}
+                >
+                  {state.pending === "exit" ? "Exiting…" : "Exit rehearsal"}
+                </button>
+                <button
+                  type="button"
+                  className="kbot-rehearsal__action"
+                  disabled={busy || !canStop(lifecycle)}
+                  onClick={() => {
+                    void runCommand("stop", () => client.stop());
+                  }}
+                >
+                  {state.pending === "stop" ? "Stopping…" : "Stop rehearsal"}
+                </button>
+                <button
+                  type="button"
+                  className="kbot-rehearsal__action"
+                  disabled={busy}
+                  onClick={() => {
+                    void refreshStatus();
+                  }}
+                >
+                  Refresh status
+                </button>
+              </div>
+            </section>
             {state.unknownOutcome !== null ? (
               <p
                 className="kbot-rehearsal__unknown"
