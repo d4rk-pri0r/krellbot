@@ -211,9 +211,7 @@ def _header(headers: list[tuple[str, str]], name: str) -> str | None:
 def test_list_deployment_records_reads_journal_and_caps_at_50(home: Path) -> None:
     from krellbot.application.operations import DEPLOYMENT_HISTORY_LIMIT, list_deployment_records
 
-    lines = [
-        _deployment_line(deployment_id=f"dep-{i}", ts=1_700_000_000 + i) for i in range(60)
-    ]
+    lines = [_deployment_line(deployment_id=f"dep-{i}", ts=1_700_000_000 + i) for i in range(60)]
     _write_journal(home, "2026-09.jsonl", lines)
 
     rows = list_deployment_records(home)
@@ -245,7 +243,9 @@ def test_list_deployment_records_empty_without_journal(home: Path) -> None:
 
     assert list_deployment_records(home) == []
     # A journal directory with no deployment records is also empty.
-    _write_journal(home, "2026-09.jsonl", [_deployment_line(deployment_id="d", ts=10).replace('"deployment"', '"tick"')])
+    _write_journal(
+        home, "2026-09.jsonl", [_deployment_line(deployment_id="d", ts=10).replace('"deployment"', '"tick"')]
+    )
     assert list_deployment_records(home) == []
 
 
@@ -406,9 +406,7 @@ def test_list_caps_total_entries_at_50(home: Path) -> None:
 def test_detail_returns_404_for_unknown_id(home: Path) -> None:
     _write_journal(home, "2026-09.jsonl", [_deployment_line(deployment_id="dep-1", ts=1_700_000_010)])
     app = _build_app(home)
-    status, headers, body, _c = _get(
-        app, "/api/v1/operations/deployments/missing", headers=_session(app)
-    )
+    status, headers, body, _c = _get(app, "/api/v1/operations/deployments/missing", headers=_session(app))
     assert status == 404, (status, body)
     assert _header(headers, "Cache-Control") == "no-store"
     decoded = json.loads(body)
@@ -418,9 +416,7 @@ def test_detail_returns_404_for_unknown_id(home: Path) -> None:
 def test_detail_returns_closed_row_for_known_id(home: Path) -> None:
     _write_journal(home, "2026-09.jsonl", [_deployment_line(deployment_id="dep-1", ts=1_700_000_010)])
     app = _build_app(home)
-    status, headers, body, _c = _get(
-        app, "/api/v1/operations/deployments/dep-1", headers=_session(app)
-    )
+    status, headers, body, _c = _get(app, "/api/v1/operations/deployments/dep-1", headers=_session(app))
     assert status == 200, (status, body)
     assert _header(headers, "Cache-Control") == "no-store"
     decoded = json.loads(body)

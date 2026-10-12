@@ -111,9 +111,12 @@ def _rehearsal_wire(body: dict) -> dict:
     # `exited` describes the trading outcome, not a terminal Stop. The
     # existing UI disables Stop for `exited`; expose its true paused control
     # phase so the user can explicitly Stop after the rule closes ownership.
-    return {**body, "position": body["position"]["qty"],
-            "status": "paused" if body["status"] == "exited" else body["status"],
-            "outcome": "exited" if body["status"] == "exited" else None}
+    return {
+        **body,
+        "position": body["position"]["qty"],
+        "status": "paused" if body["status"] == "exited" else body["status"],
+        "outcome": "exited" if body["status"] == "exited" else None,
+    }
 
 
 def _live_transport(s: _AppState):
@@ -408,11 +411,7 @@ def _paper_history_view(home: Path) -> dict:
         # bucket the venue's fills by pair and hand this run its bucket.
         if run["venue"] not in venue_fills:
             venue_fills[run["venue"]] = _paper_state_fills(home, run["venue"])
-        run_fills = [
-            fill
-            for fill in venue_fills[run["venue"]]
-            if fill["pair"] == run["pair"]
-        ]
+        run_fills = [fill for fill in venue_fills[run["venue"]] if fill["pair"] == run["pair"]]
         refusal_code = None
         if run["_refusals"]:
             refusal_code = max(run["_refusals"], key=lambda item: item[0])[1]
@@ -505,7 +504,10 @@ def create_app(
                 _rehearsal_service(state).drive()
 
         task = asyncio.create_task(drive_rehearsal())
-        print(f"Synthetic rehearsal cadence: one bar every {DRIVER_CADENCE_SECONDS:g}s while running; paused/stopped do not evaluate", flush=True)
+        print(
+            f"Synthetic rehearsal cadence: one bar every {DRIVER_CADENCE_SECONDS:g}s while running; paused/stopped do not evaluate",
+            flush=True,
+        )
         try:
             yield
         finally:
@@ -1176,9 +1178,7 @@ def create_app(
         quote = armed.pair[-3:] if len(armed.pair) >= 3 else ""
         free_cash_raw = balances.get(quote)
         free_cash = (
-            str(free_cash_raw)
-            if isinstance(free_cash_raw, (str, int, float)) and str(free_cash_raw) != ""
-            else "0"
+            str(free_cash_raw) if isinstance(free_cash_raw, (str, int, float)) and str(free_cash_raw) != "" else "0"
         )
         holdings: list[dict] = []
         for symbol in sorted(balances):
@@ -1530,9 +1530,7 @@ def create_app(
             return denied
         rows = _draft_service(s).list_owned_summaries()
         body = {"schema_version": SCHEMA_VERSION, "drafts": rows}
-        return JSONResponse(
-            body, status_code=200, headers={"Cache-Control": "no-store"}
-        )
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     # ---- research result download (lane E) ------------------------------
 

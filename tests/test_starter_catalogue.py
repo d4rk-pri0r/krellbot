@@ -41,7 +41,6 @@ from pathlib import Path
 
 from krellbot.pack.lint import check, is_legacy
 from krellbot.packs import catalogue as starter_catalogue
-
 from tests.test_ns06_api import (
     TEST_PORT,
     _build_app,
@@ -269,9 +268,7 @@ def test_catalogue_loads_through_real_importlib_resources(tmp_path: Path) -> Non
 
     examples_dir = files("krellbot.packs").joinpath("examples")
     listed = sorted(
-        item.name
-        for item in examples_dir.iterdir()
-        if item.name.endswith(".json") and item.name != "catalogue.json"
+        item.name for item in examples_dir.iterdir() if item.name.endswith(".json") and item.name != "catalogue.json"
     )
     rows = starter_catalogue.list_examples()
     expected_files = sorted(f"{row['id']}.json" for row in rows)

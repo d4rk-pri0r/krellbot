@@ -37,8 +37,11 @@ import hashlib
 import json
 import os
 import sqlite3
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
+
+from typing_extensions import Self
 
 SCHEMA_VERSION = 1
 CHECKPOINT_EVERY = 128
@@ -175,7 +178,7 @@ class SourceLock:
         finally:
             os.close(fd)
 
-    def __enter__(self) -> "SourceLock":
+    def __enter__(self) -> Self:
         self.acquire()
         return self
 
@@ -246,9 +249,7 @@ def _validate_existing(
     """Refuse any checkpoint that does not match this import, reading only."""
     meta = _read_meta(con)
     if meta["schema_version"] != str(SCHEMA_VERSION):
-        raise ImportProgressError(
-            f"checkpoint schema version {meta['schema_version']!r} is not {SCHEMA_VERSION}"
-        )
+        raise ImportProgressError(f"checkpoint schema version {meta['schema_version']!r} is not {SCHEMA_VERSION}")
     for key in _IDENTITY_KEYS:
         if key == "members_json":
             if json.loads(meta[key]) != json.loads(_as_text(identity[key])):
@@ -277,13 +278,10 @@ def _validate_existing(
             raise ImportProgressError("checkpoint claims parsed but its cursor is inside a member")
     stored = int(con.execute("SELECT COUNT(*) FROM candles").fetchone()[0])
     if stored != cursor["candles_count"]:
-        raise ImportProgressError(
-            f"checkpoint holds {stored} candles but its cursor claims {cursor['candles_count']}"
-        )
+        raise ImportProgressError(f"checkpoint holds {stored} candles but its cursor claims {cursor['candles_count']}")
     beyond = int(
         con.execute(
-            "SELECT COUNT(*) FROM candles WHERE member_index > ? "
-            "OR (member_index = ? AND row_index >= ?)",
+            "SELECT COUNT(*) FROM candles WHERE member_index > ? OR (member_index = ? AND row_index >= ?)",
             (
                 cursor["next_member_index"],
                 cursor["next_member_index"],
@@ -302,9 +300,7 @@ def _validate_existing(
             "in the first selected member"
         )
     in_current = int(
-        con.execute(
-            "SELECT COUNT(*) FROM candles WHERE member_index = ?", (cursor["next_member_index"],)
-        ).fetchone()[0]
+        con.execute("SELECT COUNT(*) FROM candles WHERE member_index = ?", (cursor["next_member_index"],)).fetchone()[0]
     )
     if in_current > cursor["next_row_index"]:
         raise ImportProgressError(
@@ -327,9 +323,7 @@ def _read_meta(con: sqlite3.Connection) -> dict[str, str]:
     rows = con.execute("SELECT key, value FROM meta").fetchall()
     meta = {str(k): str(v) for k, v in rows}
     if set(meta) != set(_META_KEYS):
-        raise ImportProgressError(
-            f"checkpoint meta keys {sorted(meta)} do not match schema {SCHEMA_VERSION}"
-        )
+        raise ImportProgressError(f"checkpoint meta keys {sorted(meta)} do not match schema {SCHEMA_VERSION}")
     return meta
 
 
@@ -337,7 +331,7 @@ def _parse_cursor(raw: str) -> dict[str, Any]:
     try:
         cursor = json.loads(raw)
     except ValueError as exc:
-        raise ImportProgressError(f"checkpoint cursor_json is not valid JSON") from exc
+        raise ImportProgressError("checkpoint cursor_json is not valid JSON") from exc
     if not isinstance(cursor, dict) or set(cursor) != set(_CURSOR_KEYS):
         raise ImportProgressError(f"checkpoint cursor keys are not the declared set: {sorted(cursor)}")
     for key in ("next_member_index", "next_row_index", "records_seen", "candles_count"):
@@ -379,14 +373,14 @@ class ImportCheckpoint:
         identity: Mapping[str, Any],
         bounds: Mapping[str, int],
         source_accounting: SourceAccounting | None = None,
-    ) -> "ImportCheckpoint":
+    ) -> ImportCheckpoint:
         path = Path(db_path)
         if path.exists():
             return cls._open_existing(path, identity=identity, bounds=bounds, source_accounting=source_accounting)
         return cls._create(path, identity=identity, bounds=bounds)
 
     @classmethod
-    def _create(cls, path: Path, *, identity: Mapping[str, Any], bounds: Mapping[str, int]) -> "ImportCheckpoint":
+    def _create(cls, path: Path, *, identity: Mapping[str, Any], bounds: Mapping[str, int]) -> ImportCheckpoint:
         con = _connect(path)
         try:
             con.execute("BEGIN IMMEDIATE")
@@ -411,9 +405,7 @@ class ImportCheckpoint:
                     }
                 ),
             }
-            con.executemany(
-                "INSERT INTO meta (key, value) VALUES (?, ?)", sorted(meta.items())
-            )
+            con.executemany("INSERT INTO meta (key, value) VALUES (?, ?)", sorted(meta.items()))
             con.execute("COMMIT")
         except BaseException:
             con.close()
@@ -430,7 +422,7 @@ class ImportCheckpoint:
         identity: Mapping[str, Any],
         bounds: Mapping[str, int],
         source_accounting: SourceAccounting | None = None,
-    ) -> "ImportCheckpoint":
+    ) -> ImportCheckpoint:
         # Inspect read-only first: every refusal must leave the checkpoint,
         # journal and sidecar bytes exactly as they were found. Only a
         # checkpoint that fully matches this import is opened for writing.
@@ -508,9 +500,7 @@ class ImportCheckpoint:
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     rows,
                 )
-            self._con.execute(
-                "UPDATE meta SET value = ? WHERE key = 'cursor_json'", (json.dumps(cursor),)
-            )
+            self._con.execute("UPDATE meta SET value = ? WHERE key = 'cursor_json'", (json.dumps(cursor),))
             self._con.execute("COMMIT")
         except BaseException:
             self._con.execute("ROLLBACK")
@@ -521,8 +511,7 @@ class ImportCheckpoint:
     def load_candles(self) -> list[tuple[int, str, str, str, str, str]]:
         """Committed candles in source order (member, then record position)."""
         rows = self._con.execute(
-            "SELECT ts_ms, open, high, low, close, volume FROM candles "
-            "ORDER BY member_index, row_index"
+            "SELECT ts_ms, open, high, low, close, volume FROM candles ORDER BY member_index, row_index"
         ).fetchall()
         return [(int(r[0]), str(r[1]), str(r[2]), str(r[3]), str(r[4]), str(r[5])) for r in rows]
 

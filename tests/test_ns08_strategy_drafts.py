@@ -779,9 +779,7 @@ def test_list_drafts_returns_only_owned_revisions(home: Path) -> None:
     packs_root.mkdir(parents=True, exist_ok=True)
     imported = _valid_pack_dict()
     imported["id"] = "imported-only"
-    (packs_root / "imported-only.json").write_text(
-        json.dumps(imported), encoding="utf-8"
-    )
+    (packs_root / "imported-only.json").write_text(json.dumps(imported), encoding="utf-8")
 
     status, body = _get_drafts_list(app, session)
     assert status == 200, body
@@ -863,9 +861,7 @@ def test_list_drafts_refuses_malformed_entries(home: Path) -> None:
     good = _create_revision(app, csrf, session, _valid_pack_dict())
 
     drafts_root = home / "drafts"
-    strategy_dir = next(
-        p for p in drafts_root.iterdir() if (p / f"{good['revision_id']}.json").exists()
-    )
+    strategy_dir = next(p for p in drafts_root.iterdir() if (p / f"{good['revision_id']}.json").exists())
     broken_dir = drafts_root / "broken-strategy"
     broken_dir.mkdir(parents=True, exist_ok=True)
     (broken_dir / "deadbeef.json").write_text("{ not json", encoding="utf-8")
@@ -903,4 +899,3 @@ def test_list_drafts_never_mutates_state_or_bytes(home: Path) -> None:
 
     assert rev_path.read_bytes() == rev_before
     assert meta_path.read_bytes() == meta_before
-

@@ -176,9 +176,7 @@ def test_rehearsal_full_lifecycle_with_new_interpreter_restart(home: Path) -> No
     assert len(entry_fills) == 1
     # PaperVenue uses explicit venue-precision ROUND_DOWN, independent of
     # the ambient Decimal context. Keep the exact fill-price assertion.
-    expected_buy = (entry_bar_close * (Decimal(1) + Decimal("0.0005"))).quantize(
-        Decimal("0.0001"), rounding=ROUND_DOWN
-    )
+    expected_buy = (entry_bar_close * (Decimal(1) + Decimal("0.0005"))).quantize(Decimal("0.0001"), rounding=ROUND_DOWN)
     assert Decimal(entry_fills[0]["price"]) == expected_buy
     assert Decimal(body["position"]["qty"]) > 0
     assert body["position"]["pair"] == "SUIUSD"
@@ -235,9 +233,7 @@ def test_rehearsal_full_lifecycle_with_new_interpreter_restart(home: Path) -> No
     assert len(sell_fills) == 1
     exit_cursor = exited["rehearsal"]["cursor"]
     exit_close = Decimal(str(candles[exit_cursor].close))
-    expected_sell = (exit_close * (Decimal(1) - Decimal("0.0005"))).quantize(
-        Decimal("0.0001"), rounding=ROUND_DOWN
-    )
+    expected_sell = (exit_close * (Decimal(1) - Decimal("0.0005"))).quantize(Decimal("0.0001"), rounding=ROUND_DOWN)
     assert Decimal(sell_fills[0]["price"]) == expected_sell
     exit_ts = candles[exit_cursor].ts_ms
     exit_tick = next(t for t in _tick_records(rehearsal_home) if t["kind"] == "tick" and t["bar_ts"] == exit_ts)
@@ -315,9 +311,7 @@ def test_rehearsal_isolation_from_existing_user_state(home: Path) -> None:
         "seeded": True,
     }
     (home / "run").mkdir(parents=True, exist_ok=True)
-    (home / "run" / "paper-kraken.json").write_text(
-        json.dumps(user_venue_state, default=str), encoding="utf-8"
-    )
+    (home / "run" / "paper-kraken.json").write_text(json.dumps(user_venue_state, default=str), encoding="utf-8")
     armed = kb_config.ArmedPack(
         pack_path="/nonexistent/user-pack.json",
         pack_sha256="0" * 64,
@@ -328,7 +322,7 @@ def test_rehearsal_isolation_from_existing_user_state(home: Path) -> None:
         cap=Decimal(10),
         stop=Decimal("0.5"),
         mode="paper",
-        starting_cash=Decimal("777"),
+        starting_cash=Decimal(777),
         requires_license=False,
         armed_at_ts=1,
     )
@@ -387,7 +381,11 @@ def test_rehearsal_survives_new_backend_process(home: Path) -> None:
 
     phase1 = subprocess.run(
         [sys.executable, "-c", driver, str(home), "drive"],
-        capture_output=True, text=True, env=env, timeout=120, check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+        check=False,
     )
     assert phase1.returncode == 0, phase1.stderr
     driven = [json.loads(line) for line in phase1.stdout.splitlines() if line.startswith("{")]
@@ -395,7 +393,11 @@ def test_rehearsal_survives_new_backend_process(home: Path) -> None:
 
     phase2 = subprocess.run(
         [sys.executable, "-c", driver, str(home), "finish"],
-        capture_output=True, text=True, env=env, timeout=120, check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+        check=False,
     )
     assert phase2.returncode == 0, phase2.stderr
     seen = [json.loads(line) for line in phase2.stdout.splitlines() if line.startswith("{")]
@@ -438,8 +440,15 @@ def test_rehearsal_status_route_shape(home: Path) -> None:
     assert status == 200
     payload = json.loads(body)
     for key in (
-        "schema_version", "label", "status", "cursor", "total_bars",
-        "balances", "position", "resting_stop", "recent_fills",
+        "schema_version",
+        "label",
+        "status",
+        "cursor",
+        "total_bars",
+        "balances",
+        "position",
+        "resting_stop",
+        "recent_fills",
     ):
         assert key in payload, key
     assert payload["label"] == REHEARSAL_LABEL
@@ -458,13 +467,16 @@ def test_rehearsal_commands_through_api(home: Path) -> None:
 
     def post(payload: dict, headers=None):
         return _post_json(
-            app, "/api/v1/commands", payload,
+            app,
+            "/api/v1/commands",
+            payload,
             headers=headers if headers is not None else _auth(csrf, cookie),
         )
 
     # Gate parity with the paper commands: no session -> 403.
     status, _h, _b, _c = _post_json(
-        app, "/api/v1/commands",
+        app,
+        "/api/v1/commands",
         {"schema_version": "1", "command": "rehearsal.start", "payload": {}},
         headers=[("Origin", f"http://127.0.0.1:{TEST_PORT}"), ("X-Krellbot-CSRF", "x")],
     )

@@ -84,9 +84,7 @@ def _seed_paper_state(home: Path, venue: str) -> None:
 def _get_history(app, headers: list[tuple[str, str]]):
     base = [("Host", f"127.0.0.1:{TEST_PORT}")]
     base.extend(headers)
-    status, flat, body, _set_cookies = asgi_call(
-        app, method="GET", path="/api/v1/paper/history", headers=base
-    )
+    status, flat, body, _set_cookies = asgi_call(app, method="GET", path="/api/v1/paper/history", headers=base)
     return status, flat, body
 
 

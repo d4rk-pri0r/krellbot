@@ -109,9 +109,7 @@ def _validate_raw_json_identity(body: bytes, pack_id: str) -> None:
     try:
         text = body.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise kb_community.InstallPayloadError(
-            f"community pack body is not valid UTF-8: {exc}"
-        ) from exc
+        raise kb_community.InstallPayloadError(f"community pack body is not valid UTF-8: {exc}") from exc
 
     try:
         data = json.loads(text, parse_constant=_reject_constant)
@@ -119,9 +117,7 @@ def _validate_raw_json_identity(body: bytes, pack_id: str) -> None:
         raise kb_community.InstallPayloadError(f"community pack body is not valid JSON: {exc}") from exc
 
     if not isinstance(data, dict):
-        raise kb_community.InstallPayloadError(
-            f"community pack body must be a JSON object, got {type(data).__name__}"
-        )
+        raise kb_community.InstallPayloadError(f"community pack body must be a JSON object, got {type(data).__name__}")
 
     embedded_id = data.get("id")
     if embedded_id != pack_id:

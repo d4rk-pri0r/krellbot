@@ -103,9 +103,7 @@ def _subset(raw: object, keys: tuple[str, ...]) -> dict:
         value = raw[key]
         if value is None:
             continue
-        if isinstance(value, bool):
-            out[key] = value
-        elif isinstance(value, (int, float)):
+        if isinstance(value, (bool, int, float)):
             out[key] = value
         else:
             out[key] = str(value)
@@ -200,4 +198,4 @@ def get_deployment_record(home: Path, deployment_id: str) -> dict | None:
     return None
 
 
-__all__ = ["operations_view", "list_deployment_records", "get_deployment_record"]
+__all__ = ["get_deployment_record", "list_deployment_records", "operations_view"]

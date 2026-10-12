@@ -136,9 +136,7 @@ def _write_routing_shim(tmp_path: Path, name: str, body: str) -> Path:
 
 def _routing_shim_dir(tmp_path: Path, name: str, marker: Path, *, frozen: bool) -> Path:
     """Write a sitecustomize shim that fakes krellbot.cli and records argv."""
-    return _write_routing_shim(
-        tmp_path, name, _RECORD_MAIN_SHIM.format(marker=marker, frozen=frozen)
-    )
+    return _write_routing_shim(tmp_path, name, _RECORD_MAIN_SHIM.format(marker=marker, frozen=frozen))
 
 
 def _run_frozen_main_with_shim(shim_dir: Path, args: list[str], timeout: float = 30.0):

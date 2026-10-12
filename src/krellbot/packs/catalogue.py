@@ -43,11 +43,7 @@ class StarterCatalogueError(RuntimeError):
 
 
 def _read_resource(name: str) -> str:
-    return (
-        resources.files(_EXAMPLES_PACKAGE)
-        .joinpath(name)
-        .read_text(encoding="utf-8")
-    )
+    return resources.files(_EXAMPLES_PACKAGE).joinpath(name).read_text(encoding="utf-8")
 
 
 def _load_manifest() -> list[dict]:
@@ -77,9 +73,7 @@ def list_examples() -> list[dict]:
             raise StarterCatalogueError("catalogue manifest entry missing id or file")
         pack = json.loads(_read_resource(filename))
         if not isinstance(pack, dict) or pack.get("id") != example_id:
-            raise StarterCatalogueError(
-                f"starter example {filename!r} must be a JSON object with id {example_id!r}"
-            )
+            raise StarterCatalogueError(f"starter example {filename!r} must be a JSON object with id {example_id!r}")
         out.append(
             {
                 "id": example_id,

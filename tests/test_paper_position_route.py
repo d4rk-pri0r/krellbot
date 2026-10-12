@@ -92,9 +92,7 @@ def _get_position(
     base = [("Host", f"127.0.0.1:{TEST_PORT}")]
     if headers:
         base.extend(headers)
-    status, flat, body, _set_cookies = asgi_call(
-        app, method="GET", path="/api/v1/paper/position", headers=base
-    )
+    status, flat, body, _set_cookies = asgi_call(app, method="GET", path="/api/v1/paper/position", headers=base)
     return status, flat, body
 
 
@@ -352,9 +350,7 @@ def test_paper_position_is_served_no_store(home: Path) -> None:
     token = "boot-position-no-store"
     app = _build_app(home, bootstrap_token=token)
     session_value = _bootstrap_session(app, token)
-    _status, headers, _body = _get_position(
-        app, headers=_authenticated_headers(session_value)
-    )
+    _status, headers, _body = _get_position(app, headers=_authenticated_headers(session_value))
     cache_control = [value for name, value in headers if name.lower() == "cache-control"]
     assert cache_control == ["no-store"], cache_control
 
@@ -365,9 +361,7 @@ def test_paper_position_path_appears_in_openapi(home: Path) -> None:
     from tests.test_ns06_api import _default_host_header
 
     app = _build_app(home)
-    status, _h, body, _c = asgi_call(
-        app, method="GET", path="/openapi.json", headers=_default_host_header()
-    )
+    status, _h, body, _c = asgi_call(app, method="GET", path="/openapi.json", headers=_default_host_header())
     assert status == 200, status
     paths = _read_json(body).get("paths") or {}
     assert "/api/v1/paper/position" in paths, sorted(paths.keys())

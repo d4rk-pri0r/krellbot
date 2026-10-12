@@ -39,7 +39,7 @@ def _make_candles(closes: list[float]) -> list[Candle]:
                 high=Decimal(str(close + 0.5)),
                 low=Decimal(str(close - 0.5)),
                 close=Decimal(str(close)),
-                volume=Decimal("100"),
+                volume=Decimal(100),
             )
         )
     return out

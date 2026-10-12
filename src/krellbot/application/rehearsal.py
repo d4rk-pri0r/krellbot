@@ -86,7 +86,7 @@ REHEARSAL_DIRNAME = "rehearsal"
 SAMPLE_VENUE = "kraken"
 SAMPLE_PAIR = "SUIUSD"
 SAMPLE_PACK_ID = "rehearsal-sma-cross"
-SAMPLE_BALANCE = Decimal("10000")
+SAMPLE_BALANCE = Decimal(10000)
 RECENT_FILLS_LIMIT = 20
 DRIVER_CADENCE_SECONDS = 1.0
 
@@ -101,7 +101,9 @@ def _serialized(method):
     def call(*args, **kwargs):
         with _OPERATIONS_LOCK:
             return method(*args, **kwargs)
+
     return call
+
 
 STATUS_IDLE = "idle"
 STATUS_RUNNING = "running"
@@ -138,11 +140,7 @@ COMMANDS = (
 
 
 def _read_resource(name: str) -> str:
-    return (
-        resources.files("krellbot.application.rehearsal_resources")
-        .joinpath(name)
-        .read_text(encoding="utf-8")
-    )
+    return resources.files("krellbot.application.rehearsal_resources").joinpath(name).read_text(encoding="utf-8")
 
 
 def load_sample_pack() -> dict:
@@ -312,8 +310,12 @@ class RehearsalService:
             return self._refusal(CODE_NOT_RUNNING, f"cannot pause from {state.status}")
         changed = self._set_entries_paused(True)
         _write_state(self._rehearsal_home, _RehearsalState(status=STATUS_PAUSED, cursor=state.cursor))
-        return self._result(CODE_PAUSED, True, "rehearsal paused: entries suppressed, protection on",
-                            "changed" if changed else "unchanged")
+        return self._result(
+            CODE_PAUSED,
+            True,
+            "rehearsal paused: entries suppressed, protection on",
+            "changed" if changed else "unchanged",
+        )
 
     def _resume(self, state: _RehearsalState) -> dict:
         if state.status != STATUS_PAUSED:

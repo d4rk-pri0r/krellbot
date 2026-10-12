@@ -29,7 +29,6 @@ from krellbot.pack.lint import check, is_legacy
 from krellbot.pack.model import Candle, Target
 from krellbot.packs import catalogue
 
-
 # ---- helpers --------------------------------------------------------------
 
 
@@ -109,7 +108,7 @@ def _dual_ma_entry_prefix() -> list[Candle]:
     ``crosses_above`` fires exactly on bar 40.
     """
 
-    return [ _flat(i, 100) for i in range(40) ] + [ _bar(40, 105, 111, 105, 110, 200) ]
+    return [_flat(i, 100) for i in range(40)] + [_bar(40, 105, 111, 105, 110, 200)]
 
 
 def test_dual_ma_crossover_entry_target_is_exact() -> None:
@@ -122,21 +121,21 @@ def test_dual_ma_crossover_entry_target_is_exact() -> None:
 def test_dual_ma_crossover_warmup_before_slow_ma_window() -> None:
     pack = _pack("starter-dual-ma-crossover")
     # 25 bars: the 30-bar SMA is still None on the last bar.
-    target = evaluate.run(pack, [ _flat(i, 100) for i in range(25) ])
+    target = evaluate.run(pack, [_flat(i, 100) for i in range(25)])
     _expect(target, long=False, reason="warmup", stop=None)
 
 
 def test_dual_ma_crossover_flat_when_no_cross() -> None:
     pack = _pack("starter-dual-ma-crossover")
     # 41 flat bars: both MAs equal, no cross, no exit.
-    target = evaluate.run(pack, [ _flat(i, 100) for i in range(41) ])
+    target = evaluate.run(pack, [_flat(i, 100) for i in range(41)])
     _expect(target, long=False, reason="flat", stop=None)
 
 
 def test_dual_ma_crossover_exit_on_cross_below() -> None:
     pack = _pack("starter-dual-ma-crossover")
     # 40 flat bars then a close of 90: fast drops below slow on bar 40.
-    candles = [ _flat(i, 100) for i in range(40) ] + [ _bar(40, 95, 95, 89, 90, 200) ]
+    candles = [_flat(i, 100) for i in range(40)] + [_bar(40, 95, 95, 89, 90, 200)]
     target = evaluate.run(pack, candles)
     _expect(target, long=False, reason="exit", stop=None)
 
@@ -168,22 +167,22 @@ def _band_entry_prefix() -> list[Candle]:
     false → entry with the 4% stop.
     """
 
-    head = [ _flat(i, 100 if i % 2 == 0 else 110) for i in range(19) ]
-    mid = [ _flat(i, 106) for i in range(19, 38) ]
-    return head + mid + [ _flat(38, 100) ]
+    head = [_flat(i, 100 if i % 2 == 0 else 110) for i in range(19)]
+    mid = [_flat(i, 106) for i in range(19, 38)]
+    return head + mid + [_flat(38, 100)]
 
 
 def test_mean_reversion_band_entry_target_is_exact() -> None:
     pack = _pack("starter-mean-reversion-band")
     target = evaluate.run(pack, _band_entry_prefix())
     # stop = close * (1 - 4/100) = 100 * 0.96 = 96
-    _expect(target, long=True, reason="entry", stop=Decimal("96"))
+    _expect(target, long=True, reason="entry", stop=Decimal(96))
 
 
 def test_mean_reversion_band_warmup_before_window() -> None:
     pack = _pack("starter-mean-reversion-band")
     # 19 bars: the 20-bar SMA/stdev are still None on the last bar.
-    target = evaluate.run(pack, [ _flat(i, 100 if i % 2 == 0 else 110) for i in range(19) ])
+    target = evaluate.run(pack, [_flat(i, 100 if i % 2 == 0 else 110) for i in range(19)])
     _expect(target, long=False, reason="warmup", stop=None)
 
 
@@ -191,11 +190,7 @@ def test_mean_reversion_band_flat_when_band_too_tight() -> None:
     pack = _pack("starter-mean-reversion-band")
     # Close is under the basis but dev is tiny: the entry filter fails,
     # so the pack sits flat instead of entering a noise dip.
-    candles = (
-        [ _flat(i, 100) for i in range(19) ]
-        + [ _flat(i, 100.1) for i in range(19, 39) ]
-        + [ _flat(39, 100.05) ]
-    )
+    candles = [_flat(i, 100) for i in range(19)] + [_flat(i, 100.1) for i in range(19, 39)] + [_flat(39, 100.05)]
     target = evaluate.run(pack, candles)
     _expect(target, long=False, reason="flat", stop=None)
 
@@ -203,10 +198,7 @@ def test_mean_reversion_band_flat_when_band_too_tight() -> None:
 def test_mean_reversion_band_exit_when_close_back_at_mean() -> None:
     pack = _pack("starter-mean-reversion-band")
     # Close back at/above the 20-bar mean → exit.
-    candles = (
-        [ _flat(i, 100 if i % 2 == 0 else 110) for i in range(19) ]
-        + [ _flat(i, 112) for i in range(19, 39) ]
-    )
+    candles = [_flat(i, 100 if i % 2 == 0 else 110) for i in range(19)] + [_flat(i, 112) for i in range(19, 39)]
     target = evaluate.run(pack, candles)
     _expect(target, long=False, reason="exit", stop=None)
 
@@ -228,9 +220,7 @@ def _breakout_entry_prefix() -> list[Candle]:
     the stop is close - 2.5 * 2.0 = 101.9 - 5.0 = 96.9.
     """
 
-    return [ _flat(i, 100, h=101, low=99) for i in range(20) ] + [
-        _bar(20, 101, 102, 100, 101.9, 200)
-    ]
+    return [_flat(i, 100, h=101, low=99) for i in range(20)] + [_bar(20, 101, 102, 100, 101.9, 200)]
 
 
 def test_range_breakout_entry_target_is_exact() -> None:
@@ -242,23 +232,21 @@ def test_range_breakout_entry_target_is_exact() -> None:
 def test_range_breakout_warmup_before_window() -> None:
     pack = _pack("starter-range-breakout")
     # 19 bars: the 20-bar SMAs are still None on the last bar.
-    target = evaluate.run(pack, [ _flat(i, 100, h=101, low=99) for i in range(19) ])
+    target = evaluate.run(pack, [_flat(i, 100, h=101, low=99) for i in range(19)])
     _expect(target, long=False, reason="warmup", stop=None)
 
 
 def test_range_breakout_flat_inside_range() -> None:
     pack = _pack("starter-range-breakout")
     # 21 bars inside the range: close never clears the average high.
-    target = evaluate.run(pack, [ _flat(i, 100, h=101, low=99) for i in range(21) ])
+    target = evaluate.run(pack, [_flat(i, 100, h=101, low=99) for i in range(21)])
     _expect(target, long=False, reason="flat", stop=None)
 
 
 def test_range_breakout_exit_on_volume_fade() -> None:
     pack = _pack("starter-range-breakout")
     # Same breakout bar but volume 100 ≤ 150: the exit any-leg fires.
-    candles = [ _flat(i, 100, h=101, low=99) for i in range(20) ] + [
-        _bar(20, 101, 102, 100, 101.9, 100)
-    ]
+    candles = [_flat(i, 100, h=101, low=99) for i in range(20)] + [_bar(20, 101, 102, 100, 101.9, 100)]
     target = evaluate.run(pack, candles)
     _expect(target, long=False, reason="exit", stop=None)
 

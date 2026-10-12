@@ -114,9 +114,7 @@ def _get_history(
     base = [("Host", f"127.0.0.1:{TEST_PORT}")]
     if headers:
         base.extend(headers)
-    status, flat, body, _set_cookies = asgi_call(
-        app, method="GET", path="/api/v1/paper/history", headers=base
-    )
+    status, flat, body, _set_cookies = asgi_call(app, method="GET", path="/api/v1/paper/history", headers=base)
     return status, flat, body
 
 
@@ -357,9 +355,7 @@ def test_paper_history_caps_recent_fills_at_50(tmp_path: Path) -> None:
     _seed_paper_state(
         tmp_path,
         "kraken",
-        fills=[
-            _fill(f"coid-{index}", "SUIUSD", ts_ms=index) for index in range(60)
-        ],
+        fills=[_fill(f"coid-{index}", "SUIUSD", ts_ms=index) for index in range(60)],
     )
     token = "boot-history-fills-cap"
     app = _build_app(tmp_path, bootstrap_token=token)

@@ -191,9 +191,7 @@ def test_paper_armed_returns_every_record_not_just_the_first(home: Path) -> None
     token = f"boot-armed-two-{home.name}"
     app = _build_app(home, bootstrap_token=token)
     session_value = _bootstrap_session_cookie(app, token)
-    status, _h, body, _c = _get_paper_armed(
-        app, headers=_session_headers(session_value)
-    )
+    status, _h, body, _c = _get_paper_armed(app, headers=_session_headers(session_value))
     assert status == 200, (status, body)
     decoded = _read_json(body)
     assert decoded.get("schema_version") == "1", decoded
@@ -226,9 +224,7 @@ def test_paper_armed_returns_closed_records_from_load_config(home: Path) -> None
     token = f"boot-armed-one-{home.name}"
     app = _build_app(home, bootstrap_token=token)
     session_value = _bootstrap_session_cookie(app, token)
-    status, _h, body, _c = _get_paper_armed(
-        app, headers=_session_headers(session_value)
-    )
+    status, _h, body, _c = _get_paper_armed(app, headers=_session_headers(session_value))
     assert status == 200, (status, body)
     decoded = _read_json(body)
     records = decoded["records"]
@@ -248,15 +244,11 @@ def test_paper_armed_reflects_entries_paused_per_row(home: Path) -> None:
     _run_paper_arm(home)
     from krellbot.application.paper import PaperService
 
-    PaperService(home=home).pause_entries(
-        venue="kraken", pair="SUIUSD", correlation_id="seed-pause-list"
-    )
+    PaperService(home=home).pause_entries(venue="kraken", pair="SUIUSD", correlation_id="seed-pause-list")
     token = f"boot-armed-paused-{home.name}"
     app = _build_app(home, bootstrap_token=token)
     session_value = _bootstrap_session_cookie(app, token)
-    status, _h, body, _c = _get_paper_armed(
-        app, headers=_session_headers(session_value)
-    )
+    status, _h, body, _c = _get_paper_armed(app, headers=_session_headers(session_value))
     assert status == 200, (status, body)
     decoded = _read_json(body)
     assert decoded["records"][0]["entries_paused"] is True, decoded
@@ -271,9 +263,7 @@ def test_paper_armed_with_no_records_returns_armed_false(home: Path) -> None:
     token = f"boot-armed-empty-{home.name}"
     app = _build_app(home, bootstrap_token=token)
     session_value = _bootstrap_session_cookie(app, token)
-    status, _h, body, _c = _get_paper_armed(
-        app, headers=_session_headers(session_value)
-    )
+    status, _h, body, _c = _get_paper_armed(app, headers=_session_headers(session_value))
     assert status == 200, (status, body)
     decoded = _read_json(body)
     assert decoded == {
@@ -289,16 +279,12 @@ def test_paper_armed_reports_armed_false_after_disarm(home: Path) -> None:
     _run_paper_arm(home)
     from krellbot.application.paper import PaperService
 
-    result = PaperService(home=home).disarm(
-        venue="kraken", pair="SUIUSD", correlation_id="seed-disarm-list"
-    )
+    result = PaperService(home=home).disarm(venue="kraken", pair="SUIUSD", correlation_id="seed-disarm-list")
     assert result.ok, result.message
     token = f"boot-armed-disarmed-{home.name}"
     app = _build_app(home, bootstrap_token=token)
     session_value = _bootstrap_session_cookie(app, token)
-    status, _h, body, _c = _get_paper_armed(
-        app, headers=_session_headers(session_value)
-    )
+    status, _h, body, _c = _get_paper_armed(app, headers=_session_headers(session_value))
     assert status == 200, (status, body)
     decoded = _read_json(body)
     assert decoded["armed"] is False, decoded
@@ -318,9 +304,7 @@ def test_paper_armed_omits_cash_qty_stop_cap_and_path(home: Path) -> None:
     token = f"boot-armed-no-leak-{home.name}"
     app = _build_app(home, bootstrap_token=token)
     session_value = _bootstrap_session_cookie(app, token)
-    status, _h, body, _c = _get_paper_armed(
-        app, headers=_session_headers(session_value)
-    )
+    status, _h, body, _c = _get_paper_armed(app, headers=_session_headers(session_value))
     assert status == 200, (status, body)
     decoded = _read_json(body)
     for row in decoded["records"]:
@@ -351,13 +335,9 @@ def test_paper_armed_is_no_store(home: Path) -> None:
     token = f"boot-armed-store-{home.name}"
     app = _build_app(home, bootstrap_token=token)
     session_value = _bootstrap_session_cookie(app, token)
-    status, headers, _b, _c = _get_paper_armed(
-        app, headers=_session_headers(session_value)
-    )
+    status, headers, _b, _c = _get_paper_armed(app, headers=_session_headers(session_value))
     assert status == 200, status
-    cache_control = [
-        value for (name, value) in headers if name.lower() == "cache-control"
-    ]
+    cache_control = [value for (name, value) in headers if name.lower() == "cache-control"]
     assert cache_control, headers
     assert cache_control[0].lower() == "no-store", cache_control
 

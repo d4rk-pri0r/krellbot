@@ -461,15 +461,9 @@ class StrategyDraftService:
                         "runnable": bool(meta.get("runnable", False)),
                         "created_at": str(meta.get("created_at", "")),
                         "id": pack.get("id") if isinstance(pack.get("id"), str) else "",
-                        "label": (
-                            pack.get("label") if isinstance(pack.get("label"), str) else ""
-                        ),
+                        "label": (pack.get("label") if isinstance(pack.get("label"), str) else ""),
                         "pair": pair,
-                        "timeframe": (
-                            pack.get("timeframe")
-                            if isinstance(pack.get("timeframe"), str)
-                            else ""
-                        ),
+                        "timeframe": (pack.get("timeframe") if isinstance(pack.get("timeframe"), str) else ""),
                     }
                 )
         # Stable two-pass sort: revision id ascending first, then

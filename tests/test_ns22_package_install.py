@@ -340,7 +340,9 @@ NONSTANDARD_CONSTANT_BODIES = [
 ]
 
 
-@pytest.mark.parametrize("body", NONSTANDARD_CONSTANT_BODIES, ids=["nan", "infinity", "neg-infinity", "nested-risk-stop-pct-nan"])
+@pytest.mark.parametrize(
+    "body", NONSTANDARD_CONSTANT_BODIES, ids=["nan", "infinity", "neg-infinity", "nested-risk-stop-pct-nan"]
+)
 def test_install_refuses_nonstandard_json_constants_with_prior_install(home, body):
     """A non-tar body containing the nonstandard JSON constants NaN,
     Infinity or -Infinity anywhere in the document is refused before any
@@ -368,7 +370,9 @@ def test_install_refuses_nonstandard_json_constants_with_prior_install(home, bod
     assert previous_path.stat().st_mtime_ns == original_mtime
 
 
-@pytest.mark.parametrize("body", NONSTANDARD_CONSTANT_BODIES, ids=["nan", "infinity", "neg-infinity", "nested-risk-stop-pct-nan"])
+@pytest.mark.parametrize(
+    "body", NONSTANDARD_CONSTANT_BODIES, ids=["nan", "infinity", "neg-infinity", "nested-risk-stop-pct-nan"]
+)
 def test_install_refuses_nonstandard_json_constants_when_no_prior_install(home, body):
     """With no previous install, a body carrying NaN/Infinity/-Infinity
     must not create one: neither the pack file nor the destination

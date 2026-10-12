@@ -18,8 +18,8 @@ from pathlib import Path
 
 from krellbot.pack.model import Candle
 
-from .candles import drop_forming, parse_timestamp
 from .cache import write_cache
+from .candles import drop_forming, parse_timestamp
 from .import_progress import (
     CHECKPOINT_EVERY,
     DEFAULT_MAX_RECORDS,
@@ -244,9 +244,7 @@ def import_kraken_ohlcvt_cached(
                             if row_index < start_row:
                                 continue
                             if checkpoint.records_seen >= max_records:
-                                raise refuse(
-                                    f"import crossed the declared bound of {max_records} selected records"
-                                )
+                                raise refuse(f"import crossed the declared bound of {max_records} selected records")
                             candle = _row_to_candle(row)
                             record = (
                                 None
@@ -264,9 +262,7 @@ def import_kraken_ohlcvt_cached(
                     checkpoint.commit(next_member_index=member_index + 1, next_row_index=0)
                 if source_fingerprint(resolved) != before_parse:
                     raise refuse(f"archive {resolved} changed while it was being parsed")
-                checkpoint.commit(
-                    next_member_index=len(selected), next_row_index=0, phase="parsed"
-                )
+                checkpoint.commit(next_member_index=len(selected), next_row_index=0, phase="parsed")
 
             rows = checkpoint.load_candles()
             candles: list[Candle] = [
@@ -368,8 +364,7 @@ def _source_accounting(zf: zipfile.ZipFile, infos, selected):
                 )
         if stored:
             raise ImportProgressError(
-                f"checkpoint holds candles in members {sorted(stored)} outside its cursor prefix; "
-                "refusing to resume"
+                f"checkpoint holds candles in members {sorted(stored)} outside its cursor prefix; refusing to resume"
             )
 
     return account
