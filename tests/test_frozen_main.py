@@ -260,11 +260,17 @@ def test_frozen_help_flag_is_not_redirected(tmp_path):
 
 _LAUNCH_SHIM_TEMPLATE = """\
 import atexit
+import signal
 import sys
 import types
 
 sys.frozen = True
 sys._MEIPASS = r"{meipass}"
+
+# The source-launch fixture needs the Windows process-group equivalent
+# of Ctrl-C; keep the application's KeyboardInterrupt cleanup exercised.
+if sys.platform == "win32":
+    signal.signal(signal.SIGBREAK, signal.default_int_handler)
 
 urls = []
 
@@ -333,6 +339,7 @@ def test_frozen_no_args_launch_opens_loopback_url_via_webbrowser(tmp_path):
         cwd=str(REPO_ROOT),
         env=env,
         bufsize=1,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
     )
 
     url_line = re.compile(r"^Workstation running at (http://127\.0\.0\.1:\d+/)")
@@ -362,8 +369,12 @@ def test_frozen_no_args_launch_opens_loopback_url_via_webbrowser(tmp_path):
 
     # Give the atexit hook a moment is NOT acceptable on failure paths; the
     # interception must also be observable while the process is alive, so we
-    # stop the child with SIGINT (the documented Ctrl-C path) and then read.
-    proc.send_signal(signal.SIGINT)
+    # stop the child with the platform's console-interrupt event and then read.
+    # Windows rejects send_signal(SIGINT); CTRL_BREAK_EVENT requires the
+    # isolated process group above and is mapped to KeyboardInterrupt by
+    # the source-launch fixture, preserving the same cleanup assertions.
+    interrupt = signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGINT
+    proc.send_signal(interrupt)
     try:
         proc.communicate(timeout=15)
     except subprocess.TimeoutExpired:
