@@ -1300,8 +1300,28 @@ def test_same_source_lock_contention_refuses_and_recovers_after_death(home: Path
             holder_stdout.close()
             holder_stderr.close()
 
-    # Include the persistent lock file itself in the unchanged-byte proof,
-    # after death releases its mandatory Windows byte-range lock.
+    # Windows may finish releasing byte-range locks after process wait()
+    # returns (LockFile's documented asynchronous OS cleanup). Prove the
+    # real lock is available before reading it, with a bounded deadline;
+    # never skip locking, delete the lock file or omit it from the proof.
+    import time
+
+    from krellbot.data.import_progress import ImportProgressError, SourceLock
+
+    deadline = time.monotonic() + 5.0
+    probe = SourceLock(lock_path)
+    while True:
+        try:
+            probe.acquire()
+        except ImportProgressError:
+            if time.monotonic() >= deadline:
+                pytest.fail("source lock did not release within 5 seconds of holder death")
+            time.sleep(0.01)
+        else:
+            probe.release()
+            break
+
+    # Include the persistent lock file itself in the unchanged-byte proof.
     after = _tree_snapshot(home)
     assert before["progress"] == after["progress"]
     assert before["cache"] == after["cache"]
