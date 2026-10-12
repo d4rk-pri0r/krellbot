@@ -1,4 +1,5 @@
 import { useEffect, useState, type JSX } from "react";
+import "./ArmedRecordsList.signal.css";
 import type { PaperArmedClient, PaperArmedRecord } from "./client";
 
 export type { PaperArmedClient, PaperArmedRecord } from "./client";
@@ -20,6 +21,17 @@ function sentenceFor(entries_paused: boolean): EntriesSentence {
 
 function rowKey(record: PaperArmedRecord): string {
   return `${record.venue}:${record.pair}`;
+}
+
+/** Armed-run count chip copy: the real total read from the wire. */
+function armedCountLabel(count: number): string {
+  return count === 1 ? "1 armed run" : `${count} armed runs`;
+}
+
+/** Entries chip tone: sage for an active armed record, coral for a
+ *  paused one. The verbatim sentence carries the state. */
+function entriesChipTone(entries_paused: boolean): string {
+  return entries_paused ? "coral" : "sage";
 }
 
 export function ArmedRecordsList({
@@ -117,11 +129,24 @@ export function ArmedRecordsList({
       aria-label="Armed records"
       data-testid="paper-armed-records"
     >
-      <header className="kbot-paper-armed__head">
-        <h2 className="kbot-paper-armed__title">Armed records</h2>
+      <header
+        className="kbot-paper-armed__head"
+        data-testid="paper-armed-head"
+      >
+        <div className="kbot-paper-armed__head-titles">
+          <h2 className="kbot-paper-armed__title">Armed paper runs</h2>
+          {state.kind === "ready" ? (
+            <p
+              className="kbot-paper-armed__count"
+              data-testid="paper-armed-count"
+            >
+              {armedCountLabel(rows.length)}
+            </p>
+          ) : null}
+        </div>
         <button
           type="button"
-          className="kbot-paper-armed__refresh"
+          className="kbot-paper-armed__action"
           onClick={() => {
             void refresh();
           }}
@@ -132,14 +157,26 @@ export function ArmedRecordsList({
       </header>
       <div className="kbot-paper-armed__body">
         {state.kind === "loading" ? (
-          <p
-            className="kbot-paper-armed__empty"
-            data-testid="paper-armed-loading"
+          <section
+            className="kbot-paper-armed__panel"
+            aria-label="Armed paper run list"
+            data-testid="paper-armed-list-panel"
           >
-            Loading armed records…
-          </p>
+            <h3 className="kbot-paper-armed__panel-title">Armed</h3>
+            <p
+              className="kbot-paper-armed__empty"
+              data-testid="paper-armed-loading"
+            >
+              Loading armed records…
+            </p>
+          </section>
         ) : state.kind === "unavailable" ? (
-          <>
+          <section
+            className="kbot-paper-armed__panel"
+            aria-label="Armed paper run list"
+            data-testid="paper-armed-list-panel"
+          >
+            <h3 className="kbot-paper-armed__panel-title">Armed</h3>
             <p
               className="kbot-paper-armed__empty"
               role="alert"
@@ -152,53 +189,100 @@ export function ArmedRecordsList({
                 {lastError}
               </p>
             ) : null}
-          </>
+          </section>
         ) : rows.length === 0 ? (
-          <p
-            className="kbot-paper-armed__empty"
-            data-testid="paper-armed-empty"
+          <section
+            className="kbot-paper-armed__panel"
+            aria-label="Armed paper run list"
+            data-testid="paper-armed-list-panel"
           >
-            No packs armed
-          </p>
+            <h3 className="kbot-paper-armed__panel-title">Armed</h3>
+            <p
+              className="kbot-paper-armed__empty kbot-paper-armed__empty--none"
+              data-testid="paper-armed-empty"
+            >
+              No packs armed
+            </p>
+          </section>
         ) : (
           <>
-            <table className="kbot-paper-armed__table">
-              <thead>
-                <tr>
-                  <th scope="col">Venue</th>
-                  <th scope="col">Pair</th>
-                  <th scope="col">Mode</th>
-                  <th scope="col">Pack</th>
-                  <th scope="col">Entries</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr
-                    key={rowKey(row)}
-                    data-testid="paper-armed-row"
-                    data-venue={row.venue}
-                    data-pair={row.pair}
-                    onClick={() => {
-                      setSelected(
-                        selected !== null && rowKey(selected) === rowKey(row)
-                          ? null
-                          : row,
-                      );
-                    }}
-                  >
-                    <td>{row.venue}</td>
-                    <td>{row.pair}</td>
-                    <td>{row.mode}</td>
-                    <td>{row.pack_id}</td>
-                    <td>{sentenceFor(row.entries_paused)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {selected !== null ? (
+            <section
+              className="kbot-paper-armed__panel"
+              aria-label="Armed paper run list"
+              data-testid="paper-armed-list-panel"
+            >
+              <h3 className="kbot-paper-armed__panel-title">Armed</h3>
               <div
-                className="kbot-paper-armed__detail"
+                className="kbot-paper-armed__scroll"
+                data-testid="paper-armed-scroll"
+              >
+                <table
+                  className="kbot-paper-armed__table"
+                  data-testid="paper-armed-table"
+                >
+                  <thead>
+                    <tr>
+                      <th scope="col">Venue</th>
+                      <th scope="col">Pair</th>
+                      <th scope="col">Mode</th>
+                      <th scope="col">Pack</th>
+                      <th scope="col">Entries</th>
+                      <th scope="col">
+                        <span aria-hidden="true">Open</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => {
+                      const isSelected =
+                        selected !== null && rowKey(selected) === rowKey(row);
+                      const tone = entriesChipTone(row.entries_paused);
+                      return (
+                        <tr
+                          key={rowKey(row)}
+                          className={`kbot-paper-armed__row${
+                            isSelected
+                              ? " kbot-paper-armed__row--selected"
+                              : ""
+                          }`}
+                          data-testid="paper-armed-row"
+                          data-venue={row.venue}
+                          data-pair={row.pair}
+                          tabIndex={0}
+                          aria-label={`Toggle armed record detail for ${row.venue} ${row.pair}`}
+                          onClick={() => {
+                            setSelected(
+                              selected !== null && rowKey(selected) === rowKey(row)
+                                ? null
+                                : row,
+                            );
+                          }}
+                        >
+                          <td className="kbot-paper-armed__mono">{row.venue}</td>
+                          <td className="kbot-paper-armed__pair">{row.pair}</td>
+                          <td className="kbot-paper-armed__mono">{row.mode}</td>
+                          <td className="kbot-paper-armed__mono">{row.pack_id}</td>
+                          <td>
+                            <span
+                              className={`kbot-paper-armed__chip kbot-paper-armed__chip--${tone}`}
+                              data-testid={`paper-armed-status-${row.venue}-${row.pair}`}
+                            >
+                              {sentenceFor(row.entries_paused)}
+                            </span>
+                          </td>
+                          <td className="kbot-paper-armed__row-open">
+                            <span aria-hidden="true">›</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            {selected !== null ? (
+              <section
+                className="kbot-paper-armed__panel kbot-paper-armed__detail"
                 role="region"
                 aria-label="Armed record detail"
                 data-testid="paper-armed-detail"
@@ -228,7 +312,7 @@ export function ArmedRecordsList({
                     <dd>{sentenceFor(selected.entries_paused)}</dd>
                   </div>
                 </dl>
-              </div>
+              </section>
             ) : null}
             {lastError !== null ? (
               <p
