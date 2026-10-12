@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import "./Navigation.signal.css";
 
 export type View =
   | "home"
@@ -27,7 +28,7 @@ type NavigationProps = {
 export function Navigation({ active, onChange }: NavigationProps): JSX.Element {
   return (
     <nav
-      className="kbot-nav"
+      className="kbot-nav kbot-shell__nav-root"
       role="navigation"
       aria-label="Workstation navigation"
       data-testid="kbot-nav"
@@ -37,8 +38,10 @@ export function Navigation({ active, onChange }: NavigationProps): JSX.Element {
           key={view.id}
           type="button"
           className={
-            "kbot-nav__item" +
-            (active === view.id ? " kbot-nav__item--active" : "")
+            "kbot-nav__item kbot-shell__nav-item" +
+            (active === view.id
+              ? " kbot-nav__item--active kbot-shell__nav-item--active"
+              : "")
           }
           aria-pressed={active === view.id}
           aria-current={active === view.id ? "page" : undefined}
@@ -47,6 +50,21 @@ export function Navigation({ active, onChange }: NavigationProps): JSX.Element {
           {view.label}
         </button>
       ))}
+      <p className="kbot-shell__nav-note">
+        <span
+          className="kbot-shell__nav-preview"
+          data-testid="nav-local-preview"
+        >
+          Local preview
+        </span>
+        <span
+          className="kbot-shell__nav-note-text"
+          data-testid="nav-local-preview-note"
+        >
+          Live trading unavailable
+        </span>
+      </p>
     </nav>
   );
 }
+
