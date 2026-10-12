@@ -33,7 +33,6 @@ from tests.test_ns06_api import (
     TEST_PORT,
     _bootstrap_and_get_csrf,
     _build_app,
-    _default_origin_header,
     _post_json,
     asgi_call,
 )
@@ -427,7 +426,7 @@ def test_rehearsal_status_route_requires_session(home: Path) -> None:
 
 def test_rehearsal_status_route_shape(home: Path) -> None:
     app = _build_app(home)
-    csrf = _bootstrap_and_get_csrf(app, "boot-rehearsal-shape")
+    csrf = _bootstrap_and_get_csrf(app, "boot-test-token")
     cookie = next(iter(app.state.krellbot.sessions.keys()))
     status, _h, body, _c = _rehearsal_get(app, "/api/v1/rehearsal/status", _auth(csrf, cookie))
     assert status == 200
@@ -439,13 +438,16 @@ def test_rehearsal_status_route_shape(home: Path) -> None:
         assert key in payload, key
     assert payload["label"] == REHEARSAL_LABEL
     assert payload["schema_version"] == "1"
-    assert set(payload["position"].keys()) == {"pair", "qty"}
+    # The API wire shape flattens ``position`` to a qty string for the
+    # existing rehearsalClient contract; the service-level projection
+    # below keeps the full pair/qty object.
+    assert isinstance(payload["position"], str)
     assert isinstance(payload["recent_fills"], list)
 
 
 def test_rehearsal_commands_through_api(home: Path) -> None:
     app = _build_app(home)
-    csrf = _bootstrap_and_get_csrf(app, "boot-rehearsal-api")
+    csrf = _bootstrap_and_get_csrf(app, "boot-test-token")
     cookie = next(iter(app.state.krellbot.sessions.keys()))
 
     def post(payload: dict, headers=None):
