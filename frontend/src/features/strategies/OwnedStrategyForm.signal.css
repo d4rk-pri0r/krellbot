@@ -1,0 +1,235 @@
+/*
+ * Owned strategy form — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Scoped presentation for the user-configurable owned-strategy form
+ * (recipe, comparisons, timeframe, periods, risk percentages) mounted
+ * in the WorkstationShell Strategies → Editor panel. The form applies
+ * its pack on every field change and exposes no explicit Apply or
+ * validate button, so sage is reserved for the scope's own button
+ * surface (none renders today) and never decorates a non-action;
+ * seafoam carries focus/selection, coral carries the existing
+ * field-problem refusals, and IBM Plex Mono is reserved for the
+ * technical identifiers (periods, timeframe keys).
+ *
+ * Everything is namespaced under the single
+ * `.kbot-feature__owned-strategy-form-root` scope this component
+ * renders, so the surrounding strategy editor's own Signal layer
+ * (Editor.signal.css) keeps composing underneath. Every color and
+ * typography value comes from the approved named tokens, each with
+ * its exact approved fallback:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - the form keeps its existing semantics verbatim: every field
+ *     id, label text, select option key, onChange handler, problem
+ *     message and footnote are untouched (see OwnedStrategyForm.tsx);
+ *   - the mounted <section data-testid="owned-strategy-form"> sits on
+ *     a surface panel inside the scope so the readable-rules group it
+ *     lives in keeps its panel rhythm at every width;
+ *   - selects/inputs keep >=44px tap targets at <=640px and the whole
+ *     scope contains at 390px with no horizontal overflow;
+ *   - no global palette change: nothing outside this scope is styled.
+ */
+
+.kbot-feature__owned-strategy-form-root {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-feature__owned-strategy-form-root *,
+.kbot-feature__owned-strategy-form-root *::before,
+.kbot-feature__owned-strategy-form-root *::after {
+  box-sizing: border-box;
+}
+
+.kbot-feature__owned-strategy-form-root h3,
+.kbot-feature__owned-strategy-form-root p {
+  margin: 0;
+}
+
+/* The mounted form section becomes a Signal surface panel, one step
+   deeper than the editor group it lives in (panel-tinted surface). */
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  padding: 14px 15px 15px;
+  background: color-mix(in srgb, var(--panel, #18354a) 20%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+  max-width: 62ch;
+  color: var(--muted, #abc4d8);
+}
+
+/* --- sage affirmative primary (scope buttons; none render today) --- */
+
+.kbot-feature__owned-strategy-form-root button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--sage, #b3dda8);
+  border: 1px solid var(--sage, #b3dda8);
+  color: var(--action-primary-text, #172a1d);
+}
+
+.kbot-feature__owned-strategy-form-root button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sage, #b3dda8) 90%, var(--text, #e9f0f5));
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 90%, var(--text, #e9f0f5));
+}
+
+.kbot-feature__owned-strategy-form-root button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The single affirmative action always keeps the seafoam focus ring. */
+.kbot-feature__owned-strategy-form-root button:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* --- readable field grid --- */
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__field {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  min-width: 0;
+}
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__field-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 92%, transparent);
+}
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__field-hint {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 85%, transparent);
+}
+
+/* --- inputs and selects (navy wells, seafoam focus) --- */
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__input,
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__select {
+  min-height: 34px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__input:hover,
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__select:hover {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+}
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__input:focus-visible,
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__select:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* Seafoam selection affordance inside the selects: the active option
+   shows the seafoam selection tone wherever the platform paints it. */
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__select option:checked {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 30%, var(--navy, #0e1c29));
+  color: var(--text, #e9f0f5);
+}
+
+/* Restrained technical mono: the period inputs and the timeframe
+   select (keys like 1h / 4h / 1d), by their existing stable ids. */
+.kbot-feature__owned-strategy-form-root #kbot-owned-strategy-fastLength,
+.kbot-feature__owned-strategy-form-root #kbot-owned-strategy-length,
+.kbot-feature__owned-strategy-form-root #kbot-owned-strategy-maxAccountPct,
+.kbot-feature__owned-strategy-form-root #kbot-owned-strategy-stopPct,
+.kbot-feature__owned-strategy-form-root #kbot-owned-strategy-timeframe {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+}
+
+/* --- coral-derived refusal for the existing problems list --- */
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__problems {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__footnote {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-feature__owned-strategy-form-root {
+    gap: 10px;
+  }
+
+  .kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form {
+    padding: 12px 12px 13px;
+    gap: 10px;
+  }
+
+  .kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Every field control keeps a >=44px tap target on narrow screens. */
+  .kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__input,
+  .kbot-feature__owned-strategy-form-root .kbot-owned-strategy-form__select {
+    min-height: 44px;
+  }
+}
