@@ -389,6 +389,79 @@ describe("EditorInlineStopControl Signal slice — refreshSignal read", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* 7. Remembered raise after rearm: history, never current protection  */
+/* ------------------------------------------------------------------ */
+
+describe("EditorInlineStopControl Signal slice — remembered raise after rearm", () => {
+  it("labels the remembered 'stop at' as the last confirmed raise, never as backend protection supplied by the post-rearm read", async () => {
+    const getStatus = vi
+      .fn<() => Promise<PaperStatus>>()
+      .mockResolvedValue(armedStatus());
+    const raiseStop = vi.fn().mockResolvedValue(raiseOk("7.0"));
+    const disarm = vi.fn().mockResolvedValue({
+      schema_version: "1",
+      code: "disarmed",
+      ok: true,
+      effect: "changed",
+    });
+    const client = makePaperClient({ getStatus, raiseStop, disarm });
+    const view = render(
+      <EditorInlineStopControl paperClient={client} refreshSignal={0} />,
+    );
+
+    // Confirmed raise in this arm: the raise confirmation is current.
+    const input = (await screen.findByTestId(
+      "editor-inline-stop-new-stop",
+    )) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "7.0" } });
+    await waitFor(() => {
+      expect(applyButton().disabled).toBe(false);
+    });
+    fireEvent.click(applyButton());
+    await waitFor(() => {
+      expect(screen.getByTestId("inline-stop-caption").textContent).toBe(
+        "Stop raised to 7.0",
+      );
+    });
+    expect(screen.getByTestId("editor-inline-stop-at").textContent).toBe(
+      "stop at 7.0",
+    );
+
+    // Confirmed disarm: the armed surface goes away.
+    fireEvent.click(disarmButton());
+    await waitFor(() => {
+      expect(screen.getByTestId("editor-inline-stop-empty").textContent).toMatch(
+        /No pack armed/,
+      );
+    });
+
+    // Parent re-arms and bumps the signal. The post-Arm read returns
+    // armed=true but never carries the resting stop, so the remembered
+    // echo must present itself as history, not as this read's protection.
+    view.rerender(
+      <EditorInlineStopControl paperClient={client} refreshSignal={1} />,
+    );
+
+    const remembered = await screen.findByTestId("editor-inline-stop-at");
+    // Persist contract: the remembered echo survives verbatim, no re-raise.
+    expect(remembered.textContent).toBe("stop at 7.0");
+    expect(raiseStop).toHaveBeenCalledTimes(1);
+    // Truth: the caption names the last confirmed raise and says the
+    // current backend stop is not supplied by this read.
+    expect(screen.getByTestId("inline-stop-caption").textContent).toBe(
+      "Last confirmed raise: 7.0 · this status read does not supply the current backend stop",
+    );
+    expect(screen.getByTestId("inline-stop-caption").textContent).not.toBe(
+      "Stop raised to 7.0",
+    );
+    expect(remembered.getAttribute("title")).toBe(
+      "Historical confirmation from an earlier arm; the current status read does not supply the backend stop",
+    );
+    expect(disarm).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* Stylesheet reader (shipped CSS, not an expectation string)          */
 /* ------------------------------------------------------------------ */
 
