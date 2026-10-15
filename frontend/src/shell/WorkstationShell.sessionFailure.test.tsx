@@ -282,6 +282,99 @@ describe("WorkstationShell — failed session bootstrap", () => {
   });
 });
 
+describe("WorkstationShell — reload without bootstrap metadata (APP-BONES-SESSION-RELOAD-01)", () => {
+  it("treats an absent-meta reload with a valid session cookie as success", async () => {
+    vi.mocked(recoverCsrf).mockResolvedValueOnce(true);
+    renderShell();
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="kbot-shell"]')?.getAttribute(
+          "data-bootstrap-done",
+        ),
+      ).toBe("1");
+    });
+    // Recovered from the existing session: no failure alert, no pending note.
+    expect(screen.queryByTestId("app-home-session-failure")).toBeNull();
+    expect(screen.queryByTestId("app-home-session")).toBeNull();
+    // The reload path never touches the one-time bootstrap token.
+    expect(redeemBootstrap).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the failure alert when an absent-meta reload has no recoverable session", async () => {
+    // recoverCsrf defaults to resolving false: the session cookie is
+    // gone or expired, so the reload cannot recover the CSRF token.
+    renderShell();
+    await waitFor(() => {
+      expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
+    });
+    expect(
+      screen.getByTestId("app-home-session-failure").getAttribute("role"),
+    ).toBe("alert");
+    expect(screen.queryByTestId("app-home-session")).toBeNull();
+    // Settled (not silently "startup complete") but honestly failed.
+    expect(
+      document.querySelector('[data-testid="kbot-shell"]')?.getAttribute(
+        "data-bootstrap-done",
+      ),
+    ).toBe("1");
+    expect(redeemBootstrap).not.toHaveBeenCalled();
+  });
+
+  it("keeps the failure when recovery from the existing session is refused or throws", async () => {
+    renderShell();
+    await waitFor(() => {
+      expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
+    });
+    // First recovery attempt: recoverCsrf resolves false again.
+    fireEvent.click(
+      within(screen.getByTestId("app-home-session-failure")).getByRole(
+        "button",
+        { name: /recover the local session/i },
+      ),
+    );
+    await waitFor(() => {
+      expect(recoverCsrf).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
+    // Second recovery attempt: the recovery request itself rejects.
+    vi.mocked(recoverCsrf).mockImplementationOnce(
+      (): Promise<boolean> => Promise.reject(new Error("csrf failed: 403")),
+    );
+    fireEvent.click(
+      within(screen.getByTestId("app-home-session-failure")).getByRole(
+        "button",
+        { name: /recover the local session/i },
+      ),
+    );
+    await waitFor(() => {
+      expect(recoverCsrf).toHaveBeenCalledTimes(3);
+    });
+    // The rejection is swallowed, never rendered as success.
+    expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
+    expect(screen.queryByTestId("app-home-session")).toBeNull();
+    expect(redeemBootstrap).not.toHaveBeenCalled();
+  });
+
+  it("recovers from the failed reload state when the existing session becomes available again", async () => {
+    renderShell();
+    await waitFor(() => {
+      expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
+    });
+    vi.mocked(recoverCsrf).mockResolvedValueOnce(true);
+    fireEvent.click(
+      within(screen.getByTestId("app-home-session-failure")).getByRole(
+        "button",
+        { name: /recover the local session/i },
+      ),
+    );
+    await waitFor(() => {
+      expect(screen.queryByTestId("app-home-session-failure")).toBeNull();
+    });
+    expect(screen.queryByTestId("app-home-session")).toBeNull();
+    expect(redeemBootstrap).not.toHaveBeenCalled();
+  });
+});
+
 describe("AppHome — failed-session prop contract", () => {
   it("renders the failed-session alert only when sessionFailed is set", () => {
     const { rerender } = render(<AppHome onNavigate={() => {}} />);
