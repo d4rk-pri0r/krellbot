@@ -177,6 +177,8 @@ export function WorkstationShell({
   const [studioSaveError, setStudioSaveError] = useState<string | null>(null);
   const [studioSaveOutcome, setStudioSaveOutcome] = useState<string | null>(null);
   const [studioLayoutError, setStudioLayoutError] = useState<string | null>(null);
+  const [savingLayout, setSavingLayout] = useState(false);
+  const [studioLayoutStatus, setStudioLayoutStatus] = useState<string | null>(null);
 
   // Research lazy-mount + portal host lifecycle.
   // The first time the user visits Research we mark it visited. Once
@@ -798,6 +800,22 @@ export function WorkstationShell({
                 {studioSaveError}
               </p>
             ) : null}
+            <p
+              data-testid="studio-save-layout-status"
+              role="status"
+              aria-live="polite"
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                padding: 0,
+                overflow: "hidden",
+                clipPath: "inset(50%)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {savingLayout ? "Saving layout" : studioLayoutStatus}
+            </p>
             {studioSaveOutcome ? (
               <p
                 className="kbot-shell__outcome"
@@ -825,11 +843,16 @@ export function WorkstationShell({
                 <button
                   type="button"
                   data-testid="studio-save-layout"
+                  aria-busy={savingLayout}
+                  disabled={savingLayout || !savedRevision}
+                  aria-keyshortcuts="Enter"
                   onClick={() => {
                     if (!savedRevision) {
                       return;
                     }
                     setStudioLayoutError(null);
+                    setStudioLayoutStatus(null);
+                    setSavingLayout(Boolean(client.saveEditor));
                     const packNodeIds = new Set(
                       nodesFromPack(workingPack ?? savedPack ?? {}).map(
                         (node) => node.id,
@@ -847,11 +870,17 @@ export function WorkstationShell({
                     });
                     void client.saveEditor
                       ?.(savedRevision.revision_id, { layout, edges })
+                      .then(() => {
+                        setStudioLayoutStatus(
+                          `Layout saved for revision ${savedRevision.revision_id}`,
+                        );
+                      })
                       .catch((err: unknown) => {
                         setStudioLayoutError(
                           err instanceof Error ? err.message : String(err),
                         );
-                      });
+                      })
+                      .finally(() => setSavingLayout(false));
                   }}
                 >
                   Save layout
