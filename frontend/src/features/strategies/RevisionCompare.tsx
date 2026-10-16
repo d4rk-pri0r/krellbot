@@ -1,4 +1,4 @@
-import { useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import type { LibraryClient, OwnedDraftSummary } from "./libraryClient";
 import "./RevisionCompare.signal.css";
 
@@ -186,6 +186,21 @@ export function RevisionCompare({
   );
   const requestSeq = useRef(0);
 
+  const invalidateComparison = useCallback((): void => {
+    requestSeq.current += 1;
+    setPhase("idle");
+    setError(null);
+    setChanges([]);
+    setCompared(null);
+  }, []);
+
+  useEffect(() => {
+    invalidateComparison();
+    return () => {
+      requestSeq.current += 1;
+    };
+  }, [client, invalidateComparison]);
+
   const readyToCompare = leftId !== "" && rightId !== "" && leftId !== rightId;
 
   const runCompare = (): void => {
@@ -254,6 +269,7 @@ export function RevisionCompare({
           data-testid="revision-compare-left"
           value={leftId}
           onChange={(event) => {
+            invalidateComparison();
             setLeftId(event.target.value);
           }}
         >
@@ -273,6 +289,7 @@ export function RevisionCompare({
           data-testid="revision-compare-right"
           value={rightId}
           onChange={(event) => {
+            invalidateComparison();
             setRightId(event.target.value);
           }}
         >
