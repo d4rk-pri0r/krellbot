@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1164,6 +1165,8 @@ function TraceList({
 }: TraceListProps): JSX.Element {
   const total = trace.length;
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const rowRefs = useRef(new Map<number, HTMLButtonElement>());
+  const pendingFocus = useRef<number | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(TRACE_VIEWPORT_HEIGHT);
 
@@ -1205,6 +1208,58 @@ function TraceList({
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>): void => {
     setScrollTop(event.currentTarget.scrollTop);
+  };
+
+  useLayoutEffect(() => {
+    const target = pendingFocus.current;
+    if (target === null) return;
+    const row = rowRefs.current.get(target);
+    if (row) {
+      row.focus({ preventScroll: true });
+      pendingFocus.current = null;
+    }
+  });
+
+  const handleRowKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ): void => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    let target: number;
+    switch (event.key) {
+      case "ArrowUp":
+        target = Math.max(0, index - 1);
+        break;
+      case "ArrowDown":
+        target = Math.min(total - 1, index + 1);
+        break;
+      case "Home":
+        target = 0;
+        break;
+      case "End":
+        target = total - 1;
+        break;
+      default:
+        return;
+    }
+    const node = scrollRef.current;
+    if (!node) return;
+    event.preventDefault();
+    const height = node.clientHeight || viewportHeight;
+    const top = target * TRACE_ROW_HEIGHT;
+    const bottom = top + TRACE_ROW_HEIGHT;
+    const alignedTop = top < node.scrollTop
+      ? top
+      : bottom > node.scrollTop + height ? bottom - height : node.scrollTop;
+    node.scrollTop = Math.max(0, Math.min(alignedTop, total * TRACE_ROW_HEIGHT - height));
+    pendingFocus.current = target;
+    setScrollTop(node.scrollTop);
+    // Already-mounted targets need no render; other targets focus after commit.
+    const row = rowRefs.current.get(target);
+    if (row) {
+      row.focus({ preventScroll: true });
+      pendingFocus.current = null;
+    }
   };
 
   const totalHeight = total * TRACE_ROW_HEIGHT;
@@ -1257,6 +1312,11 @@ function TraceList({
                   (active ? " kbot-research__trace-button--active" : "")
                 }
                 aria-pressed={active}
+                ref={(node) => {
+                  if (node) rowRefs.current.set(index, node);
+                  else rowRefs.current.delete(index);
+                }}
+                onKeyDown={(event) => handleRowKeyDown(event, index)}
                 onClick={() => onSelectBar(label)}
                 /* Inline height stays the geometry source of truth; it must
                    equal TRACE_ROW_HEIGHT and the CSS row rule. */
