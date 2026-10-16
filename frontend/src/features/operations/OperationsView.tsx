@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import "./OperationsView.signal.css";
 import { AlertsFilter } from "./AlertsFilter";
 import { DeploymentHistory } from "./DeploymentHistory";
@@ -201,6 +201,11 @@ function renderLiveBanner(live: OperationsViewModel["live"]): JSX.Element {
 
 export function OperationsView({ client }: OperationsViewProps): JSX.Element {
   const [killReason, setKillReason] = useState<string>("");
+  const [killReasonError, setKillReasonError] = useState<string | null>(null);
+  const [confirmReason, setConfirmReason] = useState<string | null>(null);
+  const [engageError, setEngageError] = useState<string | null>(null);
+  const [engaging, setEngaging] = useState(false);
+  const engageInFlight = useRef(false);
   const [promoteResults, setPromoteResults] = useState<
     Record<string, { code: string; message: string }>
   >({});
@@ -311,15 +316,41 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
     [client, refresh, pending],
   );
 
-  const handleEngage = useCallback(async (): Promise<void> => {
-    const trimmed = killReason.trim();
-    if (!trimmed) {
+  const requestEngage = (): void => {
+    if (engageInFlight.current) return;
+    setEngageError(null);
+    if (Array.from(killReason.replace(/\s/g, "")).length < 4) {
+      setKillReasonError("Enter a reason with at least 4 non-whitespace characters.");
+      setConfirmReason(null);
       return;
     }
-    await client.engageKill(trimmed);
-    setKillReason("");
-    await refresh();
-  }, [client, killReason, refresh]);
+    setKillReasonError(null);
+    setConfirmReason(killReason.trim());
+  };
+
+  const handleEngage = useCallback(async (): Promise<void> => {
+    const trimmed = confirmReason;
+    if (trimmed === null || engageInFlight.current) return;
+    engageInFlight.current = true;
+    setEngaging(true);
+    setEngageError(null);
+    try {
+      const result = await client.engageKill(trimmed);
+      if (result.ok === false) {
+        throw new Error(result.message ?? result.code ?? "command refused");
+      }
+      setKillReason("");
+      await refresh();
+    } catch (err) {
+      setEngageError(`Engage kill switch failed: ${
+        err instanceof Error ? err.message : String(err)
+      } — ${UNKNOWN_OUTCOME_TEXT}`);
+    } finally {
+      setConfirmReason(null);
+      engageInFlight.current = false;
+      setEngaging(false);
+    }
+  }, [client, confirmReason, refresh]);
 
   const handleRelease = useCallback(async (): Promise<void> => {
     await client.releaseKill();
@@ -411,18 +442,35 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                 data-testid="ops-kill-reason"
                 type="text"
                 value={killReason}
-                onChange={(event) => setKillReason(event.target.value)}
+                disabled={engaging}
+                aria-invalid={killReasonError !== null}
+                aria-describedby={killReasonError ? "ops-kill-reason-error" : undefined}
+                onChange={(event) => {
+                  setKillReason(event.target.value);
+                  setKillReasonError(null);
+                  setConfirmReason(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    requestEngage();
+                  }
+                }}
                 placeholder="Operator reason"
               />
             </div>
+            {killReasonError ? (
+              <p id="ops-kill-reason-error" data-testid="ops-kill-reason-error"
+                role="alert" className="kbot-ops__row-result">
+                {killReasonError}
+              </p>
+            ) : null}
             <div className="kbot-ops__kill-buttons">
               <button
                 type="button"
                 data-testid="ops-kill-engage"
-                disabled={killReason.trim() === ""}
-                onClick={() => {
-                  void handleEngage();
-                }}
+                disabled={killReason.trim() === "" || engaging}
+                onClick={requestEngage}
               >
                 Engage kill switch
               </button>
@@ -438,7 +486,29 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                 </button>
               ) : null}
             </div>
-            <p className="kbot-ops__kill-helper">{KILL_HELPER}</p>
+            {confirmReason !== null ? (
+              <div data-testid="ops-kill-engage-confirm" role="group"
+                aria-label="Confirm kill switch engagement">
+                <p className="kbot-ops__row-result">
+                  Engage kill switch with reason: <strong>{confirmReason}</strong>
+                </p>
+                <div className="kbot-ops__kill-buttons">
+                  <button type="button" data-testid="ops-kill-engage-confirm-submit"
+                    disabled={engaging} onClick={() => { void handleEngage(); }}>
+                    Confirm engage
+                  </button>
+                  <button type="button" data-testid="ops-kill-engage-confirm-cancel"
+                    disabled={engaging} onClick={() => setConfirmReason(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {engageError ? (
+              <p data-testid="ops-kill-engage-error" role="alert"
+                className="kbot-ops__row-result">{engageError}</p>
+            ) : null}
+            <p className="kbot-ops__kill-helper" data-testid="ops-kill-helper">{KILL_HELPER}</p>
           </section>
         </div>
 
