@@ -631,6 +631,7 @@ export function WorkstationShell({
               type="button"
               className="kbot-shell__palette-hint"
               data-testid="kbot-shell-palette-hint"
+              aria-keyshortcuts="Control+K Meta+K"
               onClick={() => {
                 setPaletteOpen(true);
               }}
