@@ -59,6 +59,8 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
   const [jobs, setJobs] = useState<JobRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback((): void => {
     const requestId = ++requestIdRef.current;
@@ -101,11 +103,63 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
     load();
   }, [open, load]);
 
+  useEffect(() => {
+    if (!open || !dialogRef.current) {
+      return;
+    }
+    const dialog = dialogRef.current;
+    const trigger = triggerRef.current;
+    const focusable = (): HTMLElement[] =>
+      Array.from(dialog.querySelectorAll<HTMLElement>(
+        "button, [href], input, select, textarea, [tabindex]",
+      )).filter((element) =>
+        element.tabIndex >= 0 && !element.matches(":disabled") &&
+        !element.closest("[hidden], [inert]") &&
+        getComputedStyle(element).display !== "none" &&
+        getComputedStyle(element).visibility !== "hidden",
+      );
+    const focusFirst = (): void => {
+      (focusable()[0] ?? dialog).focus();
+    };
+    const onFocus = (event: FocusEvent): void => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) {
+        focusFirst();
+      }
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      // Keep shell shortcuts from activating controls behind the modal.
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      } else if (event.key === "Tab") {
+        const targets = focusable();
+        const index = targets.indexOf(document.activeElement as HTMLElement);
+        if (index < 0 || (event.shiftKey ? index === 0 : index === targets.length - 1)) {
+          event.preventDefault();
+          (event.shiftKey ? targets.at(-1) ?? dialog : targets[0] ?? dialog).focus();
+        }
+      } else if (!dialog.contains(event.target as Node)) {
+        event.preventDefault();
+        focusFirst();
+      }
+    };
+    focusFirst();
+    document.addEventListener("focusin", onFocus);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("focusin", onFocus);
+      document.removeEventListener("keydown", onKey, true);
+      trigger?.focus();
+    };
+  }, [open, close]);
+
   return (
     <>
       <button
         type="button"
         className="kbot-jobs__trigger"
+        ref={triggerRef}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls="kbot-jobs-drawer"
@@ -127,6 +181,8 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
           className="kbot-jobs__scrim"
           role="dialog"
           aria-modal="true"
+          ref={dialogRef}
+          tabIndex={-1}
           aria-label="Jobs"
         >
           <div className="kbot-jobs__dialog" data-testid="kbot-jobs-dialog">
