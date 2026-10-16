@@ -217,7 +217,20 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
                 <Fragment key={row.deployment_id}>
                   <tr
                     data-testid={rowTestId(row.deployment_id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Deployment ${row.deployment_id}, ${row.state}`}
                     onClick={() => handleRowClick(row)}
+                    onKeyDown={(event) => {
+                      if (
+                        (event.key === "Enter" || event.key === " ") &&
+                        !event.repeat &&
+                        !event.nativeEvent.isComposing
+                      ) {
+                        event.preventDefault();
+                        handleRowClick(row);
+                      }
+                    }}
                     aria-expanded={expandedId === row.deployment_id}
                   >
                     <td>{row.deployment_id}</td>
