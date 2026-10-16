@@ -111,6 +111,8 @@ export function StarterPicker({
         <p
           className="kbot-starter-picker__error"
           data-testid="starter-picker-error"
+          role="alert"
+          aria-live="polite"
         >
           Could not load starter examples: {state.message}
         </p>
