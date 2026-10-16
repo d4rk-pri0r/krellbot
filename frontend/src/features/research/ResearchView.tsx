@@ -319,6 +319,7 @@ export function ResearchView({
     { code: string; message: string } | null
   >(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const handleSyntheticFixture = (): void => {
     setDatasetPath(SYNTHETIC_FIXTURE_PATH);
@@ -512,7 +513,15 @@ export function ResearchView({
     if (!jobId) {
       return;
     }
-    await client.cancelJob(jobId);
+    setCancelError(null);
+    try {
+      await client.cancelJob(jobId);
+      setJobId(null);
+    } catch (err) {
+      setCancelError(
+        `Cancel job failed: ${err instanceof Error ? err.message : String(err)} — outcome unknown: the command may not have been sent or applied — check state before retrying`,
+      );
+    }
   };
 
   const handleLoadResult = async (): Promise<void> => {
@@ -861,12 +870,18 @@ export function ResearchView({
           <button
             type="button"
             className="kbot-research__action"
+            data-testid="research-cancel"
             onClick={() => {
               void handleCancel();
             }}
           >
             Cancel
           </button>
+        ) : null}
+        {cancelError ? (
+          <p className="kbot-research__error" data-testid="research-cancel-error" role="alert">
+            {cancelError}
+          </p>
         ) : null}
         {jobId ? (
           <button
