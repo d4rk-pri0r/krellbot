@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 
 export type TraceCsvExportProps = {
   trace: Array<Record<string, unknown>>;
@@ -84,11 +84,14 @@ export function TraceCsvExport({
   jobId,
 }: TraceCsvExportProps): JSX.Element {
   const hasRows = trace.length > 0;
+  const [busy, setBusy] = useState<boolean>(false);
 
   const handleClick = (): void => {
     if (!hasRows) {
       return;
     }
+    setBusy(true);
+    setTimeout(() => setBusy(false), 0);
     const blob = new Blob([buildTraceCsv(trace)], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -106,6 +109,9 @@ export function TraceCsvExport({
         <p
           className="kbot-research__trace-empty"
           data-testid="research-trace-csv-empty"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
         >
           No trace rows to export.
         </p>
@@ -114,6 +120,15 @@ export function TraceCsvExport({
         type="button"
         className="kbot-research__action"
         data-testid="research-trace-csv-export"
+        aria-label={
+          !hasRows
+            ? "Export trace CSV (no trace rows to export)"
+            : jobId !== null
+              ? `Export trace CSV for run ${jobId}`
+              : "Export trace CSV"
+        }
+        aria-keyshortcuts="Control+E Meta+E"
+        aria-busy={busy}
         disabled={!hasRows}
         onClick={handleClick}
       >
