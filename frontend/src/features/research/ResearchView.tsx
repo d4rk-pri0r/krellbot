@@ -320,6 +320,7 @@ export function ResearchView({
   >(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const handleSyntheticFixture = (): void => {
     setDatasetPath(SYNTHETIC_FIXTURE_PATH);
@@ -525,12 +526,19 @@ export function ResearchView({
   };
 
   const handleLoadResult = async (): Promise<void> => {
+    setLoadError(null);
     if (!jobId) {
       return;
     }
-    const result = await client.getResult(jobId);
-    setStoredResult(result);
-    setSelectedBarTs(null);
+    try {
+      const result = await client.getResult(jobId);
+      setStoredResult(result);
+      setSelectedBarTs(null);
+    } catch (err) {
+      setLoadError(
+        `Load result failed: ${err instanceof Error ? err.message : String(err)} — outcome unknown: the command may not have been sent or applied — check state before retrying`,
+      );
+    }
   };
 
   const handleExport = async (): Promise<void> => {
@@ -883,10 +891,16 @@ export function ResearchView({
             {cancelError}
           </p>
         ) : null}
+        {loadError !== null ? (
+          <p className="kbot-research__error" data-testid="research-load-result-error" role="alert">
+            {loadError}
+          </p>
+        ) : null}
         {jobId ? (
           <button
             type="button"
             className="kbot-research__action"
+            data-testid="research-load-result"
             onClick={() => {
               void handleLoadResult();
             }}
