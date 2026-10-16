@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useEffect, useId, useState, type JSX } from "react";
 import "./LastRunsPanel.signal.css";
 import type { PaperClient, PaperRun, PaperRunsClient } from "./client";
 
@@ -58,6 +58,7 @@ function sideBadgeTone(side: string): string {
 }
 
 export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
+  const detailId = useId();
   const [runs, setRuns] = useState<PaperRun[] | null>(null);
   const [selected, setSelected] = useState<PaperRun | null>(null);
   const [loading, setLoading] = useState(true);
@@ -207,6 +208,8 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                           isSelected ? " kbot-paper-runs__row--selected" : ""
                         }`}
                         tabIndex={0}
+                        aria-expanded={isSelected}
+                        aria-controls={detailId}
                         aria-label={`Open run detail for ${run.venue} ${run.pair}`}
                         onClick={() => {
                           handleSelectRun(run);
@@ -269,6 +272,7 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
         {selected !== null ? (
           <section
             className="kbot-paper-runs__panel kbot-paper-runs__detail"
+            id={detailId}
             aria-label="Selected paper run detail"
             data-testid="paper-last-runs-detail"
           >
