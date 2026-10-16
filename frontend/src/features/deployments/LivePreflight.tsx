@@ -41,6 +41,7 @@ export function LivePreflight(): JSX.Element {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setPending(true);
+    setResult(null);
     setErrorMessage(null);
     try {
       const response = await fetch("/api/v1/commands", {
