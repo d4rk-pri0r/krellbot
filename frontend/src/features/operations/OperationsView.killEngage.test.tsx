@@ -43,6 +43,24 @@ describe("kill engagement safety", () => {
     expect(screen.queryByTestId("ops-kill-engage-confirm")).toBeNull();
   });
 
+  it("refuses a short reason on click as well as Enter", async () => {
+    const client = setup();
+    await reason("x");
+    fireEvent.click(screen.getByTestId("ops-kill-engage"));
+    expect(await screen.findByTestId("ops-kill-reason-error")).toBeDefined();
+    expect(client.engageKill).not.toHaveBeenCalled();
+  });
+
+  it("shows server refusal without claiming engagement", async () => {
+    const client = setup(vi.fn<OperationsClient["engageKill"]>().mockResolvedValue({ ok: false, message: "local refusal" }));
+    await reason("local safety check");
+    fireEvent.click(screen.getByTestId("ops-kill-engage"));
+    fireEvent.click(screen.getByTestId("ops-kill-engage-confirm-submit"));
+    expect((await screen.findByTestId("ops-kill-engage-error")).textContent).toContain("local refusal");
+    expect(screen.getByTestId("ops-kill-state").textContent).toBe("Kill switch: released");
+    expect(client.getOperations).toHaveBeenCalledTimes(1);
+  });
+
   it("confirms the exact trimmed reason before sending and refreshing", async () => {
     const client = setup();
     await reason("  a b c d  ");
