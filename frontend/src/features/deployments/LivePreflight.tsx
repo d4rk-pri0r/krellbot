@@ -22,13 +22,23 @@ export function LivePreflight(): JSX.Element {
   const [result, setResult] = useState<LivePreflightResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [fieldProblems, setFieldProblems] = useState<{
+    account: string | null;
+    revision: string | null;
+  }>({ account: null, revision: null });
 
   const handleAccountChange = (event: ChangeEvent<HTMLInputElement>): void => {
     setAccountId(event.target.value);
+    if (fieldProblems.account !== null) {
+      setFieldProblems((previous) => ({ ...previous, account: null }));
+    }
   };
 
   const handleRevisionChange = (event: ChangeEvent<HTMLInputElement>): void => {
     setRevisionId(event.target.value);
+    if (fieldProblems.revision !== null) {
+      setFieldProblems((previous) => ({ ...previous, revision: null }));
+    }
   };
 
   const handleModeChange = (event: ChangeEvent<HTMLSelectElement>): void => {
@@ -42,6 +52,11 @@ export function LivePreflight(): JSX.Element {
     event.preventDefault();
     setPending(true);
     setErrorMessage(null);
+    setFieldProblems({
+      account: accountId.trim() === "" ? "Account ID is required" : null,
+      revision: revisionId.trim() === "" ? "Revision ID is required" : null,
+    });
+    let succeeded = false;
     try {
       const response = await fetch("/api/v1/commands", {
         method: "POST",
@@ -64,9 +79,13 @@ export function LivePreflight(): JSX.Element {
         throw new Error(`live.preflight failed: ${response.status}`);
       }
       setResult((await response.json()) as LivePreflightResult);
+      succeeded = true;
     } catch {
       setErrorMessage("Preflight request failed");
     } finally {
+      if (succeeded) {
+        setFieldProblems({ account: null, revision: null });
+      }
       setPending(false);
     }
   };
@@ -96,9 +115,22 @@ export function LivePreflight(): JSX.Element {
             id="live-preflight-account-input"
             className="kbot-live-preflight__input"
             data-testid="live-preflight-account"
+            aria-required="true"
+            aria-invalid={fieldProblems.account !== null}
+            aria-describedby={
+              fieldProblems.account !== null ? "live-preflight-account-problem" : undefined
+            }
             value={accountId}
             onChange={handleAccountChange}
           />
+          {fieldProblems.account !== null ? (
+            <p
+              id="live-preflight-account-problem"
+              data-testid="live-preflight-account-problem"
+            >
+              {fieldProblems.account}
+            </p>
+          ) : null}
         </label>
         <label
           className="kbot-live-preflight__field"
@@ -109,9 +141,22 @@ export function LivePreflight(): JSX.Element {
             id="live-preflight-revision-input"
             className="kbot-live-preflight__input"
             data-testid="live-preflight-revision"
+            aria-required="true"
+            aria-invalid={fieldProblems.revision !== null}
+            aria-describedby={
+              fieldProblems.revision !== null ? "live-preflight-revision-problem" : undefined
+            }
             value={revisionId}
             onChange={handleRevisionChange}
           />
+          {fieldProblems.revision !== null ? (
+            <p
+              id="live-preflight-revision-problem"
+              data-testid="live-preflight-revision-problem"
+            >
+              {fieldProblems.revision}
+            </p>
+          ) : null}
         </label>
         <label
           className="kbot-live-preflight__field"
