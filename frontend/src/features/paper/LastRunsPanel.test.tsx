@@ -88,6 +88,19 @@ describe("LastRunsPanel — read-only Last runs table", () => {
     ).toBeDefined();
   });
 
+  it("renders a named Copy button in each existing trailing cell", async () => {
+    render(<LastRunsPanel client={makeClient()} />);
+    const copy = await screen.findByRole("button", { name: "Copy summary for kraken SUIUSD" });
+    expect(copy.getAttribute("type")).toBe("button");
+    expect(copy.getAttribute("title")).toBe("Copy summary");
+    expect(copy.classList.contains("kbot-paper-runs__action")).toBe(true);
+    expect(copy.classList.contains("kbot-paper-runs__copy")).toBe(true);
+    const row = screen.getByTestId("paper-last-runs-row-kraken-SUIUSD");
+    expect(row.querySelectorAll("td")).toHaveLength(9);
+    expect(copy.parentElement).toBe(row.lastElementChild);
+    expect(row.lastElementChild?.lastElementChild?.textContent).toBe("›");
+  });
+
   it("renders started and ended timestamps per row", async () => {
     const client = makeClient();
     render(<LastRunsPanel client={client} />);
@@ -222,7 +235,7 @@ describe("LastRunsPanel — read-only Last runs table", () => {
     });
 
     const buttons = screen.getAllByRole("button").map((node) => node.textContent);
-    expect(buttons).toEqual(["Refresh"]);
+    expect(buttons).toEqual(["Refresh", "Copy", "Copy"]);
     expect(client.pauseEntries).not.toHaveBeenCalled();
     expect(client.resumeEntries).not.toHaveBeenCalled();
     expect(client.disarm).not.toHaveBeenCalled();

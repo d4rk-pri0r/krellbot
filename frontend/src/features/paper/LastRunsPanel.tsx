@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type JSX } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type JSX } from "react";
 import "./LastRunsPanel.signal.css";
 import type { PaperClient, PaperRun, PaperRunsClient } from "./client";
 
@@ -7,6 +7,32 @@ export type { PaperClient, PaperRunsClient } from "./client";
 export type LastRunsPanelProps = {
   client: PaperClient & PaperRunsClient;
 };
+
+const COPY_FEEDBACK_MS = 2000;
+type CopyOutcome = "ok" | "fail" | null;
+type CopyOperation = { frame?: number; timer?: number };
+
+function keyFor(run: PaperRun): string {
+  return JSON.stringify([run.venue, run.pair, run.pack_id, run.first_ts_ms]);
+}
+
+function legacyFallback(text: string): void {
+  // Older browsers without the Clipboard API can still copy via a selected,
+  // hidden textarea. A denied API write must not silently use this fallback.
+  const previousFocus = document.activeElement;
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+  document.body.appendChild(field);
+  try {
+    field.focus();
+    field.select();
+    if (!document.execCommand("copy")) throw new Error("Copy refused");
+  } finally {
+    field.remove();
+    if (previousFocus instanceof HTMLElement) previousFocus.focus({ preventScroll: true });
+  }
+}
 
 function formatTime(ts_ms: number): string {
   if (!ts_ms) {
@@ -63,6 +89,51 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
   const [selected, setSelected] = useState<PaperRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [copyState, setCopyState] = useState<Record<string, CopyOutcome>>({});
+  const copyOperations = useRef<Record<string, CopyOperation>>({});
+
+  useEffect(() => () => {
+    for (const operation of Object.values(copyOperations.current)) {
+      if (operation.frame !== undefined) cancelAnimationFrame(operation.frame);
+      if (operation.timer !== undefined) window.clearTimeout(operation.timer);
+    }
+    copyOperations.current = {};
+  }, []);
+
+  async function handleCopyText(key: string, text: string): Promise<void> {
+    const previous = copyOperations.current[key];
+    if (previous?.frame !== undefined) cancelAnimationFrame(previous.frame);
+    if (previous?.timer !== undefined) window.clearTimeout(previous.timer);
+    const operation: CopyOperation = {};
+    copyOperations.current[key] = operation;
+    setCopyState((state) => ({ ...state, [key]: null }));
+    let outcome: CopyOutcome = "ok";
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else legacyFallback(text);
+    } catch {
+      outcome = "fail";
+    }
+    if (copyOperations.current[key] !== operation) return;
+    operation.frame = requestAnimationFrame(() => {
+      if (copyOperations.current[key] !== operation) return;
+      setCopyState((state) => ({ ...state, [key]: outcome }));
+      operation.timer = window.setTimeout(() => {
+        if (copyOperations.current[key] !== operation) return;
+        setCopyState((state) => ({ ...state, [key]: null }));
+        delete copyOperations.current[key];
+      }, COPY_FEEDBACK_MS);
+    });
+  }
+
+  async function handleCopyRun(run: PaperRun): Promise<void> {
+    await handleCopyText(keyFor(run), run.summary);
+  }
+
+  function copyLabel(key: string, label = "Copy"): string {
+    return copyState[key] === "ok" ? "Copied" : copyState[key] === "fail" ? "Copy failed" : label;
+  }
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -259,6 +330,20 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                         </td>
                         <td className="kbot-paper-runs__result">{run.summary}</td>
                         <td className="kbot-paper-runs__row-open">
+                          <button
+                            type="button"
+                            className="kbot-paper-runs__action kbot-paper-runs__copy"
+                            data-testid={`paper-last-runs-copy-${run.venue}-${run.pair}`}
+                            aria-label={`Copy summary for ${run.venue} ${run.pair}`}
+                            title="Copy summary"
+                            onKeyDown={(event) => { event.stopPropagation(); }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleCopyRun(run);
+                            }}
+                          >
+                            {copyLabel(keyFor(run))}
+                          </button>
                           <span aria-hidden="true">›</span>
                         </td>
                       </tr>
@@ -313,6 +398,7 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                   <tbody>
                     {selected.recent_fills.map((fill, index) => {
                       const sideTone = sideBadgeTone(fill.side);
+                      const fillCopyKey = JSON.stringify([keyFor(selected), fill.coid, fill.ts_ms, index]);
                       return (
                         <tr key={`${fill.coid}|${fill.ts_ms}|${index}`}>
                           <td className="kbot-paper-runs__ts">
@@ -333,7 +419,18 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                               {fill.side}
                             </span>
                           </td>
-                          <td className="kbot-paper-runs__coid">{fill.coid}</td>
+                          <td className="kbot-paper-runs__coid">
+                            {fill.coid}{" "}
+                            <button
+                              type="button"
+                              className="kbot-paper-runs__action kbot-paper-runs__copy"
+                              aria-label="Copy coid"
+                              title="Copy coid"
+                              onClick={() => { void handleCopyText(fillCopyKey, fill.coid); }}
+                            >
+                              {copyLabel(fillCopyKey, "Copy coid")}
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}

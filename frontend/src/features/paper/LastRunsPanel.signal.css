@@ -107,6 +107,12 @@
   flex: none;
 }
 
+.kbot-paper-runs__copy {
+  padding: 4px 8px;
+  min-width: 44px;
+  white-space: nowrap;
+}
+
 /* ============ body ============ */
 
 .kbot-paper-runs .kbot-paper-runs__body {
