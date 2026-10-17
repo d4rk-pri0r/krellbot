@@ -94,6 +94,8 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const [venue, setVenue] = useState("kraken");
   const [paperBalance, setPaperBalance] = useState("1000");
   const [importError, setImportError] = useState<string | null>(null);
+  const [fileImportInFlight, setFileImportInFlight] = useState(false);
+  const fileImportInFlightRef = useRef(false);
   // True after a starter example seeded the draft: the next Save must
   // create a fresh revision even when an `initial` revision was
   // previously loaded (a starter pick is never a reopen/edit).
@@ -270,28 +272,38 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     if (!file) {
       return;
     }
+    if (fileImportInFlightRef.current) {
+      return;
+    }
+    fileImportInFlightRef.current = true;
+    setFileImportInFlight(true);
     const reader = new FileReader();
     reader.onload = () => {
-      const text = typeof reader.result === "string" ? reader.result : "";
-      const pack = parsePack(text);
-      if (!pack) {
-        setImportError("Invalid JSON");
-        return;
+      try {
+        const text = typeof reader.result === "string" ? reader.result : "";
+        const pack = parsePack(text);
+        if (!pack) {
+          setImportError("Invalid JSON");
+          return;
+        }
+        // An imported file is a seed for a NEW draft, exactly like a starter
+        // pick: the previously-loaded revision identity is dropped so the
+        // next Save creates a fresh revision through client.create instead
+        // of silently editing the reopened one, and stale outcome/error
+        // surfaces from that revision do not leak into the imported draft.
+        setOwnedForm(readOwnedStrategy(pack));
+        setLastSummary(null);
+        setSeededFresh(true);
+        setImportError(null);
+        setSaveOutcome(null);
+        setSaveError(null);
+        setValidateError(null);
+        setArmError(null);
+        setRawJson(text);
+      } finally {
+        fileImportInFlightRef.current = false;
+        setFileImportInFlight(false);
       }
-      // An imported file is a seed for a NEW draft, exactly like a starter
-      // pick: the previously-loaded revision identity is dropped so the
-      // next Save creates a fresh revision through client.create instead
-      // of silently editing the reopened one, and stale outcome/error
-      // surfaces from that revision do not leak into the imported draft.
-      setOwnedForm(readOwnedStrategy(pack));
-      setLastSummary(null);
-      setSeededFresh(true);
-      setImportError(null);
-      setSaveOutcome(null);
-      setSaveError(null);
-      setValidateError(null);
-      setArmError(null);
-      setRawJson(text);
     };
     reader.readAsText(file);
   };
@@ -504,6 +516,8 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                   type="file"
                   accept="application/json,.json"
                   onChange={handleFileChange}
+                  aria-label="Import pack file"
+                  aria-busy={fileImportInFlight ? "true" : undefined}
                 />
               </label>
               <div className="kbot-strategy-editor__actions">
