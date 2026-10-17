@@ -199,10 +199,30 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
           data-testid="pack-library-refresh"
           disabled={refreshing}
           aria-disabled={refreshing}
+          aria-busy={refreshing}
           onClick={handleRefresh}
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
+        {/* Visually hidden polite status: mirrors the in-flight `refreshing`
+            truth the button already carries, so AT hears the read in flight. */}
+        <p
+          data-testid="pack-library-refresh-status"
+          role="status"
+          aria-live="polite"
+          className="kbot-pack-library__refresh-status"
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            padding: 0,
+            overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {refreshing ? "Reading installed packs…" : ""}
+        </p>
       </header>
 
       {rows !== null && rows.length > 0 ? (
