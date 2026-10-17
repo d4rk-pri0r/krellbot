@@ -62,11 +62,20 @@ type AppHomeProps = {
   onNavigate: (view: View) => void;
   /** True while the local session bootstrap has not settled yet. */
   sessionPending?: boolean;
+  /**
+   * True when the one-time session bootstrap was rejected. Shown
+   * honestly instead of presenting startup as complete.
+   */
+  sessionFailed?: boolean;
+  /** Offered only on failure; re-reads the CSRF for the existing session. */
+  onRecoverSession?: () => void;
 };
 
 export function AppHome({
   onNavigate,
   sessionPending = false,
+  sessionFailed = false,
+  onRecoverSession,
 }: AppHomeProps): JSX.Element {
   return (
     <section
@@ -95,7 +104,7 @@ export function AppHome({
             Live trading unavailable
           </span>
         </p>
-        {sessionPending ? (
+        {sessionPending && !sessionFailed ? (
           <p
             className="app-home__session"
             data-testid="app-home-session"
@@ -104,6 +113,29 @@ export function AppHome({
             Starting the local session… areas that need it will load their own
             data.
           </p>
+        ) : null}
+        {sessionFailed ? (
+          <div
+            className="app-home__session app-home__session--failed"
+            data-testid="app-home-session-failure"
+            role="alert"
+          >
+            <p className="app-home__note-copy">
+              The local session could not start. Areas that need it will show
+              their own errors, and nothing can be saved or changed until the
+              session recovers. Navigation still works offline.
+            </p>
+            {onRecoverSession ? (
+              <button
+                type="button"
+                className="app-home__recover"
+                data-testid="app-home-recover-session"
+                onClick={onRecoverSession}
+              >
+                Recover the local session
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

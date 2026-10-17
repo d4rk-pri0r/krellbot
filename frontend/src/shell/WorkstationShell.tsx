@@ -411,6 +411,17 @@ export function WorkstationShell({
   const [packsOpen, setPacksOpen] = useState(false);
 
   const [bootstrapDone, setBootstrapDone] = useState(false);
+  const [bootstrapFailed, setBootstrapFailed] = useState(false);
+
+  const handleRecoverSession = useCallback((): void => {
+    // Only existing-session recovery: the one-time bootstrap token is
+    // consumed and must never be replayed.
+    void recoverCsrf().then((ok: boolean) => {
+      if (ok) {
+        setBootstrapFailed(false);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const token = consumeBootstrapToken();
@@ -439,9 +450,12 @@ export function WorkstationShell({
       })
       .catch(() => {
         if (!cancelled) {
-          // Bootstrap failed: still mark "done" so the UI mounts;
-          // the next state-change request will surface the error.
+          // Bootstrap failed: the shell still mounts so navigation
+          // works, but the failure is surfaced on Home instead of
+          // being presented silently as startup complete. The token
+          // is consumed and never retried.
           setBootstrapDone(true);
+          setBootstrapFailed(true);
         }
       });
     return () => {
@@ -616,7 +630,12 @@ export function WorkstationShell({
       </header>
       <main className="kbot-shell__main">
         {active === "home" ? (
-          <AppHome onNavigate={setActive} sessionPending={!bootstrapDone} />
+          <AppHome
+            onNavigate={setActive}
+            sessionPending={!bootstrapDone}
+            sessionFailed={bootstrapFailed}
+            onRecoverSession={handleRecoverSession}
+          />
         ) : null}
         {active === "workstation" ? (
           <>
