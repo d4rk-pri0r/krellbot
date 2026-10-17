@@ -119,10 +119,6 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
     setSelected(run);
   };
 
-  const handleCloseDetail = (): void => {
-    setSelected(null);
-  };
-
   const venues = Array.from(new Set((runs ?? []).map((run) => run.venue)));
   const statuses = Array.from(new Set((runs ?? []).map((run) => run.status)));
   const needle = query.trim().toLowerCase();
@@ -134,6 +130,30 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
     )),
   );
   const filtersActive = venue !== "" || query !== "" || status !== "";
+
+  const handleCloseDetail = useCallback((): void => {
+    if (selected === null) return;
+    const list = document.getElementById(detailId)?.parentElement?.querySelector<HTMLElement>(
+      '[data-testid="paper-last-runs-list-panel"]',
+    );
+    const index = filteredRuns.findIndex((run) => keyFor(run) === keyFor(selected));
+    const row = list?.querySelectorAll<HTMLElement>('[data-testid^="paper-last-runs-row-"]')[index];
+    setSelected(null);
+    if (row) row.focus();
+    else if (list) {
+      list.tabIndex = -1;
+      list.focus();
+    }
+  }, [detailId, filteredRuns, selected]);
+
+  useEffect(() => {
+    if (selected === null) return;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") handleCloseDetail();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleCloseDetail, selected]);
 
   return (
     <section
@@ -330,6 +350,8 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                 type="button"
                 className="kbot-paper-runs__action"
                 onClick={handleCloseDetail}
+                aria-label={`Close run detail for ${selected.summary}`}
+                aria-keyshortcuts="Escape"
                 data-testid="paper-last-runs-detail-close"
               >
                 Close detail
