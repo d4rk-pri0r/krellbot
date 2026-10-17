@@ -1,0 +1,139 @@
+/*
+ * Navigation — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Root-scoped presentation for the persistent top-of-shell tab strip
+ * (frontend/src/shell/Navigation.tsx, mounted by WorkstationShell). The
+ * strip keeps the shared shell's own `.kbot-nav` / `__item` /
+ * `__item--active` classes (frontend/src/styles/shell.css) and layers the
+ * approved Signal composition on top of them. Every value comes from the
+ * shared tokens (frontend/src/styles/tokens.css), each carrying its
+ * approved Signal fallback:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative)   coral #CC9689 (caution/kill)
+ *
+ * Composition contract:
+ *   - the strip reads as a panel surface with restrained borders, sitting
+ *     beneath the brand bar as the approved compact horizontal nav;
+ *   - the active tab carries a seafoam selection underline (selection /
+ *     focus semantics) with sage reinforcing the active label — never
+ *     color alone, aria-current/aria-pressed stay on the buttons;
+ *   - the honest "Local preview" badge below the tab row uses the same
+ *     seafoam badge vocabulary as StatusStrip / AppHome / JobsDrawer /
+ *     CommandPalette, paired with the truthful "Live trading unavailable"
+ *     caption;
+ *   - labels wrap or ellipsize instead of widening the shell at 1600px or
+ *     overflowing it at 390px; and
+ *   - each tab keeps a >=44px tap target on small viewports (<=640px).
+ */
+
+.kbot-shell__nav-root,
+.kbot-shell__nav-root * {
+  box-sizing: border-box;
+}
+
+.kbot-shell__nav-root {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 6px 8px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  background: color-mix(in srgb, var(--surface, #14222e) 60%, var(--navy, #0e1c29));
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  row-gap: 6px;
+}
+
+/* ============ tabs ============ */
+
+.kbot-shell__nav-root .kbot-shell__nav-item {
+  min-width: 0;
+  padding: 8px 14px;
+  border-radius: var(--radius-control, 7px);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kbot-shell__nav-root .kbot-shell__nav-item:hover {
+  color: var(--text, #e9f0f5);
+  background: color-mix(in srgb, var(--panel, #18354a) 55%, transparent);
+}
+
+/* Active tab: seafoam selection underline + sage reinforcement on the
+ * label. The shared strip's own inset shadow stays available beneath. */
+.kbot-shell__nav-root .kbot-shell__nav-item--active {
+  color: var(--sage, #b3dda8);
+  background: color-mix(in srgb, var(--panel, #18354a) 80%, var(--navy, #0e1c29));
+  box-shadow: inset 0 -2px 0 var(--seafoam, #a8d8d1);
+}
+
+/* ============ honest Local preview caption ============ */
+
+.kbot-shell__nav-root .kbot-shell__nav-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0 4px;
+  min-height: 0;
+  border-top: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
+  font-size: 11px;
+}
+
+/* Same seafoam "Local preview" badge vocabulary as the other Signal
+ * shell surfaces (StatusStrip / AppHome / JobsDrawer / CommandPalette). */
+.kbot-shell__nav-root .kbot-shell__nav-preview {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.kbot-shell__nav-root .kbot-shell__nav-note-text {
+  min-width: 0;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* ============ narrow layouts (<=640px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-shell__nav-root {
+    padding: 3px 4px 6px;
+  }
+
+  /* Reachable tabs with >=44px touch targets; labels ellipsize inside
+   * the tab instead of overflowing the 390px composition. */
+  .kbot-shell__nav-root .kbot-shell__nav-item {
+    min-height: 44px;
+    padding: 10px 10px;
+    font-size: 12.5px;
+  }
+
+  .kbot-shell__nav-root .kbot-shell__nav-note {
+    gap: 6px;
+    padding: 0 2px;
+  }
+
+  .kbot-shell__nav-root .kbot-shell__nav-note-text {
+    overflow-wrap: anywhere;
+  }
+}
