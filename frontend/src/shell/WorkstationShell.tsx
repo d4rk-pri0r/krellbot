@@ -416,11 +416,13 @@ export function WorkstationShell({
   const handleRecoverSession = useCallback((): void => {
     // Only existing-session recovery: the one-time bootstrap token is
     // consumed and must never be replayed.
-    void recoverCsrf().then((ok: boolean) => {
-      if (ok) {
-        setBootstrapFailed(false);
-      }
-    });
+    void recoverCsrf()
+      .catch(() => false)
+      .then((ok: boolean) => {
+        if (ok) {
+          setBootstrapFailed(false);
+        }
+      });
   }, []);
 
   useEffect(() => {
@@ -428,13 +430,19 @@ export function WorkstationShell({
     if (!token) {
       // Reload with a redeemed (or absent) bootstrap token: the
       // session cookie may still be valid, so try to recover the
-      // CSRF before mounting.
+      // CSRF before mounting. A refused or failed recovery is
+      // surfaced honestly instead of silently presenting startup
+      // as complete.
       let cancelled = false;
       void recoverCsrf()
         .catch(() => false)
-        .finally(() => {
-          if (!cancelled) {
-            setBootstrapDone(true);
+        .then((ok: boolean) => {
+          if (cancelled) {
+            return;
+          }
+          setBootstrapDone(true);
+          if (!ok) {
+            setBootstrapFailed(true);
           }
         });
       return () => {
