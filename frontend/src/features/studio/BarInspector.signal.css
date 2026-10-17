@@ -1,0 +1,129 @@
+/*
+ * Bar inspector — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Component-scoped styles for the WorkstationShell Studio panel bar-chart
+ * inspector (BarInspector), shown when the operator selects a bar node in
+ * the Studio strategy graph. The inspector presents the selected bar with
+ * the approved readable canvas language: a "Selected bar" label in prose,
+ * the bar index as a mono numeric field, and a text status that carries
+ * its meaning in words ("closed" vs the exact unavailable reason) — never
+ * color alone.
+ *
+ * Typography is inherited from the host (Manrope via the shared shell;
+ * IBM Plex Mono only for the restrained technical bar-index value). This
+ * file consumes the approved named tokens, each with its exact approved
+ * fallback so the slice functions on this accepted base:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Selectors are nested under `.kbot-feature__bar-inspector-root` so shared
+ * shell rules cannot flatten the intended hierarchy. There is no
+ * affirmative primary control on this surface (the bar index is read-only),
+ * so sage only reinforces the closed state; the unavailable reasons keep a
+ * coral-derived caution treatment that is always carried by text, not
+ * color alone.
+ */
+
+.kbot-feature__bar-inspector-root {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 14px 16px 15px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 11px;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__bar-inspector-root *,
+.kbot-feature__bar-inspector-root *::before,
+.kbot-feature__bar-inspector-root *::after {
+  box-sizing: border-box;
+}
+
+.kbot-feature__bar-inspector-root p {
+  margin: 0;
+}
+
+/* --- selected bar field --- */
+
+.kbot-feature__bar-inspector-root label[for="bar-inspector-selected-bar"] {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 92%, transparent);
+}
+
+/* Bar index is a technical numeric identifier: mono, contained width. */
+.kbot-feature__bar-inspector-root input[type="number"] {
+  min-height: 36px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--panel, #18354a) 30%, var(--navy, #0e1c29));
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kbot-feature__bar-inspector-root input[type="number"]:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+.kbot-feature__bar-inspector-root ::selection {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 32%, transparent);
+}
+
+/* --- status --- */
+
+/* Status meaning is carried by the exact text; color only reinforces it. */
+.kbot-feature__bar-inspector-root__status {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__bar-inspector-root__status--closed {
+  background: color-mix(in srgb, var(--sage, #b3dda8) 14%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 40%, var(--line, #22465d));
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-feature__bar-inspector-root__status--unavailable {
+  background: color-mix(in srgb, var(--coral, #cc9689) 12%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+}
+
+/* --- responsive: ordinary 44px mobile targets --- */
+
+@media (max-width: 640px) {
+  .kbot-feature__bar-inspector-root {
+    gap: 9px;
+    padding: 12px 12px 13px;
+    border-radius: 9px;
+  }
+
+  .kbot-feature__bar-inspector-root input[type="number"] {
+    min-height: 44px;
+  }
+}
