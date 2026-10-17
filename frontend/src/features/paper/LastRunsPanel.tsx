@@ -211,6 +211,12 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                         onClick={() => {
                           handleSelectRun(run);
                         }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleSelectRun(run);
+                          }
+                        }}
                         data-testid={`paper-last-runs-row-${run.venue}-${run.pair}`}
                       >
                         <td className="kbot-paper-runs__venue">{run.venue}</td>
