@@ -1,0 +1,164 @@
+/*
+ * Paper status CSV export — Signal + Krell Asset Pack v2
+ * (KRELL-SIGNAL-20261010).
+ *
+ * Scoped presentation for the mounted "Export CSV" action on the
+ * armed paper status surface. Everything is namespaced under the
+ * single `.kbot-feature__paper-csv-root` scope this component
+ * renders, so the shared shell's own `.kbot-shell button` rules
+ * (frontend/src/styles/shell.css) keep composing underneath. Every
+ * color and typography value comes from the shared tokens
+ * (frontend/src/styles/tokens.css); each carries its approved Signal
+ * fallback so the surface still composes on bases where only the
+ * palette literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - the Seafoam "Local preview" badge sits immediately above the
+ *     Export CSV button in the same badge vocabulary as LastRunsPanel,
+ *     ArmedRecordsList, RehearsalPanel, CommandPalette and JobsDrawer;
+ *     it is purely visual and never gates whether the button renders
+ *     or what it downloads;
+ *   - the button surface carries the seafoam selection accent while
+ *     armed/idle and the sage affirmative accent on hover/active —
+ *     the export is a selection-style affordance, not a "go" action;
+ *   - Manrope is the primary face (shared --font-ui token), the
+ *     badge keeps the shared uppercase micro-label treatment;
+ *   - the button keeps a >=44px tap target on small viewports and a
+ *     2px seafoam focus-visible ring;
+ *   - the rare null-status branch renders nothing, so a restrained
+ *     disabled treatment is kept for any future disabled mount.
+ */
+
+.kbot-feature__paper-csv-root {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-feature__paper-csv-root *,
+.kbot-feature__paper-csv-root *::before,
+.kbot-feature__paper-csv-root *::after {
+  box-sizing: border-box;
+}
+
+.kbot-feature__paper-csv-root p {
+  margin: 0;
+}
+
+/* ============ badge row ============ */
+
+.kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Same seafoam "Local preview" badge vocabulary as the other Signal
+   panels: pill chrome on the panel/surface mix, seafoam text. */
+.kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid
+    color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--seafoam, #a8d8d1) 12%,
+    var(--surface, #14222e)
+  );
+  color: var(--seafoam, #a8d8d1);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* ============ Export CSV button ============ */
+
+/* Resting surface: panel-tinted control with the seafoam selection
+   accent — the export reads back local state, it does not arm or
+   trade anything. */
+.kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid
+    color-mix(in srgb, var(--seafoam, #a8d8d1) 38%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(
+    in srgb,
+    var(--panel, #18354a) 40%,
+    var(--surface, #14222e)
+  );
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+/* Hover/active: the sage affirmative accent, same restrained mix the
+   shell uses for primary engagement. */
+.kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 55%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__action:active:not(:disabled) {
+  border-color: var(--sage, #b3dda8);
+  background: color-mix(in srgb, var(--sage, #b3dda8) 16%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+}
+
+/* Rare disabled mount (the null-status branch renders nothing today):
+   restrained, honest, never a success tint. */
+.kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ============ focus visibility ============ */
+
+.kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__action:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============ narrow / small viewports ============ */
+
+@media (max-width: 640px) {
+  .kbot-feature__paper-csv-root {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__meta {
+    justify-content: flex-start;
+  }
+
+  /* 44px tap target on small viewports. */
+  .kbot-feature__paper-csv-root .kbot-feature__paper-csv-root__action {
+    min-height: 44px;
+    width: 100%;
+  }
+}
