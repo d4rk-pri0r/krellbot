@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -60,6 +61,8 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copyErrorId, setCopyErrorId] = useState<string | null>(null);
+  const copySeq = useRef(0);
   const [query, setQuery] = useState("");
   const [bucketFilter, setBucketFilter] = useState<string>(ALL_BUCKETS);
   const requestSeq = useRef(0);
@@ -88,6 +91,7 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
 
   useEffect(() => {
     return () => {
+      copySeq.current += 1;
       if (copyTimer.current !== null) {
         window.clearTimeout(copyTimer.current);
       }
@@ -117,24 +121,35 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
   }, [client]);
 
   const handleCopy = useCallback((pack_id: string): void => {
+    const seq = (copySeq.current += 1);
+    if (copyTimer.current !== null) {
+      window.clearTimeout(copyTimer.current);
+      copyTimer.current = null;
+    }
+    setCopiedId(null);
+    setCopyErrorId(null);
+    const fail = (): void => {
+      if (seq === copySeq.current) setCopyErrorId(pack_id);
+    };
     const settle = (): void => {
+      if (seq !== copySeq.current) return;
       setCopiedId(pack_id);
-      if (copyTimer.current !== null) {
-        window.clearTimeout(copyTimer.current);
-      }
       copyTimer.current = window.setTimeout(() => {
+        if (seq !== copySeq.current) return;
         setCopiedId(null);
+        copyTimer.current = null;
       }, COPY_FEEDBACK_MS);
     };
-    const clipboard = navigator.clipboard;
-    if (!clipboard || typeof clipboard.writeText !== "function") {
-      // No clipboard API (e.g. jsdom): still show the pack_id, claim
-      // nothing about a copy that could not happen.
-      return;
+    try {
+      const clipboard = navigator.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== "function") {
+        fail();
+        return;
+      }
+      void clipboard.writeText(pack_id).then(settle, fail);
+    } catch {
+      fail();
     }
-    void clipboard.writeText(pack_id).then(settle, () => {
-      // Copy refused (permissions): report nothing false.
-    });
   }, []);
 
   // Buckets offered for filtering are only those the loaded records actually
@@ -273,6 +288,7 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
                 key={row.pack_id}
                 row={row}
                 copied={copiedId === row.pack_id}
+                copyFailed={copyErrorId === row.pack_id}
                 onCopy={() => {
                   handleCopy(row.pack_id);
                 }}
@@ -297,10 +313,12 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
 type PackRowItemProps = {
   row: PackRow;
   copied: boolean;
+  copyFailed: boolean;
   onCopy: () => void;
 };
 
-function PackRowItem({ row, copied, onCopy }: PackRowItemProps): JSX.Element {
+function PackRowItem({ row, copied, copyFailed, onCopy }: PackRowItemProps): JSX.Element {
+  const copyErrorId = useId();
   const priorRevision =
     row.rollback_ref !== null ? row.rollback_ref.prior_revision_id : "—";
   return (
@@ -323,6 +341,7 @@ function PackRowItem({ row, copied, onCopy }: PackRowItemProps): JSX.Element {
           className="kbot-pack-library__row-copy"
           data-testid={`pack-library-copy-${row.pack_id}`}
           aria-label={`Copy pack_id ${row.pack_id}`}
+          aria-describedby={copyFailed ? copyErrorId : undefined}
           title="Copy pack_id"
           onClick={onCopy}
         >
@@ -334,6 +353,11 @@ function PackRowItem({ row, copied, onCopy }: PackRowItemProps): JSX.Element {
           </span>
         </button>
       </div>
+      {copyFailed ? (
+        <p id={copyErrorId} className="kbot-pack-library__error" role="alert">
+          Could not copy pack_id {row.pack_id}. Clipboard access is unavailable or denied. Try Copy again.
+        </p>
+      ) : null}
       <dl className="kbot-pack-library__row-meta">
         <div className="kbot-pack-library__meta">
           <dt className="kbot-pack-library__meta-term">Version</dt>
