@@ -1099,6 +1099,24 @@ function ResultPanel({
   onSelectBar,
   selectedBar,
 }: ResultPanelProps): JSX.Element {
+  const [barAnnouncement, setBarAnnouncement] = useState<{
+    barTs: string | null;
+    message: string | null;
+  }>({ barTs: null, message: null });
+
+  useEffect(() => {
+    const barTs = selectedBar ? readBarTs(selectedBar, trace.indexOf(selectedBar)) : null;
+    setBarAnnouncement((previous) => {
+      if (previous.barTs === barTs) return previous;
+      return {
+        barTs,
+        message: selectedBar
+          ? `Selected bar ${barTs} close ${readBarClose(selectedBar)}`
+          : "Selected bar cleared",
+      };
+    });
+  }, [selectedBar, trace]);
+
   const metrics = buildMetricCells(receipt);
   // Result provenance: only what the stored receipt itself carries plus the
   // job identity it was loaded under — never the (editable) setup fields.
@@ -1211,6 +1229,25 @@ function ResultPanel({
             </ul>
           </div>
         ) : null}
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="research-bar-detail-live"
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: "hidden",
+            clipPath: "inset(50%)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+        >
+          {barAnnouncement.message}
+        </div>
       </div>
     </div>
   );
