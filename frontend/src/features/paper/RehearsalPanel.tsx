@@ -189,10 +189,15 @@ const REHEARSAL_COMMAND_ANNOUNCEMENTS = {
   refresh: "Refreshing status…",
 } as const;
 
+const REHEARSAL_RETRY_BUSY_LABEL = "Reading rehearsal status…";
+const REHEARSAL_RETRY_COMPLETE_LABEL = "Rehearsal status refreshed";
+
 const POLL_INTERVAL_MS = 1000;
 
 export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const [retryInFlight, setRetryInFlight] = useState(false);
+  const retryHasFiredRef = useRef(false);
   // Synchronous double-click guard, mirroring StatusPanel.
   const inFlightRef = useRef(false);
   const epochRef = useRef(0);
@@ -301,6 +306,13 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
     } finally {
       inFlightRef.current = false;
     }
+  };
+
+  const retryStatus = (): void => {
+    if (retryInFlight || inFlightRef.current) return;
+    retryHasFiredRef.current = true;
+    setRetryInFlight(true);
+    void refreshStatus().finally(() => setRetryInFlight(false));
   };
 
   const runCommand = async (
@@ -441,14 +453,26 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
             <button
               type="button"
               className="kbot-rehearsal__action"
-              onClick={() => {
-                void refreshStatus();
-              }}
+              aria-keyshortcuts="Enter Space"
+              aria-busy={retryInFlight ? "true" : undefined}
+              disabled={retryInFlight || undefined}
+              onClick={retryStatus}
             >
               Retry status
             </button>
           </>
-        ) : (
+        ) : null}
+        {retryHasFiredRef.current ? (
+          <p
+            data-testid="rehearsal-retry-busy-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {retryInFlight ? REHEARSAL_RETRY_BUSY_LABEL : REHEARSAL_RETRY_COMPLETE_LABEL}
+          </p>
+        ) : null}
+        {state.loadFailed !== null && state.status === null ? null : (
           <>
             {state.status === null ? (
               <p
