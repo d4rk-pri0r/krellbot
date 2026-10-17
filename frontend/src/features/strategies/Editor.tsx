@@ -442,6 +442,8 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                   onChange={(event) => handleRawJsonChange(event.target.value)}
                   spellCheck={false}
                   rows={12}
+                  aria-invalid={importError !== null ? "true" : undefined}
+                  aria-describedby={importError !== null ? "editor-import-error" : undefined}
                 />
               </label>
               <label
@@ -483,6 +485,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
           </details>
           {importError !== null ? (
             <p
+              id="editor-import-error"
               className="kbot-strategy-editor__error"
               role="alert"
               data-testid="editor-import-error"
