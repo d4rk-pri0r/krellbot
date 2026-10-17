@@ -1,5 +1,11 @@
 import "./SavedStrategyLibrary.signal.css";
-import { useEffect, useMemo, useState, type JSX } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+} from "react";
 import type {
   LibraryClient,
   OwnedDraftSummary,
@@ -183,6 +189,42 @@ export function SavedStrategyLibrary({
     setQuery("");
   };
 
+  /**
+   * Ctrl+Alt+C / Cmd+Alt+C opens Compare for the row whose Compare button
+   * holds focus; when the library region itself holds focus, the first row's
+   * Compare opens. Auto-repeat never re-fires the activation.
+   */
+  const handleCompareShortcut = (event: KeyboardEvent<HTMLElement>): void => {
+    if (
+      !(event.ctrlKey || event.metaKey) ||
+      !event.altKey ||
+      (event.key !== "c" && event.key !== "C")
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (event.repeat) {
+      return;
+    }
+    const active = document.activeElement;
+    if (
+      active instanceof Element &&
+      active.matches('button[data-testid="library-row-compare"]')
+    ) {
+      const revisionId =
+        active
+          .closest('li[data-testid="library-row"]')
+          ?.getAttribute("data-revision-id") ?? null;
+      setCompareRow(
+        rows.find((row) => row.revision_id === revisionId) ?? null,
+      );
+      return;
+    }
+    if (active === event.currentTarget) {
+      setCompareRow(rows[0] ?? null);
+    }
+  };
+
   const searching = trimmedQuery !== "";
   const showInventory = phase === "ready" && rows.length > 0;
 
@@ -192,6 +234,7 @@ export function SavedStrategyLibrary({
       role="region"
       aria-label="Saved strategy library"
       data-testid="saved-strategy-library"
+      onKeyDown={handleCompareShortcut}
     >
       <header className="kbot-strategy-library__head">
         <div className="kbot-strategy-library__heading">
@@ -394,6 +437,8 @@ export function SavedStrategyLibrary({
                           type="button"
                           className="kbot-strategy-library__compare"
                           data-testid="library-row-compare"
+                          aria-label={`Compare revisions of ${row.label || row.strategy_id || row.id || "(untitled)"}`}
+                          aria-keyshortcuts="Control+Alt+C Meta+Alt+C"
                           onClick={() => {
                             setCompareRow(row);
                           }}
