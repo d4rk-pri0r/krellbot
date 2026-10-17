@@ -1,0 +1,208 @@
+/*
+ * CommandPalette — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Root-scoped presentation for the persistent command palette modal
+ * (frontend/src/shell/CommandPalette.tsx). The palette keeps the shared
+ * shell's own `.kbot-palette` / `__box` / `__label` / `__input` /
+ * `__hint` classes and geometry (frontend/src/styles/shell.css, which
+ * stays unchanged) and layers the Signal composition on top of them:
+ * the honest local-preview copy, a Seafoam "Local preview" badge in the
+ * same badge vocabulary as StatusStrip / AppHome / JobsDrawer, Manrope
+ * typography, and the seafoam selection/focus affordances. Every value
+ * comes from the shared tokens (frontend/src/styles/tokens.css), each
+ * carrying its approved Signal fallback:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution/kill)
+ *
+ * Composition contract:
+ *   - no new color tokens, no global palette redefinition; every rule is
+ *     scoped under .kbot-shell__palette-root so only this modal changes;
+ *   - Manrope is primary; IBM Plex Mono stays available for the command
+ *     input via the shared shell rule, and this layer keeps the field
+ *     readable in Manrope-first UI context;
+ *   - the palette carries no fabricated state: the badge, copy and hint
+ *     state the honest local-preview condition in words as well as color;
+ *   - the input keeps a >=44px target on small viewports (<=640px) and
+ *     visible seafoam focus, and the modal never widens the page.
+ */
+
+.kbot-shell__palette-root,
+.kbot-shell__palette-root * {
+  box-sizing: border-box;
+}
+
+.kbot-shell__palette-root {
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  color: var(--text, #e9f0f5);
+  background: color-mix(
+    in srgb,
+    var(--navy, #0e1c29) 78%,
+    transparent
+  );
+  backdrop-filter: blur(2px);
+}
+
+/* Panel surface: raised panel token, restrained line, Signal radius. */
+.kbot-shell__palette-root .kbot-shell__palette-box {
+  gap: 10px;
+  padding: 16px;
+  background: var(--panel, #18354a);
+  border-color: color-mix(
+    in srgb,
+    var(--seafoam, #a8d8d1) 22%,
+    var(--line, #22465d)
+  );
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  box-shadow:
+    0 22px 60px color-mix(in srgb, #000 50%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--navy, #0e1c29) 60%, transparent);
+}
+
+/* Honest copy: the Seafoam Local preview badge sits above the input,
+ * then the visible heading. The palette's own label element (shared
+ * sr-only base class) is un-hidden into the Signal heading so the
+ * input's accessible name and the visible copy are the same words. */
+.kbot-shell__palette-root .kbot-shell__palette-meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid
+    color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--seafoam, #a8d8d1) 12%,
+    var(--surface, #14222e)
+  );
+  color: var(--seafoam, #a8d8d1);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* The palette label un-hidden into the Signal heading: same words are
+ * the input's accessible name and the visible honest copy. */
+.kbot-shell__palette-root .kbot-shell__palette-label {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  border: 0;
+  min-width: 0;
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* Command field: Manrope-first, panel-grounded, seafoam selection and
+ * focus. Sage is reserved for the affirmative primary action, which a
+ * search field is not. */
+.kbot-shell__palette-root .kbot-shell__palette-input {
+  /* `height` (not only min-height): the shared shell's generic
+   * `.kbot-shell input:not(...)` rule (shell.css) sets min-height:34px
+   * with higher specificity and later cascade order; it never sets
+   * height, so a fixed 44px border-box height is the rule that holds
+   * the touch target on every viewport. */
+  height: 44px;
+  min-height: 44px;
+  padding: 12px 13px;
+  background: color-mix(
+    in srgb,
+    var(--surface, #14222e) 82%,
+    var(--navy, #0e1c29)
+  );
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 14px;
+  line-height: 1.4;
+  caret-color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-input::placeholder {
+  color: color-mix(in srgb, var(--muted, #abc4d8) 78%, transparent);
+  opacity: 1;
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-input::selection {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 32%, transparent);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-input:focus {
+  border-color: var(--seafoam, #a8d8d1);
+  outline: none;
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-input:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+/* Keyboard hint: small Manrope line in the seafoam tone so the Esc and
+ * Ctrl+K affordances read as one quiet instruction. */
+.kbot-shell__palette-root .kbot-shell__palette-hint {
+  margin: 0;
+  color: color-mix(in srgb, var(--seafoam, #a8d8d1) 82%, var(--muted, #abc4d8));
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Small viewports: keep the modal inside the viewport and the input at a
+ * comfortable >=44px target. */
+@media (max-width: 640px) {
+  .kbot-shell__palette-root {
+    padding: 10vh 12px 24px;
+  }
+
+  .kbot-shell__palette-root .kbot-shell__palette-box {
+    width: 100%;
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .kbot-shell__palette-root .kbot-shell__palette-meta {
+    gap: 6px;
+  }
+
+  .kbot-shell__palette-root .kbot-shell__palette-label {
+    font-size: 13px;
+  }
+
+  .kbot-shell__palette-root .kbot-shell__palette-input {
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .kbot-shell__palette-root .kbot-shell__palette-hint {
+    font-size: 11px;
+  }
+}
