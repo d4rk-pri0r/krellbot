@@ -67,6 +67,9 @@ export function StrategyExplanation({
           What this revision trades
         </h3>
         <p
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
           className="kbot-feature__strategy-explanation-revision"
           data-testid="strategy-explanation-revision"
         >
