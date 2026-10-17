@@ -52,6 +52,7 @@ const EMPTY_STATE_COPY =
   "No research run yet. Submit a window to populate this view.";
 const LOCAL_PREVIEW_COPY = "Local preview only — live trading unavailable";
 const SUBMITTING_STATE_COPY = "Submitting research run…";
+const RESEARCH_EXPORT_RESULT_BUSY_LABEL = "Exporting result\u2026";
 const SUBMIT_FAILED_COPY =
   "Could not submit research run — check the workstation is running.";
 
@@ -319,6 +320,9 @@ export function ResearchView({
     { code: string; message: string } | null
   >(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const exportInFlight = useRef(false);
+  const [exportResultStatus, setExportResultStatus] = useState("");
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -546,6 +550,8 @@ export function ResearchView({
       return;
     }
     setExportError(null);
+    exportInFlight.current = true;
+    setExporting(true);
     try {
       const response = await client.getResultDownload(jobId);
       const blob = await response.blob();
@@ -561,6 +567,10 @@ export function ResearchView({
       setExportError(
         err instanceof Error ? err.message : "export failed",
       );
+    } finally {
+      exportInFlight.current = false;
+      setExporting(false);
+      setExportResultStatus("Export complete");
     }
   };
 
@@ -996,12 +1006,26 @@ export function ResearchView({
         <button
           type="button"
           className="kbot-research__action"
+          data-testid="research-export-result"
+          aria-busy={exporting}
+          aria-keyshortcuts="Enter Space"
+          disabled={exporting}
           onClick={() => {
+            if (exportInFlight.current) return;
             void handleExport();
           }}
         >
-          Export result
+          {exporting ? RESEARCH_EXPORT_RESULT_BUSY_LABEL : "Export result"}
         </button>
+      ) : null}
+      {storedResult ? (
+        <p
+          className="kbot-research__status"
+          data-testid="research-export-result-busy-status"
+          aria-live="polite"
+        >
+          {exporting ? RESEARCH_EXPORT_RESULT_BUSY_LABEL : exportError ? "Export failed" : exportResultStatus}
+        </p>
       ) : null}
       {exportError ? (
         <p
