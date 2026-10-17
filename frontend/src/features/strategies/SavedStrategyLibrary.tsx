@@ -219,9 +219,11 @@ export function SavedStrategyLibrary({
           <div className="kbot-strategy-library__search">
             <input
               type="search"
+              id="library-search"
               className="kbot-strategy-library__search-input"
               data-testid="library-search"
               aria-label="Search saved strategies"
+              aria-keyshortcuts="Control+F Meta+F"
               placeholder="Search label, id, pair or timeframe"
               value={query}
               onChange={(event) => {
@@ -239,6 +241,8 @@ export function SavedStrategyLibrary({
                 type="button"
                 className="kbot-strategy-library__search-clear"
                 data-testid="library-search-clear"
+                aria-label="Clear search query"
+                aria-keyshortcuts="Escape"
                 onClick={clearQuery}
               >
                 Clear search
@@ -251,6 +255,7 @@ export function SavedStrategyLibrary({
               id="library-state-filter"
               data-testid="library-state-filter"
               className="kbot-strategy-library__select kbot-strategy-library__search-input"
+              aria-keyshortcuts="Mod+Alt+S"
               value={stateFilter}
               onChange={(event) => {
                 setStateFilter(event.target.value as "all" | OwnedDraftSummary["state"]);
