@@ -1,0 +1,460 @@
+/*
+ * Isolated synthetic paper rehearsal — Signal + Krell Asset Pack v2
+ * (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted RehearsalPanel on the
+ * Workstation paper surface. Everything is namespaced under
+ * `.kbot-rehearsal` and most rules are written with a nested
+ * `.kbot-rehearsal <element>` prefix so the shared shell's own rules
+ * (`.kbot-shell button`, `.kbot-shell table`,
+ * `.kbot-shell__main section[class^="kbot-"]` in
+ * frontend/src/styles/shell.css) cannot flatten this hierarchy,
+ * whichever order the CSS chunks are emitted in. Every color and
+ * typography value comes from the shared tokens
+ * (frontend/src/styles/tokens.css); each token carries its approved
+ * Signal fallback so the surface still composes on bases where only
+ * the palette literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - the header panel names the isolated rehearsal home (never the
+ *     armed-paper state) and carries the rehearsal-state chip: sage
+ *     while the backend says the loop runs, coral while the status
+ *     cannot be confirmed, neutral otherwise — the verbatim lifecycle
+ *     word carries the state, color only reinforces it;
+ *   - the holdings/cash card renders the rehearsal-only balances,
+ *     cursor, position and stop projection in restrained IBM Plex Mono
+ *     with tabular numerals, never fabricated cash or holdings;
+ *   - the rehearsal history panel renders the backend's own simulated
+ *     fills (local-time mono, sage buy / coral sell side badges, mono
+ *     coid) or the explicit coral "no simulated fills" empty affordance;
+ *   - the command form groups the frozen start/pause/resume/exit/stop
+ *     set with the one sage affirmative primary (Start), a clear
+ *     disabled affordance and >=44px tap targets on narrow screens;
+ *   - refusals and unknown outcomes render as alerts on a muted panel
+ *     surface with the coral-derived caution tone, never sage;
+ *   - dense tables scroll inside their own region (explicit min-width
+ *     inside an overflow-x wrapper) instead of widening the page;
+ *     long coids and balance strings wrap rather than stretch;
+ *   - state is always carried by text (the lifecycle word, the side
+ *     word, the refusal sentence), with color as reinforcement only.
+ */
+
+.kbot-rehearsal {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-rehearsal *,
+.kbot-rehearsal *::before,
+.kbot-rehearsal *::after {
+  box-sizing: border-box;
+}
+
+.kbot-rehearsal h2,
+.kbot-rehearsal h3,
+.kbot-rehearsal p {
+  margin: 0;
+}
+
+/* ============ header panel ============ */
+
+.kbot-rehearsal .kbot-rehearsal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-rehearsal .kbot-rehearsal__head-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* Names the isolated rehearsal home so it is never conflated with the
+   armed-paper state mounted above it. */
+.kbot-rehearsal .kbot-rehearsal__eyebrow {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+  white-space: nowrap;
+}
+
+.kbot-rehearsal .kbot-rehearsal__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+/* The backend's own synthetic/simulated disclaimer, rendered verbatim. */
+.kbot-rehearsal .kbot-rehearsal__label {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* Rehearsal-state chip: sage while the loop runs, coral while the
+   status cannot be confirmed, neutral otherwise. The verbatim
+   lifecycle word is the state carrier. */
+.kbot-rehearsal .kbot-rehearsal__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 90%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 40%, var(--surface, #14222e));
+  color: var(--muted, #abc4d8);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.kbot-rehearsal .kbot-rehearsal__chip--sage {
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-rehearsal .kbot-rehearsal__chip--coral {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+/* ============ body ============ */
+
+.kbot-rehearsal .kbot-rehearsal__body {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* ============ grouped surface panels ============ */
+
+.kbot-rehearsal .kbot-rehearsal__panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  background: color-mix(in srgb, var(--panel, #18354a) 22%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+}
+
+.kbot-rehearsal .kbot-rehearsal__panel-title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-rehearsal .kbot-rehearsal__sentence {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+/* ============ holdings / cash card ============ */
+
+.kbot-rehearsal .kbot-rehearsal__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+  min-width: 0;
+}
+
+.kbot-rehearsal .kbot-rehearsal__facts div {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  min-width: 0;
+}
+
+.kbot-rehearsal .kbot-rehearsal__facts dt {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 85%, transparent);
+  overflow-wrap: anywhere;
+}
+
+/* Restrained technical mono: the rehearsal-only balances, cursor,
+   position and stop projection, with tabular numerals. */
+.kbot-rehearsal .kbot-rehearsal__num {
+  margin: 0;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+/* ============ loading / error / empty indicators ============ */
+
+/* Muted panel surface: the loading and empty indicators sit on a
+   restrained surface card rather than floating copy. */
+.kbot-rehearsal .kbot-rehearsal__loading,
+.kbot-rehearsal .kbot-rehearsal__empty {
+  margin: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 85%, transparent);
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* Read failures, refusals and unknown outcomes keep the muted panel
+   surface with a coral-derived border; the message text carries the
+   state. */
+.kbot-rehearsal .kbot-rehearsal__error,
+.kbot-rehearsal .kbot-rehearsal__unknown {
+  margin: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+/* ============ internal scroll regions ============ */
+
+.kbot-rehearsal .kbot-rehearsal__scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* ============ rehearsal history (simulated fills) ============ */
+
+.kbot-rehearsal .kbot-rehearsal__fills {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.kbot-rehearsal .kbot-rehearsal__fills th,
+.kbot-rehearsal .kbot-rehearsal__fills td {
+  text-align: left;
+  vertical-align: middle;
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.kbot-rehearsal .kbot-rehearsal__fills th {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 85%, transparent);
+  white-space: nowrap;
+}
+
+/* The caption keeps naming the history panel honestly, styled as the
+   panel's restrained title. */
+.kbot-rehearsal .kbot-rehearsal__fills-caption {
+  caption-side: top;
+  text-align: left;
+  padding-bottom: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+/* Fill stamps are the viewer's local time in restrained mono. */
+.kbot-rehearsal .kbot-rehearsal__ts {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* The coid stays technical mono too, wrapping rather than widening. */
+.kbot-rehearsal .kbot-rehearsal__coid {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+/* Side badge: sage for buy, coral-derived for sell; the verbatim side
+   word carries the meaning, the tint only reinforces it. */
+.kbot-rehearsal .kbot-rehearsal__side {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 90%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 40%, var(--surface, #14222e));
+  color: var(--muted, #abc4d8);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.kbot-rehearsal .kbot-rehearsal__side--buy {
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-rehearsal .kbot-rehearsal__side--sell {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+/* Explicit empty-fills state: coral-derived caution tone; the
+   sentence carries the state, never a success color. */
+.kbot-rehearsal .kbot-rehearsal__fills-empty {
+  margin: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 7%, var(--surface, #14222e));
+  border: 1px dashed color-mix(in srgb, var(--coral, #cc9689) 50%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+/* ============ command form ============ */
+
+.kbot-rehearsal .kbot-rehearsal__commands {
+  gap: 12px;
+}
+
+.kbot-rehearsal .kbot-rehearsal__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-rehearsal .kbot-rehearsal__action {
+  min-height: 34px;
+  padding: 7px 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  color: var(--text, #e9f0f5);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.kbot-rehearsal .kbot-rehearsal__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 40%, var(--line, #22465d));
+}
+
+/* The disabled affordance never looks like an active command. */
+.kbot-rehearsal .kbot-rehearsal__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Sage carries the one affirmative primary action (Start). */
+.kbot-rehearsal .kbot-rehearsal__action--primary {
+  background: var(--sage, #b3dda8);
+  border-color: var(--sage, #b3dda8);
+  color: var(--action-primary-text, #172a1d);
+  font-weight: 700;
+}
+
+.kbot-rehearsal .kbot-rehearsal__action--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+}
+
+/* ============ focus visibility ============ */
+
+.kbot-rehearsal :is(button, a):focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-rehearsal {
+    gap: 12px;
+  }
+
+  .kbot-rehearsal .kbot-rehearsal__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kbot-rehearsal .kbot-rehearsal__head-titles {
+    align-items: baseline;
+  }
+
+  .kbot-rehearsal .kbot-rehearsal__panel {
+    padding: 12px 12px 14px;
+  }
+
+  .kbot-rehearsal .kbot-rehearsal__facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Ordinary controls keep 44px touch targets on narrow screens. Same
+     specificity as the base rule above, later in the file, so it wins
+     inside the media query. */
+  .kbot-rehearsal .kbot-rehearsal__action {
+    min-height: 44px;
+  }
+
+  /* The command set stacks instead of overflowing. */
+  .kbot-rehearsal .kbot-rehearsal__actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Dense tables keep their internal scroll width on mobile. */
+  .kbot-rehearsal .kbot-rehearsal__fills {
+    min-width: 420px;
+  }
+}
