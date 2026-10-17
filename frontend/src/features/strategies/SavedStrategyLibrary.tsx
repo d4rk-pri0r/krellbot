@@ -87,6 +87,7 @@ export function SavedStrategyLibrary({
   const [openingRevision, setOpeningRevision] = useState<string | null>(null);
   const [compareRow, setCompareRow] = useState<OwnedDraftSummary | null>(null);
   const [query, setQuery] = useState("");
+  const [stateFilter, setStateFilter] = useState<"all" | OwnedDraftSummary["state"]>("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -117,11 +118,14 @@ export function SavedStrategyLibrary({
 
   const trimmedQuery = query.trim().toLowerCase();
   const filteredRows = useMemo(() => {
+    const stateRows = stateFilter === "all"
+      ? rows
+      : rows.filter((row) => row.state === stateFilter);
     if (trimmedQuery === "") {
-      return rows;
+      return stateRows;
     }
-    return rows.filter((row) => matchesQuery(row, trimmedQuery));
-  }, [rows, trimmedQuery]);
+    return stateRows.filter((row) => matchesQuery(row, trimmedQuery));
+  }, [rows, stateFilter, trimmedQuery]);
   const groups = useMemo(() => groupByStrategy(filteredRows), [filteredRows]);
 
   const handleReopen = (summary: OwnedDraftSummary): void => {
@@ -236,6 +240,24 @@ export function SavedStrategyLibrary({
                 Clear search
               </button>
             ) : null}
+          </div>
+          <div className="kbot-strategy-library__search">
+            <label htmlFor="library-state-filter">State</label>
+            <select
+              id="library-state-filter"
+              data-testid="library-state-filter"
+              className="kbot-strategy-library__select kbot-strategy-library__search-input"
+              value={stateFilter}
+              onChange={(event) => {
+                setStateFilter(event.target.value as "all" | OwnedDraftSummary["state"]);
+              }}
+            >
+              <option value="all">All states</option>
+              <option value="draft">{summarizeDraftState("draft").label}</option>
+              <option value="validated">{summarizeDraftState("validated").label}</option>
+              <option value="deployed">{summarizeDraftState("deployed").label}</option>
+              <option value="archived">{summarizeDraftState("archived").label}</option>
+            </select>
           </div>
           <p
             className="kbot-strategy-library__count"
