@@ -96,6 +96,8 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const [importError, setImportError] = useState<string | null>(null);
   const [fileImportInFlight, setFileImportInFlight] = useState(false);
   const fileImportInFlightRef = useRef(false);
+  const [fileImportFileName, setFileImportFileName] = useState("");
+  const [fileImportStatusMessage, setFileImportStatusMessage] = useState<string | null>(null);
   // True after a starter example seeded the draft: the next Save must
   // create a fresh revision even when an `initial` revision was
   // previously loaded (a starter pick is never a reopen/edit).
@@ -277,6 +279,9 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     }
     fileImportInFlightRef.current = true;
     setFileImportInFlight(true);
+    const fileImportFileName = file.name;
+    setFileImportFileName(fileImportFileName);
+    setFileImportStatusMessage(null);
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -284,6 +289,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
         const pack = parsePack(text);
         if (!pack) {
           setImportError("Invalid JSON");
+          setFileImportStatusMessage(`Invalid JSON in ${fileImportFileName}`);
           return;
         }
         // An imported file is a seed for a NEW draft, exactly like a starter
@@ -300,6 +306,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
         setValidateError(null);
         setArmError(null);
         setRawJson(text);
+        setFileImportStatusMessage(`Loaded pack from ${fileImportFileName}`);
       } finally {
         fileImportInFlightRef.current = false;
         setFileImportInFlight(false);
@@ -520,6 +527,18 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                   aria-busy={fileImportInFlight ? "true" : undefined}
                 />
               </label>
+              {fileImportInFlight || fileImportStatusMessage !== null ? (
+                <p
+                  data-testid="editor-file-import-busy-status"
+                  id="editor-file-import-busy-status"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="kbot-strategy-editor__hint"
+                >
+                  {fileImportInFlight ? `Reading pack file ${fileImportFileName}` : fileImportStatusMessage}
+                </p>
+              ) : null}
               <div className="kbot-strategy-editor__actions">
                 <button
                   type="button"
