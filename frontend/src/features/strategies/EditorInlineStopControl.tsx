@@ -39,6 +39,14 @@ type InlineState = {
   unavailable: boolean;
   unknownOutcome: string | null;
   stopAt: string | null;
+  /**
+   * Presentation-only: true when the remembered stopAt was confirmed in an
+   * earlier arm and no raise_stop has been confirmed in the current one.
+   * The status read never carries the resting stop, so the display must
+   * label that value as history rather than as backend protection this
+   * read supplies. Never gates any client call, control, or persisted value.
+   */
+  stopAtFromEarlierArm: boolean;
 };
 
 const INITIAL_STATE: InlineState = {
@@ -49,6 +57,7 @@ const INITIAL_STATE: InlineState = {
   unavailable: false,
   unknownOutcome: null,
   stopAt: null,
+  stopAtFromEarlierArm: false,
 };
 
 type InlineAction =
@@ -62,6 +71,7 @@ type InlineAction =
       status: PaperStatus | null;
       sentence?: EntriesSentence;
       stopAt?: string | null;
+      stopAtFromEarlierArm?: boolean;
     };
 
 /**
@@ -188,6 +198,8 @@ function reducer(state: InlineState, action: InlineAction): InlineState {
         status: action.status,
         sentence: action.sentence ?? state.sentence,
         stopAt: action.stopAt !== undefined ? action.stopAt : state.stopAt,
+        stopAtFromEarlierArm:
+          action.stopAtFromEarlierArm ?? state.stopAtFromEarlierArm,
       };
     }
   }
@@ -334,6 +346,7 @@ export function EditorInlineStopControl({
       status: PaperStatus | null;
       sentence?: EntriesSentence;
       stopAt?: string | null;
+      stopAtFromEarlierArm?: boolean;
     },
   ): Promise<void> => {
     if (inFlightRef.current) {
@@ -379,6 +392,7 @@ export function EditorInlineStopControl({
         status: applied.status,
         sentence: applied.sentence,
         stopAt: applied.stopAt,
+        stopAtFromEarlierArm: applied.stopAtFromEarlierArm,
       });
       if (command !== "disarm") {
         // Reconcile with the server after a confirmed command: a single
@@ -434,9 +448,11 @@ export function EditorInlineStopControl({
         // pack anymore, so the controls disappear. The last raised stop is
         // deliberately kept in memory so a re-arm in this same control
         // re-displays it without a manual re-raise; a new confirmed raise
-        // overwrites it.
+        // overwrites it. Mark it as history: the re-arm status read that
+        // follows cannot confirm it as the current backend stop.
         status: { schema_version: "1", armed: false },
         sentence: "Entries active" as EntriesSentence,
+        stopAtFromEarlierArm: true,
       }),
     );
   };
@@ -470,6 +486,7 @@ export function EditorInlineStopControl({
         // The success message echo is the only in-tree source for the
         // new resting stop ("stop set: <venue> <pair> -> <new_stop>").
         stopAt: stopFromRaiseStopMessage(result.message),
+        stopAtFromEarlierArm: false,
       }),
     );
   };
@@ -498,11 +515,16 @@ export function EditorInlineStopControl({
   // outcome, so it outranks the remembered stop echo; the armed line names
   // the venue/pair the control acts on (both guaranteed non-empty by the
   // `armed` guard). Loading/unavailable placeholders never invent a state.
+  // A remembered stop confirmed in an earlier arm is labeled as history:
+  // the status read does not supply the current backend stop, so it must
+  // never be captioned as this arm's protection.
   const caption =
     state.errorMessage !== null
       ? `Refused: ${state.errorMessage}`
       : armed && state.stopAt !== null
-        ? `Stop raised to ${state.stopAt}`
+        ? state.stopAtFromEarlierArm
+          ? `Last confirmed raise: ${state.stopAt} · this status read does not supply the current backend stop`
+          : `Stop raised to ${state.stopAt}`
         : armed && state.status !== null
           ? `Armed at ${state.status.venue} ${state.status.pair} · ${state.sentence}`
           : state.unavailable
@@ -643,7 +665,14 @@ export function EditorInlineStopControl({
             {state.pending === "raise_stop" ? "Applying…" : "Apply new stop"}
           </button>
           {armed && state.stopAt !== null ? (
-            <span data-testid="editor-inline-stop-at">
+            <span
+              data-testid="editor-inline-stop-at"
+              title={
+                state.stopAtFromEarlierArm
+                  ? "Historical confirmation from an earlier arm; the current status read does not supply the backend stop"
+                  : undefined
+              }
+            >
               stop at {state.stopAt}
             </span>
           ) : null}
