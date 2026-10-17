@@ -235,6 +235,7 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
               className="kbot-pack-library__search"
               data-testid="pack-library-search"
               placeholder="pack_id, version or permission"
+              aria-keyshortcuts="Control+F Meta+F"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
@@ -247,6 +248,7 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
               id="pack-library-bucket"
               className="kbot-pack-library__bucket-select"
               data-testid="pack-library-bucket-select"
+              aria-keyshortcuts="Control+Alt+B Meta+Alt+B"
               value={bucketFilter}
               onChange={(event) => {
                 setBucketFilter(event.target.value);
@@ -264,6 +266,8 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
             type="button"
             className="kbot-pack-library__clear"
             data-testid="pack-library-clear-filters"
+            aria-keyshortcuts="Escape"
+            aria-label="Clear pack-library search and bucket filter"
             disabled={!filtersActive}
             aria-disabled={!filtersActive}
             onClick={handleClearFilters}
