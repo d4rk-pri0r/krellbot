@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type JSX } from "react";
+import "./EditorInlineStopControl.signal.css";
 import type {
   PaperClient,
   PaperCommandResult,
@@ -475,13 +476,48 @@ export function EditorInlineStopControl({
 
   const busy = state.pending !== null;
 
+  // Scoped Signal status vocabulary: the modifier is derived only from the
+  // confirmed backend status, never from color alone, and never claims a
+  // state while availability is unknown (status === null covers both the
+  // initial read and the unavailable path; the reducer drops the cached
+  // status rather than keep acting on it).
+  const statusClassName = [
+    "kbot-shell__inline-stop-status",
+    armed
+      ? state.sentence === "Entries paused"
+        ? "kbot-shell__inline-stop-status--armed kbot-shell__inline-stop-status--paused"
+        : "kbot-shell__inline-stop-status--armed"
+      : state.status !== null
+        ? "kbot-shell__inline-stop-status--disarmed"
+        : "",
+  ]
+    .filter((part) => part.length > 0)
+    .join(" ");
+
+  // The human-readable state sentence. A refusal is the most recent settled
+  // outcome, so it outranks the remembered stop echo; the armed line names
+  // the venue/pair the control acts on (both guaranteed non-empty by the
+  // `armed` guard). Loading/unavailable placeholders never invent a state.
+  const caption =
+    state.errorMessage !== null
+      ? `Refused: ${state.errorMessage}`
+      : armed && state.stopAt !== null
+        ? `Stop raised to ${state.stopAt}`
+        : armed && state.status !== null
+          ? `Armed at ${state.status.venue} ${state.status.pair} · ${state.sentence}`
+          : state.unavailable
+            ? "Status read failed; refresh to reconcile"
+            : state.status === null
+              ? "Reading paper status…"
+              : "Disarmed";
+
   return (
     <div
-      className="kbot-strategy-editor__inline-stop"
+      className="kbot-shell__inline-stop-root"
       data-testid="editor-inline-stop"
     >
-      <p
-        className="kbot-strategy-editor__inline-stop-state"
+      <span
+        className={statusClassName}
         data-testid={
           armed
             ? "editor-inline-stop-entries"
@@ -499,10 +535,11 @@ export function EditorInlineStopControl({
             : state.status === null
               ? "Checking paper status…"
               : "No pack armed"}
-      </p>
-      <div className="kbot-strategy-editor__inline-stop-actions">
+      </span>
+      <div className="kbot-shell__inline-stop-row">
         <button
           type="button"
+          className="kbot-shell__inline-stop-pause"
           data-testid="editor-inline-stop-pause"
           disabled={!armed || busy}
           onClick={() => {
@@ -513,6 +550,7 @@ export function EditorInlineStopControl({
         </button>
         <button
           type="button"
+          className="kbot-shell__inline-stop-resume"
           data-testid="editor-inline-stop-resume"
           disabled={!armed || busy}
           onClick={() => {
@@ -523,6 +561,7 @@ export function EditorInlineStopControl({
         </button>
         <button
           type="button"
+          className="kbot-shell__inline-stop-disarm"
           data-testid="editor-inline-stop-disarm"
           disabled={!armed || busy}
           onClick={() => {
@@ -534,6 +573,7 @@ export function EditorInlineStopControl({
         {armed || state.unavailable ? (
           <button
             type="button"
+            className="kbot-shell__inline-stop-refresh"
             data-testid="editor-inline-stop-refresh"
             disabled={busy}
             onClick={() => {
@@ -544,8 +584,14 @@ export function EditorInlineStopControl({
           </button>
         ) : null}
       </div>
+      <span
+        className="kbot-shell__inline-stop-caption"
+        data-testid="inline-stop-caption"
+      >
+        {caption}
+      </span>
       {armed ? (
-        <div className="kbot-strategy-editor__inline-stop-raise">
+        <div className="kbot-shell__inline-stop-raise">
           <label
             htmlFor="editor-inline-stop-new-stop"
             data-testid="editor-inline-stop-new-stop-label"
@@ -557,6 +603,7 @@ export function EditorInlineStopControl({
             type="text"
             inputMode="decimal"
             autoComplete="off"
+            className="kbot-shell__inline-stop-input"
             data-testid="editor-inline-stop-new-stop"
             disabled={busy}
             value={stopInput}
@@ -568,6 +615,16 @@ export function EditorInlineStopControl({
           />
           <button
             type="button"
+            className={[
+              "kbot-shell__inline-stop-apply",
+              state.errorMessage !== null
+                ? "kbot-shell__inline-stop-apply--refused"
+                : state.stopAt !== null
+                  ? "kbot-shell__inline-stop-apply--success"
+                  : "",
+            ]
+              .filter((part) => part.length > 0)
+              .join(" ")}
             data-testid="editor-inline-stop-apply"
             disabled={!canRaiseStop || busy || !stopInputValid}
             title={
