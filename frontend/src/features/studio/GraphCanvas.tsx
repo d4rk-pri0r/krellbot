@@ -60,6 +60,12 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
   } = props;
   const [refusal, setRefusal] = useState<EdgeRefusal | null>(null);
 
+  // Focus-return target for the EdgeRefusalNotice: dismissing a refusal
+  // puts the keyboard user back on the canvas host instead of stranding
+  // focus on a removed button. tabIndex={-1} makes the host
+  // programmatically focusable without joining the tab order.
+  const graphCanvasContainerRef = useRef<HTMLDivElement>(null);
+
   // Connections forwarded to the parent while the rerender that adds the
   // matching edge is still pending. A key is released only once the parent
   // actually renders that edge, never because the ``edges`` array identity
@@ -115,7 +121,12 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
   };
 
   return (
-    <div className="kbot-graph-canvas" data-testid="graph-canvas">
+    <div
+      ref={graphCanvasContainerRef}
+      tabIndex={-1}
+      className="kbot-graph-canvas"
+      data-testid="graph-canvas"
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -131,6 +142,7 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
         <EdgeRefusalNotice
           reason={refusal}
           onDismiss={() => setRefusal(null)}
+          onDismissFocusTarget={graphCanvasContainerRef.current}
         />
       ) : null}
     </div>
