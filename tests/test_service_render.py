@@ -70,19 +70,20 @@ def test_systemd_timer_is_persistent(home):
 
 def test_windows_xml_starts_when_available(home):
     """Windows task XML: <StartWhenAvailable>true</StartWhenAvailable>, calendar
-    trigger at minute 1 of every hour, executable is the command, tick is the
-    single argument.
+    trigger at minute 1 of every hour. The Task XML schema has no per-task
+    environment block, so the Exec block runs through cmd.exe to set
+    KRELLBOT_HOME for exactly the child tick.
     """
     from krellbot.service.render import render_windows
 
-    body = render_windows(r"C:\Users\me\bin\krellbot.exe", home).decode("utf-8")
+    executable = r"C:\Users\me\bin\krellbot.exe"
+    body = render_windows(executable, home).decode("utf-8")
 
     assert "<StartWhenAvailable>true</StartWhenAvailable>" in body
     # Calendar trigger at minute 1.
     assert "<CalendarTrigger>" in body
-    # The command and the argument.
-    assert "<Command>C:\\Users\\me\\bin\\krellbot.exe</Command>" in body
-    assert "<Arguments>tick</Arguments>" in body
+    assert "<Command>%SystemRoot%\\System32\\cmd.exe</Command>" in body
+    assert (f'<Arguments>/d /c set "KRELLBOT_HOME={home}" &amp;&amp; "{executable}" tick</Arguments>') in body
     assert "<Interval>PT1H</Interval>" in body
     assert "ScheduleByDay" not in body
 

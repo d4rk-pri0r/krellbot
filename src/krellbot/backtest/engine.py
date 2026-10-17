@@ -28,6 +28,20 @@ ZERO = Decimal(0)
 ONE = Decimal(1)
 TEN_THOUSAND = Decimal(10000)
 QTY_QUANT = Decimal("0.00000001")
+# Decimal default context prec=28 plus 8 quantity decimals keeps money
+# arithmetic exact only below 1e20; beyond it the engine refuses instead of
+# rounding or clamping. See ``NumericRangeExceeded``.
+MAX_MONEY = Decimal("1E20")
+
+
+class NumericRangeExceeded(OverflowError):
+    """Raised when ``starting_cash`` or per-bar ``equity`` exceeds ``MAX_MONEY``.
+
+    The engine never silently clamps positions or rounds money. Once a
+    value crosses the supported numeric domain the caller (``ResearchService``)
+    turns this into a typed ``numeric_out_of_range`` refusal so the user
+    sees why their run was rejected.
+    """
 
 
 @dataclass
@@ -77,6 +91,10 @@ class Backtester:
 
     def run(self) -> list[BarRecord]:
         """Execute the bar-by-bar loop. Returns one record per bar."""
+        if self.starting_cash > MAX_MONEY:
+            raise NumericRangeExceeded(
+                f"starting_cash {self.starting_cash} exceeds the supported numeric range ({MAX_MONEY})"
+            )
         ledger = Ledger(cash=self.starting_cash)
         stop_price: Decimal | None = None
         pending: PendingFill | None = None
@@ -137,6 +155,8 @@ class Backtester:
                     pending = PendingFill(side="sell", base_price=self.candles[t + 1].open, is_stop=False)
 
             equity = ledger.cash + ledger.qty * candle.close
+            if equity > MAX_MONEY:
+                raise NumericRangeExceeded(f"equity exceeded {MAX_MONEY} at ts_ms={candle.ts_ms}")
             assert ledger.cash >= ZERO, f"cash negative at t={t}: {ledger.cash}"
             assert equity == ledger.cash + ledger.qty * candle.close
             records.append(

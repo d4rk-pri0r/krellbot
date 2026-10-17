@@ -1,0 +1,73 @@
+/*
+ * Krellbot design tokens — Signal + Krell Asset Pack v2.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * This file is the single source of the approved Signal palette:
+ *   navy/canvas  #0E1C29   page background
+ *   surface      #14222E   resting panels
+ *   panel        #18354A   raised emphasis panels
+ *   line         #22465D   restrained borders
+ *   text         #E9F0F5   primary text
+ *   muted        #ABC4D8   secondary text
+ *   seafoam      #A8D8D1   selection, focus, links, "on" state
+ *   sage         #B3DDA8   affirmative primary action
+ *   coral        #CC9689   caution / attention (NOT success)
+ *
+ * Semantic roles map onto that palette. Caution/error stays
+ * coral-derived and semantically distinct from sage (affirmative)
+ * and seafoam (selection/focus). The legacy token names
+ * (--canvas, --signal, --warn, --ink) are kept as compatibility
+ * aliases for consumers that still reference them; --warn means
+ * caution and is deliberately NOT mapped to a success color.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* --- approved Signal palette --- */
+  --navy: #0e1c29;
+  --surface: #14222e;
+  --panel: #18354a;
+  --line: #22465d;
+  --text: #e9f0f5;
+  --muted: #abc4d8;
+  --seafoam: #a8d8d1;
+  --sage: #b3dda8;
+  --coral: #cc9689;
+
+  /* --- semantic roles --- */
+  --canvas-bg: var(--navy);
+  --panel-bg: var(--surface);
+  --panel-raised: var(--panel);
+  --panel-border: var(--line);
+  --text-primary: var(--text);
+  --text-secondary: var(--muted);
+  --accent: var(--seafoam);
+  --accent-select: var(--seafoam);
+  --focus-ring: var(--seafoam);
+  --action-primary-bg: var(--sage);
+  --action-primary-text: #172a1d;
+  --caution-bg: #2b271f;
+  --caution-border: #736044;
+  --caution-text: #e2c193;
+  --danger-text: #e0a296;
+  --danger-border: #7a5348;
+
+  /* --- typography --- */
+  --font-ui: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  /* --- shape/spacing --- */
+  --radius-panel: 11px;
+  --radius-control: 7px;
+
+  /* --- compatibility aliases (existing consumers) ---
+   * --signal was cyan; selection/focus/links now use seafoam.
+   * --warn carried caution/error meaning in its consumers
+   * (e.g. ops alert rows), so it maps to the caution tone, not sage. */
+  --canvas: var(--navy);
+  --signal: var(--seafoam);
+  --warn: var(--caution-text);
+  --ink: var(--text);
+}

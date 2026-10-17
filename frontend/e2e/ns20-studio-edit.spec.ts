@@ -1,0 +1,682 @@
+import {
+  test,
+  expect,
+  type Page,
+  type Request,
+  type Response,
+  type Download,
+} from "@playwright/test";
+import { createHash } from "node:crypto";
+import {
+  startWorkstationForSpec,
+  stopWorkstationForSpec,
+  type WorkstationHandle,
+} from "./workstation-harness";
+
+/**
+ * NS20 studio-edit spec.
+ *
+ * End-to-end proof that a Studio indicator input ends in a different
+ * backtest result on the same dataset.
+ *
+ * M2-CE: this spec also enforces the console guard — zero console
+ * errors and zero responses with status >= 400 across the whole run,
+ * and runs the real-browser Export result proof: the bytes the page
+ * downloads match the bytes the backend download endpoint serves,
+ * and a second export is byte-equal to the first.
+ *
+ * NS09 units (DISC-EQUITY-UNIT): the result panel's percentage
+ * metrics are asserted against the backend's own locked receipt —
+ * fetched over the real wire — not against intercepted or mocked
+ * responses. The Equity tile must stay unavailable on the
+ * production-shaped receipt, which carries percentage performance
+ * only, never currency.
+ */
+
+type ConsoleGuard = {
+  errors: string[];
+  badResponses: { method: string; path: string; status: number }[];
+};
+
+function attachConsoleGuard(page: Page): ConsoleGuard {
+  const guard: ConsoleGuard = { errors: [], badResponses: [] };
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      guard.errors.push(msg.text());
+      console.log(`[ns20-studio-console] error: ${msg.text()}`);
+    } else {
+      console.log(`[ns20-studio-console] ${msg.type()}: ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) => {
+    guard.errors.push(err.message);
+    console.log(`[ns20-studio-pageerror] ${err.message}`);
+  });
+  page.on("response", (response: Response) => {
+    const status = response.status();
+    if (status >= 400) {
+      const req = response.request();
+      const path = new URL(response.url()).pathname;
+      const method = req.method();
+      guard.badResponses.push({ method, path, status });
+      console.log(`[ns20-studio-bad-response] ${method} ${path} ${status}`);
+    }
+  });
+  return guard;
+}
+
+async function downloadExportBytes(
+  page: Page,
+): Promise<{ bytes: Uint8Array; download: Download }> {
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: /export result/i }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  if (!stream) {
+    throw new Error("download stream missing");
+  }
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    stream.on("data", (chunk: Buffer | string) => {
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    });
+    stream.on("end", () => resolve());
+    stream.on("error", (err: Error) => reject(err));
+  });
+  return { bytes: new Uint8Array(Buffer.concat(chunks)), download };
+}
+
+const PACK_TEXT = JSON.stringify(
+  {
+    schema_version: 1,
+    id: "ns20-e2e",
+    version: "1.0.0",
+    label: "NS20 e2e",
+    author: "ns20-e2e",
+    timeframe: "1h",
+    indicators: { sma2: { fn: "sma", src: "close", len: 2 } },
+    entry: ["close", "crosses_above", "sma2"],
+    exit: ["close", "crosses_below", "sma2"],
+    risk: { max_account_pct: 100, stop: { type: "pct", pct: 50 } },
+    markets: [{ venue: "kraken", pair: "SUIUSD" }],
+  },
+  null,
+  2,
+);
+
+async function gotoStrategiesView(page: Page): Promise<void> {
+  // The shell uses the React view state; navigating in-page (not via
+  // ``page.goto``) keeps the in-memory ``savedRevision`` alive.
+  await page.getByRole("button", { name: "Strategies" }).click();
+}
+
+async function gotoResearchView(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Research" }).click();
+}
+
+async function gotoStudioView(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Studio" }).click();
+}
+
+async function waitForSessionReady(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const root = document.querySelector('[data-testid="kbot-shell"]');
+      return root?.getAttribute("data-bootstrap-done") === "1";
+    },
+    undefined,
+    { timeout: 15_000 },
+  );
+}
+
+/**
+ * BUILD-RESEARCH-INPUTS-01: count every actual research-job POST on
+ * the wire. Listener-only observation — no route(), no fulfill(), no
+ * request mocking; rejection proofs rely on this listener plus the
+ * settled UI, and the final successful journey is counted again here.
+ */
+function attachResearchPostListener(page: Page): {
+  posts: Request[];
+  count: () => number;
+} {
+  const posts: Request[] = [];
+  page.on("request", (request: Request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/v1/research/jobs"
+    ) {
+      posts.push(request);
+      console.log(
+        `[research-inputs] observed research POST #${posts.length}: ${request.postData() ?? ""}`,
+      );
+    }
+  });
+  return { posts, count: () => posts.length };
+}
+
+test("200-node studio edit changes a backtest result", async ({ page }) => {
+  test.setTimeout(180_000);
+  const guard = attachConsoleGuard(page);
+  const baseURL = workstation!.baseURL.replace(/\/$/, "");
+  await page.goto(baseURL + "/");
+  // Bootstrap meta present (it will be consumed on first render).
+  await expect(page.locator('meta[name="krellbot-bootstrap"]')).toHaveCount(0, {
+    timeout: 5_000,
+  });
+  // Wait for the session-bootstrap POST to settle so subsequent
+  // state-change requests carry the cookie + CSRF token.
+  await waitForSessionReady(page);
+  // Session bootstrap finishes when the page stops making bootstrap
+  // calls; we observe the strategies nav becoming clickable.
+  await gotoStrategiesView(page);
+  await page.getByTestId("editor-technical-section").locator("summary").click();
+  await expect(page.getByLabel(/raw json/i)).toBeVisible();
+
+  // Save pack with sma2.len=2 -> revision A.
+  await page.getByLabel(/raw json/i).fill(PACK_TEXT);
+  await page.getByRole("button", { name: /^save$/i }).click();
+  const revisionA = await page
+    .getByTestId("editor-revision-id")
+    .innerText()
+    .then((text) => extractRevisionId(text));
+  expect(revisionA).not.toBe("");
+
+  // Validate so the saved draft reaches the ``validated`` state.
+  await page.getByRole("button", { name: /^validate$/i }).click();
+  await expect(page.getByTestId("editor-revision-id")).toContainText(/validated/i);
+
+  // First backtest at sma2.len=2 -> result A.
+  await gotoResearchView(page);
+  const editCsv = process.env.KRELLBOT_E2E_EDIT_CSV;
+  if (!editCsv) {
+    throw new Error("KRELLBOT_E2E_EDIT_CSV was not set by global-setup");
+  }
+  // BUILD-RESEARCH-INPUTS-01: observe every actual research POST on
+  // the wire (listener only — no interception, no mocking).
+  const researchPosts = attachResearchPostListener(page);
+  // Before the first valid run: valid pinned bounds with a malformed
+  // fee. The Run must be refused with a visible fee-naming alert and
+  // create no research POST at all.
+  await page.getByLabel(/dataset path/i).fill(editCsv);
+  await page.getByLabel(/fee basis points/i).fill("not-a-number");
+  await page.getByLabel(/^from$/i).fill("0");
+  await page.getByLabel(/^to$/i).fill("9999999999999");
+  await page.getByRole("button", { name: /^run$/i }).click();
+  await expect(page.getByRole("alert")).toContainText(/fee basis points/i, {
+    timeout: 10_000,
+  });
+  expect(researchPosts.count()).toBe(0);
+  console.log(
+    `[research-inputs] invalid fee rejected before first run: posts=${researchPosts.count()}`,
+  );
+  // Correct to the original fee and keep every original wire/result/
+  // download assertion below exactly as it was.
+  await page.getByLabel(/fee basis points/i).fill("10");
+  const reqA = page.waitForRequest(
+    (r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/research/jobs",
+  );
+  await page.getByRole("button", { name: /^run$/i }).click();
+  const requestA = await reqA;
+  const bodyA = JSON.parse(requestA.postData() ?? "{}") as Record<string, unknown>;
+  // The corrected run submits exactly the selected integers.
+  expect(bodyA.fee_bps).toBe(10);
+  expect(bodyA.from_ms).toBe(0);
+  expect(bodyA.to_ms).toBe(9999999999999);
+  expect(researchPosts.count()).toBe(1);
+  // Wait for job id to appear.
+  const jobA = await readJobIdAfterRun(page);
+  expect(jobA).not.toBe("");
+  // pollForResult auto-fetches the result on succeeded; wait for
+  // the rendered testid instead of clicking "Load result".
+  await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
+  const equityA = (await page.getByTestId("research-result-equity").innerText()).trim();
+  const tradesA = (await page.getByTestId("research-result-trade-count").innerText()).trim();
+
+  // Verify the job actually ran against the saved revision.
+  const jobAInfo = await page.request.get(`${baseURL}/api/v1/jobs/${encodeURIComponent(jobA)}`);
+  expect(jobAInfo.status()).toBe(200);
+
+  // Real-browser Export result proof for revision A. Click the
+  // "Export result" button, capture the download bytes, and compare
+  // them to the backend download endpoint. Then run the same
+  // revision/dataset/fee a second time and export again to prove
+  // byte-equal determinism.
+  const backendA = await page.request.get(
+    `${baseURL}/api/v1/jobs/${encodeURIComponent(jobA)}/result/download`,
+  );
+  expect(backendA.status()).toBe(200);
+  const backendBytesA = new Uint8Array(await backendA.body());
+  const firstDownload = await downloadExportBytes(page);
+  const firstSha = createHash("sha256").update(Buffer.from(firstDownload.bytes)).digest("hex");
+  console.log(`[m2-export] sha256(revA first download)=${firstSha}`);
+  expect(firstDownload.bytes).toEqual(backendBytesA);
+  expect(firstDownload.download.suggestedFilename()).toBe(`research-receipt-${jobA}.json`);
+
+  // NS09 units, backend-derived: fetch the backend's own typed result for
+  // job A and prove the UI shows the receipt's real percentage metrics
+  // under truthful labels, while currency Equity — which this
+  // production-shaped receipt does not carry — stays unavailable. The
+  // percentage return must not be rendered as money anywhere.
+  const typedResultA = await readBackendResult(page, baseURL, jobA);
+  expect(typeof typedResultA.metrics.total_return_pct).toBe("number");
+  expect(Number.isFinite(typedResultA.metrics.total_return_pct)).toBe(true);
+  expect(typeof typedResultA.metrics.max_drawdown_pct).toBe("number");
+  expect(Number.isFinite(typedResultA.metrics.max_drawdown_pct)).toBe(true);
+  expect(typedResultA.receipt.equity).toBeUndefined();
+  expect(typedResultA.receipt.metrics).toBeDefined();
+  await expect(page.getByTestId("research-result-total-return-pct")).toHaveText(
+    String(typedResultA.metrics.total_return_pct),
+  );
+  await expect(page.getByTestId("research-result-max-drawdown")).toHaveText(
+    `${typedResultA.metrics.max_drawdown_pct}%`,
+  );
+  await expect(page.getByTestId("research-result-equity")).toHaveText(
+    "unavailable",
+  );
+  // The percentage is never presented as currency: the Equity tile shows
+  // no digits, sign, or unit — unavailable, not percentage-as-money.
+  const equityTextA = (
+    await page.getByTestId("research-result-equity").innerText()
+  ).trim();
+  expect(equityTextA).toBe("unavailable");
+  expect(equityTextA).not.toMatch(/[\d%]/);
+  console.log(
+    `[ns09-units] jobA backend total_return_pct=${String(typedResultA.metrics.total_return_pct)} ` +
+      `max_drawdown_pct=${String(typedResultA.metrics.max_drawdown_pct)} ` +
+      `uiEquity=${equityTextA}`,
+  );
+
+  // Run the same revision/dataset/fee a second time. The receipt
+  // bytes must be byte-identical to the first run.
+  await page.getByLabel(/dataset path/i).fill(editCsv);
+  await page.getByLabel(/fee basis points/i).fill("10");
+  await page.getByLabel(/^from$/i).fill("0");
+  await page.getByLabel(/^to$/i).fill("9999999999999");
+  const reqA2 = page.waitForRequest(
+    (r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/research/jobs",
+  );
+  await page.getByRole("button", { name: /^run$/i }).click();
+  const requestA2 = await reqA2;
+  const bodyA2 = JSON.parse(requestA2.postData() ?? "{}") as Record<string, unknown>;
+  expect(bodyA2.revision_id).toBe(bodyA.revision_id);
+  await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
+  const secondDownload = await downloadExportBytes(page);
+  const secondSha = createHash("sha256").update(Buffer.from(secondDownload.bytes)).digest("hex");
+  console.log(`[m2-export] sha256(revA second download)=${secondSha}`);
+  expect(secondDownload.bytes).toEqual(firstDownload.bytes);
+
+  // BUILD-RESEARCH-INPUTS-01: after a real result A exists, select an
+  // actual backend trace bar, then attempt a reversed scored window.
+  // The refusal must name From/To, create no research POST, leave the
+  // same job id/result/selected bar intact, and keep the canonical
+  // export usable. Correcting back to the original window then runs
+  // the original repeated-download workflow above.
+  const jobIdBeforeRefusal = await readJobIdAfterRun(page);
+  expect(typedResultA.trace.length).toBeGreaterThan(0);
+  const refusalBar = typedResultA.trace[0] as {
+    bar_ts?: number;
+    input?: { close?: number };
+    conditions?: Array<{ path?: string; outcome?: unknown }>;
+  };
+  const refusalBarTsText = String(refusalBar.bar_ts);
+  const refusalScroll = page.getByTestId("research-trace-scroll");
+  await refusalScroll.evaluate((el: HTMLElement) => el.scrollTo(0, 0));
+  await page
+    .getByRole("button", { name: refusalBarTsText, exact: true })
+    .first()
+    .click();
+  await expect(page.getByTestId("research-bar-detail")).toBeVisible();
+  const refusalDetailBefore = (
+    await page.getByTestId("research-bar-detail").innerText()
+  ).trim();
+  const refusalResultTextBefore = (
+    await page.getByTestId("research-result").innerText()
+  ).trim();
+  await page.getByLabel(/dataset path/i).fill(editCsv);
+  await page.getByLabel(/fee basis points/i).fill("10");
+  await page.getByLabel(/^from$/i).fill("9999999999999");
+  await page.getByLabel(/^to$/i).fill("0");
+  await page.getByRole("button", { name: /^run$/i }).click();
+  await expect(page.getByRole("alert")).toContainText(/from/i, { timeout: 10_000 });
+  await expect(page.getByRole("alert")).toContainText(/to/i);
+  expect(researchPosts.count()).toBe(2);
+  console.log(
+    `[research-inputs] reversed scored window rejected after result A: posts=${researchPosts.count()}`,
+  );
+  // Same job identity, same rendered result, same selected bar detail.
+  expect(await readJobIdAfterRun(page)).toBe(jobIdBeforeRefusal);
+  const refusalResultTextAfter = (
+    await page.getByTestId("research-result").innerText()
+  ).trim();
+  expect(refusalResultTextAfter).toBe(refusalResultTextBefore);
+  const refusalDetailAfter = (
+    await page.getByTestId("research-bar-detail").innerText()
+  ).trim();
+  expect(refusalDetailAfter).toBe(refusalDetailBefore);
+  // The canonical export is still usable and still byte-equal.
+  const refusalDownload = await downloadExportBytes(page);
+  expect(refusalDownload.bytes).toEqual(firstDownload.bytes);
+  // Correct the scored window back to the original bounds. The
+  // original repeated-run + canonical-bytes workflow continues.
+  await page.getByLabel(/^from$/i).fill("0");
+  await page.getByLabel(/^to$/i).fill("9999999999999");
+  await page.getByRole("button", { name: /^run$/i }).click();
+  await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
+  expect(researchPosts.count()).toBe(3);
+  const thirdDownload = await downloadExportBytes(page);
+  expect(thirdDownload.bytes).toEqual(firstDownload.bytes);
+  console.log(
+    `[research-inputs] corrected window resubmitted; total research POSTs=${researchPosts.count()}`,
+  );
+
+  // Switch to studio, navigate to the 200+pack workload mode.
+  // Use history.pushState (not page.goto) so the in-memory
+  // ``savedRevision`` survives the URL change; the brief's
+  // documented escape hatch for "if a reload loses in-memory
+  // state".
+  await gotoStudioView(page);
+  await page.evaluate(() => {
+    window.history.pushState({}, "", "/?workload=200&pack=1");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByTestId("studio-node-count")).toHaveText("200");
+  // The real ReactFlow canvas must render at least one node, even
+  // though it virtualizes off-screen ones.
+  expect(await page.locator(".react-flow__node").count()).toBeGreaterThanOrEqual(1);
+
+  // M2-WRITE: an unchanged save is a typed no-op. Click Save execution
+  // before editing anything and capture the wire response. The outcome
+  // element must render the "No change" message and the response body
+  // must carry outcome: "unchanged" with revision_id == A.
+  const unchangedReq = page.waitForRequest(
+    (r) =>
+      r.method() === "PUT" &&
+      new URL(r.url()).pathname === `/api/v1/strategies/drafts/${revisionA}`,
+  );
+  await page.getByRole("button", { name: /save execution/i }).click();
+  const unchangedRequest = await unchangedReq;
+  const unchangedResponse = await unchangedRequest.response();
+  const unchangedBody = (await unchangedResponse!.json()) as {
+    revision_id?: string;
+    outcome?: string;
+    state?: string;
+  };
+  expect(unchangedBody.outcome).toBe("unchanged");
+  expect(unchangedBody.revision_id).toBe(revisionA);
+  await expect(page.getByTestId("studio-save-outcome")).toContainText(
+    `No change: revision ${revisionA} kept`,
+  );
+
+  // Click the sma2 indicator node and edit its length.
+  // ReactFlow positions nodes absolutely inside a viewport that shares
+  // its bounding box with ``<main>``; Playwright's hit-test therefore
+  // reports "main intercepts pointer events". ``evaluate(el => el.click())``
+  // invokes the DOM ``click()`` method which fires the click event
+  // ReactFlow listens for, bypassing the hit-test issue.
+  await page.getByTestId("studio-node-sma2").evaluate((el: HTMLElement) => {
+    el.click();
+  });
+  // ReactFlow dispatches ``onNodeClick`` asynchronously; give the
+  // handler a tick to update shell state.
+  await page.waitForTimeout(300);
+  await expect(page.getByTestId("studio-indicator-len")).toBeVisible();
+  await page.getByTestId("studio-indicator-len").fill("20");
+  const createdReq = page.waitForRequest(
+    (r) =>
+      r.method() === "PUT" &&
+      new URL(r.url()).pathname === `/api/v1/strategies/drafts/${revisionA}`,
+  );
+  await page.getByRole("button", { name: /save execution/i }).click();
+  const createdRequest = await createdReq;
+  const createdResponse = await createdRequest.response();
+  const createdBody = (await createdResponse!.json()) as {
+    revision_id?: string;
+    outcome?: string;
+  };
+  expect(createdBody.outcome).toBe("created");
+  await expect(page.getByTestId("studio-save-outcome")).toContainText(
+    "Saved new revision ",
+  );
+  await expect(page.getByTestId("studio-revision-id")).toBeVisible();
+  const revisionB = await page
+    .getByTestId("studio-revision-id")
+    .innerText()
+    .then((text) => extractRevisionId(text));
+  expect(revisionB).not.toBe("");
+  expect(revisionB).not.toBe(revisionA);
+
+  // Second backtest at sma2.len=20 -> result B.
+  await gotoResearchView(page);
+  await page.getByLabel(/dataset path/i).fill(editCsv);
+  await page.getByLabel(/fee basis points/i).fill("10");
+  await page.getByLabel(/^from$/i).fill("0");
+  await page.getByLabel(/^to$/i).fill("9999999999999");
+  const reqB = page.waitForRequest(
+    (r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/research/jobs",
+  );
+  await page.getByRole("button", { name: /^run$/i }).click();
+  const requestB = await reqB;
+  const bodyB = JSON.parse(requestB.postData() ?? "{}") as Record<string, unknown>;
+  const jobB = await readJobIdAfterRun(page);
+  expect(jobB).not.toBe("");
+  // pollForResult auto-fetches on succeeded.
+  await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
+  const equityB = (await page.getByTestId("research-result-equity").innerText()).trim();
+  const tradesB = (await page.getByTestId("research-result-trade-count").innerText()).trim();
+
+  const equityChanged = equityA !== equityB;
+  const tradesChanged = tradesA !== tradesB;
+  if (!equityChanged && !tradesChanged) {
+    throw new Error(
+      `Edit did not change the result: A equity=${equityA} trades=${tradesA}; B equity=${equityB} trades=${tradesB}`,
+    );
+  }
+
+  // NS09 units, backend-derived: same truthful-units proof on result B.
+  // The changed revision must move the typed percentage metrics too, and
+  // the rendered text must equal the backend's own receipt values.
+  const typedResultB = await readBackendResult(page, baseURL, jobB);
+  expect(typeof typedResultB.metrics.total_return_pct).toBe("number");
+  expect(Number.isFinite(typedResultB.metrics.total_return_pct)).toBe(true);
+  expect(typeof typedResultB.metrics.max_drawdown_pct).toBe("number");
+  expect(Number.isFinite(typedResultB.metrics.max_drawdown_pct)).toBe(true);
+  expect(typedResultB.receipt.equity).toBeUndefined();
+  expect(typedResultB.receipt.metrics).toBeDefined();
+  await expect(page.getByTestId("research-result-total-return-pct")).toHaveText(
+    String(typedResultB.metrics.total_return_pct),
+  );
+  await expect(page.getByTestId("research-result-max-drawdown")).toHaveText(
+    `${typedResultB.metrics.max_drawdown_pct}%`,
+  );
+  await expect(page.getByTestId("research-result-equity")).toHaveText(
+    "unavailable",
+  );
+  const equityTextB = (
+    await page.getByTestId("research-result-equity").innerText()
+  ).trim();
+  expect(equityTextB).toBe("unavailable");
+  expect(equityTextB).not.toMatch(/[\d%]/);
+  // The revision edit moved real percentage performance, not just a label.
+  expect(String(typedResultB.metrics.total_return_pct)).not.toBe(
+    String(typedResultA.metrics.total_return_pct),
+  );
+  expect(
+    String(typedResultB.metrics.max_drawdown_pct),
+  ).not.toBe(String(typedResultA.metrics.max_drawdown_pct));
+  // Each run's receipt is its own identity: same dataset/fee, different
+  // revision, and the pack hash follows the revision.
+  expect(typedResultB.receipt.fee_bps).toBe(typedResultA.receipt.fee_bps);
+  expect(typedResultB.receipt.data_manifest_sha256).toBe(
+    typedResultA.receipt.data_manifest_sha256,
+  );
+  expect(typedResultB.receipt.pack_sha256).not.toBe(
+    typedResultA.receipt.pack_sha256,
+  );
+
+  // Selected-decision detail: click a real trace bar and require the
+  // rendered input close and per-condition path/outcome to match the
+  // backend's versioned trace for that same bar. The windowed list only
+  // mounts a slice, so drive the scroll container to the first row
+  // before clicking.
+  expect(typedResultB.trace.length).toBeGreaterThan(0);
+  const firstBar = typedResultB.trace[0] as {
+    bar_ts?: number;
+    input?: { close?: number };
+    conditions?: Array<{ path?: string; outcome?: unknown }>;
+  };
+  const barTsText = String(firstBar.bar_ts);
+  const scroll = page.getByTestId("research-trace-scroll");
+  await scroll.evaluate((el) => el.scrollTo(0, 0));
+  await page
+    .getByRole("button", { name: barTsText, exact: true })
+    .first()
+    .click();
+  await expect(page.getByTestId("research-bar-detail")).toBeVisible();
+  const detailText = (
+    await page.getByTestId("research-bar-detail").innerText()
+  ).trim();
+  expect(detailText).toContain(String(firstBar.input?.close));
+  for (const condition of firstBar.conditions ?? []) {
+    if (condition.path) {
+      expect(detailText).toContain(condition.path);
+    }
+    expect(detailText).toContain(String(condition.outcome));
+  }
+  console.log(
+    `[ns09-units] jobB backend total_return_pct=${String(typedResultB.metrics.total_return_pct)} ` +
+      `max_drawdown_pct=${String(typedResultB.metrics.max_drawdown_pct)} ` +
+      `uiEquity=${equityTextB}`,
+  );
+
+  // Probe the job B submission through the API (page.request carries
+  // the cookie).
+  const jobBInfo = await page.request.get(`${baseURL}/api/v1/jobs/${encodeURIComponent(jobB)}`);
+  expect(jobBInfo.status()).toBe(200);
+  // Wire-level proof that each Run posted the revision the UI showed.
+  expect(bodyA.revision_id).toBe(revisionA);
+  expect(bodyB.revision_id).toBe(revisionB);
+  expect(bodyA.revision_id).not.toBe(bodyB.revision_id);
+  // Identical inputs: only the revision may differ between the runs.
+  expect(bodyB.dataset_csv).toBe(bodyA.dataset_csv);
+  expect(bodyB.fee_bps).toBe(bodyA.fee_bps);
+  // The run must resolve the pack through the revision, not a path.
+  expect(bodyA.pack_path).toBeFalsy();
+  expect(bodyB.pack_path).toBeFalsy();
+
+  // The rendered job id is the id the server returned for that POST.
+  const responseA = await requestA.response();
+  const responseB = await requestB.response();
+  expect(responseA).not.toBeNull();
+  expect(responseB).not.toBeNull();
+  const jobAResponse = (await responseA!.json()) as { id?: string };
+  const jobBResponse = (await responseB!.json()) as { id?: string };
+  expect(jobAResponse.id).toBe(jobA);
+  expect(jobBResponse.id).toBe(jobB);
+
+  // The stored revision B carries the studio edit and its parent;
+  // revision A still has the original length.
+  const draftB = await page.request.get(
+    `${baseURL}/api/v1/strategies/drafts/${encodeURIComponent(revisionB)}`,
+  );
+  expect(draftB.status()).toBe(200);
+  const draftBBody = (await draftB.json()) as {
+    parent_revision_id?: string;
+    pack?: { indicators?: { sma2?: { len?: number } } };
+  };
+  expect(draftBBody.pack?.indicators?.sma2?.len).toBe(20);
+  expect(draftBBody.parent_revision_id).toBe(revisionA);
+  const draftA = await page.request.get(
+    `${baseURL}/api/v1/strategies/drafts/${encodeURIComponent(revisionA)}`,
+  );
+  expect(draftA.status()).toBe(200);
+  const draftABody = (await draftA.json()) as {
+    pack?: { indicators?: { sma2?: { len?: number } } };
+  };
+  expect(draftABody.pack?.indicators?.sma2?.len).toBe(2);
+
+  // Console guard: zero errors and zero >=400 responses across the
+  // whole spec run.
+  expect(guard.errors).toEqual([]);
+  expect(guard.badResponses).toEqual([]);
+  console.log(
+    `[ns20-studio-guard] errors=${guard.errors.length} ` +
+      `badResponses=${guard.badResponses.length}`,
+  );
+
+  // Log timings for the report.
+  console.log(
+    `[ns20-studio-edit] revisionA=${revisionA} revisionB=${revisionB} ` +
+      `postedRevisionA=${String(bodyA.revision_id)} postedRevisionB=${String(bodyB.revision_id)} ` +
+      `equityA=${equityA} equityB=${equityB} tradesA=${tradesA} tradesB=${tradesB}`,
+  );
+});
+
+async function readJobIdAfterRun(page: Page): Promise<string> {
+  const element = page.getByTestId("research-job-id");
+  await expect(element).toBeVisible({ timeout: 30_000 });
+  const text = (await element.innerText()).trim();
+  const match = text.match(/^job\s+(\S+)$/);
+  if (!match) {
+    throw new Error(`could not parse job id from ${JSON.stringify(text)}`);
+  }
+  return match[1];
+}
+
+type BackendReceiptMetrics = {
+  total_return_pct?: number;
+  max_drawdown_pct?: number;
+  trade_count?: number;
+};
+
+type BackendResult = {
+  receipt: Record<string, unknown>;
+  metrics: BackendReceiptMetrics;
+  trace: Array<Record<string, unknown>>;
+};
+
+/**
+ * Fetch the job's typed result (``legacy_receipt`` + versioned trace)
+ * straight from the backend over the real wire. The UI assertions below
+ * compare rendered text against these backend-derived values; nothing is
+ * intercepted or mocked.
+ */
+async function readBackendResult(
+  page: Page,
+  baseURL: string,
+  jobId: string,
+): Promise<BackendResult> {
+  const response = await page.request.get(
+    `${baseURL}/api/v1/jobs/${encodeURIComponent(jobId)}/result`,
+  );
+  expect(response.status()).toBe(200);
+  const body = (await response.json()) as {
+    legacy_receipt?: Record<string, unknown>;
+    trace?: Array<Record<string, unknown>>;
+  };
+  expect(body.legacy_receipt).toBeDefined();
+  const receipt = body.legacy_receipt as Record<string, unknown>;
+  const metrics = receipt.metrics as BackendReceiptMetrics;
+  const trace = Array.isArray(body.trace) ? body.trace : [];
+  return { receipt, metrics, trace };
+}
+
+function extractRevisionId(text: string): string {
+  const match = text.match(/revision:\s*([^\s)]+)/);
+  if (!match) {
+    throw new Error(`could not parse revision id from ${JSON.stringify(text)}`);
+  }
+  return match[1];
+}
+
+let workstation: WorkstationHandle | null = null;
+
+test.beforeAll(async () => {
+  workstation = await startWorkstationForSpec();
+});
+
+test.afterAll(async () => {
+  if (workstation) {
+    await stopWorkstationForSpec(workstation);
+    workstation = null;
+  }
+});

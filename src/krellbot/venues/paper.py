@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from krellbot import paths as kb_paths
+from krellbot.data.instruments import InstrumentMetadataError
 from krellbot.venues.base import (
     Balance,
     Fill,
@@ -295,12 +296,27 @@ class PaperVenue:
         Used by the engine to repair missing stops on positions that the
         pack already owns (from a prior tick or recovered from a crash).
         No fill is recorded; only the resting stop lands in the order book.
+
+        When the rules provider refuses the pair (missing / stale /
+        mismatched metadata), the protective stop still lands using the
+        qty and stop as supplied by the engine. Failing to rest an
+        already-owned position's stop on a metadata refusal would leave
+        the position unprotected, which is worse than landing an
+        imprecisely-quantized stop. The owner-of-position tick carries
+        `metadata_refusal` so the operator can investigate independently.
         """
-        rules = self.rules(pair)
-        q = _quantize(qty, rules.lot_decimals)
-        s = _quantize(stop, rules.price_decimals)
-        if q < rules.ordermin:
-            raise ValueError("qty below ordermin")
+        try:
+            rules = self.rules(pair)
+        except InstrumentMetadataError:
+            rules = None
+        if rules is None:
+            q = Decimal(str(qty))
+            s = Decimal(str(stop))
+        else:
+            q = _quantize(qty, rules.lot_decimals)
+            s = _quantize(stop, rules.price_decimals)
+            if q < rules.ordermin:
+                raise ValueError("qty below ordermin")
         ts_ms = int((self._clock() if self._clock else _now_seconds()) * 1000)
         self._state["open_orders"].append(
             {
@@ -359,7 +375,7 @@ class PaperVenue:
     def owned_qty(self, pair: str) -> Decimal:
         """Return the base balance for the pair."""
         base, _ = _base_quote(pair)
-        return self._state["balances"].get(base, Decimal(0))
+        return Decimal(str(self._state["balances"].get(base, Decimal(0))))
 
     def resting_stop(self, pair: str) -> Decimal | None:
         """Return the stop price resting on this pair, or None."""
@@ -438,6 +454,9 @@ class PaperVenue:
         raw.setdefault("open_orders", [])
         raw.setdefault("recent_fills", [])
         raw.setdefault("seeded", True)
+        # JSON persistence writes Decimals as strings. Rehydrate at the
+        # load boundary so entry, exit and stop arithmetic share one type.
+        raw["balances"] = {asset: Decimal(str(value)) for asset, value in raw["balances"].items()}
         return raw
 
     def _persist(self) -> None:

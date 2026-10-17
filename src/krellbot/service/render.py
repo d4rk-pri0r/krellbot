@@ -16,13 +16,24 @@ The bodies match the contract in `.omo/briefs/phase6-implement.md`:
   service `ExecStart` is the executable plus `tick`. No `User=` line — this
   is a user unit.
 - Windows task XML with `<StartWhenAvailable>true</StartWhenAvailable>` and a
-  calendar trigger at minute 1 of every hour. The command is the executable
-  and the argument is `tick`.
+  calendar trigger at minute 1 of every hour. The Task XML schema (1.2) has
+  no per-task environment-variable element, so the ``Exec`` block runs
+  ``cmd.exe`` to set ``KRELLBOT_HOME`` for exactly the child tick:
+
+      <Command>%SystemRoot%\\System32\\cmd.exe</Command>
+      <Arguments>/d /c set "KRELLBOT_HOME=&lt;home&gt;" &amp;&amp; "&lt;executable&gt;" tick</Arguments>
+      <WorkingDirectory>&lt;home&gt;</WorkingDirectory>
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from xml.sax.saxutils import escape
+
+# ``"`` cannot be safely nested inside cmd's double-quoted set command.
+# ``%`` triggers cmd variable expansion; ``^`` is the cmd escape character.
+# ``\n``/``\r`` would split the command or inject a literal CR.
+_CMD_METACHARS = ('"', "%", "^", "\n", "\r")
 
 
 def render_launchd(executable: str, home: Path) -> bytes:
@@ -100,7 +111,33 @@ def render_windows(executable: str, home: Path) -> bytes:
     `<StartWhenAvailable>true</StartWhenAvailable>` lets the task catch up
     after the laptop wakes from sleep. The trigger fires at minute 1 of every
     hour.
+
+    The Task Scheduler XML schema (1.2) has no per-task environment-variable
+    element, so the task would otherwise inherit the user's environment and
+    the tick would fall back to ``~/.krellbot`` while the operator installed
+    against a different ``KRELLBOT_HOME``. The ``Exec`` block therefore runs
+    through ``cmd.exe`` so the environment variable is set for exactly the
+    child tick:
+
+        cmd.exe /d /c set "KRELLBOT_HOME=<home>" && "<executable>" tick
+
+    ``home`` and ``executable`` are XML-escaped before interpolation so a
+    path containing ``&``, ``<`` or ``>`` cannot break the XML. A path or
+    executable containing ``"``, ``%``, ``^``, newline or carriage return
+    is refused with ``ValueError`` because cmd cannot quote it safely.
     """
+    home_s = str(home)
+    for ch in _CMD_METACHARS:
+        if ch in home_s:
+            raise ValueError(f"home contains cmd/XML metacharacter {ch!r}: {home_s!r}")
+    for ch in _CMD_METACHARS:
+        if ch in executable:
+            raise ValueError(f"executable contains cmd/XML metacharacter {ch!r}: {executable!r}")
+
+    home_x = escape(home_s)
+    exe_x = escape(executable)
+    arguments = f'/d /c set "KRELLBOT_HOME={home_x}" &amp;&amp; "{exe_x}" tick'
+
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<Task version="1.2" '
@@ -134,8 +171,9 @@ def render_windows(executable: str, home: Path) -> bytes:
         "  </Settings>\n"
         '  <Actions Context="Author">\n'
         "    <Exec>\n"
-        f"      <Command>{executable}</Command>\n"
-        "      <Arguments>tick</Arguments>\n"
+        "      <Command>%SystemRoot%\\System32\\cmd.exe</Command>\n"
+        f"      <Arguments>{arguments}</Arguments>\n"
+        f"      <WorkingDirectory>{home_x}</WorkingDirectory>\n"
         "    </Exec>\n"
         "  </Actions>\n"
         "</Task>\n"

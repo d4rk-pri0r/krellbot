@@ -1,0 +1,202 @@
+/*
+ * Application Home — Signal + Krell Asset Pack v2.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Scoped Home presentation only. Every color, font and radius comes
+ * from the shared tokens in ../styles/tokens.css; this file does not
+ * redefine the palette. The welcome band uses the supplied outlined
+ * BrandMark (bundled, unmirrored). Availability copy is muted/caution
+ * toned — never a success green — because live trading is unavailable.
+ */
+
+.app-home {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* ---- welcome band ---- */
+
+.app-home__welcome {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+
+.app-home__welcome .kbot-brandmark {
+  width: 34px;
+  height: auto;
+  color: var(--seafoam);
+}
+
+.app-home__title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.app-home__purpose {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  max-width: 58ch;
+}
+
+.app-home__availability {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--caution-text) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--caution-bg) 40%, var(--surface));
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  justify-self: end;
+}
+
+.app-home__availability-mode {
+  color: var(--text);
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+}
+
+.app-home__availability-live {
+  color: var(--caution-text);
+}
+
+.app-home__session {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* ---- feature cards ---- */
+
+.app-home__cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.app-home__card-item {
+  display: flex;
+  min-width: 0;
+}
+
+.app-home__card {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  width: 100%;
+  min-height: 44px;
+  padding: 14px 16px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  color: var(--text);
+}
+
+.app-home__card:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--seafoam) 45%, var(--line));
+  background: color-mix(in srgb, var(--panel) 45%, var(--surface));
+}
+
+.app-home__card-action {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--seafoam);
+}
+
+.app-home__card-detail {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---- explanatory notes ---- */
+
+.app-home__notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.app-home__note {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.app-home__note-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.app-home__note-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.app-home__note-copy {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.app-home__note-copy:last-child {
+  margin-bottom: 0;
+}
+
+/* ---- narrow / mobile layout ---- */
+
+@media (max-width: 640px) {
+  .app-home__welcome {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .app-home__welcome .kbot-brandmark {
+    width: 28px;
+  }
+
+  .app-home__availability {
+    justify-self: start;
+    white-space: normal;
+  }
+
+  .app-home__card {
+    min-height: 44px;
+  }
+}

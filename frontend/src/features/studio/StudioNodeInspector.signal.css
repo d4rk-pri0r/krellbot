@@ -1,0 +1,306 @@
+/*
+ * Studio node inspector — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Component-scoped styles for the WorkstationShell Studio graph canvas
+ * inspector (StudioNodeInspector). The inspector presents the selected
+ * indicator node with the approved readable canvas language: an eyebrow
+ * "Selected node" header, the node id as a mono badge, the real pack
+ * spec context, an integer current-value display, a text status
+ * (never color-only), inline field-error styling, and an explicit
+ * Apply affordance disabled while the draft is invalid.
+ *
+ * Typography is inherited from the host (Manrope via the shared shell;
+ * IBM Plex Mono only for restrained technical/numeric labels). This
+ * file consumes the approved named tokens, each with its exact approved
+ * fallback so the slice functions on this accepted base:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Selectors are nested under `.kbot-studio-node-inspector` so shared
+ * shell rules cannot flatten the intended hierarchy. Sage stays the
+ * single affirmative primary action; the invalid state is coral-derived
+ * caution and is always carried by text, not color alone.
+ */
+
+.kbot-studio-node-inspector {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 15px 16px 16px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 11px;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-studio-node-inspector *,
+.kbot-studio-node-inspector *::before,
+.kbot-studio-node-inspector *::after {
+  box-sizing: border-box;
+}
+
+.kbot-studio-node-inspector h3,
+.kbot-studio-node-inspector p {
+  margin: 0;
+}
+
+/* --- inspector header --- */
+
+.kbot-studio-node-inspector__header {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+}
+
+.kbot-studio-node-inspector__eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 92%, transparent);
+}
+
+.kbot-studio-node-inspector__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-studio-node-inspector__title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Node id badge: restrained mono pill (reference canvas pill language). */
+.kbot-studio-node-inspector__node-id {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 80%, var(--panel, #18354a));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
+  color: color-mix(in srgb, var(--muted, #abc4d8) 90%, var(--text, #e9f0f5));
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kbot-studio-node-inspector__context {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* --- current value + status --- */
+
+.kbot-studio-node-inspector__summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-studio-node-inspector__summary-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 92%, transparent);
+}
+
+/* Whole-number lengths render as plain integers in the technical voice. */
+.kbot-studio-node-inspector__summary-value {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-studio-node-inspector__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Status meaning is carried by the text; color only reinforces it. */
+.kbot-studio-node-inspector__status--valid {
+  background: color-mix(in srgb, var(--sage, #b3dda8) 14%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 40%, var(--line, #22465d));
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-studio-node-inspector__status--invalid {
+  background: color-mix(in srgb, var(--coral, #cc9689) 12%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+}
+
+/* --- length field --- */
+
+.kbot-studio-node-inspector__field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.kbot-studio-node-inspector__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 92%, transparent);
+}
+
+.kbot-studio-node-inspector .kbot-studio-node-inspector__input {
+  min-height: 36px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12.5px;
+}
+
+.kbot-studio-node-inspector .kbot-studio-node-inspector__input:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* Inline field error: coral-derived caution, text-first. */
+.kbot-studio-node-inspector__error {
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+/* --- actions --- */
+
+.kbot-studio-node-inspector__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.kbot-studio-node-inspector .kbot-studio-node-inspector__apply {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--sage, #b3dda8);
+  border: 1px solid var(--sage, #b3dda8);
+  color: var(--action-primary-text, #172a1d);
+}
+
+.kbot-studio-node-inspector .kbot-studio-node-inspector__apply:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.kbot-studio-node-inspector .kbot-studio-node-inspector__apply:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+.kbot-studio-node-inspector .kbot-studio-node-inspector__apply:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Nested export control keeps its own class; align it with the row. */
+.kbot-studio-node-inspector .kbot-studio-node-inspector__export {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-studio-node-inspector .kbot-studio-node-inspector__export:hover {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+}
+
+.kbot-studio-node-inspector .kbot-studio-node-inspector__export:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* --- responsive: ordinary 44px mobile targets --- */
+
+@media (max-width: 720px) {
+  .kbot-studio-node-inspector {
+    gap: 12px;
+    padding: 12px 12px 13px;
+  }
+
+  .kbot-studio-node-inspector__header {
+    padding-bottom: 10px;
+  }
+
+  .kbot-studio-node-inspector__summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .kbot-studio-node-inspector__actions {
+    width: 100%;
+  }
+
+  .kbot-studio-node-inspector .kbot-studio-node-inspector__input,
+  .kbot-studio-node-inspector .kbot-studio-node-inspector__apply,
+  .kbot-studio-node-inspector .kbot-studio-node-inspector__export {
+    min-height: 44px;
+  }
+
+  .kbot-studio-node-inspector .kbot-studio-node-inspector__apply,
+  .kbot-studio-node-inspector .kbot-studio-node-inspector__export {
+    flex: 1 1 auto;
+  }
+}

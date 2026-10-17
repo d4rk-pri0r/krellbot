@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "rehearsal-sma-cross",
+  "version": "1.0.0",
+  "label": "Synthetic rehearsal trend follow (simulated data, not market-performance evidence)",
+  "author": "krellbot",
+  "timeframe": "1h",
+  "indicators": {
+    "sma20": {
+      "fn": "sma",
+      "src": "close",
+      "len": 20
+    }
+  },
+  "entry": [
+    "close",
+    "crosses_above",
+    "sma20"
+  ],
+  "exit": [
+    "close",
+    "crosses_below",
+    "sma20"
+  ],
+  "risk": {
+    "max_account_pct": 25,
+    "stop": {
+      "type": "pct",
+      "pct": 10
+    }
+  },
+  "markets": [
+    {
+      "venue": "kraken",
+      "pair": "SUIUSD"
+    }
+  ]
+}

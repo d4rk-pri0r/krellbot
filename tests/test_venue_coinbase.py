@@ -87,8 +87,13 @@ def test_coinbase_duplicate_coid_is_not_resent():
             {"success": True, "success_response": {"order_id": "STP-1"}},
         ],
     )
-    now = lambda: 1_700_000_000
-    nonce = lambda: "aa" * 16
+
+    def now() -> int:
+        return 1_700_000_000
+
+    def nonce() -> str:
+        return "aa" * 16
+
     venue = CoinbaseVenue(
         api_key_name="orgs/abc/keys/xyz",
         api_secret=secret,

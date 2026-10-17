@@ -188,10 +188,13 @@ def test_live_arm_requires_withdraw_off_and_confirmation(home, monkeypatch, fres
     First live arm reads stdin; if the text is not exactly "LIVE", it refuses.
     A key that can withdraw is refused. A key that cannot trade is refused.
     """
+    from fakes.live_grant import write_grant
+
     from krellbot import secrets
     from krellbot.run import arm_pack, disarm_pack
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    write_grant(home, venue="kraken", pair="SUIUSD")
     secrets.store("kraken", "FAKEKEY", "FAKESECRET")
     pack_path = _write_pack(home)
 
@@ -260,7 +263,7 @@ def test_live_arm_requires_withdraw_off_and_confirmation(home, monkeypatch, fres
 # ----------------------- shared helpers -----------------------
 
 
-def _candle(ts_ms: int, o: str, h: str, l: str, c: str):
+def _candle(ts_ms: int, o: str, h: str, low: str, c: str):
     from decimal import Decimal
 
     from krellbot.pack.model import Candle
@@ -269,7 +272,7 @@ def _candle(ts_ms: int, o: str, h: str, l: str, c: str):
         ts_ms=ts_ms,
         open=Decimal(o),
         high=Decimal(h),
-        low=Decimal(l),
+        low=Decimal(low),
         close=Decimal(c),
         volume=Decimal(100),
     )

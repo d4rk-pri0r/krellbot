@@ -1,0 +1,72 @@
+Krellbot — local install (no developer tools required)
+======================================================
+
+This archive contains the complete Krellbot program. You do NOT need
+Python, npm, node, or any other development tooling to install or run
+it. You only need the archive for your platform.
+
+Unsigned status (read this)
+---------------------------
+These artifacts are NOT signed. No code signing, no checksum
+signature, and no publisher identity is claimed or verified by this
+installer. Only use archives you obtained from a source you trust,
+and verify the archive SHA-256 against the value your source
+published before installing.
+
+Windows
+-------
+1. Extract the FULL archive (the folder with krellbot.exe,
+   _internal\, Install-Krellbot.cmd, Install-Krellbot.ps1, and this
+   file) anywhere you like — for example your Downloads folder.
+2. Double-click Install-Krellbot.cmd.
+   - It installs the program to %LOCALAPPDATA%\Krellbot (per-user;
+     no administrator rights are requested or required).
+   - It creates a "Krellbot" Start menu shortcut.
+   - It never downloads anything, never elevates, and never changes
+     your PowerShell execution policy. If your policy blocks the
+     installer script, it tells you so and changes nothing.
+3. Launch Krellbot from the Start menu. You can also run
+   "%LOCALAPPDATA%\Krellbot\krellbot.exe" directly.
+
+If your PowerShell execution policy blocks the installer, it will
+say so. Allowing your own local scripts is your choice, for example:
+  powershell Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+and then run Install-Krellbot.cmd again.
+
+Linux
+-----
+1. Extract the FULL archive and open a terminal in that folder.
+2. Run:  ./install-krellbot.sh
+   - It installs the program to
+     $XDG_DATA_HOME/Krellbot (usually ~/.local/share/Krellbot),
+     a per-user location you own. No sudo, no root, no writes to
+     system directories, no downloads.
+   - It creates a "Krellbot" application entry (shows up in your
+     activities/applications menu) and a clickable
+     "Launch Krellbot" file on your Desktop when one exists.
+3. Launch from your applications menu, the Desktop file, or run:
+     ~/.local/share/Krellbot/krellbot
+
+How to launch
+-------------
+Double-click the shortcut (or run the installed executable with NO
+arguments). Krellbot starts a local workstation server bound to
+127.0.0.1 (loopback only — nothing is exposed to your network) and
+opens it in your default web browser.
+
+How to stop
+-----------
+Focus the window where Krellbot is running and press Ctrl+C. It
+shuts the server down cleanly.
+
+Your data
+---------
+Installs never touch your Krellbot data (KRELLBOT_HOME / ~/.krellbot,
+packs, journal, settings). Upgrading by re-running the installer
+replaces the program files only.
+
+Command-line use
+----------------
+The installed executable still accepts the documented krellbot
+commands (run `<executable> --help` for the list). Only the
+no-argument form is the click-to-launch behaviour.

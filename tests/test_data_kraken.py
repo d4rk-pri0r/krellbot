@@ -19,8 +19,8 @@ def _kraken_payload(rows: list[list], pair_key: str = "XSUIZUSD") -> dict:
     return {"result": {"last": 0, pair_key: rows}}
 
 
-def _row(ts_s: int, o="10", h="11", l="9", c="10", v="100") -> list:
-    return [ts_s, o, h, l, c, "10", v, "5"]
+def _row(ts_s: int, o="10", h="11", low="9", c="10", v="100") -> list:
+    return [ts_s, o, h, low, c, "10", v, "5"]
 
 
 def test_kraken_ohlc_ignores_altname_key():

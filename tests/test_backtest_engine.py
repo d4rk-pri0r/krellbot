@@ -27,13 +27,13 @@ def _candle(
     close: str = "10",
     o: str | None = None,
     h: str | None = None,
-    l: str | None = None,
+    low: str | None = None,
 ) -> Candle:
     return Candle(
         ts_ms=ts_ms,
         open=Decimal(o or close),
         high=Decimal(h or close),
-        low=Decimal(l or close),
+        low=Decimal(low or close),
         close=Decimal(close),
         volume=Decimal(1),
     )
@@ -86,9 +86,9 @@ def test_stop_gap_through_fills_at_open():
         _candle(0, "10"),
         _candle(3_600_000, "10"),
         _candle(7_200_000, "12"),
-        _candle(10_800_000, "14", o="14", h="14", l="14"),
-        _candle(14_400_000, "7", o="7", h="8", l="6"),
-        _candle(18_000_000, "7", o="7", h="7", l="7"),
+        _candle(10_800_000, "14", o="14", h="14", low="14"),
+        _candle(14_400_000, "7", o="7", h="8", low="6"),
+        _candle(18_000_000, "7", o="7", h="7", low="7"),
     ]
     bt = Backtester(pack, candles)
     records = bt.run()

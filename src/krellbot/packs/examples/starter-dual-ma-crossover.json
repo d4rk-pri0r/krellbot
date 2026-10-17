@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "starter-dual-ma-crossover",
+  "version": "1.0.0",
+  "label": "Dual MA crossover (educational example)",
+  "author": "krellbot",
+  "origin": "Shipped starter example. A local copy becomes yours when you save it as a draft.",
+  "timeframe": "1h",
+  "indicators": {
+    "fast_sma": {"fn": "sma", "src": "close", "len": 10},
+    "slow_sma": {"fn": "sma", "src": "close", "len": 30}
+  },
+  "entry": ["fast_sma", "crosses_above", "slow_sma"],
+  "exit": ["fast_sma", "crosses_below", "slow_sma"],
+  "risk": {
+    "max_account_pct": 25,
+    "stop": {"type": "pct", "pct": 5}
+  },
+  "markets": [{"venue": "kraken", "pair": "SUIUSD"}]
+}

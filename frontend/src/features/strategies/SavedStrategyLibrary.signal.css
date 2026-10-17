@@ -1,0 +1,389 @@
+/*
+ * Saved strategy library — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Component-scoped styles for the WorkstationShell Strategies → Library
+ * surface. Typography is inherited from the host (the separate Signal
+ * foundation owns local fonts); this file only consumes the approved
+ * named tokens, each with its exact approved fallback so the slice
+ * functions on this accepted base while the shared-shell candidate is
+ * reviewed:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Selectors are intentionally nested (.kbot-strategy-library .…__btn)
+ * so shared shell button rules such as `.kbot-shell button` cannot
+ * erase the intended sage-primary / seafoam-secondary hierarchy.
+ */
+
+.kbot-strategy-library {
+  display: grid;
+  gap: 14px;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-strategy-library *,
+.kbot-strategy-library *::before,
+.kbot-strategy-library *::after {
+  box-sizing: border-box;
+}
+
+.kbot-strategy-library h2,
+.kbot-strategy-library h3,
+.kbot-strategy-library p {
+  margin: 0;
+}
+
+/* --- header --- */
+
+.kbot-strategy-library__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 11px;
+}
+
+.kbot-strategy-library__heading {
+  min-width: 0;
+}
+
+.kbot-strategy-library__title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.kbot-strategy-library__intro {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  max-width: 56ch;
+}
+
+/* --- search toolbar --- */
+
+.kbot-strategy-library__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kbot-strategy-library__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-strategy-library .kbot-strategy-library__search-input {
+  min-height: 36px;
+  min-width: 0;
+  width: min(340px, 100%);
+  padding: 6px 12px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+}
+
+.kbot-strategy-library .kbot-strategy-library__search-input::placeholder {
+  color: color-mix(in srgb, var(--muted, #abc4d8) 70%, transparent);
+}
+
+.kbot-strategy-library .kbot-strategy-library__search-input:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* --- shared button base (nested so shell rules cannot flatten it) --- */
+
+.kbot-strategy-library .kbot-strategy-library__btn,
+.kbot-strategy-library .kbot-strategy-library__new,
+.kbot-strategy-library .kbot-strategy-library__search-clear,
+.kbot-strategy-library .kbot-strategy-library__reopen,
+.kbot-strategy-library .kbot-strategy-library__compare,
+.kbot-strategy-library .kbot-strategy-library__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-strategy-library .kbot-strategy-library__btn:hover:not(:disabled),
+.kbot-strategy-library .kbot-strategy-library__new:hover:not(:disabled),
+.kbot-strategy-library .kbot-strategy-library__search-clear:hover:not(:disabled),
+.kbot-strategy-library .kbot-strategy-library__reopen:hover:not(:disabled),
+.kbot-strategy-library .kbot-strategy-library__compare:hover:not(:disabled),
+.kbot-strategy-library .kbot-strategy-library__copy:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+}
+
+.kbot-strategy-library .kbot-strategy-library__btn:focus-visible,
+.kbot-strategy-library .kbot-strategy-library__new:focus-visible,
+.kbot-strategy-library .kbot-strategy-library__search-clear:focus-visible,
+.kbot-strategy-library .kbot-strategy-library__reopen:focus-visible,
+.kbot-strategy-library .kbot-strategy-library__compare:focus-visible,
+.kbot-strategy-library .kbot-strategy-library__copy:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+.kbot-strategy-library .kbot-strategy-library__btn:disabled,
+.kbot-strategy-library .kbot-strategy-library__new:disabled,
+.kbot-strategy-library .kbot-strategy-library__search-clear:disabled,
+.kbot-strategy-library .kbot-strategy-library__reopen:disabled,
+.kbot-strategy-library .kbot-strategy-library__compare:disabled,
+.kbot-strategy-library .kbot-strategy-library__copy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* sage carries the affirmative primary action only */
+.kbot-strategy-library .kbot-strategy-library__new,
+.kbot-strategy-library .kbot-strategy-library__reopen {
+  background: var(--sage, #b3dda8);
+  border-color: var(--sage, #b3dda8);
+  color: var(--action-primary-text, #172a1d);
+}
+
+.kbot-strategy-library .kbot-strategy-library__new:hover:not(:disabled),
+.kbot-strategy-library .kbot-strategy-library__reopen:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+}
+
+/* seafoam supports the secondary selection/inspection actions */
+.kbot-strategy-library .kbot-strategy-library__compare,
+.kbot-strategy-library .kbot-strategy-library__copy,
+.kbot-strategy-library .kbot-strategy-library__search-clear {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 10%, var(--surface, #14222e));
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-strategy-library__count {
+  font-size: 12px;
+  color: var(--muted, #abc4d8);
+  white-space: nowrap;
+}
+
+/* --- grouped inventory --- */
+
+.kbot-strategy-library__group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-strategy-library__group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 4px;
+}
+
+.kbot-strategy-library__group-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-library__group-count {
+  font-size: 11px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-library__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-strategy-library__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 9px;
+  min-width: 0;
+}
+
+.kbot-strategy-library__row-main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.kbot-strategy-library__row-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-library__row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-library__meta-sep {
+  color: color-mix(in srgb, var(--muted, #abc4d8) 55%, transparent);
+}
+
+.kbot-strategy-library__row-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted, #abc4d8);
+}
+
+/* State is conveyed by its text label; color only reinforces it. */
+.kbot-strategy-library__state {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid var(--line, #22465d);
+  background: color-mix(in srgb, var(--panel, #18354a) 55%, var(--surface, #14222e));
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-strategy-library__state[data-state="validated"],
+.kbot-strategy-library__state[data-state="deployed"] {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 14%, var(--surface, #14222e));
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 50%, var(--line, #22465d));
+  color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-strategy-library__identity-item {
+  overflow-wrap: anywhere;
+}
+
+.kbot-strategy-library__row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* --- states --- */
+
+.kbot-strategy-library__loading,
+.kbot-strategy-library__empty {
+  padding: 18px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--muted, #abc4d8);
+  background: var(--surface, #14222e);
+  border: 1px dashed var(--line, #22465d);
+  border-radius: 9px;
+}
+
+.kbot-strategy-library__error {
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 12%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 55%, var(--line, #22465d));
+  color: var(--text, #e9f0f5);
+}
+
+/* --- responsive --- */
+
+@media (max-width: 720px) {
+  .kbot-strategy-library {
+    gap: 12px;
+  }
+
+  .kbot-strategy-library__head,
+  .kbot-strategy-library__row {
+    padding: 12px;
+  }
+
+  .kbot-strategy-library__row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .kbot-strategy-library__row-actions {
+    justify-content: stretch;
+  }
+
+  .kbot-strategy-library__row-actions > * {
+    flex: 1 1 auto;
+  }
+
+  /* Reachable touch targets on narrow screens. */
+  .kbot-strategy-library .kbot-strategy-library__search-input,
+  .kbot-strategy-library .kbot-strategy-library__btn,
+  .kbot-strategy-library .kbot-strategy-library__new,
+  .kbot-strategy-library .kbot-strategy-library__search-clear,
+  .kbot-strategy-library .kbot-strategy-library__reopen,
+  .kbot-strategy-library .kbot-strategy-library__compare,
+  .kbot-strategy-library .kbot-strategy-library__copy {
+    min-height: 44px;
+  }
+
+  .kbot-strategy-library__search {
+    width: 100%;
+  }
+
+  .kbot-strategy-library .kbot-strategy-library__search-input {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .kbot-strategy-library__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kbot-strategy-library__count {
+    white-space: normal;
+  }
+}

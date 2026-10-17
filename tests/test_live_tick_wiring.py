@@ -165,9 +165,12 @@ def test_live_arm_with_env_unset_exits_1_and_posts_nothing(home, fresh_keyring, 
 
 def test_live_arm_with_withdraw_capable_key_exits_1_and_posts_nothing(home, fresh_keyring, monkeypatch, capsys):
     """Live arm, env=1, key WithdrawMethods returns methods -> WithdrawCapableError -> exit 1."""
+    from fakes.live_grant import write_grant
+
     from krellbot.cli import cmd_tick
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    write_grant(home, venue="kraken", pair="SUIUSD")
     pack_path = _write_pack(home)
     _arm(home, pack_path, mode="live")
     _store_kraken_key(fresh_keyring)
@@ -191,10 +194,13 @@ def test_live_arm_with_trade_only_key_places_entry_and_dedupes(home, fresh_keyri
     entry intent. A second tick on the same bar does not POST a second
     AddOrder.
     """
+    from fakes.live_grant import write_grant
+
     from krellbot.cli import cmd_tick
     from krellbot.run import coid_for
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    write_grant(home, venue="kraken", pair="SUIUSD")
     pack_path = _write_pack(home, pack_id="lw-entry")
     _arm(home, pack_path, mode="live", pack_id="lw-entry")
     _store_kraken_key(fresh_keyring)
@@ -211,6 +217,14 @@ def test_live_arm_with_trade_only_key_places_entry_and_dedupes(home, fresh_keyri
             {"result": {"txid": ["TX-2"]}},
         ],
         asset_pairs=_asset_pairs_for("SUIUSD"),
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+            ]
+        },
     )
 
     rc1 = cmd_tick(["--venue", "kraken"], fetch=_fake_fetch(candles), transport=transport)
@@ -305,12 +319,15 @@ def test_lapsed_license_blocks_entry_but_allows_exit(home, fresh_keyring, monkey
     the journal, and base on the snapshot. The latest bar triggers an exit
     (close crosses below sma2).
     """
+    from fakes.live_grant import write_grant
+
     from krellbot import journal
     from krellbot.cli import cmd_tick
     from krellbot.config import ArmedPack, Config, save_config
     from krellbot.run import coid_for
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    write_grant(home, venue="kraken", pair="SUIUSD")
     pack_path = _write_pack(home, pack_id="lw-lapsed")
     _arm(home, pack_path, mode="live", requires_license=True, pack_id="lw-lapsed")
     _store_kraken_key(fresh_keyring)
@@ -380,6 +397,14 @@ def test_lapsed_license_blocks_entry_but_allows_exit(home, fresh_keyring, monkey
         responses=[{"result": {"txid": ["TX-EXIT"]}}],
         asset_pairs=_asset_pairs_for("SUIUSD"),
         open_orders={"error": [], "result": open_orders},
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+            ]
+        },
     )
 
     # Two candles that drive close from above to below sma2.

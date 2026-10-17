@@ -1,0 +1,157 @@
+/*
+ * StatusStrip — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Root-scoped presentation for the top-of-shell live status strip. The strip
+ * keeps the shared shell's own `.kbot-status` / `__dot` / `__mode` /
+ * `__divider` / `__orders` classes (frontend/src/styles/shell.css) and layers
+ * the live-state composition on top of them: engaged-kill framing, authorized
+ * venue chips, the promotion affordance and the kill rule. Every value comes
+ * from the shared tokens (frontend/src/styles/tokens.css), each carrying its
+ * approved Signal fallback:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution/kill)
+ *
+ * Composition contract:
+ *   - the engaged state is carried by text (label, reason, timestamp) with
+ *     the coral variant as reinforcement only — never color alone;
+ *   - long venue/pair names wrap or ellipsize inside the strip instead of
+ *     widening the shell at 1600px or overflowing it at 390px;
+ *   - the strip holds no interactive control, so its mobile presentation
+ *     keeps readable contrast and >=44px row height when it wraps, and
+ *   - visible focus is reserved for real controls, which this surface has
+ *     none of; the shared shell focus ring still applies around it.
+ */
+
+.kbot-status,
+.kbot-status--engaged,
+.kbot-status * {
+  box-sizing: border-box;
+}
+
+.kbot-status {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+/* Engaged kill switch: coral caution framing on the same pill geometry.
+ * The reason and timestamp are always rendered alongside it. */
+.kbot-status--engaged {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 55%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--panel, #18354a));
+}
+
+.kbot-status__dot--engaged {
+  background: var(--coral, #cc9689);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral, #cc9689) 25%, transparent);
+}
+
+.kbot-status__venues {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kbot-status__venue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 220px;
+  padding: 1px 7px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--surface, #14222e) 80%, var(--navy, #0e1c29));
+  color: var(--muted, #abc4d8);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kbot-status__pair {
+  color: color-mix(in srgb, var(--muted, #abc4d8) 70%, transparent);
+}
+
+.kbot-status__promotion {
+  color: var(--sage, #b3dda8);
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 35%, transparent);
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* Kill rule: rendered only while the switch is engaged. Text first —
+ * label, reason, UTC timestamp — with coral as reinforcement. */
+.kbot-status__kill {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 55%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 12%, transparent);
+  color: color-mix(in srgb, var(--coral, #cc9689) 35%, var(--text, #e9f0f5));
+  font-size: 11px;
+}
+
+.kbot-status__kill-label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--coral, #cc9689);
+}
+
+.kbot-status__kill-reason {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.kbot-status__kill-at {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--muted, #abc4d8);
+  white-space: nowrap;
+}
+
+.kbot-status__orders {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .kbot-status {
+    min-height: 44px;
+    align-content: center;
+  }
+
+  /* Long venue chips and the kill rule wrap inside the strip; they never
+   * widen or overflow the 390px composition. */
+  .kbot-status__venue {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .kbot-status__kill {
+    width: 100%;
+  }
+
+  .kbot-status__kill-at {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

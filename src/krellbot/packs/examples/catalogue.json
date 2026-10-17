@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "catalogue_version": "1",
+  "note": "Free starter packs shipped as package data. Educational examples: ordinary valid DSL packs, read-only. No profit or return claims; nothing here is market-performance evidence.",
+  "examples": [
+    {
+      "id": "starter-dual-ma-crossover",
+      "file": "starter-dual-ma-crossover.json",
+      "label": "Dual moving-average crossover",
+      "description": "Educational example. Enters long when a 10-bar SMA of close crosses above a 30-bar SMA and exits on the cross back below, with a 5% stop. Trend-following shape; no profit or return claim."
+    },
+    {
+      "id": "starter-mean-reversion-band",
+      "file": "starter-mean-reversion-band.json",
+      "label": "Mean reversion band",
+      "description": "Educational example. Enters long when close is under a 20-bar SMA while the 20-bar standard deviation is above 0.75, and exits when close is back at or above the mean. Mean-reversion shape; no profit or return claim."
+    },
+    {
+      "id": "starter-range-breakout",
+      "file": "starter-range-breakout.json",
+      "label": "Range breakout",
+      "description": "Educational example. Enters long when close pushes above the 20-bar average high while volume is above 150, and exits on a close back below the 20-bar average low or fading volume; 14-bar ATR stop at 2.5x. Breakout shape; no profit or return claim."
+    }
+  ]
+}

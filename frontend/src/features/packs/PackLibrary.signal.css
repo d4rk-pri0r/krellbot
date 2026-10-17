@@ -1,0 +1,312 @@
+/*
+ * Installed pack library — local discovery surface.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved Signal + Krell Asset Pack v2).
+ *
+ * Root-scoped to .kbot-pack-library and composed with the shared tokens in
+ * src/styles/tokens.css (palette, radii, Manrope / IBM Plex Mono roles).
+ * No new palette, no per-component color literals.
+ *
+ * Layout intent:
+ *   - Wide (desktop ~1600px): toolbar controls on one row, rows as a
+ *     two-column card grid; pack identity in mono for exact reading/copying.
+ *   - Narrow (mobile ~390px): toolbar wraps, rows stack, all controls keep
+ *     >=44px touch targets.
+ *   - Long pack ids / permission lists / prior revision ids wrap inside the
+ *     row (overflow-wrap anywhere, min-width 0) instead of widening the page.
+ *   - State is text first ("no permissions", "—", count line), never color
+ *     alone. Bucket tone marks reported server bucket, not license status.
+ *   - Focus: keyboard-visible seafoam ring via --focus-ring, consistent with
+ *     the shell.
+ */
+
+.kbot-pack-library {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* ============ header ============ */
+
+.kbot-pack-library__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kbot-pack-library__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-pack-library__refresh {
+  flex: 0 0 auto;
+}
+
+/* ============ toolbar: local search / bucket filter / clear ============ */
+
+.kbot-pack-library__toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--navy) 55%, var(--surface));
+}
+
+.kbot-pack-library__search-label,
+.kbot-pack-library__bucket-label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kbot-pack-library__search-caption,
+.kbot-pack-library__bucket-caption {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.kbot-pack-library__search {
+  width: min(260px, 100%);
+}
+
+.kbot-pack-library__bucket-select {
+  width: min(180px, 100%);
+}
+
+.kbot-pack-library__search,
+.kbot-pack-library__bucket-select {
+  min-width: 0;
+}
+
+.kbot-pack-library__clear {
+  flex: 0 0 auto;
+}
+
+.kbot-pack-library__count {
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ============ states ============ */
+
+.kbot-pack-library__loading,
+.kbot-pack-library__failed,
+.kbot-pack-library__empty,
+.kbot-pack-library__no-matches {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 18px 6px;
+}
+
+.kbot-pack-library__no-matches {
+  border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: var(--radius-control);
+  padding: 18px 16px;
+}
+
+.kbot-pack-library__error {
+  margin: 0;
+  color: var(--danger-text);
+  font-size: 12.5px;
+}
+
+/* ============ inventory rows ============ */
+
+.kbot-pack-library__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+}
+
+.kbot-pack-library__row {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--panel) 22%, var(--surface));
+  min-width: 0;
+}
+
+.kbot-pack-library__row:hover {
+  border-color: color-mix(in srgb, var(--seafoam) 35%, var(--line));
+}
+
+.kbot-pack-library__row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-pack-library__bucket {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--panel) 45%, var(--surface));
+  color: var(--text);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.kbot-pack-library__bucket-label {
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-weight: 500;
+}
+
+/* Reported-bucket tone accent only; the raw text stays the source of truth. */
+.kbot-pack-library__bucket--deployed {
+  border-color: color-mix(in srgb, var(--seafoam) 45%, var(--line));
+}
+
+.kbot-pack-library__bucket--configured,
+.kbot-pack-library__bucket--installed {
+  border-color: color-mix(in srgb, var(--line) 95%, transparent);
+}
+
+.kbot-pack-library__bucket--download_pending {
+  border-color: color-mix(in srgb, var(--caution-border) 70%, var(--line));
+}
+
+.kbot-pack-library__bucket--purchased {
+  border-color: color-mix(in srgb, var(--line) 95%, transparent);
+}
+
+.kbot-pack-library__id {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.kbot-pack-library__row-copy {
+  flex: 0 0 auto;
+  min-width: 74px;
+}
+
+.kbot-pack-library__copy-feedback {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* ============ row metadata ============ */
+
+.kbot-pack-library__row-meta {
+  display: grid;
+  gap: 6px 14px;
+  grid-template-columns: minmax(90px, auto) minmax(0, 1.6fr);
+  margin: 0;
+  min-width: 0;
+}
+
+.kbot-pack-library__meta {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  min-width: 0;
+}
+
+.kbot-pack-library__meta--wide {
+  grid-column: 1 / -1;
+}
+
+.kbot-pack-library__meta-term {
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--muted) 90%, transparent);
+}
+
+.kbot-pack-library__meta-value {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kbot-pack-library__version,
+.kbot-pack-library__rollback-ref {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.kbot-pack-library__permissions {
+  color: color-mix(in srgb, var(--text) 92%, var(--muted));
+}
+
+/* ============ focus (keyboard-visible, seafoam) ============ */
+
+.kbot-pack-library :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============ narrow / touch layout ============ */
+
+@media (max-width: 640px) {
+  .kbot-pack-library__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .kbot-pack-library__search,
+  .kbot-pack-library__bucket-select,
+  .kbot-pack-library__clear {
+    width: 100%;
+  }
+
+  /* >=44px touch targets. The compound selectors out-rank the shell's
+     generic `.kbot-shell input/select` rules (which sit at 0,3,1 including
+     their :not() attribute arguments) regardless of bundle order. */
+  .kbot-pack-library .kbot-pack-library__toolbar label.kbot-pack-library__search-label > input.kbot-pack-library__search,
+  .kbot-pack-library .kbot-pack-library__toolbar label.kbot-pack-library__bucket-label > select.kbot-pack-library__bucket-select,
+  .kbot-pack-library .kbot-pack-library__toolbar button.kbot-pack-library__clear {
+    min-height: 44px;
+  }
+
+  .kbot-pack-library__count {
+    margin-left: 0;
+  }
+
+  .kbot-pack-library__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kbot-pack-library .kbot-pack-library__row button.kbot-pack-library__row-copy {
+    min-width: 88px;
+    min-height: 44px;
+  }
+}

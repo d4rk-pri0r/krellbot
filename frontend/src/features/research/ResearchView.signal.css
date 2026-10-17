@@ -1,0 +1,645 @@
+/*
+ * Research surface — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted ResearchView. Everything is
+ * namespaced under `.kbot-research` so the shared shell's descendant button
+ * rules (`frontend/src/styles/shell.css`) cannot flatten this hierarchy,
+ * and every color/typography value comes from the shared tokens
+ * (`frontend/src/styles/tokens.css`). No new palette, fonts or artwork.
+ *
+ * Geometry contract: `.kbot-research__trace-button` height (24px) MUST equal
+ * TRACE_ROW_HEIGHT in ResearchView.tsx — the virtualized spacer and row
+ * offsets are computed from that constant and rows overlap if they diverge.
+ * The row also carries the same 24px as an inline height style, which stays
+ * the geometry source of truth; this rule mirrors it for the CSS-only path.
+ */
+
+.kbot-research {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+.kbot-research__intro {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0 2px;
+}
+
+.kbot-research__intro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  max-width: 70ch;
+}
+
+/* ============ setup: readable panels ============ */
+
+.kbot-research__setup {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.kbot-research__panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  background: color-mix(in srgb, var(--navy) 45%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 14px 16px 16px;
+  min-width: 0;
+}
+
+.kbot-research__panel-title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kbot-research__panel-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.kbot-research__window-grid {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-research__window-ms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+/* ============ in-use strip (truthful echo of the next run) ============ */
+
+.kbot-research__inuse {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0;
+  background: color-mix(in srgb, var(--panel) 30%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 12px 0 13px;
+  min-width: 0;
+}
+
+.kbot-research__inuse-item {
+  display: grid;
+  gap: 4px;
+  padding: 0 14px;
+  border-right: 1px solid var(--line);
+  min-width: 0;
+}
+
+.kbot-research__inuse-item:last-child {
+  border-right: 0;
+}
+
+.kbot-research__inuse-label {
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kbot-research__inuse-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* ============ run bar ============ */
+
+.kbot-research__runbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-research .kbot-research__action {
+  /* Re-establish control hierarchy over the shell's generic button rule. */
+  background: color-mix(in srgb, var(--panel) 55%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--text);
+}
+
+.kbot-research .kbot-research__action--primary {
+  background: var(--action-primary-bg);
+  border-color: var(--action-primary-bg);
+  color: var(--action-primary-text);
+  font-weight: 700;
+}
+
+.kbot-research .kbot-research__action--primary:hover:not(:disabled) {
+  border-color: var(--action-primary-bg);
+  filter: brightness(1.06);
+}
+
+.kbot-research__job {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 6px 10px;
+  min-height: 34px;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kbot-research__job b {
+  font-weight: 400;
+  color: var(--seafoam);
+}
+
+.kbot-research__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 34px;
+}
+
+.kbot-research__status-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--seafoam);
+  animation: kbot-research-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes kbot-research-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-research__status-dot {
+    animation: none;
+  }
+}
+
+.kbot-research__alert {
+  margin: 0;
+  color: var(--caution-text);
+  border: 1px solid var(--caution-border);
+  background: var(--caution-bg);
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kbot-research__error {
+  margin: 0;
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* ============ result section ============ */
+
+.kbot-research__result {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.kbot-research__result-context {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0;
+  background: color-mix(in srgb, var(--panel) 30%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 12px 0 13px;
+  min-width: 0;
+}
+
+.kbot-research__result-context-item {
+  display: grid;
+  gap: 4px;
+  padding: 0 14px;
+  border-right: 1px solid var(--line);
+  min-width: 0;
+}
+
+.kbot-research__result-context-item:last-child {
+  border-right: 0;
+}
+
+.kbot-research__result-context-label {
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kbot-research__result-context-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.kbot-research__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.kbot-research__metric {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  background: color-mix(in srgb, var(--navy) 45%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 13px 14px 14px;
+  min-width: 0;
+}
+
+.kbot-research__metric-label {
+  font-size: 10.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kbot-research__metric-value {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  letter-spacing: -0.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.kbot-research__metric--unavailable .kbot-research__metric-value {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kbot-research__metric-source {
+  font-size: 9.5px;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+  overflow-wrap: anywhere;
+}
+
+/* ============ trace ============ */
+
+.kbot-research__trace {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  background: color-mix(in srgb, var(--navy) 45%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 14px 16px 16px;
+  min-width: 0;
+}
+
+.kbot-research__trace-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-research__trace-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.kbot-research__trace-count {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.kbot-research__trace-scroll {
+  border-radius: var(--radius-control);
+}
+
+.kbot-research .kbot-research__trace-button {
+  /* Mirrors TRACE_ROW_HEIGHT (24). Keep both in sync. */
+  height: 24px;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 10px;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  min-height: 0;
+}
+
+.kbot-research .kbot-research__trace-button:hover {
+  background: color-mix(in srgb, var(--panel) 45%, var(--surface));
+  border-color: var(--line);
+}
+
+.kbot-research .kbot-research__trace-button--active,
+.kbot-research .kbot-research__trace-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--seafoam) 14%, var(--surface));
+  border-left-color: var(--seafoam);
+  color: var(--text);
+}
+
+.kbot-research__bar-detail {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  min-width: 0;
+}
+
+.kbot-research__bar-detail-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-research__bar-close {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.kbot-research__conditions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kbot-research__condition {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 7px 10px;
+  font-size: 11.5px;
+  background: color-mix(in srgb, var(--navy) 40%, var(--surface));
+  min-width: 0;
+}
+
+.kbot-research__condition-path {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.kbot-research__condition-outcome {
+  font-family: var(--font-mono);
+  color: var(--text);
+  flex: none;
+}
+
+.kbot-research__condition-outcome--true {
+  color: var(--sage);
+}
+
+.kbot-research__condition-outcome--false,
+.kbot-research__condition-outcome--unknown {
+  color: var(--coral);
+}
+
+/* ============ raw receipt detail (byte-identical, scroll-constrained) ============ */
+
+.kbot-research__receipt {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--navy) 45%, var(--surface));
+  padding: 4px 14px;
+  min-width: 0;
+}
+
+.kbot-research__receipt summary {
+  cursor: pointer;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  border-radius: var(--radius-control);
+}
+
+.kbot-research__receipt summary:hover {
+  color: var(--text);
+}
+
+.kbot-research__receipt[open] summary {
+  color: var(--text);
+}
+
+.kbot-research__export {
+  margin: 0 0 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 420px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--navy);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* ============ fields (shared with ResearchDateWindow) ============ */
+
+.kbot-research__field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.kbot-research__field-label {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.kbot-research__input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.kbot-research__date-window {
+  display: grid;
+  gap: 10px;
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+  min-width: 0;
+}
+
+.kbot-research__date-window-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-research__date-window-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.kbot-research__utc-invalid {
+  color: var(--caution-text);
+  font-size: 11px;
+}
+
+.kbot-research__utc-ordering {
+  margin: 0;
+  color: var(--caution-text);
+  font-size: 11.5px;
+}
+
+.kbot-research__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.kbot-research__revision {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--seafoam);
+  overflow-wrap: anywhere;
+}
+
+.kbot-research__trace-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ============ narrow layout (<= 640px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-research {
+    gap: 12px;
+  }
+
+  .kbot-research__setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kbot-research__window-ms {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kbot-research__metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kbot-research__inuse,
+  .kbot-research__result-context {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kbot-research__inuse-item,
+  .kbot-research__result-context-item {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 9px 14px;
+  }
+
+  .kbot-research__inuse-item:last-child,
+  .kbot-research__result-context-item:last-child {
+    border-bottom: 0;
+  }
+
+  /* Ordinary controls keep >= 44px touch targets; dense trace rows stay
+     deliberately 24px with their own internal scrolling. */
+  .kbot-research .kbot-research__action,
+  .kbot-research__job,
+  .kbot-research__status,
+  .kbot-research__receipt summary {
+    min-height: 44px;
+  }
+
+  .kbot-research__runbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kbot-research .kbot-research__action {
+    width: 100%;
+  }
+
+  .kbot-research__export {
+    font-size: 10.5px;
+  }
+}

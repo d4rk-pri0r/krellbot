@@ -1,0 +1,371 @@
+/*
+ * Armed paper records — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted ArmedRecordsList on the
+ * Workstation paper surface, below the Signal-styled StatusPanel and
+ * LastRunsPanel. Everything is namespaced under `.kbot-paper-armed`
+ * and most rules are written with a nested `.kbot-paper-armed
+ * <element>` prefix so the shared shell's `.kbot-shell table` rules
+ * (frontend/src/styles/shell.css) cannot flatten this hierarchy,
+ * whichever order the CSS chunks are emitted in. Every color and
+ * typography value comes from the shared tokens
+ * (frontend/src/styles/tokens.css); each token carries its approved
+ * Signal fallback so the surface still composes on bases where only
+ * the palette literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - the header panel names the armed list ("Armed paper runs") and
+ *     carries the real armed-run count chip read from the wire; the
+ *     armed list panel and the record-detail panel are grouped
+ *     surface panels below it;
+ *   - the armed wire carries no timestamps (venue, pair, mode, pack,
+ *     entries_paused only — see client.ts / GET /api/v1/paper/armed),
+ *     so the technical identifiers render in restrained IBM Plex Mono
+ *     with tabular numerals and the pair stays bold; no column ever
+ *     invents a stamp;
+ *   - the entries state renders as a status chip — sage for "Entries
+ *     active", coral-derived for "Entries paused" — with the sentence
+ *     itself carrying the state, color only reinforcing it;
+ *   - the selected row carries the seafoam selection affordance and
+ *     every armed row is a >=44px keyboard-focusable tap target;
+ *   - the confirmed empty state ("No packs armed") sits on the
+ *     coral-derived caution tone; loading/unavailable/error
+ *     indicators sit on the muted panel surface;
+ *   - the dense table scrolls inside its own region (explicit
+ *     min-width inside an overflow-x wrapper) instead of widening the
+ *     page; long pairs, venues and pack ids wrap rather than stretch.
+ */
+
+.kbot-paper-armed {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-paper-armed *,
+.kbot-paper-armed *::before,
+.kbot-paper-armed *::after {
+  box-sizing: border-box;
+}
+
+.kbot-paper-armed h2,
+.kbot-paper-armed h3,
+.kbot-paper-armed p {
+  margin: 0;
+}
+
+/* ============ header panel ============ */
+
+.kbot-paper-armed .kbot-paper-armed__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-paper-armed .kbot-paper-armed__head-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-paper-armed .kbot-paper-armed__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+/* Armed-run count chip: the real number of armed records read from
+   the wire; rendered only once the list is actually known. */
+.kbot-paper-armed .kbot-paper-armed__count {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 35%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.kbot-paper-armed .kbot-paper-armed__action {
+  flex: none;
+}
+
+/* ============ body ============ */
+
+.kbot-paper-armed .kbot-paper-armed__body {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* ============ grouped surface panels ============ */
+
+.kbot-paper-armed .kbot-paper-armed__panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  background: color-mix(in srgb, var(--panel, #18354a) 22%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+}
+
+.kbot-paper-armed .kbot-paper-armed__panel-title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+/* ============ loading / error / empty indicators ============ */
+
+/* Muted panel surface: the loading and unavailable indicators sit on
+   a restrained surface card rather than floating copy. */
+.kbot-paper-armed .kbot-paper-armed__empty {
+  margin: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 85%, transparent);
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* Confirmed empty state ("No packs armed"): coral-derived caution
+   tone — never a success color; the sentence carries the state. */
+.kbot-paper-armed .kbot-paper-armed__empty--none {
+  background: color-mix(in srgb, var(--coral, #cc9689) 7%, var(--surface, #14222e));
+  border: 1px dashed color-mix(in srgb, var(--coral, #cc9689) 50%, var(--line, #22465d));
+  color: var(--danger-text, #e0a296);
+}
+
+/* Read failures keep the muted panel surface with a coral-derived
+   border; the message text carries the state. */
+.kbot-paper-armed .kbot-paper-armed__error {
+  margin: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+/* ============ internal scroll region ============ */
+
+.kbot-paper-armed .kbot-paper-armed__scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* ============ armed records table ============ */
+
+.kbot-paper-armed .kbot-paper-armed__table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.kbot-paper-armed .kbot-paper-armed__table th,
+.kbot-paper-armed .kbot-paper-armed__table td {
+  text-align: left;
+  vertical-align: middle;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.kbot-paper-armed .kbot-paper-armed__table th {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 85%, transparent);
+  white-space: nowrap;
+}
+
+/* Every armed row stays a >=44px keyboard-focusable tap target. */
+.kbot-paper-armed .kbot-paper-armed__row {
+  height: 44px;
+  cursor: pointer;
+}
+
+.kbot-paper-armed .kbot-paper-armed__row:hover {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 5%, transparent);
+}
+
+/* Seafoam selection affordance on the open record: the row background
+   shows through the transparent cells. */
+.kbot-paper-armed .kbot-paper-armed__row--selected {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 12%, var(--surface, #14222e));
+}
+
+.kbot-paper-armed .kbot-paper-armed__row--selected > td:first-child {
+  box-shadow: inset 3px 0 0 var(--seafoam, #a8d8d1);
+}
+
+/* Restrained technical mono: venue, mode and pack identifiers. The
+   armed wire carries no timestamps, so nothing here invents one. */
+.kbot-paper-armed .kbot-paper-armed__mono {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-paper-armed .kbot-paper-armed__pair {
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+/* Entries status chip: sage for "Entries active", coral-derived for
+   "Entries paused". The verbatim sentence carries the state. */
+.kbot-paper-armed .kbot-paper-armed__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 90%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 40%, var(--surface, #14222e));
+  color: var(--muted, #abc4d8);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.kbot-paper-armed .kbot-paper-armed__chip--sage {
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 10%, var(--surface, #14222e));
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-paper-armed .kbot-paper-armed__chip--coral {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  color: var(--danger-text, #e0a296);
+}
+
+/* Row-open affordance: a quiet chevron on the trailing edge. */
+.kbot-paper-armed .kbot-paper-armed__row-open {
+  width: 26px;
+  text-align: right;
+  color: var(--muted, #abc4d8);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.kbot-paper-armed .kbot-paper-armed__row--selected .kbot-paper-armed__row-open {
+  color: var(--seafoam, #a8d8d1);
+}
+
+/* ============ record detail panel ============ */
+
+.kbot-paper-armed .kbot-paper-armed__detail-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-paper-armed .kbot-paper-armed__detail dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 14px;
+  margin: 0;
+  min-width: 0;
+}
+
+.kbot-paper-armed .kbot-paper-armed__detail dt {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-paper-armed .kbot-paper-armed__detail dd {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+/* ============ focus visibility ============ */
+
+.kbot-paper-armed :is(button, a):focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.kbot-paper-armed .kbot-paper-armed__row:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: -2px;
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-paper-armed {
+    gap: 12px;
+  }
+
+  .kbot-paper-armed .kbot-paper-armed__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kbot-paper-armed .kbot-paper-armed__head-titles {
+    align-items: baseline;
+  }
+
+  .kbot-paper-armed .kbot-paper-armed__panel {
+    padding: 12px 12px 14px;
+  }
+
+  /* Ordinary controls keep 44px touch targets on narrow screens. */
+  .kbot-paper-armed button {
+    min-height: 44px;
+  }
+
+  /* The dense armed table keeps its internal scroll width on mobile. */
+  .kbot-paper-armed .kbot-paper-armed__table {
+    min-width: 560px;
+  }
+}

@@ -1,0 +1,283 @@
+/*
+ * Deployment history — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted DeploymentHistory list on the
+ * Operations surface. Everything is namespaced under `.kbot-ops__history` and
+ * written with nested `.kbot-ops__history <element>` prefixes so the shared
+ * shell's flat `.kbot-ops__…` and `.kbot-shell button/table` rules
+ * (frontend/src/styles/shell.css, OperationsView.signal.css) cannot flatten
+ * this hierarchy, whichever order the CSS chunks are emitted in. Every
+ * color/typography value comes from the shared tokens
+ * (frontend/src/styles/tokens.css); each token carries its approved Signal
+ * fallback so the surface still composes on bases where only the palette
+ * literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - the header row names the panel and carries the "Local preview" badge
+ *     in the seafoam selection tone, so the honest local-preview state is
+ *     visible above the list in every state (loading/empty/rows/error);
+ *   - Manrope carries all prose (titles, empty/loading copy, the read-only
+ *     helper); deployment ids and UTC timestamps use restrained IBM Plex
+ *     Mono technical labels, not a terminal wall of monospace;
+ *   - the expanded row carries the seafoam selection affordance and every
+ *     row stays a comfortable tap target;
+ *   - the load-failure line keeps the coral-derived caution tone with a
+ *     small inline Retry control that re-invokes the same client read;
+ *   - state is always carried by text (the empty-state sentence, the error
+ *     sentence, the state word), with color as reinforcement only.
+ */
+
+.kbot-ops__history {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__history *,
+.kbot-ops__history *::before,
+.kbot-ops__history *::after {
+  box-sizing: border-box;
+}
+
+/* ============ header row + Local preview badge ============ */
+
+.kbot-ops__history .kbot-ops__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops__history .kbot-ops__history-head .kbot-ops__panel-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__history .kbot-ops__preview-badge {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ============ toolbar / controls ============ */
+
+.kbot-ops__history .kbot-ops__history-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.kbot-ops__history button {
+  min-height: 34px;
+  padding: 6px 14px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.kbot-ops__history button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.kbot-ops__history button:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+/* ============ honest loading / empty states ============ */
+
+.kbot-ops__history .kbot-ops__empty {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 30%, var(--surface, #14222e));
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* ============ failure line + inline Retry ============ */
+
+.kbot-ops__history .kbot-ops__row-result {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--caution-border, #736044);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--caution-bg, #2b271f) 55%, var(--surface, #14222e));
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--caution-text, #e2c193);
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops__history .kbot-ops__retry {
+  flex: none;
+  min-height: 34px;
+  padding: 5px 12px;
+  background: color-mix(in srgb, var(--panel, #18354a) 60%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--caution-text, #e2c193) 45%, var(--line, #22465d));
+  color: var(--caution-text, #e2c193);
+  font-size: 11.5px;
+}
+
+/* ============ rows ============ */
+
+.kbot-ops__history .kbot-ops__table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.kbot-ops__history .kbot-ops__table th {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line, #22465d);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--muted, #abc4d8);
+  white-space: nowrap;
+}
+
+.kbot-ops__history .kbot-ops__table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops__history tr[data-testid^="ops-history-row-"] {
+  cursor: pointer;
+}
+
+.kbot-ops__history tr[data-testid^="ops-history-row-"]:hover td {
+  background: color-mix(in srgb, var(--panel, #18354a) 35%, transparent);
+}
+
+/* The expanded row carries the seafoam selection affordance. */
+.kbot-ops__history tr[data-testid^="ops-history-row-"][aria-expanded="true"] td {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 8%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 35%, var(--line, #22465d));
+}
+
+.kbot-ops__history .kbot-ops__history-id,
+.kbot-ops__history .kbot-ops__history-ts {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kbot-ops__history .kbot-ops__history-state {
+  font-weight: 700;
+}
+
+/* ============ inline detail panel ============ */
+
+.kbot-ops__history .kbot-ops__history-detail {
+  min-width: 0;
+}
+
+.kbot-ops__history .kbot-ops__history-detail .kbot-ops__empty {
+  border-style: solid;
+}
+
+.kbot-ops__history .kbot-ops__history-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+}
+
+.kbot-ops__history .kbot-ops__history-facts dt {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__history .kbot-ops__history-facts dd {
+  margin: 0 0 4px;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+/* ============ read-only helper ============ */
+
+.kbot-ops__history .kbot-ops__kill-helper {
+  margin: 0;
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-ops__history button {
+    min-height: 44px;
+  }
+
+  .kbot-ops__history .kbot-ops__history-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .kbot-ops__history .kbot-ops__row-result {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kbot-ops__history .kbot-ops__table {
+    min-width: 420px;
+  }
+}
