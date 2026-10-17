@@ -245,7 +245,19 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
         setImportError("Invalid JSON");
         return;
       }
+      // An imported file is a seed for a NEW draft, exactly like a starter
+      // pick: the previously-loaded revision identity is dropped so the
+      // next Save creates a fresh revision through client.create instead
+      // of silently editing the reopened one, and stale outcome/error
+      // surfaces from that revision do not leak into the imported draft.
+      setOwnedForm(readOwnedStrategy(pack));
+      setLastSummary(null);
+      setSeededFresh(true);
       setImportError(null);
+      setSaveOutcome(null);
+      setSaveError(null);
+      setValidateError(null);
+      setArmError(null);
       setRawJson(text);
     };
     reader.readAsText(file);
