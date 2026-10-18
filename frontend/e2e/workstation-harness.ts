@@ -34,6 +34,23 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../../..");
 const FRONTEND_DIR = join(REPO_ROOT, "frontend");
 const DIST_DIR = join(FRONTEND_DIR, "dist");
 
+/**
+ * Phase 2 journeys extend this harness (Step 2: "Reuse the harness
+ * from frontend/e2e/ instead of copying it"). These exports expose the
+ * committed build/layout/ensure-built primitives so the journey layer
+ * composes them instead of cloning launch logic. The baseline specs
+ * keep importing only start/stopWorkstationForSpec; nothing about the
+ * baseline behavior changes.
+ */
+export const WORKSTATION_HARNESS_PRIMITIVES = {
+  repoRoot: REPO_ROOT,
+  frontendDir: FRONTEND_DIR,
+  distDir: DIST_DIR,
+  ensureBuilt(): void {
+    ensureBuilt();
+  },
+} as const;
+
 export type WorkstationHandle = {
   baseURL: string;
   homeDir: string;
@@ -75,12 +92,19 @@ function sanitizedEnv(home: string): NodeJS.ProcessEnv {
   return env;
 }
 
-function spawnWorkstation(
+export type WorkstationStartOptions = {
+  port?: number;
+  /** Journey tests supply a guarded spawn; baseline callers keep uv. */
+  spawnProcess?: (home: string, port: number, dist: string) => ChildProcess;
+};
+
+export function spawnWorkstation(
   home: string,
+  options: WorkstationStartOptions = {},
 ): Promise<{ url: string; child: ChildProcess }> {
   return new Promise((resolveStart, rejectStart) => {
     const env = sanitizedEnv(home);
-    const proc = spawn(
+    const proc = options.spawnProcess ? options.spawnProcess(home, options.port ?? 0, DIST_DIR) : spawn(
       "uv",
       [
         "run",
@@ -89,7 +113,7 @@ function spawnWorkstation(
         "krellbot",
         "workstation",
         "--port",
-        "0",
+        String(options.port ?? 0),
         "--dist",
         DIST_DIR,
       ],
@@ -134,7 +158,7 @@ function spawnWorkstation(
   });
 }
 
-export async function startWorkstationForSpec(): Promise<WorkstationHandle> {
+export async function startWorkstationForSpec(options: WorkstationStartOptions = {}): Promise<WorkstationHandle> {
   ensureBuilt();
   const homeDir = mkdtempSync(join(tmpdir(), "kb-e2e-"));
   const dataDir = join(homeDir, "data");
@@ -143,7 +167,7 @@ export async function startWorkstationForSpec(): Promise<WorkstationHandle> {
   const rows100kCsv = join(dataDir, "rows100k.csv");
   createCsv(editCsv, { rows: 400 });
   createCsv(rows100kCsv, { rows: 100_000 });
-  const started = await spawnWorkstation(homeDir);
+  const started = await spawnWorkstation(homeDir, options);
   writeFileSync(join(dataDir, ".ns20-port"), started.url, "utf8");
   process.env.KRELLBOT_E2E_BASE_URL = started.url;
   process.env.KRELLBOT_E2E_EDIT_CSV = editCsv;
