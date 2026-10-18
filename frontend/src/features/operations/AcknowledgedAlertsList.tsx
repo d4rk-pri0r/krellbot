@@ -62,6 +62,10 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
 
   const list = useMemo(() => resolveListSource(client), [client]);
 
+  function toggleDetail(id: string): void {
+    setOpenId((prev) => (prev === id ? null : id));
+  }
+
   useEffect(() => {
     let active = true;
     async function refresh(): Promise<void> {
@@ -189,8 +193,21 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
               <tr
                 key={alert.id}
                 data-testid={rowTestId(alert.id)}
-                onClick={() => {
-                  setOpenId((prev) => (prev === alert.id ? null : alert.id));
+                tabIndex={0}
+                role="button"
+                aria-expanded={openId === alert.id}
+                onClick={() => toggleDetail(alert.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    toggleDetail(alert.id);
+                  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    const next = event.key === "ArrowDown"
+                      ? event.currentTarget.nextElementSibling
+                      : event.currentTarget.previousElementSibling;
+                    if (next instanceof HTMLElement) next.focus();
+                  }
                 }}
               >
                 <td>{alert.id}</td>
