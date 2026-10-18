@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { useRef, useState, type JSX } from "react";
 import { BrandMark } from "../components/brand/BrandMark";
 import type { View } from "./Navigation";
 import "./AppHome.signal.css";
@@ -68,7 +68,7 @@ type AppHomeProps = {
    */
   sessionFailed?: boolean;
   /** Offered only on failure; re-reads the CSRF for the existing session. */
-  onRecoverSession?: () => void;
+  onRecoverSession?: () => Promise<{ ok: boolean; error?: string }>;
 };
 
 export function AppHome({
@@ -77,6 +77,24 @@ export function AppHome({
   sessionFailed = false,
   onRecoverSession,
 }: AppHomeProps): JSX.Element {
+  const [recoverError, setRecoverError] = useState<string | null>(null);
+  const recoveryAttempt = useRef(0);
+
+  async function recoverSession(): Promise<void> {
+    const attempt = ++recoveryAttempt.current;
+    setRecoverError(null);
+    try {
+      const result = await onRecoverSession?.();
+      if (attempt === recoveryAttempt.current) {
+        setRecoverError(result?.ok ? null : result?.error || "recovery refused");
+      }
+    } catch (error) {
+      if (attempt === recoveryAttempt.current) {
+        setRecoverError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+
   return (
     <section
       className="app-home"
@@ -130,10 +148,15 @@ export function AppHome({
                 type="button"
                 className="app-home__recover"
                 data-testid="app-home-recover-session"
-                onClick={onRecoverSession}
+                onClick={() => { void recoverSession(); }}
               >
                 Recover the local session
               </button>
+            ) : null}
+            {recoverError !== null ? (
+              <p data-testid="apphome-recover-error" role="alert">
+                Recovery failed: {recoverError}
+              </p>
             ) : null}
           </div>
         ) : null}
