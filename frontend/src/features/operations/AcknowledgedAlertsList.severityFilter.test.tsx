@@ -161,6 +161,10 @@ describe("AcknowledgedAlertsList severity filter and search", () => {
       target: { value: "warning" },
     });
     const empty = screen.getByTestId("ops-acknowledged-empty");
+    expect(empty.id).not.toBe("");
+    for (const testId of ["ops-acknowledged-filter-severity", "ops-acknowledged-filter-query"]) {
+      expect(screen.getByTestId(testId).getAttribute("aria-describedby")).toBe(empty.id);
+    }
     expect(empty.textContent).toBe("No acknowledged alerts match the current filters.");
     expect(panel.textContent ?? "").not.toContain("No acknowledged alerts.");
     expect(rowsIn(panel)).toHaveLength(0);

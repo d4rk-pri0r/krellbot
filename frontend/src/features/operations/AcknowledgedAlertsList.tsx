@@ -211,7 +211,7 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
         </table>
       )}
       {isEmpty ? (
-        <p className="kbot-ops__alerts-empty" data-testid="ops-acknowledged-empty">
+        <p id="ops-acknowledged-empty" className="kbot-ops__alerts-empty" data-testid="ops-acknowledged-empty">
           {ACK_FILTERED_EMPTY_TEXT}
         </p>
       ) : null}
