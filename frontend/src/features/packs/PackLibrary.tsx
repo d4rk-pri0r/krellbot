@@ -341,10 +341,18 @@ function PackRowItem({ row, copied, copyFailed, onCopy }: PackRowItemProps): JSX
   const copyErrorId = useId();
   const priorRevision =
     row.rollback_ref !== null ? row.rollback_ref.prior_revision_id : "—";
+  // Screen-reader summary of the whole row, so AT hears one concise label
+  // on the listitem instead of tabbing the bucket, id, copy and dl children.
+  const rowSummary = `Pack ${row.pack_id}, bucket ${bucketLabel(row.bucket)}, version ${
+    row.version ?? "unspecified"
+  }, permissions ${
+    row.permissions.length > 0 ? row.permissions.join(", ") : "none"
+  }, prior revision ${priorRevision}`;
   return (
     <li
       className="kbot-pack-library__row"
       data-testid={`pack-library-row-${row.pack_id}`}
+      aria-label={rowSummary}
     >
       <div className="kbot-pack-library__row-head">
         <span

@@ -36,9 +36,12 @@ export function AlertsFilter({ alerts, children }: AlertsFilterProps) {
 
   return (
     <div className="kbot-ops__alerts-filter" data-testid="ops-alerts-filter">
-      <label>
+      <label id="ops-alerts-filter-severity-label" htmlFor="ops-alerts-filter-severity-input">
         Severity
         <select
+          id="ops-alerts-filter-severity-input"
+          aria-label="Filter alerts by severity"
+          aria-describedby={isEmpty ? "ops-alerts-empty-id" : undefined}
           data-testid="ops-alerts-filter-severity"
           value={severity}
           onChange={(event) => setSeverity(event.target.value)}
@@ -50,9 +53,12 @@ export function AlertsFilter({ alerts, children }: AlertsFilterProps) {
           ))}
         </select>
       </label>
-      <label>
+      <label id="ops-alerts-filter-query-label" htmlFor="ops-alerts-filter-query-input">
         Search
         <input
+          id="ops-alerts-filter-query-input"
+          aria-label="Search alerts by code or venue"
+          aria-describedby={isEmpty ? "ops-alerts-empty-id" : undefined}
           data-testid="ops-alerts-filter-query"
           type="text"
           value={query}
@@ -73,7 +79,7 @@ export function AlertsFilter({ alerts, children }: AlertsFilterProps) {
         </button>
       ) : null}
       {isEmpty ? (
-        <p className="kbot-ops__alerts-empty" data-testid="ops-alerts-empty">
+        <p id="ops-alerts-empty-id" className="kbot-ops__alerts-empty" data-testid="ops-alerts-empty">
           {EMPTY_TEXT}
         </p>
       ) : null}
