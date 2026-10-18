@@ -84,7 +84,9 @@ export function SavedStrategyLibrary({
   const [error, setError] = useState<string | null>(null);
   const [reopenError, setReopenError] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const [openingRevision, setOpeningRevision] = useState<string | null>(null);
+  const [reopeningRevision, setOpeningRevision] = useState<string | null>(null);
+  const [copyingRevisions, setCopyingRevisions] = useState<string[]>([]);
+  const openingRevision = reopeningRevision ?? copyingRevisions[0] ?? null;
   const [compareRow, setCompareRow] = useState<OwnedDraftSummary | null>(null);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<"all" | OwnedDraftSummary["state"]>("all");
@@ -152,11 +154,11 @@ export function SavedStrategyLibrary({
   };
 
   const handleCopyAsNew = (summary: OwnedDraftSummary): void => {
-    if (openingRevision !== null) {
+    if (reopeningRevision !== null || copyingRevisions.includes(summary.revision_id)) {
       return;
     }
     setCopyError(null);
-    setOpeningRevision(summary.revision_id);
+    setCopyingRevisions((pending) => [...pending, summary.revision_id]);
     client
       .getJson(summary.revision_id)
       .then((loaded) => {
@@ -171,7 +173,9 @@ export function SavedStrategyLibrary({
         );
       })
       .finally(() => {
-        setOpeningRevision(null);
+        setCopyingRevisions((pending) =>
+          pending.filter((revisionId) => revisionId !== summary.revision_id),
+        );
       });
   };
 
@@ -215,9 +219,11 @@ export function SavedStrategyLibrary({
           <div className="kbot-strategy-library__search">
             <input
               type="search"
+              id="library-search"
               className="kbot-strategy-library__search-input"
               data-testid="library-search"
               aria-label="Search saved strategies"
+              aria-keyshortcuts="Control+F Meta+F"
               placeholder="Search label, id, pair or timeframe"
               value={query}
               onChange={(event) => {
@@ -235,6 +241,8 @@ export function SavedStrategyLibrary({
                 type="button"
                 className="kbot-strategy-library__search-clear"
                 data-testid="library-search-clear"
+                aria-label="Clear search query"
+                aria-keyshortcuts="Escape"
                 onClick={clearQuery}
               >
                 Clear search
@@ -247,6 +255,7 @@ export function SavedStrategyLibrary({
               id="library-state-filter"
               data-testid="library-state-filter"
               className="kbot-strategy-library__select kbot-strategy-library__search-input"
+              aria-keyshortcuts="Mod+Alt+S"
               value={stateFilter}
               onChange={(event) => {
                 setStateFilter(event.target.value as "all" | OwnedDraftSummary["state"]);
@@ -320,6 +329,7 @@ export function SavedStrategyLibrary({
               <ul className="kbot-strategy-library__list">
                 {group.revisions.map((row) => {
                   const state = summarizeDraftState(row.state);
+                  const copying = copyingRevisions.includes(row.revision_id);
                   return (
                     <li
                       key={row.revision_id}
@@ -327,7 +337,7 @@ export function SavedStrategyLibrary({
                       data-testid="library-row"
                       data-revision-id={row.revision_id}
                       aria-busy={
-                        openingRevision === row.revision_id || undefined
+                        reopeningRevision === row.revision_id || undefined
                       }
                     >
                       <div className="kbot-strategy-library__row-main">
@@ -398,12 +408,24 @@ export function SavedStrategyLibrary({
                             onClick={() => {
                               handleCopyAsNew(row);
                             }}
-                            disabled={openingRevision !== null}
+                            disabled={
+                              openingRevision !== null &&
+                              (reopeningRevision !== null || copying)
+                            }
+                            aria-busy={copying || undefined}
                           >
-                            Copy as new
+                            {copying ? "Copying as new…" : "Copy as new"}
                           </button>
                         ) : null}
                       </div>
+                      {onCopyAsNew ? (
+                        <span
+                          className="kbot-strategy-library__row-busy-status"
+                          aria-live="polite"
+                        >
+                          {copying ? "Copying as new…" : ""}
+                        </span>
+                      ) : null}
                     </li>
                   );
                 })}

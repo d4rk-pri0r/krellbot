@@ -70,7 +70,7 @@ async function rejectRequest(gate: Deferred<JobRow[]>, reason: unknown): Promise
 }
 
 describe("JobsDrawer", () => {
-  it("shows a job returned by the client", async () => {
+  it("shows a job returned by the client under the Local preview badge", async () => {
     render(
       <JobsDrawer
         client={{
@@ -82,7 +82,12 @@ describe("JobsDrawer", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /jobs/i }));
     expect((await screen.findByTestId("job-row")).textContent).toContain("job-1 Research backtest (succeeded)");
-    expect(screen.queryByText("No jobs")).toBeNull();
+    const badge = screen.getByTestId("jobs-local-preview");
+    expect(badge.textContent).toBe("Local preview");
+    // Selection affordance: each row is a keyboard-reachable selection target
+    // carrying the shared sage/seafoam selection pattern from the CSS layer.
+    expect(screen.getByTestId("job-row").tabIndex).toBe(0);
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
   });
 
   it("does not claim a snapshot while the jobs request is unsettled", async () => {
@@ -95,8 +100,8 @@ describe("JobsDrawer", () => {
     render(<JobsDrawer client={{ list }} />);
     openJobsDrawer();
     expect(list).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("jobs-loading").textContent).toMatch(/loading/i);
-    expect(screen.queryByText("No jobs")).toBeNull();
+    expect(screen.getByTestId("jobs-loading").textContent).toBe("Loading jobs…");
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
     expect(screen.queryByTestId("job-row")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     resolveList([{ id: "job-1", kind: "research.backtest", state: "succeeded" }]);
@@ -125,11 +130,18 @@ describe("JobsDrawer", () => {
     ]);
   });
 
-  it("keeps a valid empty jobs response empty", async () => {
+  it("keeps a valid empty jobs response empty with truthful local-preview copy", async () => {
     vi.stubGlobal("fetch", stubJobsFetch({ jobs: [] }));
     render(<JobsDrawer />);
     openJobsDrawer();
-    expect(await screen.findByText("No jobs")).not.toBeNull();
+    expect(await screen.findByTestId("jobs-empty")).not.toBeNull();
+    // The short empty title stays (pinned by the shell-level tests); the
+    // truthful local-preview sentence sits beside it in the same state block.
+    expect(screen.getByText("No jobs")).not.toBeNull();
+    expect(
+      screen.getByText("No jobs yet. Local preview only — live trading unavailable."),
+    ).not.toBeNull();
+    expect(screen.getByTestId("jobs-local-preview").textContent).toBe("Local preview");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -147,16 +159,22 @@ describe("JobsDrawer", () => {
       vi.stubGlobal("fetch", stubJobsFetch(envelope));
       render(<JobsDrawer />);
       openJobsDrawer();
-      expect(await screen.findByRole("alert")).not.toBeNull();
-      expect(screen.queryByText("No jobs")).toBeNull();
+      const alert = await screen.findByTestId("jobs-error");
+      expect(alert.getAttribute("role")).toBe("alert");
+      expect(alert.textContent).toContain(
+        "Could not load jobs — check the workstation is running.",
+      );
+      expect(screen.queryByTestId("jobs-empty")).toBeNull();
       expect(screen.queryByTestId("job-row")).toBeNull();
     }
     cleanup();
     vi.stubGlobal("fetch", stubBrokenJsonFetch());
     render(<JobsDrawer />);
     openJobsDrawer();
-    expect(await screen.findByRole("alert")).not.toBeNull();
-    expect(screen.queryByText("No jobs")).toBeNull();
+    expect((await screen.findByTestId("jobs-error")).textContent).toContain(
+      "Could not load jobs — check the workstation is running.",
+    );
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
   });
 
   it("rejects malformed job rows without returning a partial snapshot", async () => {
@@ -173,8 +191,12 @@ describe("JobsDrawer", () => {
       vi.stubGlobal("fetch", stubJobsFetch(snapshot));
       render(<JobsDrawer />);
       openJobsDrawer();
-      expect(await screen.findByRole("alert")).not.toBeNull();
-      expect(screen.queryByText("No jobs")).toBeNull();
+      const alert = await screen.findByTestId("jobs-error");
+      expect(alert.getAttribute("role")).toBe("alert");
+      expect(alert.textContent).toContain(
+        "Could not load jobs — check the workstation is running.",
+      );
+      expect(screen.queryByTestId("jobs-empty")).toBeNull();
       expect(screen.queryByTestId("job-row")).toBeNull();
     }
   });
@@ -203,7 +225,7 @@ describe("JobsDrawer", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<JobsDrawer />);
     openJobsDrawer();
-    await screen.findByText("No jobs");
+    await screen.findByTestId("jobs-empty");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/jobs", {
       method: "GET",
@@ -251,7 +273,8 @@ describe("JobsDrawer", () => {
       credentials: "include",
       headers: { "X-Krellbot-CSRF": expect.any(String) },
     });
-    expect(screen.queryByText("No jobs")).toBeNull();
+    expect(screen.getByTestId("jobs-refresh")).not.toBeNull();
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -263,7 +286,7 @@ describe("JobsDrawer", () => {
     await settle();
     expect(fetchMock).not.toHaveBeenCalled();
     openJobsDrawer();
-    await screen.findByText("No jobs");
+    await screen.findByTestId("jobs-empty");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: /close jobs drawer/i }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -287,7 +310,7 @@ describe("JobsDrawer", () => {
     openJobsDrawer();
     expect(screen.queryByTestId("job-row")).toBeNull();
     expect(screen.getByTestId("jobs-loading").textContent).toMatch(/loading/i);
-    expect(screen.queryByText("No jobs")).toBeNull();
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(list).toHaveBeenCalledTimes(2);
   });
@@ -304,7 +327,7 @@ describe("JobsDrawer", () => {
     refreshJobs();
     expect(screen.queryByTestId("job-row")).toBeNull();
     expect(screen.getByTestId("jobs-loading").textContent).toMatch(/loading/i);
-    expect(screen.queryByText("No jobs")).toBeNull();
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     await resolveRows(gate, [{ id: "job-2", kind: "research.mro.sweep", state: "queued" }]);
     expect(jobTexts()).toEqual(["job-2 Research mro sweep (queued)"]);
@@ -346,10 +369,10 @@ describe("JobsDrawer", () => {
     expect(jobTexts()).toEqual(["job-new Research backtest (succeeded)"]);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
-    expect(screen.queryByText("No jobs")).toBeNull();
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
   });
 
-  it("keeps a late older success from clobbering a newer failure", async () => {
+  it("keeps a late older success from clobbering a newer blocked read", async () => {
     const older = deferred<JobRow[]>();
     const newer = deferred<JobRow[]>();
     const list = vi
@@ -359,19 +382,23 @@ describe("JobsDrawer", () => {
     render(<JobsDrawer client={{ list }} />);
     openJobsDrawer();
     refreshJobs();
-    await rejectRequest(newer, new Error("session expired"));
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/unavailable/i);
-    expect(screen.queryByText("No jobs")).toBeNull();
+    // A blocked (403) read reports the honest local-only blocked state,
+    // never a generic failure and never an invented snapshot.
+    await rejectRequest(newer, new Error("jobs failed: 403"));
+    const alert = await screen.findByTestId("jobs-error");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toContain("Jobs blocked — local-only preview.");
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
     expect(screen.queryByTestId("job-row")).toBeNull();
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
     await resolveRows(older, [{ id: "job-old", kind: "research.backtest", state: "succeeded" }]);
     expect(screen.queryByTestId("job-row")).toBeNull();
-    expect(screen.queryByRole("alert")).not.toBeNull();
-    expect(screen.getByRole("alert").textContent).toMatch(/unavailable/i);
+    expect(screen.getByTestId("jobs-error").textContent).toContain(
+      "Jobs blocked — local-only preview.",
+    );
   });
 
-  it("reports a failed refresh as unavailable and recovers with an explicit retry", async () => {
+  it("reports a failed refresh as a coral failure line and recovers with an explicit retry", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -390,16 +417,20 @@ describe("JobsDrawer", () => {
     openJobsDrawer();
     expect(await screen.findAllByTestId("job-row")).toHaveLength(1);
     refreshJobs();
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/unavailable/i);
+    const alert = await screen.findByTestId("jobs-error");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toContain(
+      "Could not load jobs — check the workstation is running.",
+    );
     expect(alert.textContent).toMatch(/503/);
-    expect(screen.queryByText("No jobs")).toBeNull();
+    expect(screen.queryByTestId("jobs-empty")).toBeNull();
     expect(screen.queryByTestId("job-row")).toBeNull();
     expect(screen.queryByTestId("jobs-loading")).toBeNull();
-    refreshJobs();
+    // The inline Retry affordance re-invokes the same load path.
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(await screen.findAllByTestId("job-row")).toHaveLength(1);
     expect(jobTexts()).toEqual(["job-2 Research mro sweep (queued)"]);
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByTestId("jobs-error")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
