@@ -211,6 +211,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
   const [resumeResults, setResumeResults] = useState<
     Record<string, { code: string; ok: boolean; message: string }>
   >({});
+  const [promoteErrors, setPromoteErrors] = useState<Record<string, string>>({});
   const [pauseErrors, setPauseErrors] = useState<Record<string, string>>({});
   const [resumeErrors, setResumeErrors] = useState<Record<string, string>>({});
   const [ackErrors, setAckErrors] = useState<Record<string, string>>({});
@@ -221,14 +222,33 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
 
   const handlePromote = useCallback(
     async (venue: string, pair: string): Promise<void> => {
-      const result = await client.promote(venue, pair, PROMO_REVISION_ID);
       const key = promoteButtonId(venue, pair);
-      const code = typeof result.code === "string" ? result.code : "refused";
-      const message = typeof result.message === "string" ? result.message : "live promotion refused";
-      setPromoteResults((prev) => ({ ...prev, [key]: { code, message } }));
-      await refresh();
+      if (pending.has(key)) {
+        return;
+      }
+      setPending((prev) => new Set(prev).add(key));
+      clearRowEntry(setPromoteResults, key);
+      try {
+        const result = await client.promote(venue, pair, PROMO_REVISION_ID);
+        const code = typeof result.code === "string" ? result.code : "refused";
+        const message = typeof result.message === "string" ? result.message : "live promotion refused";
+        setPromoteResults((prev) => ({ ...prev, [key]: { code, message } }));
+        clearRowEntry(setPromoteErrors, key);
+      } catch (err) {
+        setPromoteErrors((prev) => ({
+          ...prev,
+          [key]: `Promote failed: ${err instanceof Error ? err.message : String(err)}`,
+        }));
+      } finally {
+        await refresh();
+        setPending((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
     },
-    [client, refresh],
+    [client, refresh, pending],
   );
 
   const handlePause = useCallback(
@@ -550,6 +570,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                         <button
                           type="button"
                           data-testid={promoteButtonId(deployment.venue, deployment.pair)}
+                          disabled={pending.has(promoKey)}
                           onClick={() => {
                             void handlePromote(deployment.venue, deployment.pair);
                           }}
@@ -557,6 +578,11 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                           Promote to live candidate
                         </button>
                       </div>
+                      {promoteErrors[promoKey] ? (
+                        <p className="kbot-ops__row-result" role="alert" data-testid="ops-promote-error">
+                          {promoteErrors[promoKey]}
+                        </p>
+                      ) : null}
                       {promoteResult ? (
                           <p
                             className="kbot-ops__row-result"
