@@ -163,9 +163,23 @@ export function StudioNodeInspector({
           max={MAX_INDICATOR_LEN}
           value={draft}
           onChange={handleChange}
+          aria-invalid={error !== null}
+          aria-describedby={
+            error !== null
+              ? "studio-node-inspector-len-error"
+              : "studio-indicator-len-hint"
+          }
         />
+        <p
+          id="studio-indicator-len-hint"
+          className="kbot-studio-node-inspector__context"
+        >
+          Whole number between 2 and{" "}
+          <span>600</span>
+        </p>
         {error ? (
           <p
+            id="studio-node-inspector-len-error"
             data-testid="studio-node-inspector-len-error"
             className="kbot-studio-node-inspector__error"
             role="alert"

@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type JSX } from "react";
+import "./EditorInlineStopControl.signal.css";
 import type {
   PaperClient,
   PaperCommandResult,
@@ -23,12 +24,10 @@ type EntriesSentence = "Entries active" | "Entries paused";
 type CommandName = "pause" | "resume" | "disarm" | "raise_stop";
 
 /**
- * The control's own pending slot: real paper commands, plus the one-shot
- * post-Arm status read the Editor's ``refreshSignal`` bump triggers. It is
- * NOT a CommandName because it never mutates server state — it only gates
- * the buttons for the duration of the reconciliation read.
+ * The pending slot also covers manual and post-Arm status reads, which
+ * gate controls without mutating server state.
  */
-type PendingName = CommandName | "post_arm_refresh";
+type PendingName = CommandName | "refresh" | "post_arm_refresh";
 
 type InlineState = {
   status: PaperStatus | null;
@@ -38,6 +37,14 @@ type InlineState = {
   unavailable: boolean;
   unknownOutcome: string | null;
   stopAt: string | null;
+  /**
+   * Presentation-only: true when the remembered stopAt was confirmed in an
+   * earlier arm and no raise_stop has been confirmed in the current one.
+   * The status read never carries the resting stop, so the display must
+   * label that value as history rather than as backend protection this
+   * read supplies. Never gates any client call, control, or persisted value.
+   */
+  stopAtFromEarlierArm: boolean;
 };
 
 const INITIAL_STATE: InlineState = {
@@ -48,6 +55,7 @@ const INITIAL_STATE: InlineState = {
   unavailable: false,
   unknownOutcome: null,
   stopAt: null,
+  stopAtFromEarlierArm: false,
 };
 
 type InlineAction =
@@ -61,6 +69,7 @@ type InlineAction =
       status: PaperStatus | null;
       sentence?: EntriesSentence;
       stopAt?: string | null;
+      stopAtFromEarlierArm?: boolean;
     };
 
 /**
@@ -181,12 +190,15 @@ function reducer(state: InlineState, action: InlineAction): InlineState {
     case "command-ok": {
       return {
         ...state,
-        pending: null,
+        // Keep the intent busy until its reconciliation read settles.
+        pending: state.pending === "disarm" ? null : state.pending,
         errorMessage: null,
         unknownOutcome: null,
         status: action.status,
         sentence: action.sentence ?? state.sentence,
         stopAt: action.stopAt !== undefined ? action.stopAt : state.stopAt,
+        stopAtFromEarlierArm:
+          action.stopAtFromEarlierArm ?? state.stopAtFromEarlierArm,
       };
     }
   }
@@ -303,6 +315,7 @@ export function EditorInlineStopControl({
     }
     inFlightRef.current = true;
     const epoch = ++epochRef.current;
+    dispatch({ type: "command-start", command: "refresh" });
     try {
       const next = await paperClient.getStatus();
       if (epoch !== epochRef.current) {
@@ -333,6 +346,7 @@ export function EditorInlineStopControl({
       status: PaperStatus | null;
       sentence?: EntriesSentence;
       stopAt?: string | null;
+      stopAtFromEarlierArm?: boolean;
     },
   ): Promise<void> => {
     if (inFlightRef.current) {
@@ -378,6 +392,7 @@ export function EditorInlineStopControl({
         status: applied.status,
         sentence: applied.sentence,
         stopAt: applied.stopAt,
+        stopAtFromEarlierArm: applied.stopAtFromEarlierArm,
       });
       if (command !== "disarm") {
         // Reconcile with the server after a confirmed command: a single
@@ -433,9 +448,11 @@ export function EditorInlineStopControl({
         // pack anymore, so the controls disappear. The last raised stop is
         // deliberately kept in memory so a re-arm in this same control
         // re-displays it without a manual re-raise; a new confirmed raise
-        // overwrites it.
+        // overwrites it. Mark it as history: the re-arm status read that
+        // follows cannot confirm it as the current backend stop.
         status: { schema_version: "1", armed: false },
         sentence: "Entries active" as EntriesSentence,
+        stopAtFromEarlierArm: true,
       }),
     );
   };
@@ -469,19 +486,71 @@ export function EditorInlineStopControl({
         // The success message echo is the only in-tree source for the
         // new resting stop ("stop set: <venue> <pair> -> <new_stop>").
         stopAt: stopFromRaiseStopMessage(result.message),
+        stopAtFromEarlierArm: false,
       }),
     );
   };
 
   const busy = state.pending !== null;
+  const busyLabel =
+    state.pending === null
+      ? ""
+      : {
+          pause: "Pausing…",
+          resume: "Resuming…",
+          disarm: "Disarming…",
+          raise_stop: "Applying…",
+          refresh: "Refreshing…",
+          post_arm_refresh: "Refreshing…",
+        }[state.pending];
+
+  // Scoped Signal status vocabulary: the modifier is derived only from the
+  // confirmed backend status, never from color alone, and never claims a
+  // state while availability is unknown (status === null covers both the
+  // initial read and the unavailable path; the reducer drops the cached
+  // status rather than keep acting on it).
+  const statusClassName = [
+    "kbot-shell__inline-stop-status",
+    armed
+      ? state.sentence === "Entries paused"
+        ? "kbot-shell__inline-stop-status--armed kbot-shell__inline-stop-status--paused"
+        : "kbot-shell__inline-stop-status--armed"
+      : state.status !== null
+        ? "kbot-shell__inline-stop-status--disarmed"
+        : "",
+  ]
+    .filter((part) => part.length > 0)
+    .join(" ");
+
+  // The human-readable state sentence. A refusal is the most recent settled
+  // outcome, so it outranks the remembered stop echo; the armed line names
+  // the venue/pair the control acts on (both guaranteed non-empty by the
+  // `armed` guard). Loading/unavailable placeholders never invent a state.
+  // A remembered stop confirmed in an earlier arm is labeled as history:
+  // the status read does not supply the current backend stop, so it must
+  // never be captioned as this arm's protection.
+  const caption =
+    state.errorMessage !== null
+      ? `Refused: ${state.errorMessage}`
+      : armed && state.stopAt !== null
+        ? state.stopAtFromEarlierArm
+          ? `Last confirmed raise: ${state.stopAt} · this status read does not supply the current backend stop`
+          : `Stop raised to ${state.stopAt}`
+        : armed && state.status !== null
+          ? `Armed at ${state.status.venue} ${state.status.pair} · ${state.sentence}`
+          : state.unavailable
+            ? "Status read failed; refresh to reconcile"
+            : state.status === null
+              ? "Reading paper status…"
+              : "Disarmed";
 
   return (
     <div
-      className="kbot-strategy-editor__inline-stop"
+      className="kbot-shell__inline-stop-root"
       data-testid="editor-inline-stop"
     >
-      <p
-        className="kbot-strategy-editor__inline-stop-state"
+      <span
+        className={statusClassName}
         data-testid={
           armed
             ? "editor-inline-stop-entries"
@@ -499,11 +568,21 @@ export function EditorInlineStopControl({
             : state.status === null
               ? "Checking paper status…"
               : "No pack armed"}
-      </p>
-      <div className="kbot-strategy-editor__inline-stop-actions">
+      </span>
+      <span
+        className="kbot-shell__inline-stop-busy-status"
+        role="status"
+        aria-live="polite"
+      >
+        {busyLabel}
+      </span>
+      <div className="kbot-shell__inline-stop-row">
         <button
           type="button"
+          className="kbot-shell__inline-stop-pause"
           data-testid="editor-inline-stop-pause"
+          aria-busy={state.pending === "pause"}
+          aria-keyshortcuts="Enter Space"
           disabled={!armed || busy}
           onClick={() => {
             void handlePause();
@@ -513,7 +592,10 @@ export function EditorInlineStopControl({
         </button>
         <button
           type="button"
+          className="kbot-shell__inline-stop-resume"
           data-testid="editor-inline-stop-resume"
+          aria-busy={state.pending === "resume"}
+          aria-keyshortcuts="Enter Space"
           disabled={!armed || busy}
           onClick={() => {
             void handleResume();
@@ -523,7 +605,10 @@ export function EditorInlineStopControl({
         </button>
         <button
           type="button"
+          className="kbot-shell__inline-stop-disarm"
           data-testid="editor-inline-stop-disarm"
+          aria-busy={state.pending === "disarm"}
+          aria-keyshortcuts="Enter Space"
           disabled={!armed || busy}
           onClick={() => {
             void handleDisarm();
@@ -534,18 +619,27 @@ export function EditorInlineStopControl({
         {armed || state.unavailable ? (
           <button
             type="button"
+            className="kbot-shell__inline-stop-refresh"
             data-testid="editor-inline-stop-refresh"
+            aria-busy={state.pending === "refresh"}
+            aria-keyshortcuts="Enter Space"
             disabled={busy}
             onClick={() => {
               void refreshStatus();
             }}
           >
-            Refresh status
+            {state.pending === "refresh" ? "Refreshing…" : "Refresh status"}
           </button>
         ) : null}
       </div>
+      <span
+        className="kbot-shell__inline-stop-caption"
+        data-testid="inline-stop-caption"
+      >
+        {caption}
+      </span>
       {armed ? (
-        <div className="kbot-strategy-editor__inline-stop-raise">
+        <div className="kbot-shell__inline-stop-raise">
           <label
             htmlFor="editor-inline-stop-new-stop"
             data-testid="editor-inline-stop-new-stop-label"
@@ -557,6 +651,7 @@ export function EditorInlineStopControl({
             type="text"
             inputMode="decimal"
             autoComplete="off"
+            className="kbot-shell__inline-stop-input"
             data-testid="editor-inline-stop-new-stop"
             disabled={busy}
             value={stopInput}
@@ -568,7 +663,19 @@ export function EditorInlineStopControl({
           />
           <button
             type="button"
+            className={[
+              "kbot-shell__inline-stop-apply",
+              state.errorMessage !== null
+                ? "kbot-shell__inline-stop-apply--refused"
+                : state.stopAt !== null
+                  ? "kbot-shell__inline-stop-apply--success"
+                  : "",
+            ]
+              .filter((part) => part.length > 0)
+              .join(" ")}
             data-testid="editor-inline-stop-apply"
+            aria-busy={state.pending === "raise_stop"}
+            aria-keyshortcuts="Enter Space"
             disabled={!canRaiseStop || busy || !stopInputValid}
             title={
               !armed
@@ -586,7 +693,14 @@ export function EditorInlineStopControl({
             {state.pending === "raise_stop" ? "Applying…" : "Apply new stop"}
           </button>
           {armed && state.stopAt !== null ? (
-            <span data-testid="editor-inline-stop-at">
+            <span
+              data-testid="editor-inline-stop-at"
+              title={
+                state.stopAtFromEarlierArm
+                  ? "Historical confirmation from an earlier arm; the current status read does not supply the backend stop"
+                  : undefined
+              }
+            >
               stop at {state.stopAt}
             </span>
           ) : null}

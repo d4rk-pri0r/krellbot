@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, type JSX } from "react";
+import { useEffect, useReducer, useRef, useState, type JSX } from "react";
 import "./RehearsalPanel.signal.css";
 import type {
   RehearsalClient,
@@ -171,13 +171,39 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
   }
 }
 
+const REHEARSAL_COMMAND_BUSY_LABELS = {
+  start: "Starting…",
+  pause: "Pausing…",
+  resume: "Resuming…",
+  exit: "Exiting…",
+  stop: "Stopping…",
+  refresh: "Refreshing status…",
+} as const;
+
+const REHEARSAL_COMMAND_ANNOUNCEMENTS = {
+  start: "Starting rehearsal…",
+  pause: "Pause requested…",
+  resume: "Resume requested…",
+  exit: "Exit requested…",
+  stop: "Stop requested…",
+  refresh: "Refreshing status…",
+} as const;
+
+const REHEARSAL_RETRY_BUSY_LABEL = "Reading rehearsal status…";
+const REHEARSAL_RETRY_COMPLETE_LABEL = "Rehearsal status refreshed";
+
 const POLL_INTERVAL_MS = 1000;
 
 export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const [retryInFlight, setRetryInFlight] = useState(false);
+  const retryHasFiredRef = useRef(false);
   // Synchronous double-click guard, mirroring StatusPanel.
   const inFlightRef = useRef(false);
   const epochRef = useRef(0);
+  const commandInFlightRef = useRef<Set<string>>(new Set());
+  // Keep the affordance active through runCommand's follow-up status read.
+  const [activeCommand, setActiveCommand] = useState<RehearsalCommandName | "refresh" | null>(null);
 
   useEffect(() => {
     if (client === null) {
@@ -282,6 +308,13 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
     }
   };
 
+  const retryStatus = (): void => {
+    if (retryInFlight || inFlightRef.current) return;
+    retryHasFiredRef.current = true;
+    setRetryInFlight(true);
+    void refreshStatus().finally(() => setRetryInFlight(false));
+  };
+
   const runCommand = async (
     command: RehearsalCommandName,
     action: () => Promise<RehearsalCommandResult>,
@@ -369,7 +402,8 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
     );
   }
 
-  const busy = state.pending !== null;
+  const busy = state.pending !== null || activeCommand !== null;
+  const announcedCommand = state.pending ?? activeCommand;
   const label =
     state.status?.label !== undefined && state.status.label.length > 0
       ? state.status.label
@@ -419,14 +453,26 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
             <button
               type="button"
               className="kbot-rehearsal__action"
-              onClick={() => {
-                void refreshStatus();
-              }}
+              aria-keyshortcuts="Enter Space"
+              aria-busy={retryInFlight ? "true" : undefined}
+              disabled={retryInFlight || undefined}
+              onClick={retryStatus}
             >
               Retry status
             </button>
           </>
-        ) : (
+        ) : null}
+        {retryHasFiredRef.current ? (
+          <p
+            data-testid="rehearsal-retry-busy-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {retryInFlight ? REHEARSAL_RETRY_BUSY_LABEL : REHEARSAL_RETRY_COMPLETE_LABEL}
+          </p>
+        ) : null}
+        {state.loadFailed !== null && state.status === null ? null : (
           <>
             {state.status === null ? (
               <p
@@ -578,63 +624,120 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
                   type="button"
                   className="kbot-rehearsal__action kbot-rehearsal__action--primary"
                   disabled={busy || !canStart(lifecycle)}
+                  aria-keyshortcuts="Enter Space"
+                  aria-busy={state.pending === "start" || commandInFlightRef.current.has("start") ? "true" : undefined}
+                  data-testid="rehearsal-command-start"
                   onClick={() => {
-                    void runCommand("start", () => client.start());
+                    if (commandInFlightRef.current.has("start") || inFlightRef.current) return;
+                    commandInFlightRef.current.add("start");
+                    setActiveCommand("start");
+                    void runCommand("start", () => client.start()).finally(() => {
+                      commandInFlightRef.current.delete("start");
+                      setActiveCommand(null);
+                    });
                   }}
                 >
-                  {state.pending === "start" ? "Starting…" : "Start rehearsal"}
+                  {state.pending === "start" ? "Starting…" : commandInFlightRef.current.has("start") ? REHEARSAL_COMMAND_BUSY_LABELS.start : "Start rehearsal"}
                 </button>
                 <button
                   type="button"
                   className="kbot-rehearsal__action"
                   disabled={busy || !canPause(lifecycle)}
+                  aria-keyshortcuts="Enter Space"
+                  aria-busy={state.pending === "pause" || commandInFlightRef.current.has("pause") ? "true" : undefined}
+                  data-testid="rehearsal-command-pause"
                   onClick={() => {
-                    void runCommand("pause", () => client.pause());
+                    if (commandInFlightRef.current.has("pause") || inFlightRef.current) return;
+                    commandInFlightRef.current.add("pause");
+                    setActiveCommand("pause");
+                    void runCommand("pause", () => client.pause()).finally(() => {
+                      commandInFlightRef.current.delete("pause");
+                      setActiveCommand(null);
+                    });
                   }}
                 >
-                  {state.pending === "pause" ? "Pausing…" : "Pause rehearsal"}
+                  {state.pending === "pause" ? "Pausing…" : commandInFlightRef.current.has("pause") ? REHEARSAL_COMMAND_BUSY_LABELS.pause : "Pause rehearsal"}
                 </button>
                 <button
                   type="button"
                   className="kbot-rehearsal__action"
                   disabled={busy || !canResume(lifecycle)}
+                  aria-keyshortcuts="Enter Space"
+                  aria-busy={state.pending === "resume" || commandInFlightRef.current.has("resume") ? "true" : undefined}
+                  data-testid="rehearsal-command-resume"
                   onClick={() => {
-                    void runCommand("resume", () => client.resume());
+                    if (commandInFlightRef.current.has("resume") || inFlightRef.current) return;
+                    commandInFlightRef.current.add("resume");
+                    setActiveCommand("resume");
+                    void runCommand("resume", () => client.resume()).finally(() => {
+                      commandInFlightRef.current.delete("resume");
+                      setActiveCommand(null);
+                    });
                   }}
                 >
-                  {state.pending === "resume" ? "Resuming…" : "Resume rehearsal"}
+                  {state.pending === "resume" ? "Resuming…" : commandInFlightRef.current.has("resume") ? REHEARSAL_COMMAND_BUSY_LABELS.resume : "Resume rehearsal"}
                 </button>
                 <button
                   type="button"
                   className="kbot-rehearsal__action"
                   disabled={busy || !canExit(lifecycle)}
+                  aria-keyshortcuts="Enter Space"
+                  aria-busy={state.pending === "exit" || commandInFlightRef.current.has("exit") ? "true" : undefined}
+                  data-testid="rehearsal-command-exit"
                   onClick={() => {
-                    void runCommand("exit", () => client.exit());
+                    if (commandInFlightRef.current.has("exit") || inFlightRef.current) return;
+                    commandInFlightRef.current.add("exit");
+                    setActiveCommand("exit");
+                    void runCommand("exit", () => client.exit()).finally(() => {
+                      commandInFlightRef.current.delete("exit");
+                      setActiveCommand(null);
+                    });
                   }}
                 >
-                  {state.pending === "exit" ? "Exiting…" : "Exit rehearsal"}
+                  {state.pending === "exit" ? "Exiting…" : commandInFlightRef.current.has("exit") ? REHEARSAL_COMMAND_BUSY_LABELS.exit : "Exit rehearsal"}
                 </button>
                 <button
                   type="button"
                   className="kbot-rehearsal__action"
                   disabled={busy || !canStop(lifecycle)}
+                  aria-keyshortcuts="Enter Space"
+                  aria-busy={state.pending === "stop" || commandInFlightRef.current.has("stop") ? "true" : undefined}
+                  data-testid="rehearsal-command-stop"
                   onClick={() => {
-                    void runCommand("stop", () => client.stop());
+                    if (commandInFlightRef.current.has("stop") || inFlightRef.current) return;
+                    commandInFlightRef.current.add("stop");
+                    setActiveCommand("stop");
+                    void runCommand("stop", () => client.stop()).finally(() => {
+                      commandInFlightRef.current.delete("stop");
+                      setActiveCommand(null);
+                    });
                   }}
                 >
-                  {state.pending === "stop" ? "Stopping…" : "Stop rehearsal"}
+                  {state.pending === "stop" ? "Stopping…" : commandInFlightRef.current.has("stop") ? REHEARSAL_COMMAND_BUSY_LABELS.stop : "Stop rehearsal"}
                 </button>
                 <button
                   type="button"
                   className="kbot-rehearsal__action"
                   disabled={busy}
+                  aria-keyshortcuts="Enter Space"
+                  aria-busy={commandInFlightRef.current.has("refresh") ? "true" : undefined}
+                  data-testid="rehearsal-command-refresh"
                   onClick={() => {
-                    void refreshStatus();
+                    if (commandInFlightRef.current.has("refresh") || inFlightRef.current) return;
+                    commandInFlightRef.current.add("refresh");
+                    setActiveCommand("refresh");
+                    void refreshStatus().finally(() => {
+                      commandInFlightRef.current.delete("refresh");
+                      setActiveCommand(null);
+                    });
                   }}
                 >
-                  Refresh status
+                  {commandInFlightRef.current.has("refresh") ? REHEARSAL_COMMAND_BUSY_LABELS.refresh : "Refresh status"}
                 </button>
               </div>
+              <p aria-live="polite" data-testid="rehearsal-commands-busy-status">
+                {announcedCommand !== null ? REHEARSAL_COMMAND_ANNOUNCEMENTS[announcedCommand] : "Settled"}
+              </p>
             </section>
             {state.unknownOutcome !== null ? (
               <p

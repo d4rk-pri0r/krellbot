@@ -1,5 +1,6 @@
-import { useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import type { LibraryClient, OwnedDraftSummary } from "./libraryClient";
+import "./RevisionCompare.signal.css";
 
 /**
  * Read-only comparison of two actual saved owned revisions. Both packs are
@@ -160,6 +161,8 @@ const KIND_TEXT: Record<RevisionCompareChange["kind"], string> = {
   changed: "changed",
 };
 
+const SUMMARY_KINDS = ["added", "removed", "changed"] as const;
+
 export function RevisionCompare({
   client,
   rows,
@@ -182,6 +185,21 @@ export function RevisionCompare({
     null,
   );
   const requestSeq = useRef(0);
+
+  const invalidateComparison = useCallback((): void => {
+    requestSeq.current += 1;
+    setPhase("idle");
+    setError(null);
+    setChanges([]);
+    setCompared(null);
+  }, []);
+
+  useEffect(() => {
+    invalidateComparison();
+    return () => {
+      requestSeq.current += 1;
+    };
+  }, [client, invalidateComparison]);
 
   const readyToCompare = leftId !== "" && rightId !== "" && leftId !== rightId;
 
@@ -219,7 +237,7 @@ export function RevisionCompare({
 
   return (
     <section
-      className="kbot-revision-compare"
+      className="kbot-shell__revision-root"
       role="region"
       aria-label="Compare saved revisions"
       data-testid="revision-compare"
@@ -251,6 +269,7 @@ export function RevisionCompare({
           data-testid="revision-compare-left"
           value={leftId}
           onChange={(event) => {
+            invalidateComparison();
             setLeftId(event.target.value);
           }}
         >
@@ -270,6 +289,7 @@ export function RevisionCompare({
           data-testid="revision-compare-right"
           value={rightId}
           onChange={(event) => {
+            invalidateComparison();
             setRightId(event.target.value);
           }}
         >
@@ -319,7 +339,7 @@ export function RevisionCompare({
       {phase === "done" && compared !== null ? (
         changes.length === 0 ? (
           <p
-            className="kbot-revision-compare__identical"
+            className="kbot-shell__revision-empty"
             data-testid="revision-compare-identical"
           >
             No differences between {compared.left} and {compared.right}: the
@@ -327,13 +347,31 @@ export function RevisionCompare({
           </p>
         ) : (
           <>
-            <p
-              className="kbot-revision-compare__summary"
+            <header
+              className="kbot-shell__revision-summary"
               data-testid="revision-compare-summary"
             >
               {changes.length} difference{changes.length === 1 ? "" : "s"} between{" "}
               {compared.left} and {compared.right}:
-            </p>
+              {SUMMARY_KINDS.map((kind) => {
+                const count = changes.filter(
+                  (change) => change.kind === kind,
+                ).length;
+                return (
+                  <span
+                    key={kind}
+                    className={`kbot-shell__revision-summary--${kind}`}
+                    data-testid={`revision-summary-${kind}`}
+                  >
+                    {count} {KIND_TEXT[kind]}
+                  </span>
+                );
+              })}
+            </header>
+            <div
+              className="kbot-revision-compare__scroll"
+              data-testid="revision-compare-scroll"
+            >
             <table className="kbot-revision-compare__table">
               <thead>
                 <tr>
@@ -347,23 +385,39 @@ export function RevisionCompare({
                 {changes.map((change) => (
                   <tr
                     key={`${change.kind}:${change.path}`}
+                    className={`kbot-shell__revision-row kbot-shell__revision-row--${change.kind}`}
                     data-testid="revision-compare-change"
                     data-kind={change.kind}
                   >
-                    <td>
+                    <td className="kbot-shell__revision-row__path">
                       <code>{change.path}</code>
                     </td>
-                    <td>{KIND_TEXT[change.kind]}</td>
                     <td>
+                      <span
+                        className={`kbot-shell__revision-row__kind kbot-shell__revision-row__kind--${change.kind}`}
+                      >
+                        {KIND_TEXT[change.kind]}
+                      </span>
+                    </td>
+                    <td className="kbot-shell__revision-row__previous">
                       <code>{change.previous ?? "— (not present)"}</code>
                     </td>
-                    <td>
+                    <td className="kbot-shell__revision-row__next">
                       <code>{change.next ?? "— (not present)"}</code>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
+            <span
+              className="kbot-shell__revision-caption"
+              data-testid="revision-compare-caption"
+            >
+              Read-only comparison of revisions {compared.left} and{" "}
+              {compared.right} · {changes.length} difference
+              {changes.length === 1 ? "" : "s"}
+            </span>
           </>
         )
       ) : null}

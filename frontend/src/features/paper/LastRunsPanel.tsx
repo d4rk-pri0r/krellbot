@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useEffect, useId, useState, type JSX } from "react";
 import "./LastRunsPanel.signal.css";
 import type { PaperClient, PaperRun, PaperRunsClient } from "./client";
 
@@ -58,7 +58,11 @@ function sideBadgeTone(side: string): string {
 }
 
 export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
+  const detailId = useId();
   const [runs, setRuns] = useState<PaperRun[] | null>(null);
+  const [venue, setVenue] = useState("");
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<PaperRun["status"]>("");
   const [selected, setSelected] = useState<PaperRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -119,6 +123,18 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
     setSelected(null);
   };
 
+  const venues = Array.from(new Set((runs ?? []).map((run) => run.venue)));
+  const statuses = Array.from(new Set((runs ?? []).map((run) => run.status)));
+  const needle = query.trim().toLowerCase();
+  const filteredRuns = (runs ?? []).filter((runRow) =>
+    (venue === "" || runRow.venue === venue) &&
+    (status === "" || runRow.status === status) &&
+    (needle === "" || [runRow.pack_id, runRow.pair, runRow.summary].some(
+      (field) => field.toLowerCase().includes(needle),
+    )),
+  );
+  const filtersActive = venue !== "" || query !== "" || status !== "";
+
   return (
     <section
       className="kbot-paper-runs"
@@ -136,6 +152,35 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
             >
               {runCountLabel(runs.length)}
             </p>
+          ) : null}
+        </div>
+        <div className="kbot-paper-runs__filters" role="group" aria-label="Filter paper runs" data-testid="paper-last-runs-filter">
+          <label>
+            Venue
+            <select aria-label="Filter runs by venue" value={venue} onChange={(event) => setVenue(event.target.value)} data-testid="paper-last-runs-filter-venue">
+              <option value="">all</option>
+              {venues.map((option) => <option key={option} value={option}>Venue: {option}</option>)}
+            </select>
+          </label>
+          <label>
+            Search
+            <input type="text" aria-label="Search runs by pack, pair or summary" value={query} onChange={(event) => setQuery(event.target.value)} data-testid="paper-last-runs-filter-query" />
+          </label>
+          <label>
+            Status
+            <select aria-label="Filter runs by status" value={status} onChange={(event) => setStatus(event.target.value)} data-testid="paper-last-runs-filter-status">
+              <option value="">all</option>
+              {statuses.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          {filtersActive ? (
+            <button type="button" className="kbot-paper-runs__action" data-testid="paper-last-runs-filter-clear" onClick={() => {
+              setVenue("");
+              setQuery("");
+              setStatus("");
+            }}>
+              Clear filters
+            </button>
           ) : null}
         </div>
         <button
@@ -175,6 +220,10 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
             <p className="kbot-paper-runs__empty" data-testid="paper-last-runs-empty">
               No paper runs yet
             </p>
+          ) : runs !== null && filteredRuns.length === 0 ? (
+            <p className="kbot-paper-runs__empty" data-testid="paper-last-runs-filter-empty">
+              No runs match the current filters.
+            </p>
           ) : runs !== null ? (
             <div
               className="kbot-paper-runs__scroll"
@@ -197,7 +246,7 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {runs.map((run) => {
+                  {filteredRuns.map((run) => {
                     const tone = statusChipTone(run.status);
                     const isSelected = selected === run;
                     return (
@@ -207,9 +256,17 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                           isSelected ? " kbot-paper-runs__row--selected" : ""
                         }`}
                         tabIndex={0}
+                        aria-expanded={isSelected}
+                        aria-controls={detailId}
                         aria-label={`Open run detail for ${run.venue} ${run.pair}`}
                         onClick={() => {
                           handleSelectRun(run);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleSelectRun(run);
+                          }
                         }}
                         data-testid={`paper-last-runs-row-${run.venue}-${run.pair}`}
                       >
@@ -263,6 +320,7 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
         {selected !== null ? (
           <section
             className="kbot-paper-runs__panel kbot-paper-runs__detail"
+            id={detailId}
             aria-label="Selected paper run detail"
             data-testid="paper-last-runs-detail"
           >

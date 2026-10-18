@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { useRef, useState, type JSX } from "react";
 import { BrandMark } from "../components/brand/BrandMark";
 import type { View } from "./Navigation";
 import "./AppHome.signal.css";
@@ -62,12 +62,39 @@ type AppHomeProps = {
   onNavigate: (view: View) => void;
   /** True while the local session bootstrap has not settled yet. */
   sessionPending?: boolean;
+  /**
+   * True when the one-time session bootstrap was rejected. Shown
+   * honestly instead of presenting startup as complete.
+   */
+  sessionFailed?: boolean;
+  /** Offered only on failure; re-reads the CSRF for the existing session. */
+  onRecoverSession?: () => Promise<{ ok: boolean; error?: string }>;
 };
 
 export function AppHome({
   onNavigate,
   sessionPending = false,
+  sessionFailed = false,
+  onRecoverSession,
 }: AppHomeProps): JSX.Element {
+  const [recoverError, setRecoverError] = useState<string | null>(null);
+  const recoveryAttempt = useRef(0);
+
+  async function recoverSession(): Promise<void> {
+    const attempt = ++recoveryAttempt.current;
+    setRecoverError(null);
+    try {
+      const result = await onRecoverSession?.();
+      if (attempt === recoveryAttempt.current) {
+        setRecoverError(result?.ok ? null : result?.error || "recovery refused");
+      }
+    } catch (error) {
+      if (attempt === recoveryAttempt.current) {
+        setRecoverError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+
   return (
     <section
       className="app-home"
@@ -95,7 +122,7 @@ export function AppHome({
             Live trading unavailable
           </span>
         </p>
-        {sessionPending ? (
+        {sessionPending && !sessionFailed ? (
           <p
             className="app-home__session"
             data-testid="app-home-session"
@@ -104,6 +131,34 @@ export function AppHome({
             Starting the local session… areas that need it will load their own
             data.
           </p>
+        ) : null}
+        {sessionFailed ? (
+          <div
+            className="app-home__session app-home__session--failed"
+            data-testid="app-home-session-failure"
+            role="alert"
+          >
+            <p className="app-home__note-copy">
+              The local session could not start. Areas that need it will show
+              their own errors, and nothing can be saved or changed until the
+              session recovers. Navigation still works offline.
+            </p>
+            {onRecoverSession ? (
+              <button
+                type="button"
+                className="app-home__recover"
+                data-testid="app-home-recover-session"
+                onClick={() => { void recoverSession(); }}
+              >
+                Recover the local session
+              </button>
+            ) : null}
+            {recoverError !== null ? (
+              <p data-testid="apphome-recover-error" role="alert">
+                Recovery failed: {recoverError}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
