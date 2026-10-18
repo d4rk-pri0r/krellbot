@@ -67,6 +67,9 @@ export function StrategyExplanation({
           What this revision trades
         </h3>
         <p
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
           className="kbot-feature__strategy-explanation-revision"
           data-testid="strategy-explanation-revision"
         >
@@ -115,6 +118,8 @@ export function StrategyExplanation({
                 key={indicator.name || `unknown-${index}`}
                 className="kbot-feature__strategy-explanation-list-item"
                 data-supported={indicator.supported ? "1" : "0"}
+                role="listitem"
+                aria-label={`${indicator.supported ? "Supported" : "Unsupported"} indicator: ${indicator.text}`}
               >
                 {indicator.text}
               </li>
@@ -153,6 +158,8 @@ export function StrategyExplanation({
                 key={`${market.venue}-${market.pair}-${index}`}
                 className="kbot-feature__strategy-explanation-list-item"
                 data-supported={market.supported ? "1" : "0"}
+                role="listitem"
+                aria-label={`${market.supported ? "Supported" : "Unsupported"} market: ${market.text}`}
               >
                 {market.text}
               </li>

@@ -199,6 +199,18 @@ export function OwnedStrategyForm({
               ))}
             </select>
           </label>
+          <p
+            data-testid="owned-strategy-form-recipe-status"
+            id="owned-strategy-form-recipe-status"
+            className="kbot-owned-strategy-form__recipe-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {state.recipe === "ma_cross"
+              ? "Recipe: two-average crossover. Enter and exit comparisons now mean fast average versus slow average. A Fast average length field has appeared."
+              : "Recipe: close versus one average. Enter and exit comparisons now mean close versus the single average. The Fast average length field is hidden."}
+          </p>
           {visibleTextFields.map((field) => (
             <label
               key={field}

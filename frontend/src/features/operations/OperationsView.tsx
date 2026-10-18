@@ -35,6 +35,7 @@ const LAST_READ_PREFIX = "Last successful read from this dashboard server:";
 const LAST_READ_QUALIFIER =
   "local server read age only — not exchange-candle freshness and not proof the bot is trading";
 const MANUAL_REFRESH_LABEL = "Refresh now";
+const MANUAL_REFRESH_BUSY_LABEL = "Refreshing…";
 const LOADING_TEXT = "Loading operations…";
 const LOAD_FAILURE_PREFIX = "Failed to load operations view: ";
 const PACK_LABEL = "Pack";
@@ -212,9 +213,10 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
   >({});
   const [pauseErrors, setPauseErrors] = useState<Record<string, string>>({});
   const [resumeErrors, setResumeErrors] = useState<Record<string, string>>({});
+  const [ackErrors, setAckErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Set<string>>(new Set());
 
-  const { view, fetchError, lastSuccessAgeMs, refresh } =
+  const { view, fetchError, refreshing, lastSuccessAgeMs, refresh } =
     useOperationsRefresh(client);
 
   const handlePromote = useCallback(
@@ -328,8 +330,19 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
 
   const handleAck = useCallback(
     async (alertId: string): Promise<void> => {
-      await client.ackAlert(alertId);
-      await refresh();
+      try {
+        await client.ackAlert(alertId);
+        clearRowEntry(setAckErrors, alertId);
+      } catch (err) {
+        setAckErrors((prev) => ({
+          ...prev,
+          [alertId]: `Acknowledge failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        }));
+      } finally {
+        await refresh();
+      }
     },
     [client, refresh],
   );
@@ -371,11 +384,13 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
           type="button"
           className="kbot-ops__refresh"
           data-testid="ops-refresh"
+          disabled={refreshing}
+          aria-busy={refreshing || undefined}
           onClick={() => {
             void refresh();
           }}
         >
-          {MANUAL_REFRESH_LABEL}
+          {refreshing ? MANUAL_REFRESH_BUSY_LABEL : MANUAL_REFRESH_LABEL}
         </button>
       </header>
       {fetchError !== null ? (
@@ -676,6 +691,15 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                                     </button>
                                   )}
                                 </div>
+                                {ackErrors[alert.id] ? (
+                                  <p
+                                    className="kbot-ops__row-result"
+                                    data-testid="ops-alert-ack-error"
+                                    role="alert"
+                                  >
+                                    {ackErrors[alert.id]}
+                                  </p>
+                                ) : null}
                               </li>
                             ))}
                           </ul>
