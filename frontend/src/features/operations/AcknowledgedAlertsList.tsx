@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 import type { AlertRow } from "./client";
 import { createAcknowledgedAlertsHttpClient } from "./acknowledgedAlertsClient";
 import { severityOptions } from "./AlertsFilter";
@@ -60,23 +60,27 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
   const [severity, setSeverity] = useState<string>(ALL_SEVERITIES);
   const [query, setQuery] = useState<string>("");
 
-  const list = resolveListSource(client);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    try {
-      const next = await list.listAcknowledged();
-      // Defensive: the acknowledged-alerts client already filters server-side rows,
-      // but a stub or future caller may hand back the full list.
-      setRows(next.filter((alert) => alert.acknowledged === true));
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [list]);
+  const list = useMemo(() => resolveListSource(client), [client]);
 
   useEffect(() => {
+    let active = true;
+    async function refresh(): Promise<void> {
+      try {
+        const next = await list.listAcknowledged();
+        if (!active) return;
+        // Injected sources may return unacknowledged rows too.
+        setRows(next.filter((alert) => alert.acknowledged === true));
+        setError(null);
+      } catch (err) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    }
     void refresh();
-  }, [refresh, nonce]);
+    return () => {
+      active = false;
+    };
+  }, [list, nonce]);
 
   const visibleRows = rows === null ? null : rows.filter((alert) => {
     if (severity !== ALL_SEVERITIES && alert.severity !== severity) return false;

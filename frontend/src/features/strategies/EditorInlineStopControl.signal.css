@@ -327,6 +327,15 @@
   overflow-wrap: anywhere;
 }
 
+.kbot-shell__inline-stop-root .kbot-shell__inline-stop-busy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* ============ mobile (<=390px) ============ */
 
 @media (max-width: 390px) {
