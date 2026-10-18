@@ -1,0 +1,279 @@
+/*
+ * Jobs drawer — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted JobsDrawer in the shell
+ * head-utils area. Everything is namespaced under `.kbot-shell__jobs-root`
+ * and written with nested prefixes so the shared shell's flat
+ * `.kbot-jobs__…` and `.kbot-shell button` rules
+ * (frontend/src/styles/shell.css) cannot flatten this hierarchy, whichever
+ * order the CSS chunks are emitted in. Every color/typography value comes
+ * from the shared tokens (frontend/src/styles/tokens.css); each token
+ * carries its approved Signal fallback so the surface still composes on
+ * bases where only the palette literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - the head names the panel and carries the "Local preview" badge in the
+ *     seafoam selection tone above the list in every state
+ *     (loading/empty/rows/error/blocked), the same badge vocabulary as
+ *     StatusStrip/AppHome/DeploymentHistory;
+ *   - Manrope carries all prose (badge, empty/loading/error copy, buttons);
+ *     job ids and states use restrained IBM Plex Mono technical labels;
+ *   - the selected row carries the sage/seafoam selection affordance
+ *     (matching the Operations / Research selection vocabulary) with no
+ *     new selection state machinery — rows are focus targets;
+ *   - the load-failure line keeps the coral-derived caution tone with an
+ *     inline Retry control that re-invokes the same read;
+ *   - state is always carried by text, with color as reinforcement only.
+ */
+
+.kbot-shell__jobs-root {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__jobs-root *,
+.kbot-shell__jobs-root *::before,
+.kbot-shell__jobs-root *::after {
+  box-sizing: border-box;
+}
+
+/* ============ dialog surface ============ */
+
+.kbot-shell__jobs-root .kbot-jobs__dialog {
+  gap: 12px;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  background: var(--surface, #14222e);
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 45%, transparent);
+}
+
+/* ============ head row + Local preview badge ============ */
+
+.kbot-shell__jobs-root .kbot-jobs__head {
+  gap: 10px;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+/* Same seafoam "Local preview" badge vocabulary as the other Signal panels. */
+.kbot-shell__jobs-root .kbot-jobs__preview-badge {
+  margin: 0 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ============ toolbar ============ */
+
+.kbot-shell__jobs-root .kbot-jobs__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__toolbar button {
+  min-height: 34px;
+  padding: 6px 14px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__toolbar button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__toolbar button:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+/* ============ honest loading / empty states ============ */
+
+.kbot-shell__jobs-root .kbot-jobs__loading {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 30%, var(--surface, #14222e));
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__empty {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 30%, var(--surface, #14222e));
+}
+
+.kbot-shell__jobs-root .kbot-jobs__empty .kbot-jobs__empty-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-shell__jobs-root .kbot-jobs__empty .kbot-jobs__empty-detail {
+  margin: 0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* ============ coral failure line + inline Retry ============ */
+
+.kbot-shell__jobs-root .kbot-jobs__row-result {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 35%, var(--caution-border, #736044));
+  border-left: 3px solid var(--coral, #cc9689);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--caution-bg, #2b271f) 55%, var(--surface, #14222e));
+}
+
+.kbot-shell__jobs-root .kbot-jobs__row-result-text {
+  margin: 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--caution-text, #e2c193);
+  overflow-wrap: anywhere;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__row-result-detail {
+  margin: 0;
+  flex: 1 1 100%;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__retry {
+  flex: none;
+  min-height: 34px;
+  padding: 5px 12px;
+  background: color-mix(in srgb, var(--panel, #18354a) 60%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--caution-text, #e2c193) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  color: var(--caution-text, #e2c193);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__retry:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+/* ============ rows + sage/seafoam selection ============ */
+
+.kbot-shell__jobs-root .kbot-jobs__list {
+  gap: 6px;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__row {
+  position: relative;
+  padding: 9px 12px 9px 14px;
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 20%, var(--surface, #14222e));
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.6;
+  min-height: 34px;
+  cursor: default;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__row:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 10%, transparent);
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  /* Selection affordance: sage-tinted leading bar over the seafoam wash,
+     the same selection vocabulary as Operations/Research selected rows. */
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--sage, #b3dda8) 65%, var(--seafoam, #a8d8d1));
+}
+
+.kbot-shell__jobs-root .kbot-jobs__id {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__jobs-root .kbot-jobs__kind {
+  color: var(--seafoam, #a8d8d1);
+  font-weight: 600;
+}
+
+.kbot-shell__jobs-root .kbot-jobs__state {
+  color: var(--muted, #abc4d8);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-shell__jobs-root .kbot-jobs__toolbar,
+  .kbot-shell__jobs-root .kbot-jobs__toolbar button,
+  .kbot-shell__jobs-root .kbot-jobs__retry,
+  .kbot-shell__jobs-root .kbot-jobs__row {
+    min-height: 44px;
+  }
+
+  .kbot-shell__jobs-root .kbot-jobs__row-result {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

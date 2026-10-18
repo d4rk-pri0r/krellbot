@@ -1,7 +1,9 @@
-import { Fragment, useCallback, useEffect, useState, type JSX } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type JSX } from "react";
 import "./DeploymentHistory.signal.css";
 import type { DeploymentRecordRow, OperationsClient } from "./client";
 
+const HISTORY_REFRESHING_LABEL = "Refreshing history…";
+const HISTORY_REFRESH_COMPLETE_LABEL = "Refresh complete";
 const LOADING_TEXT = "Loading deployments…";
 const DETAIL_LOADING_TEXT = "Loading deployment…";
 const EMPTY_TEXT = "No deployments yet. Local preview only — live trading unavailable.";
@@ -89,6 +91,14 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
+  const previousLoading = useRef(true);
+  const [hasRefreshed, setHasRefreshed] = useState(false);
+
+  useEffect(() => {
+    if (loading && !previousLoading.current) setHasRefreshed(true);
+    previousLoading.current = loading;
+  }, [loading]);
+
   const loadRows = useCallback(async (): Promise<void> => {
     const fetchRows = client.listDeploymentRecords;
     if (!fetchRows) {
@@ -161,6 +171,8 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
           type="button"
           data-testid="ops-history-refresh"
           disabled={loading}
+          aria-busy={loading || undefined}
+          aria-keyshortcuts="Enter Space"
           onClick={() => {
             setExpandedId(null);
             setDetail(null);
@@ -168,8 +180,13 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
             void loadRows();
           }}
         >
-          Refresh
+          {loading ? HISTORY_REFRESHING_LABEL : "Refresh"}
         </button>
+        {loading || hasRefreshed ? (
+          <p aria-live="polite" data-testid="ops-history-refresh-status">
+            {loading ? HISTORY_REFRESHING_LABEL : HISTORY_REFRESH_COMPLETE_LABEL}
+          </p>
+        ) : null}
       </div>
       {loading ? (
         <p className="kbot-ops__empty" data-testid="ops-history-loading">

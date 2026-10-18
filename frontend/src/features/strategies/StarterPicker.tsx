@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type JSX } from "react";
 import type { StarterCatalogue, StarterExample } from "./StarterPicker.client";
 import { fetchStarters } from "./StarterPicker.client";
+import "./StarterPicker.signal.css";
 
 export type StarterPickerProps = {
   onPick: (example: StarterExample) => void;
@@ -40,6 +41,11 @@ export function StarterPicker({
 }: StarterPickerProps): JSX.Element {
   const rootRef = useRef<HTMLElement | null>(null);
   const [state, setState] = useState<LoadState>({ kind: "idle" });
+  // Manual recovery counter: bumping it re-runs the effect (and so
+  // `loadStarters`) without remounting the section or the editor. It
+  // is the only way a second load ever happens; a successful load
+  // never bumps it, so nothing refetches on its own.
+  const [retryTrigger, setRetryTrigger] = useState(0);
 
   useEffect(() => {
     const element = rootRef.current;
@@ -87,12 +93,18 @@ export function StarterPicker({
       },
       { root: null, rootMargin: "0px", threshold: 0 },
     );
-    observer.observe(element);
+    if (retryTrigger > 0) {
+      // A retry already proved visibility once; the one-shot observer
+      // would never fire again, so the retry attempt runs directly.
+      load();
+    } else {
+      observer.observe(element);
+    }
     return () => {
       cancelled = true;
       observer.disconnect();
     };
-  }, [loadStarters]);
+  }, [loadStarters, retryTrigger]);
 
   return (
     <section
@@ -108,12 +120,26 @@ export function StarterPicker({
         Save, Validate, and Arm behave exactly as before.
       </p>
       {state.kind === "error" ? (
-        <p
-          className="kbot-starter-picker__error"
-          data-testid="starter-picker-error"
-        >
-          Could not load starter examples: {state.message}
-        </p>
+        <div className="kbot-starter-picker__error-row">
+          <p
+            className="kbot-starter-picker__error"
+            data-testid="starter-picker-error"
+            role="alert"
+            aria-live="polite"
+          >
+            Could not load starter examples: {state.message}
+          </p>
+          <button
+            type="button"
+            className="kbot-starter-picker__retry"
+            data-testid="starter-picker-retry"
+            onClick={() => {
+              setRetryTrigger((trigger) => trigger + 1);
+            }}
+          >
+            Retry starter examples
+          </button>
+        </div>
       ) : null}
       {state.kind === "idle" || state.kind === "loading" ? (
         <p className="kbot-starter-picker__status" data-testid="starter-picker-loading">
