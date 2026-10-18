@@ -456,3 +456,46 @@
     min-width: 420px;
   }
 }
+
+.kbot-paper-runs .kbot-paper-runs__head .kbot-paper-runs__filters {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+
+  & label {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    color: var(--muted, #abc4d8);
+    font-size: 12px;
+  }
+
+  & :is(input[type="text"], select) {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+    padding: 6px 8px;
+    border: 1px solid var(--line, #22465d);
+    border-radius: var(--radius-control, 7px);
+    background: var(--navy, #0e1c29);
+    color: var(--text, #e9f0f5);
+    font: inherit;
+  }
+
+  & :is(input[type="text"], select):focus-visible {
+    outline: 2px solid var(--focus-ring, #a8d8d1);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: stretch;
+
+    & :is(input[type="text"], select, button) {
+      min-height: 44px;
+    }
+  }
+}

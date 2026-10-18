@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type JSX } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type JSX } from "react";
 import "./Editor.signal.css";
+import "./Editor.saveKeyboard.signal.css";
 import { EditorCsvExport } from "./EditorCsvExport";
 import { EditorInlineStopControl, type PaperClient } from "./EditorInlineStopControl";
 import { summarizeDraftState } from "./draftStateLabel";
@@ -99,6 +100,8 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const [seededFresh, setSeededFresh] = useState(false);
   const [saveOutcome, setSaveOutcome] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const saveInFlight = useRef(false);
   const [validateError, setValidateError] = useState<string | null>(null);
   const [armError, setArmError] = useState<string | null>(null);
   const [arming, setArming] = useState(false);
@@ -182,10 +185,15 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   };
 
   const handleSave = async (): Promise<void> => {
+    if (saveInFlight.current) {
+      return;
+    }
     const pack = requireValidPack();
     if (!pack) {
       return;
     }
+    saveInFlight.current = true;
+    setSaving(true);
     setSaveOutcome(null);
     setSaveError(null);
     const parentId = seededFresh
@@ -212,6 +220,31 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       onRevision?.(summary, rawJson);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      saveInFlight.current = false;
+      setSaving(false);
+    }
+  };
+
+  const handleSaveKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+    if (
+      event.defaultPrevented ||
+      !(event.ctrlKey || event.metaKey) ||
+      (event.key !== "s" && event.key !== "S")
+    ) {
+      return;
+    }
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      (target.id === "kbot-strategy-editor-json" ||
+        target.closest(".kbot-owned-strategy-form input"))
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (!event.repeat && !saveInFlight.current) {
+      void handleSave();
     }
   };
 
@@ -315,7 +348,19 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       className="kbot-strategy-editor"
       role="region"
       aria-label="Strategy editor"
+      onKeyDown={handleSaveKeyDown}
     >
+      <div
+        className="kbot-editor-save-status"
+        data-testid="editor-save-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {saving ? "Saving…" : importError !== null ? (
+          <>Invalid <span>JSON</span>; save blocked</>
+        ) : saveError !== null ? `Save failed: ${saveError}` : saveOutcome !== null ? "Saved" : ""}
+      </div>
       <header className="kbot-strategy-editor__head">
         <div className="kbot-strategy-editor__head-copy">
           <h2 className="kbot-strategy-editor__title">Strategy draft</h2>
@@ -442,6 +487,8 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                   onChange={(event) => handleRawJsonChange(event.target.value)}
                   spellCheck={false}
                   rows={12}
+                  aria-invalid={importError !== null ? "true" : undefined}
+                  aria-describedby={importError !== null ? "editor-import-error" : undefined}
                 />
               </label>
               <label
@@ -483,6 +530,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
           </details>
           {importError !== null ? (
             <p
+              id="editor-import-error"
               className="kbot-strategy-editor__error"
               role="alert"
               data-testid="editor-import-error"
@@ -558,6 +606,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                 <button
                   type="button"
                   className="kbot-strategy-editor__action kbot-strategy-editor__action--primary"
+                  aria-keyshortcuts="Control+S Meta+S"
                   onClick={() => {
                     void handleSave();
                   }}
