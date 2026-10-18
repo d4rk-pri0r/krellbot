@@ -1,0 +1,237 @@
+name: Public oracle policies
+
+# Once on main, pull_request_target uses this base-branch workflow definition.
+# Never check out/execute PR product code here. All PR source is Git blob data.
+# The finite Phase 2 branch push registers this new workflow for explicit
+# bootstrap workflow_dispatch validation before Joe merges it.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  push:
+    branches: [main, phase2/public-oracle-ci]
+  workflow_dispatch:
+    inputs:
+      audit_pr:
+        description: Public Krellbot PR number whose frozen Git objects to audit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  invariants:
+    name: invariants
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve frozen audit target and trusted base scripts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_PR: ${{ inputs.audit_pr }}
+          POLICY_MODULE: invariants
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, re, subprocess
+          repo = os.environ['GITHUB_REPOSITORY']
+          if repo != 'd4rk-pri0r/krellbot':
+              raise SystemExit('This policy workflow is scoped to d4rk-pri0r/krellbot')
+          event = json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          def call(*args):
+              return subprocess.check_output(args, text=True).strip()
+          number = os.environ.get('AUDIT_PR', '')
+          if number:
+              if not re.fullmatch(r'[1-9][0-9]*', number):
+                  raise SystemExit('audit_pr must be a positive PR number')
+              pr = json.loads(call('gh', 'api', f'repos/{repo}/pulls/{number}'))
+          else:
+              pr = event.get('pull_request')
+          call('git', 'fetch', '--no-tags', 'origin', 'refs/heads/main:refs/remotes/origin/main')
+          if pr:
+              number = str(pr['number'])
+              if pr['base']['repo']['full_name'] != repo or pr['base']['ref'] != 'main':
+                  raise SystemExit('Only a PR targeting this repository main is allowed')
+              head = pr['head']['sha']
+              call('git', 'fetch', '--no-tags', 'origin', f'refs/pull/{number}/head')
+              fetched = call('git', 'rev-parse', 'FETCH_HEAD')
+              if fetched != head:
+                  raise SystemExit('PR moved during observation; rerun against its new head')
+              base = pr['base']['sha']
+              if pr.get('merged'):
+                  # The API base now may contain the merged head. Use the
+                  # actual pre-merge first parent, not an empty three-dot diff.
+                  merge = pr['merge_commit_sha']
+                  call('git', 'fetch', '--no-tags', 'origin', merge)
+                  parents = call('git', 'rev-list', '--parents', '-n', '1', merge).split()[1:]
+                  if len(parents) != 2 or parents[1] != head:
+                      raise SystemExit('Rehearsal requires a verified merge-commit PR, not guessed squash ancestry')
+                  base = parents[0]
+          else:
+              head = os.environ['GITHUB_SHA']
+              call('git', 'fetch', '--no-tags', 'origin', head)
+              base = call('git', 'rev-parse', 'origin/main')
+          for value in (base, head, os.environ['GITHUB_SHA']):
+              if not re.fullmatch(r'[0-9a-f]{40}', value):
+                  raise SystemExit('Expected a full commit SHA')
+          module = os.environ['POLICY_MODULE']
+          if module not in ('invariants', 'test_integrity'):
+              raise SystemExit('Unknown policy module')
+          base_script = f'origin/main:.github/scripts/{module}.py'
+          present = subprocess.run(['git', 'cat-file', '-e', base_script], capture_output=True).returncode == 0
+          source = 'origin/main' if present else os.environ['GITHUB_SHA']
+          if not present:
+              print(f'BOOTSTRAP: base branch lacks {module}.py; using the reviewed CI candidate copy at {source}. Not yet an enforced trusted-base gate.')
+              call('git', 'fetch', '--no-tags', 'origin', source)
+          else:
+              print(f'TRUSTED BASE: git show {base_script}; candidate scripts and allowlist will not execute')
+          trusted = pathlib.Path(os.environ['RUNNER_TEMP']) / ('policy-' + module)
+          package = trusted / 'scripts'
+          package.mkdir(parents=True, exist_ok=True)
+          for name in ('__init__.py', '_util.py', module + '.py'):
+              data = subprocess.check_output(['git', 'show', f'{source}:.github/scripts/{name}'])
+              (package / name).write_bytes(data)
+          if module == 'invariants':
+              data = subprocess.check_output(['git', 'show', f'{source}:.github/scripts/invariants-allowlist.json'])
+              (trusted / 'invariants-allowlist.json').write_bytes(data)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for name, value in (('trusted', str(trusted)), ('base', base), ('head', head), ('pr', number or ''), ('source', source)):
+                  output.write(f'{name}={value}\n')
+          print(json.dumps({'target_pr': number or None, 'base': base, 'head': head, 'policy_source': source}))
+          PY
+        id: target
+      - name: Run trusted invariants against candidate Git objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRUSTED: ${{ steps.target.outputs.trusted }}
+          TARGET_BASE: ${{ steps.target.outputs.base }}
+          TARGET_HEAD: ${{ steps.target.outputs.head }}
+          TARGET_PR: ${{ steps.target.outputs.pr }}
+        run: |
+          cd "$TRUSTED"
+          python3 -I -c 'import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module("scripts.invariants",run_name="__main__")' "$TRUSTED" --workdir "$GITHUB_WORKSPACE" --base "$TARGET_BASE" --head "$TARGET_HEAD" --allowlist "$TRUSTED/invariants-allowlist.json" --json "$RUNNER_TEMP/invariants-result.json"
+      - name: Preserve invariants audit result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        with:
+          name: invariants-result
+          path: ${{ runner.temp }}/invariants-result.json
+          retention-days: 7
+          if-no-files-found: warn
+
+  test-integrity:
+    name: test-integrity
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve frozen audit target and trusted base scripts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_PR: ${{ inputs.audit_pr }}
+          POLICY_MODULE: test_integrity
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, re, subprocess
+          repo = os.environ['GITHUB_REPOSITORY']
+          if repo != 'd4rk-pri0r/krellbot':
+              raise SystemExit('This policy workflow is scoped to d4rk-pri0r/krellbot')
+          event = json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          def call(*args):
+              return subprocess.check_output(args, text=True).strip()
+          number = os.environ.get('AUDIT_PR', '')
+          if number:
+              if not re.fullmatch(r'[1-9][0-9]*', number):
+                  raise SystemExit('audit_pr must be a positive PR number')
+              pr = json.loads(call('gh', 'api', f'repos/{repo}/pulls/{number}'))
+          else:
+              pr = event.get('pull_request')
+          call('git', 'fetch', '--no-tags', 'origin', 'refs/heads/main:refs/remotes/origin/main')
+          if pr:
+              number = str(pr['number'])
+              if pr['base']['repo']['full_name'] != repo or pr['base']['ref'] != 'main':
+                  raise SystemExit('Only a PR targeting this repository main is allowed')
+              head = pr['head']['sha']
+              call('git', 'fetch', '--no-tags', 'origin', f'refs/pull/{number}/head')
+              fetched = call('git', 'rev-parse', 'FETCH_HEAD')
+              if fetched != head:
+                  raise SystemExit('PR moved during observation; rerun against its new head')
+              base = pr['base']['sha']
+              if pr.get('merged'):
+                  # The API base now may contain the merged head. Use the
+                  # actual pre-merge first parent, not an empty three-dot diff.
+                  merge = pr['merge_commit_sha']
+                  call('git', 'fetch', '--no-tags', 'origin', merge)
+                  parents = call('git', 'rev-list', '--parents', '-n', '1', merge).split()[1:]
+                  if len(parents) != 2 or parents[1] != head:
+                      raise SystemExit('Rehearsal requires a verified merge-commit PR, not guessed squash ancestry')
+                  base = parents[0]
+          else:
+              head = os.environ['GITHUB_SHA']
+              call('git', 'fetch', '--no-tags', 'origin', head)
+              base = call('git', 'rev-parse', 'origin/main')
+          for value in (base, head, os.environ['GITHUB_SHA']):
+              if not re.fullmatch(r'[0-9a-f]{40}', value):
+                  raise SystemExit('Expected a full commit SHA')
+          module = os.environ['POLICY_MODULE']
+          if module not in ('invariants', 'test_integrity'):
+              raise SystemExit('Unknown policy module')
+          base_script = f'origin/main:.github/scripts/{module}.py'
+          present = subprocess.run(['git', 'cat-file', '-e', base_script], capture_output=True).returncode == 0
+          source = 'origin/main' if present else os.environ['GITHUB_SHA']
+          if not present:
+              print(f'BOOTSTRAP: base branch lacks {module}.py; using the reviewed CI candidate copy at {source}. Not yet an enforced trusted-base gate.')
+              call('git', 'fetch', '--no-tags', 'origin', source)
+          else:
+              print(f'TRUSTED BASE: git show {base_script}; candidate scripts and allowlist will not execute')
+          trusted = pathlib.Path(os.environ['RUNNER_TEMP']) / ('policy-' + module)
+          package = trusted / 'scripts'
+          package.mkdir(parents=True, exist_ok=True)
+          for name in ('__init__.py', '_util.py', module + '.py'):
+              data = subprocess.check_output(['git', 'show', f'{source}:.github/scripts/{name}'])
+              (package / name).write_bytes(data)
+          if module == 'invariants':
+              data = subprocess.check_output(['git', 'show', f'{source}:.github/scripts/invariants-allowlist.json'])
+              (trusted / 'invariants-allowlist.json').write_bytes(data)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for name, value in (('trusted', str(trusted)), ('base', base), ('head', head), ('pr', number or ''), ('source', source)):
+                  output.write(f'{name}={value}\n')
+          print(json.dumps({'target_pr': number or None, 'base': base, 'head': head, 'policy_source': source}))
+          PY
+        id: target
+      - name: Run trusted test-integrity against candidate Git objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRUSTED: ${{ steps.target.outputs.trusted }}
+          TARGET_BASE: ${{ steps.target.outputs.base }}
+          TARGET_HEAD: ${{ steps.target.outputs.head }}
+          TARGET_PR: ${{ steps.target.outputs.pr }}
+        run: |
+          cd "$TRUSTED"
+          python3 -I -c 'import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module("scripts.test_integrity",run_name="__main__")' "$TRUSTED" --workdir "$GITHUB_WORKSPACE" --base "$TARGET_BASE" --head "$TARGET_HEAD" --repo "$GITHUB_REPOSITORY" --pr "$TARGET_PR" --json "$RUNNER_TEMP/test-integrity-result.json"
+      - name: Preserve test-integrity audit result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        with:
+          name: test-integrity-result
+          path: ${{ runner.temp }}/test-integrity-result.json
+          retention-days: 7
+          if-no-files-found: warn

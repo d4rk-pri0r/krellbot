@@ -4,22 +4,37 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      audit_pr:
+        description: Optional public journey PR number to test with this workflow
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   test:
+    # Preserve the exact required check names while pinning runner images.
+    name: test (${{ matrix.os }}, ${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.10", "3.13"]
-    runs-on: ${{ matrix.os }}
+        include:
+          - os: ubuntu-latest
+            image: ubuntu-24.04
+          - os: macos-latest
+            image: macos-26
+          - os: windows-latest
+            image: windows-2025-vs2026
+    runs-on: ${{ matrix.image }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0 (Node 24)
         with:
           python-version: ${{ matrix.python }}
       - name: Test
@@ -32,10 +47,10 @@ jobs:
           PYTHONUTF8: "1"
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0 (Node 24)
       - run: uvx ruff check src tests
       - run: uvx ruff format --check src tests
 
@@ -44,7 +59,7 @@ jobs:
     # The harness swaps HOME / USERPROFILE / KRELLBOT_HOME per spec, so
     # we pin UV_CACHE_DIR to runner.temp to keep uv's cache stable and
     # export an isolated KRELLBOT_HOME before any step runs.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       KRELLBOT_ENABLE_LIVE: "0"
@@ -58,15 +73,15 @@ jobs:
           mkdir -p "${{ runner.temp }}/krellbot-home" "${{ runner.temp }}/uv-cache"
           echo "KRELLBOT_HOME=${{ runner.temp }}/krellbot-home" >> "$GITHUB_ENV"
           echo "UV_CACHE_DIR=${{ runner.temp }}/uv-cache" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
       - name: Install uv and sync project deps
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0 (Node 24)
         with:
           python-version: "3.13"
       - name: Sync project venv (frozen)
         run: uv sync --frozen
       - name: Setup Node 24 and cache npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0 (Node 24)
         with:
           node-version: "24"
           cache: npm
@@ -102,7 +117,7 @@ jobs:
         run: npm run test:e2e
       - name: Upload Playwright test-results on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
         with:
           name: frontend-test-results
           path: frontend/test-results/
@@ -113,3 +128,84 @@ jobs:
         run: |
           echo "tested_sha=${{ github.event.pull_request.head.sha || github.sha }}"
           git rev-parse HEAD
+
+  journeys:
+    name: journeys
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      KRELLBOT_ENABLE_LIVE: "0"
+      PYTHON_KEYRING_BACKEND: tests.fakes.fake_keyring.FakeKeyring
+      CI: "true"
+    steps:
+      - name: Select the exact journey candidate
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_PR: ${{ inputs.audit_pr }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          number = os.environ.get('AUDIT_PR', '')
+          sha = os.environ['EVENT_HEAD']
+          if number:
+              if not re.fullmatch(r'[1-9][0-9]*', number):
+                  raise SystemExit('audit_pr must be a positive PR number')
+              repo = os.environ['GITHUB_REPOSITORY']
+              pr = json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/pulls/{number}'],text=True))
+              if pr['base']['repo']['full_name'] != repo or pr['base']['ref'] != 'main':
+                  raise SystemExit('Only a public-oracle PR targeting this main is supported')
+              sha = pr['head']['sha']
+          if not re.fullmatch(r'[0-9a-f]{40}', sha):
+              raise SystemExit('Expected an exact head SHA')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write(f'sha={sha}\n')
+          print(f'Journey test subject: {sha} (audit_pr={number or "event"})')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          persist-credentials: false
+      - name: Isolate workstation data and dependency cache
+        run: |
+          mkdir -p "${{ runner.temp }}/journeys-home" "${{ runner.temp }}/journeys-uv-cache"
+          printf '%s\n' "KRELLBOT_HOME=${{ runner.temp }}/journeys-home" "UV_CACHE_DIR=${{ runner.temp }}/journeys-uv-cache" >> "$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0 (Node 24)
+        with:
+          python-version: "3.13"
+      - name: Sync frozen Python dependencies before guarded runtime
+        run: uv sync --frozen
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0 (Node 24)
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install existing frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run all public journeys
+        working-directory: frontend
+        env:
+          KRELLBOT_E2E_SKIP_BUILD: "1"
+          PLAYWRIGHT_JSON_OUTPUT_NAME: journeys-results.json
+        run: npm run test:journeys -- --reporter=list,json
+      - name: Preserve public journey outcomes
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        with:
+          name: public-journey-results
+          path: |
+            frontend/journeys-results.json
+            frontend/test-results/
+          retention-days: 7
+          if-no-files-found: warn
