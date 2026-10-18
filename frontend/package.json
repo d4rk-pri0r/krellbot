@@ -8,6 +8,7 @@
     "lint": "tsc --noEmit",
     "test:unit": "NODE_ENV=test vitest",
     "test:e2e": "playwright test",
+    "test:journeys": "tsc -p journeys/tsconfig.json && playwright test --config=playwright.journeys.config.ts",
     "build": "vite build"
   },
   "dependencies": {
