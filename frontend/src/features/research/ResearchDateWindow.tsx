@@ -112,11 +112,14 @@ function DateBoundField({
         }
         autoComplete="off"
         spellCheck={false}
+        aria-invalid={showInvalid}
+        aria-describedby={showInvalid ? `${id}-problem` : undefined}
       />
       {showInvalid ? (
         <span
           className="kbot-research__utc-invalid"
           data-testid={`${id}-invalid`}
+          id={`${id}-problem`}
         >
           Enter a valid UTC date/time
         </span>
