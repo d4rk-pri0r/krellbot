@@ -1,0 +1,70 @@
+/*
+ * StarterPicker — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Component-scoped styles for the starter catalogue failure row only
+ * (the error paragraph plus the manual retry affordance). The whole
+ * file is one `.kbot-starter-picker__error-row` block; the rest of the
+ * picker keeps inheriting the Editor host styles. Selectors are nested
+ * under the picker root so shared shell button rules cannot flatten
+ * them, mirroring the other Signal slices.
+ *
+ * Consumes the approved named tokens with their exact approved
+ * fallbacks:
+ *
+ *   surface #14222E  panel #18354A  line #22465D  text #E9F0F5
+ *   muted  #ABC4D8   seafoam #A8D8D1 (selection/focus)
+ *
+ * The retry control reuses the shared button vocabulary: `--panel`
+ * tint, `--line` border, 7px radius, a 44px keyboard/touch target, and
+ * a 2px seafoam focus ring visible on keyboard focus only. Muted until
+ * idle focus-visible; no new palette.
+ */
+
+.kbot-starter-picker .kbot-starter-picker__error-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* The paragraph keeps its own alert styling; the row only stacks it
+   with the recovery control instead of a new global paragraph rule. */
+.kbot-starter-picker .kbot-starter-picker__error-row .kbot-starter-picker__error {
+  flex: 1 1 minmax(0, auto);
+  min-width: min(100%, 26ch);
+  margin: 0;
+}
+
+.kbot-starter-picker .kbot-starter-picker__error-row .kbot-starter-picker__retry {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 44px keyboard/touch target — the shared control floor. */
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--text, #e9f0f5);
+  background: color-mix(in srgb, var(--panel, #18354a) 60%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--muted, #abc4d8) 35%, var(--line, #22465d));
+}
+
+.kbot-starter-picker .kbot-starter-picker__error-row .kbot-starter-picker__retry:hover {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+}
+
+/* Muted until idle focus-visible: the seafoam ring appears only for
+   keyboard focus, never for pointer activation. */
+.kbot-starter-picker .kbot-starter-picker__error-row .kbot-starter-picker__retry:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}

@@ -1,0 +1,359 @@
+/*
+ * RevisionCompare — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Component-scoped styles for the read-only saved-revision comparison
+ * mounted at SavedStrategyLibrary.tsx (the Compare control on a
+ * revision row). Every value shown is derived from stored revision
+ * bytes fetched through the same authenticated read client the library
+ * uses; nothing is rewritten, validated, or armed from this surface.
+ *
+ * Typography is inherited from the host (Manrope via the shared Signal
+ * foundation); IBM Plex Mono carries only the technical identifiers,
+ * the dotted path cells and the revision ids, never prose. This file
+ * consumes the approved named tokens, each with its exact approved
+ * fallback so the slice functions on this accepted base:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Selectors are nested under .kbot-shell__revision-root so shared
+ * shell rules (.kbot-shell button, etc.) cannot flatten the intended
+ * hierarchy, mirroring SavedStrategyLibrary.signal.css. Kind semantics:
+ * added = seafoam (something the later revision supplies), changed =
+ * sage (a tuned value), removed = coral (something the later revision
+ * no longer carries).
+ */
+
+.kbot-shell__revision-root {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 16px 18px 18px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 11px;
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  overflow-wrap: break-word;
+}
+
+.kbot-shell__revision-root *,
+.kbot-shell__revision-root *::before,
+.kbot-shell__revision-root *::after {
+  box-sizing: border-box;
+}
+
+.kbot-shell__revision-root h3,
+.kbot-shell__revision-root h4,
+.kbot-shell__revision-root p {
+  margin: 0;
+}
+
+/* --- header --- */
+
+.kbot-shell__revision-root .kbot-revision-compare__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+/* Secondary utility control: panel-tinted, seafoam on focus/hover. */
+.kbot-shell__revision-root .kbot-revision-compare__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__close:hover {
+  border-color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__close:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* --- read-only note --- */
+
+.kbot-shell__revision-root .kbot-revision-compare__note {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+/* --- revision selectors --- */
+
+.kbot-shell__revision-root .kbot-revision-compare__picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__picks label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__picks select {
+  min-height: 34px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--text, #e9f0f5);
+  background: var(--navy, #0e1c29);
+  border: 1px solid var(--line, #22465d);
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__picks select:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+/* --- status lines (loading / error / identical) --- */
+
+.kbot-shell__revision-root .kbot-revision-compare__loading,
+.kbot-shell__revision-root .kbot-revision-compare__error,
+.kbot-shell__revision-root .kbot-revision-compare__hint {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__error {
+  color: var(--danger-text, #e0a296);
+}
+
+/* --- summary header with per-kind chips --- */
+
+.kbot-shell__revision-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__revision-summary--added,
+.kbot-shell__revision-summary--removed,
+.kbot-shell__revision-summary--changed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.kbot-shell__revision-summary--added {
+  color: var(--seafoam, #a8d8d1);
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 12%, transparent);
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 38%, transparent);
+}
+
+.kbot-shell__revision-summary--removed {
+  color: var(--coral, #cc9689);
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, transparent);
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 32%, transparent);
+}
+
+.kbot-shell__revision-summary--changed {
+  color: var(--sage, #b3dda8);
+  background: color-mix(in srgb, var(--sage, #b3dda8) 12%, transparent);
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 38%, transparent);
+}
+
+/* --- diff rows --- */
+
+.kbot-shell__revision-root .kbot-revision-compare__scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__table {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__table thead {
+  display: none;
+}
+
+.kbot-shell__revision-root .kbot-revision-compare__table tbody {
+  display: grid;
+  gap: 6px;
+}
+
+.kbot-shell__revision-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 55%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-left: 3px solid var(--line, #22465d);
+  border-radius: 8px;
+}
+
+.kbot-shell__revision-row--added {
+  border-left-color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-shell__revision-row--removed {
+  border-left-color: var(--coral, #cc9689);
+}
+
+.kbot-shell__revision-row--changed {
+  border-left-color: var(--sage, #b3dda8);
+}
+
+.kbot-shell__revision-root .kbot-revision-row th,
+.kbot-shell__revision-root .kbot-revision-row td {
+  padding: 0;
+  font-weight: 400;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Path identifiers are the one restrained mono surface. */
+.kbot-shell__revision-row__path {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__revision-row__previous,
+.kbot-shell__revision-row__next {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-shell__revision-row__next {
+  color: var(--text, #e9f0f5);
+}
+
+/* --- kind pill --- */
+
+.kbot-shell__revision-row__kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.kbot-shell__revision-row__kind--added {
+  color: var(--seafoam, #a8d8d1);
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 12%, transparent);
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 38%, transparent);
+}
+
+.kbot-shell__revision-row__kind--removed {
+  color: var(--coral, #cc9689);
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, transparent);
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 32%, transparent);
+}
+
+.kbot-shell__revision-row__kind--changed {
+  color: var(--sage, #b3dda8);
+  background: color-mix(in srgb, var(--sage, #b3dda8) 12%, transparent);
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 38%, transparent);
+}
+
+/* --- empty state (identical revisions) --- */
+
+.kbot-shell__revision-empty {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--panel, #18354a) 35%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+}
+
+/* --- read-only caption below the rows --- */
+
+.kbot-shell__revision-caption {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  transition: opacity 120ms ease;
+}
+
+/* --- mobile (<=390px): rows stack, the page never widens --- */
+
+@media (max-width: 390px) {
+  .kbot-shell__revision-root {
+    padding: 14px 12px 16px;
+    gap: 12px;
+  }
+
+  .kbot-shell__revision-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .kbot-shell__revision-row__path,
+  .kbot-shell__revision-row__previous,
+  .kbot-shell__revision-row__next {
+    font-size: 11px;
+  }
+
+  .kbot-shell__revision-summary {
+    gap: 6px;
+  }
+}

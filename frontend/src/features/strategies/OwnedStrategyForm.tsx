@@ -1,4 +1,5 @@
 import { useMemo, type ChangeEvent, type JSX } from "react";
+import "./OwnedStrategyForm.signal.css";
 import {
   COMPARISONS,
   MOVING_AVERAGE_KINDS,
@@ -166,152 +167,166 @@ export function OwnedStrategyForm({
   );
 
   return (
-    <section
-      className="kbot-owned-strategy-form"
-      role="group"
-      aria-label="Owned strategy form"
-      data-testid="owned-strategy-form"
-    >
-      <h3 className="kbot-owned-strategy-form__title">Owned strategy</h3>
-      <p className="kbot-owned-strategy-form__hint">
-        A supported subset of the pack DSL: close versus one moving average, or
-        a fast average crossing a slow average, plus a percentage protective
-        stop and one Kraken market. Advanced JSON stays available below.
-      </p>
-      <div className="kbot-owned-strategy-form__grid">
-        <label
-          className="kbot-owned-strategy-form__field"
-          htmlFor="kbot-owned-strategy-recipe"
-        >
-          <span className="kbot-owned-strategy-form__field-label">Recipe</span>
-          <select
-            id="kbot-owned-strategy-recipe"
-            className="kbot-owned-strategy-form__select"
-            value={state.recipe}
-            onChange={handleSelectChange("recipe")}
-          >
-            {RECIPE_NAMES.map((recipe) => (
-              <option key={recipe} value={recipe}>
-                {RECIPE_LABELS[recipe]}
-              </option>
-            ))}
-          </select>
-        </label>
-        {visibleTextFields.map((field) => (
+    <div className="kbot-feature__owned-strategy-form-root">
+      <section
+        className="kbot-owned-strategy-form"
+        role="group"
+        aria-label="Owned strategy form"
+        data-testid="owned-strategy-form"
+      >
+        <h3 className="kbot-owned-strategy-form__title">Owned strategy</h3>
+        <p className="kbot-owned-strategy-form__hint">
+          A supported subset of the pack DSL: close versus one moving average, or
+          a fast average crossing a slow average, plus a percentage protective
+          stop and one Kraken market. Advanced JSON stays available below.
+        </p>
+        <div className="kbot-owned-strategy-form__grid">
           <label
-            key={field}
             className="kbot-owned-strategy-form__field"
-            htmlFor={`kbot-owned-strategy-${field}`}
+            htmlFor="kbot-owned-strategy-recipe"
+          >
+            <span className="kbot-owned-strategy-form__field-label">Recipe</span>
+            <select
+              id="kbot-owned-strategy-recipe"
+              className="kbot-owned-strategy-form__select"
+              value={state.recipe}
+              onChange={handleSelectChange("recipe")}
+            >
+              {RECIPE_NAMES.map((recipe) => (
+                <option key={recipe} value={recipe}>
+                  {RECIPE_LABELS[recipe]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p
+            data-testid="owned-strategy-form-recipe-status"
+            id="owned-strategy-form-recipe-status"
+            className="kbot-owned-strategy-form__recipe-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {state.recipe === "ma_cross"
+              ? "Recipe: two-average crossover. Enter and exit comparisons now mean fast average versus slow average. A Fast average length field has appeared."
+              : "Recipe: close versus one average. Enter and exit comparisons now mean close versus the single average. The Fast average length field is hidden."}
+          </p>
+          {visibleTextFields.map((field) => (
+            <label
+              key={field}
+              className="kbot-owned-strategy-form__field"
+              htmlFor={`kbot-owned-strategy-${field}`}
+            >
+              <span className="kbot-owned-strategy-form__field-label">
+                {TEXT_FIELD_LABELS[field]}
+              </span>
+              <input
+                id={`kbot-owned-strategy-${field}`}
+                className="kbot-owned-strategy-form__input"
+                type="text"
+                value={state[field]}
+                onChange={handleTextChange(field)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {TEXT_FIELD_HINTS[field] ? (
+                <span className="kbot-owned-strategy-form__field-hint">
+                  {TEXT_FIELD_HINTS[field]}
+                </span>
+              ) : null}
+            </label>
+          ))}
+          <label
+            className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-timeframe"
+          >
+            <span className="kbot-owned-strategy-form__field-label">Timeframe</span>
+            <select
+              id="kbot-owned-strategy-timeframe"
+              className="kbot-owned-strategy-form__select"
+              value={state.timeframe}
+              onChange={handleSelectChange("timeframe")}
+            >
+              {TIMEFRAMES.map((timeframe) => (
+                <option key={timeframe} value={timeframe}>
+                  {timeframe}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label
+            className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-kind"
           >
             <span className="kbot-owned-strategy-form__field-label">
-              {TEXT_FIELD_LABELS[field]}
+              {crossover ? "Average type (both averages)" : "Average type"}
             </span>
-            <input
-              id={`kbot-owned-strategy-${field}`}
-              className="kbot-owned-strategy-form__input"
-              type="text"
-              value={state[field]}
-              onChange={handleTextChange(field)}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {TEXT_FIELD_HINTS[field] ? (
-              <span className="kbot-owned-strategy-form__field-hint">
-                {TEXT_FIELD_HINTS[field]}
-              </span>
-            ) : null}
+            <select
+              id="kbot-owned-strategy-kind"
+              className="kbot-owned-strategy-form__select"
+              value={state.kind}
+              onChange={handleSelectChange("kind")}
+            >
+              {MOVING_AVERAGE_KINDS.map((kind) => (
+                <option key={kind} value={kind}>
+                  {KIND_LABELS[kind]}
+                </option>
+              ))}
+            </select>
           </label>
-        ))}
-        <label
-          className="kbot-owned-strategy-form__field"
-          htmlFor="kbot-owned-strategy-timeframe"
-        >
-          <span className="kbot-owned-strategy-form__field-label">Timeframe</span>
-          <select
-            id="kbot-owned-strategy-timeframe"
-            className="kbot-owned-strategy-form__select"
-            value={state.timeframe}
-            onChange={handleSelectChange("timeframe")}
+          <label
+            className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-entryComparison"
           >
-            {TIMEFRAMES.map((timeframe) => (
-              <option key={timeframe} value={timeframe}>
-                {timeframe}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label
-          className="kbot-owned-strategy-form__field"
-          htmlFor="kbot-owned-strategy-kind"
-        >
-          <span className="kbot-owned-strategy-form__field-label">
-            {crossover ? "Average type (both averages)" : "Average type"}
-          </span>
-          <select
-            id="kbot-owned-strategy-kind"
-            className="kbot-owned-strategy-form__select"
-            value={state.kind}
-            onChange={handleSelectChange("kind")}
+            <span className="kbot-owned-strategy-form__field-label">
+              Enter when
+            </span>
+            <select
+              id="kbot-owned-strategy-entryComparison"
+              className="kbot-owned-strategy-form__select"
+              value={state.entryComparison}
+              onChange={handleSelectChange("entryComparison")}
+            >
+              {COMPARISONS.map((comparison) => (
+                <option key={comparison} value={comparison}>
+                  {comparisonLabels[comparison]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label
+            className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-exitComparison"
           >
-            {MOVING_AVERAGE_KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {KIND_LABELS[kind]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label
-          className="kbot-owned-strategy-form__field"
-          htmlFor="kbot-owned-strategy-entryComparison"
-        >
-          <span className="kbot-owned-strategy-form__field-label">
-            Enter when
-          </span>
-          <select
-            id="kbot-owned-strategy-entryComparison"
-            className="kbot-owned-strategy-form__select"
-            value={state.entryComparison}
-            onChange={handleSelectChange("entryComparison")}
+            <span className="kbot-owned-strategy-form__field-label">Exit when</span>
+            <select
+              id="kbot-owned-strategy-exitComparison"
+              className="kbot-owned-strategy-form__select"
+              value={state.exitComparison}
+              onChange={handleSelectChange("exitComparison")}
+            >
+              {COMPARISONS.map((comparison) => (
+                <option key={comparison} value={comparison}>
+                  {comparisonLabels[comparison]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {problemList.length > 0 ? (
+          <ul
+            className="kbot-owned-strategy-form__problems"
+            data-testid="owned-strategy-form-problems"
           >
-            {COMPARISONS.map((comparison) => (
-              <option key={comparison} value={comparison}>
-                {comparisonLabels[comparison]}
-              </option>
+            {problemList.map((problem) => (
+              <li key={problem}>{problem}</li>
             ))}
-          </select>
-        </label>
-        <label
-          className="kbot-owned-strategy-form__field"
-          htmlFor="kbot-owned-strategy-exitComparison"
-        >
-          <span className="kbot-owned-strategy-form__field-label">Exit when</span>
-          <select
-            id="kbot-owned-strategy-exitComparison"
-            className="kbot-owned-strategy-form__select"
-            value={state.exitComparison}
-            onChange={handleSelectChange("exitComparison")}
-          >
-            {COMPARISONS.map((comparison) => (
-              <option key={comparison} value={comparison}>
-                {comparisonLabels[comparison]}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {problemList.length > 0 ? (
-        <ul
-          className="kbot-owned-strategy-form__problems"
-          data-testid="owned-strategy-form-problems"
-        >
-          {problemList.map((problem) => (
-            <li key={problem}>{problem}</li>
-          ))}
-        </ul>
-      ) : null}
-      <p className="kbot-owned-strategy-form__footnote">
-        Paper-trading only; live execution stays disabled in this workstation.
-      </p>
-    </section>
+          </ul>
+        ) : null}
+        <p className="kbot-owned-strategy-form__footnote">
+          Paper-trading only; live execution stays disabled in this workstation.
+        </p>
+      </section>
+    </div>
   );
 }

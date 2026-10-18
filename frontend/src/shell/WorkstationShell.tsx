@@ -411,19 +411,45 @@ export function WorkstationShell({
   const [packsOpen, setPacksOpen] = useState(false);
 
   const [bootstrapDone, setBootstrapDone] = useState(false);
+  const [bootstrapFailed, setBootstrapFailed] = useState(false);
+
+  const handleRecoverSession = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    // Only existing-session recovery: never replay the consumed bootstrap token.
+    try {
+      const ok = await recoverCsrf();
+      if (ok) {
+        setBootstrapFailed(false);
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        error: navigator.onLine
+          ? "recovery refused"
+          : "recovery refused: browser is offline; reconnect and retry",
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }, []);
 
   useEffect(() => {
     const token = consumeBootstrapToken();
     if (!token) {
       // Reload with a redeemed (or absent) bootstrap token: the
       // session cookie may still be valid, so try to recover the
-      // CSRF before mounting.
+      // CSRF before mounting. A refused or failed recovery is
+      // surfaced honestly instead of silently presenting startup
+      // as complete.
       let cancelled = false;
       void recoverCsrf()
         .catch(() => false)
-        .finally(() => {
-          if (!cancelled) {
-            setBootstrapDone(true);
+        .then((ok: boolean) => {
+          if (cancelled) {
+            return;
+          }
+          setBootstrapDone(true);
+          if (!ok) {
+            setBootstrapFailed(true);
           }
         });
       return () => {
@@ -439,9 +465,12 @@ export function WorkstationShell({
       })
       .catch(() => {
         if (!cancelled) {
-          // Bootstrap failed: still mark "done" so the UI mounts;
-          // the next state-change request will surface the error.
+          // Bootstrap failed: the shell still mounts so navigation
+          // works, but the failure is surfaced on Home instead of
+          // being presented silently as startup complete. The token
+          // is consumed and never retried.
           setBootstrapDone(true);
+          setBootstrapFailed(true);
         }
       });
     return () => {
@@ -602,6 +631,7 @@ export function WorkstationShell({
               type="button"
               className="kbot-shell__palette-hint"
               data-testid="kbot-shell-palette-hint"
+              aria-keyshortcuts="Control+K Meta+K"
               onClick={() => {
                 setPaletteOpen(true);
               }}
@@ -616,7 +646,12 @@ export function WorkstationShell({
       </header>
       <main className="kbot-shell__main">
         {active === "home" ? (
-          <AppHome onNavigate={setActive} sessionPending={!bootstrapDone} />
+          <AppHome
+            onNavigate={setActive}
+            sessionPending={!bootstrapDone}
+            sessionFailed={bootstrapFailed}
+            onRecoverSession={handleRecoverSession}
+          />
         ) : null}
         {active === "workstation" ? (
           <>

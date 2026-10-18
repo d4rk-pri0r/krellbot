@@ -1,6 +1,6 @@
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import "./ArmedRecordsList.signal.css";
-import type { PaperArmedClient, PaperArmedRecord } from "./client";
+import type { PaperArmedClient, PaperArmedRecord, PaperClient } from "./client";
 
 export type { PaperArmedClient, PaperArmedRecord } from "./client";
 
@@ -41,6 +41,10 @@ export function ArmedRecordsList({
   const [selected, setSelected] = useState<PaperArmedRecord | null>(null);
   const [inFlight, setInFlight] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [rowActionError, setRowActionError] = useState<string | null>(null);
+  const [rowActionKind, setRowActionKind] = useState<"pause" | "resume" | "disarm" | null>(null);
+  const [rowActionInFlight, setRowActionInFlight] = useState(false);
+  const rowActionKey = useRef<string | null>(null);
 
   // The shell may pass a legacy client that does not implement
   // listArmed (the pre-armed-records injected test client). Calling it
@@ -120,7 +124,74 @@ export function ArmedRecordsList({
     }
   };
 
+  const runRowAction = async (kind: "pause" | "resume" | "disarm"): Promise<void> => {
+    if (selected === null || rowActionInFlight) {
+      return;
+    }
+    const record = selected;
+    const label = kind === "pause" ? "Pause entries" : kind === "resume" ? "Resume entries" : "Disarm";
+    rowActionKey.current = rowKey(record);
+    setRowActionKind(kind);
+    setRowActionInFlight(true);
+    setRowActionError(null);
+    try {
+      // The shell supplies the combined client; preserve the list-only prop contract.
+      const commands = client as PaperArmedClient & PaperClient;
+      const result = await (kind === "pause"
+        ? commands.pauseEntries(record.venue, record.pair)
+        : kind === "resume"
+          ? commands.resumeEntries(record.venue, record.pair)
+          : commands.disarm(record.venue, record.pair));
+      if (result?.ok !== true) {
+        throw new Error(result?.message || result?.code || "Command success was not confirmed");
+      }
+      setRowActionError(null);
+      setSelected(null);
+      try {
+        const view = await client.listArmed();
+        setState({ kind: "ready", records: view.records });
+        setLastError(null);
+      } catch (err) {
+        // A confirmed command must not be reported as failed when only its readback fails.
+        setLastError(err instanceof Error ? err.message : String(err));
+      }
+    } catch (err) {
+      setRowActionError(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRowActionInFlight(false);
+    }
+  };
+
   const rows = state.kind === "ready" ? state.records : [];
+
+  // Pointer and keyboard toggle the exact same selection state.
+  const toggleRow = (row: PaperArmedRecord): void => {
+    setSelected(
+      selected !== null && rowKey(selected) === rowKey(row) ? null : row,
+    );
+  };
+
+  // Keyboard activation with native-button semantics: plain and Shift
+  // chords of Enter/Space toggle the detail, Ctrl/Meta/Alt chords and
+  // auto-repeats are left alone, unrelated keys keep their default.
+  // Space is canceled on every press (repeats included) so a focused
+  // row never scrolls the page.
+  const handleRowKeyDown = (
+    event: ReactKeyboardEvent<HTMLTableRowElement>,
+    row: PaperArmedRecord,
+  ): void => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    if (event.repeat) {
+      return;
+    }
+    toggleRow(row);
+  };
 
   return (
     <section
@@ -251,11 +322,10 @@ export function ArmedRecordsList({
                           tabIndex={0}
                           aria-label={`Toggle armed record detail for ${row.venue} ${row.pair}`}
                           onClick={() => {
-                            setSelected(
-                              selected !== null && rowKey(selected) === rowKey(row)
-                                ? null
-                                : row,
-                            );
+                            toggleRow(row);
+                          }}
+                          onKeyDown={(event) => {
+                            handleRowKeyDown(event, row);
                           }}
                         >
                           <td className="kbot-paper-armed__mono">{row.venue}</td>
@@ -312,6 +382,45 @@ export function ArmedRecordsList({
                     <dd>{sentenceFor(selected.entries_paused)}</dd>
                   </div>
                 </dl>
+                <button
+                  type="button"
+                  className="kbot-paper-armed__row-action"
+                  data-testid="paper-armed-row-pause"
+                  aria-label={`Pause entries on ${selected.venue} ${selected.pair}`}
+                  disabled={rowActionInFlight || !selected || selected.entries_paused === true}
+                  onClick={() => { void runRowAction("pause"); }}
+                >
+                  Pause entries
+                </button>
+                <button
+                  type="button"
+                  className="kbot-paper-armed__row-action"
+                  data-testid="paper-armed-row-resume"
+                  aria-label={`Resume entries on ${selected.venue} ${selected.pair}`}
+                  disabled={rowActionInFlight || !selected || selected.entries_paused === false}
+                  onClick={() => { void runRowAction("resume"); }}
+                >
+                  Resume entries
+                </button>
+                <button
+                  type="button"
+                  className="kbot-paper-armed__row-action"
+                  data-testid="paper-armed-row-disarm"
+                  aria-label={`Disarm ${selected.venue} ${selected.pair}`}
+                  disabled={rowActionInFlight}
+                  onClick={() => { void runRowAction("disarm"); }}
+                >
+                  Disarm
+                </button>
+                {rowActionError !== null && rowActionKind !== null && rowActionKey.current === rowKey(selected) ? (
+                  <p
+                    data-testid="paper-armed-row-action-error"
+                    role="alert"
+                    className="kbot-paper-armed__row-action-error"
+                  >
+                    {rowActionError}
+                  </p>
+                ) : null}
               </section>
             ) : null}
             {lastError !== null ? (

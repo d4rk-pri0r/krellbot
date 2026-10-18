@@ -1,0 +1,192 @@
+/*
+ * Inspector — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the persistent inspector panel mounted
+ * in the Workstation view (WorkstationShell). Everything is namespaced
+ * under `.kbot-shell__inspector-root` so the shared shell's flat rules
+ * (frontend/src/styles/shell.css) cannot flatten this hierarchy,
+ * whichever order the CSS chunks are emitted in. Every color/typography
+ * value comes from the shared tokens (frontend/src/styles/tokens.css);
+ * each token carries its approved Signal fallback so the surface still
+ * composes on bases where only the palette literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - Manrope carries all prose (title, empty/loading/error copy); the
+ *     selected subject id uses a restrained IBM Plex Mono technical label;
+ *   - the empty state is honest copy on a dashed quiet panel — never a
+ *     marketing hero, never an invented subject;
+ *   - the selected subject carries the sage/seafoam selection vocabulary
+ *     (leading sage bar over a seafoam-tinted wash) matching the other
+ *     Signal shell panels;
+ *   - the load-failure line keeps the coral-derived caution tone with the
+ *     detail in text, coral as reinforcement only;
+ *   - long ids/details wrap inside the panel instead of widening the page
+ *     at 1600px or overflowing it at 390px;
+ *   - any interactive control nested under this root keeps a ≥44px touch
+ *     target on narrow layouts, and visible keyboard focus is seafoam.
+ */
+
+.kbot-shell__inspector-root {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  background: var(--surface, #14222e);
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__inspector-root *,
+.kbot-shell__inspector-root *::before,
+.kbot-shell__inspector-root *::after {
+  box-sizing: border-box;
+}
+
+/* ============ head ============ */
+
+.kbot-shell__inspector-root .kbot-inspector__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
+  padding-bottom: 8px;
+}
+
+.kbot-shell__inspector-root .kbot-inspector__title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+/* ============ body ============ */
+
+.kbot-shell__inspector-root .kbot-inspector__body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Honest empty state: quiet dashed panel, muted copy, no invented data. */
+.kbot-shell__inspector-root .kbot-inspector__empty {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 30%, var(--surface, #14222e));
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* Honest loading state: the panel claims no subject while the read runs. */
+.kbot-shell__inspector-root .kbot-inspector__loading {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 30%, var(--surface, #14222e));
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* Coral failure line: text first, coral as reinforcement only. */
+.kbot-shell__inspector-root .kbot-inspector__error {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 35%, var(--caution-border, #736044));
+  border-left: 3px solid var(--coral, #cc9689);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--caution-bg, #2b271f) 55%, var(--surface, #14222e));
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--caution-text, #e2c193);
+  overflow-wrap: anywhere;
+}
+
+/* ============ selected subject (sage/seafoam selection vocabulary) ============ */
+
+.kbot-shell__inspector-root .kbot-inspector__selected {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 10px 14px 10px 17px;
+  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 35%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 8%, var(--surface, #14222e));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--sage, #b3dda8) 65%, var(--seafoam, #a8d8d1));
+  min-width: 0;
+}
+
+.kbot-shell__inspector-root .kbot-inspector__selected-label {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-shell__inspector-root .kbot-inspector__selected-id {
+  margin: 0;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-shell__inspector-root .kbot-inspector__selected-detail {
+  margin: 0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* ============ any nested interactive control ============ */
+
+.kbot-shell__inspector-root button,
+.kbot-shell__inspector-root a {
+  min-height: 34px;
+  font-family: inherit;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__inspector-root button:focus-visible,
+.kbot-shell__inspector-root a:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-shell__inspector-root {
+    padding: 12px 12px 14px;
+  }
+
+  .kbot-shell__inspector-root button,
+  .kbot-shell__inspector-root a {
+    min-height: 44px;
+  }
+}

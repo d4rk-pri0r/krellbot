@@ -1,0 +1,255 @@
+/*
+ * Strategy explanation — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Component-scoped styles for the persistent strategy-explanation card
+ * mounted beside the open Editor in the Workstation Strategies view. The
+ * card restates what a saved/validated revision trades, derived entirely
+ * from stored revision bytes; it never asserts research results or
+ * performance the revision does not supply.
+ *
+ * Typography is inherited from the host (Manrope via the shared shell;
+ * IBM Plex Mono only for restrained technical/numeric labels such as the
+ * revision id). This file consumes the approved named tokens, each with
+ * its exact approved fallback so the slice functions on this accepted
+ * base:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Selectors are nested under `.kbot-feature__strategy-explanation-root`
+ * so shared shell rules (`.kbot-shell button`, …) cannot flatten the
+ * intended hierarchy. This card has no affirmative "go" action of its
+ * own — the CSV export is a secondary utility control — so sage stays
+ * reserved for the editor's primary actions and seafoam carries the
+ * card's selection/focus accents. Unparsed/unknown notices stay
+ * muted/caution-toned, never success-colored.
+ */
+
+.kbot-feature__strategy-explanation-root {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 16px 18px 18px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 11px;
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  overflow-wrap: break-word;
+}
+
+.kbot-feature__strategy-explanation-root *,
+.kbot-feature__strategy-explanation-root *::before,
+.kbot-feature__strategy-explanation-root *::after {
+  box-sizing: border-box;
+}
+
+.kbot-feature__strategy-explanation-root h3,
+.kbot-feature__strategy-explanation-root h4,
+.kbot-feature__strategy-explanation-root p,
+.kbot-feature__strategy-explanation-root ul {
+  margin: 0;
+}
+
+/* --- header --- */
+
+.kbot-feature__strategy-explanation-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+}
+
+.kbot-feature__strategy-explanation-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-feature__strategy-explanation-revision {
+  margin-top: 4px;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__strategy-explanation-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: none;
+}
+
+/* Secondary utility control: panel-tinted, seafoam on focus/hover. */
+.kbot-feature__strategy-explanation-root .kbot-strategy-explanation__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-feature__strategy-explanation-root
+  .kbot-strategy-explanation__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-feature__strategy-explanation-root
+  .kbot-strategy-explanation__action:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+.kbot-feature__strategy-explanation-root
+  .kbot-strategy-explanation__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- section headings --- */
+
+.kbot-feature__strategy-explanation-section {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted, #abc4d8) 92%, transparent);
+}
+
+/* --- metadata --- */
+
+.kbot-feature__strategy-explanation-metadata {
+  display: grid;
+  gap: 5px;
+  padding: 11px 13px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 55%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+  border-radius: 9px;
+}
+
+.kbot-feature__strategy-explanation-metadata p {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+/* --- lists (indicators, conditions, markets) --- */
+
+.kbot-feature__strategy-explanation-list {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kbot-feature__strategy-explanation-list--conditions {
+  padding-left: 14px;
+  list-style: disc;
+}
+
+.kbot-feature__strategy-explanation-list--conditions li {
+  color: var(--text, #e9f0f5);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__strategy-explanation-list-item {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted, #abc4d8);
+  background: color-mix(in srgb, var(--panel, #18354a) 22%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 45%, transparent);
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+
+/* Unsupported rows stay visibly unknown, never success-colored. */
+.kbot-feature__strategy-explanation-list-item[data-supported="0"] {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: color-mix(in srgb, var(--muted, #abc4d8) 85%, var(--text, #e9f0f5));
+}
+
+.kbot-feature__strategy-explanation-list-item[data-supported="1"] {
+  color: var(--text, #e9f0f5);
+}
+
+/* --- details and notices --- */
+
+.kbot-feature__strategy-explanation-detail {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__strategy-explanation-performance {
+  padding-top: 12px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-feature__strategy-explanation-unparsed,
+.kbot-feature__strategy-explanation-unknowns {
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 10%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  color: var(--text, #e9f0f5);
+}
+
+/* --- responsive: narrow layouts stay contained and reachable --- */
+
+@media (max-width: 640px) {
+  .kbot-feature__strategy-explanation-root {
+    gap: 12px;
+    padding: 12px 12px 14px;
+    border-radius: 9px;
+  }
+
+  .kbot-feature__strategy-explanation-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kbot-feature__strategy-explanation-actions {
+    width: 100%;
+  }
+
+  .kbot-feature__strategy-explanation-actions > * {
+    flex: 1 1 auto;
+  }
+
+  /* ≥44px touch targets on the action button. */
+  .kbot-feature__strategy-explanation-root .kbot-strategy-explanation__action {
+    min-height: 44px;
+    width: 100%;
+  }
+}
