@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type JSX } from "react";
 import type { AlertRow } from "./client";
 import { createAcknowledgedAlertsHttpClient } from "./acknowledgedAlertsClient";
+import { severityOptions } from "./AlertsFilter";
 
 export const NO_ACKNOWLEDGED_ALERTS_TEXT = "No acknowledged alerts.";
 export const ACKNOWLEDGED_LOADING_TEXT = "Loading…";
@@ -41,6 +42,12 @@ function formatTs(ts: number): string {
   return new Date(ts * 1000).toISOString().replace("T", " ").slice(0, 19);
 }
 
+// Same sentinel value AlertsFilter.severityOptions() hardcodes as its first option.
+const ALL_SEVERITIES = "all";
+const ACK_FILTERED_EMPTY_TEXT = "No acknowledged alerts match the current filters.";
+const ACK_CLEAR_TEXT = "Clear filters";
+const ACK_ALL_SEVERITIES_LABEL = "All severities";
+
 export type AcknowledgedAlertsListProps = {
   client: unknown;
 };
@@ -50,6 +57,8 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [severity, setSeverity] = useState<string>(ALL_SEVERITIES);
+  const [query, setQuery] = useState<string>("");
 
   const list = useMemo(() => resolveListSource(client), [client]);
 
@@ -73,6 +82,17 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
     };
   }, [list, nonce]);
 
+  const visibleRows = rows === null ? null : rows.filter((alert) => {
+    if (severity !== ALL_SEVERITIES && alert.severity !== severity) return false;
+    const needle = query.trim().toLowerCase();
+    if (needle === "") return true;
+    return [alert.id, alert.kind, alert.code ?? "", alert.venue ?? "", alert.pair ?? ""].some(
+      (field) => String(field).toLowerCase().includes(needle),
+    );
+  });
+  const isEmpty = rows !== null && visibleRows !== null && rows.length > 0 && visibleRows.length === 0;
+  const filtersActive = severity !== ALL_SEVERITIES || query !== "";
+
   return (
     <section
       className="kbot-ops__panel"
@@ -90,6 +110,56 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
         >
           Refresh
         </button>
+        <label
+          className="kbot-ops__panel-head-filter"
+          id="ops-acknowledged-filter-severity-label"
+          htmlFor="ops-acknowledged-filter-severity-input"
+        >
+          Severity
+          <select
+            id="ops-acknowledged-filter-severity-input"
+            aria-label="Filter acknowledged alerts by severity"
+            aria-describedby={isEmpty ? "ops-acknowledged-empty" : undefined}
+            data-testid="ops-acknowledged-filter-severity"
+            value={severity}
+            onChange={(event) => setSeverity(event.target.value)}
+          >
+            {severityOptions(rows ?? []).map((option) => (
+              <option key={option} value={option}>
+                {option === ALL_SEVERITIES ? ACK_ALL_SEVERITIES_LABEL : option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label
+          className="kbot-ops__panel-head-filter"
+          id="ops-acknowledged-filter-query-label"
+          htmlFor="ops-acknowledged-filter-query-input"
+        >
+          Search
+          <input
+            id="ops-acknowledged-filter-query-input"
+            aria-label="Search acknowledged alerts by id, kind, code, venue or pair"
+            aria-describedby={isEmpty ? "ops-acknowledged-empty" : undefined}
+            data-testid="ops-acknowledged-filter-query"
+            type="text"
+            value={query}
+            placeholder="Filter by id, kind, code, venue or pair"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        {filtersActive ? (
+          <button
+            type="button"
+            data-testid="ops-acknowledged-filter-clear"
+            onClick={() => {
+              setSeverity(ALL_SEVERITIES);
+              setQuery("");
+            }}
+          >
+            {ACK_CLEAR_TEXT}
+          </button>
+        ) : null}
       </div>
       {error !== null ? (
         <p className="kbot-ops__empty" role="alert">
@@ -115,7 +185,7 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
             </tr>
           </thead>
           <tbody>
-            {rows.map((alert: AlertRow) => (
+            {(visibleRows ?? []).map((alert: AlertRow) => (
               <tr
                 key={alert.id}
                 data-testid={rowTestId(alert.id)}
@@ -144,6 +214,11 @@ export function AcknowledgedAlertsList({ client }: AcknowledgedAlertsListProps):
           </tbody>
         </table>
       )}
+      {isEmpty ? (
+        <p id="ops-acknowledged-empty" className="kbot-ops__alerts-empty" data-testid="ops-acknowledged-empty">
+          {ACK_FILTERED_EMPTY_TEXT}
+        </p>
+      ) : null}
       {error === null && rows !== null && openId !== null
         ? rows
             .filter((alert) => alert.id === openId)
