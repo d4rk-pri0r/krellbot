@@ -160,6 +160,7 @@ describe("JobsDrawer", () => {
       render(<JobsDrawer />);
       openJobsDrawer();
       const alert = await screen.findByTestId("jobs-error");
+      expect(alert.getAttribute("role")).toBe("alert");
       expect(alert.textContent).toContain(
         "Could not load jobs — check the workstation is running.",
       );
@@ -191,6 +192,7 @@ describe("JobsDrawer", () => {
       render(<JobsDrawer />);
       openJobsDrawer();
       const alert = await screen.findByTestId("jobs-error");
+      expect(alert.getAttribute("role")).toBe("alert");
       expect(alert.textContent).toContain(
         "Could not load jobs — check the workstation is running.",
       );
@@ -384,6 +386,7 @@ describe("JobsDrawer", () => {
     // never a generic failure and never an invented snapshot.
     await rejectRequest(newer, new Error("jobs failed: 403"));
     const alert = await screen.findByTestId("jobs-error");
+    expect(alert.getAttribute("role")).toBe("alert");
     expect(alert.textContent).toContain("Jobs blocked — local-only preview.");
     expect(screen.queryByTestId("jobs-empty")).toBeNull();
     expect(screen.queryByTestId("job-row")).toBeNull();
@@ -415,6 +418,7 @@ describe("JobsDrawer", () => {
     expect(await screen.findAllByTestId("job-row")).toHaveLength(1);
     refreshJobs();
     const alert = await screen.findByTestId("jobs-error");
+    expect(alert.getAttribute("role")).toBe("alert");
     expect(alert.textContent).toContain(
       "Could not load jobs — check the workstation is running.",
     );
