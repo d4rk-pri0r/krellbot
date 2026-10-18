@@ -127,6 +127,18 @@ function formatReadAge(ageMs: number): string {
   return `${minutes}m ${rem}s ago`;
 }
 
+function formatEngagedAge(secondsDelta: number): string {
+  const seconds = Math.max(0, Math.floor(secondsDelta));
+  if (seconds < 3600) {
+    return formatReadAge(seconds * 1000);
+  }
+  const hours = Math.floor(seconds / 3600);
+  if (hours < 24) {
+    return `${hours}h ${Math.floor(seconds / 60) % 60}m ago`;
+  }
+  return `${Math.floor(hours / 24)}d ${hours % 24}h ago`;
+}
+
 // Severity band order for the grouped alerts panel: the two known bands
 // first (critical above warning, matching the server's own sort), then any
 // future/unknown severity in first-appearance order so no band is dropped.
@@ -437,6 +449,11 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
             <p className="kbot-ops__kill-state" data-testid="ops-kill-state">
               {killStateText(view.live.kill_switch.engaged, view.live.kill_switch.reason)}
             </p>
+            {view.live.kill_switch.engaged && typeof view.live.kill_switch.engaged_at === "number" ? (
+              <p className="kbot-ops__kill-since" data-testid="ops-kill-engaged-since">
+                Engaged for: {formatEngagedAge(Date.now() / 1000 - view.live.kill_switch.engaged_at)}
+              </p>
+            ) : null}
             <div className="kbot-ops__kill-row">
               <label className="kbot-ops__kill-label" htmlFor="ops-kill-reason-input">
                 Reason
