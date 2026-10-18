@@ -413,16 +413,23 @@ export function WorkstationShell({
   const [bootstrapDone, setBootstrapDone] = useState(false);
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
 
-  const handleRecoverSession = useCallback((): void => {
-    // Only existing-session recovery: the one-time bootstrap token is
-    // consumed and must never be replayed.
-    void recoverCsrf()
-      .catch(() => false)
-      .then((ok: boolean) => {
-        if (ok) {
-          setBootstrapFailed(false);
-        }
-      });
+  const handleRecoverSession = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    // Only existing-session recovery: never replay the consumed bootstrap token.
+    try {
+      const ok = await recoverCsrf();
+      if (ok) {
+        setBootstrapFailed(false);
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        error: navigator.onLine
+          ? "recovery refused"
+          : "recovery refused: browser is offline; reconnect and retry",
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   }, []);
 
   useEffect(() => {
@@ -624,6 +631,7 @@ export function WorkstationShell({
               type="button"
               className="kbot-shell__palette-hint"
               data-testid="kbot-shell-palette-hint"
+              aria-keyshortcuts="Control+K Meta+K"
               onClick={() => {
                 setPaletteOpen(true);
               }}
