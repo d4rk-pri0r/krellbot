@@ -24,12 +24,10 @@ type EntriesSentence = "Entries active" | "Entries paused";
 type CommandName = "pause" | "resume" | "disarm" | "raise_stop";
 
 /**
- * The control's own pending slot: real paper commands, plus the one-shot
- * post-Arm status read the Editor's ``refreshSignal`` bump triggers. It is
- * NOT a CommandName because it never mutates server state — it only gates
- * the buttons for the duration of the reconciliation read.
+ * The pending slot also covers manual and post-Arm status reads, which
+ * gate controls without mutating server state.
  */
-type PendingName = CommandName | "post_arm_refresh";
+type PendingName = CommandName | "refresh" | "post_arm_refresh";
 
 type InlineState = {
   status: PaperStatus | null;
@@ -192,7 +190,8 @@ function reducer(state: InlineState, action: InlineAction): InlineState {
     case "command-ok": {
       return {
         ...state,
-        pending: null,
+        // Keep the intent busy until its reconciliation read settles.
+        pending: state.pending === "disarm" ? null : state.pending,
         errorMessage: null,
         unknownOutcome: null,
         status: action.status,
@@ -316,6 +315,7 @@ export function EditorInlineStopControl({
     }
     inFlightRef.current = true;
     const epoch = ++epochRef.current;
+    dispatch({ type: "command-start", command: "refresh" });
     try {
       const next = await paperClient.getStatus();
       if (epoch !== epochRef.current) {
@@ -492,6 +492,17 @@ export function EditorInlineStopControl({
   };
 
   const busy = state.pending !== null;
+  const busyLabel =
+    state.pending === null
+      ? ""
+      : {
+          pause: "Pausing…",
+          resume: "Resuming…",
+          disarm: "Disarming…",
+          raise_stop: "Applying…",
+          refresh: "Refreshing…",
+          post_arm_refresh: "Refreshing…",
+        }[state.pending];
 
   // Scoped Signal status vocabulary: the modifier is derived only from the
   // confirmed backend status, never from color alone, and never claims a
@@ -558,11 +569,20 @@ export function EditorInlineStopControl({
               ? "Checking paper status…"
               : "No pack armed"}
       </span>
+      <span
+        className="kbot-shell__inline-stop-busy-status"
+        role="status"
+        aria-live="polite"
+      >
+        {busyLabel}
+      </span>
       <div className="kbot-shell__inline-stop-row">
         <button
           type="button"
           className="kbot-shell__inline-stop-pause"
           data-testid="editor-inline-stop-pause"
+          aria-busy={state.pending === "pause"}
+          aria-keyshortcuts="Enter Space"
           disabled={!armed || busy}
           onClick={() => {
             void handlePause();
@@ -574,6 +594,8 @@ export function EditorInlineStopControl({
           type="button"
           className="kbot-shell__inline-stop-resume"
           data-testid="editor-inline-stop-resume"
+          aria-busy={state.pending === "resume"}
+          aria-keyshortcuts="Enter Space"
           disabled={!armed || busy}
           onClick={() => {
             void handleResume();
@@ -585,6 +607,8 @@ export function EditorInlineStopControl({
           type="button"
           className="kbot-shell__inline-stop-disarm"
           data-testid="editor-inline-stop-disarm"
+          aria-busy={state.pending === "disarm"}
+          aria-keyshortcuts="Enter Space"
           disabled={!armed || busy}
           onClick={() => {
             void handleDisarm();
@@ -597,12 +621,14 @@ export function EditorInlineStopControl({
             type="button"
             className="kbot-shell__inline-stop-refresh"
             data-testid="editor-inline-stop-refresh"
+            aria-busy={state.pending === "refresh"}
+            aria-keyshortcuts="Enter Space"
             disabled={busy}
             onClick={() => {
               void refreshStatus();
             }}
           >
-            Refresh status
+            {state.pending === "refresh" ? "Refreshing…" : "Refresh status"}
           </button>
         ) : null}
       </div>
@@ -648,6 +674,8 @@ export function EditorInlineStopControl({
               .filter((part) => part.length > 0)
               .join(" ")}
             data-testid="editor-inline-stop-apply"
+            aria-busy={state.pending === "raise_stop"}
+            aria-keyshortcuts="Enter Space"
             disabled={!canRaiseStop || busy || !stopInputValid}
             title={
               !armed

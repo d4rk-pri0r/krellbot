@@ -51,6 +51,7 @@ export function CommandPalette({
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
+      aria-keyshortcuts="Escape"
       data-testid="command-palette"
     >
       <div className="kbot-palette__box kbot-shell__palette-box">

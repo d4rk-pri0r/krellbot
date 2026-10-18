@@ -199,10 +199,30 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
           data-testid="pack-library-refresh"
           disabled={refreshing}
           aria-disabled={refreshing}
+          aria-busy={refreshing}
           onClick={handleRefresh}
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
+        {/* Visually hidden polite status: mirrors the in-flight `refreshing`
+            truth the button already carries, so AT hears the read in flight. */}
+        <p
+          data-testid="pack-library-refresh-status"
+          role="status"
+          aria-live="polite"
+          className="kbot-pack-library__refresh-status"
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            padding: 0,
+            overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {refreshing ? "Reading installed packs…" : ""}
+        </p>
       </header>
 
       {rows !== null && rows.length > 0 ? (
@@ -321,10 +341,18 @@ function PackRowItem({ row, copied, copyFailed, onCopy }: PackRowItemProps): JSX
   const copyErrorId = useId();
   const priorRevision =
     row.rollback_ref !== null ? row.rollback_ref.prior_revision_id : "—";
+  // Screen-reader summary of the whole row, so AT hears one concise label
+  // on the listitem instead of tabbing the bucket, id, copy and dl children.
+  const rowSummary = `Pack ${row.pack_id}, bucket ${bucketLabel(row.bucket)}, version ${
+    row.version ?? "unspecified"
+  }, permissions ${
+    row.permissions.length > 0 ? row.permissions.join(", ") : "none"
+  }, prior revision ${priorRevision}`;
   return (
     <li
       className="kbot-pack-library__row"
       data-testid={`pack-library-row-${row.pack_id}`}
+      aria-label={rowSummary}
     >
       <div className="kbot-pack-library__row-head">
         <span
