@@ -1,0 +1,248 @@
+/*
+ * Live preflight — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Scoped presentation for the mounted LivePreflight panel on the
+ * Workstation Deployments surface. Everything is namespaced under the
+ * single `.kbot-feature__live-preflight-root` scope this component
+ * renders, so the shared shell's own `.kbot-shell button`,
+ * `.kbot-shell input`, `.kbot-shell select`,
+ * `.kbot-shell__main section[class^="kbot-"]` and `[role="alert"]`
+ * rules (frontend/src/styles/shell.css) keep composing underneath.
+ * Every color and typography value comes from the shared tokens
+ * (frontend/src/styles/tokens.css); each token carries its approved
+ * Signal fallback so the surface still composes on bases where only
+ * the palette literals are present:
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ *
+ * Composition contract:
+ *   - the shell keeps the outer panel chrome for the mounted section;
+ *     this scope only styles what the panel renders inside it;
+ *   - the request form keeps its frozen field set (Account ID,
+ *     Revision ID, Mode) with muted uppercase micro-label captions and
+ *     restrained technical mono inputs on the navy canvas;
+ *   - "Run preflight" is the one affirmative primary, so it carries
+ *     the sage treatment; the disabled state stays restrained and
+ *     never reads as a success tint;
+ *   - the verdict panel keeps the verbatim backend text — code label,
+ *     ok flag, message, account_id, revision_id — on a grouped surface
+ *     panel; sage reinforces an ok verdict, coral a refusal, and the
+ *     text alone always carries the state;
+ *   - identifiers stay technical mono with tabular numerals and wrap
+ *     rather than widen the page;
+ *   - a failed request renders as a scoped alert on a muted panel
+ *     surface with the coral-derived caution tone, never sage;
+ *   - every control keeps a >=44px tap target on narrow (<=640px)
+ *     viewports and a 2px seafoam focus-visible ring.
+ */
+
+.kbot-feature__live-preflight-root {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-feature__live-preflight-root *,
+.kbot-feature__live-preflight-root *::before,
+.kbot-feature__live-preflight-root *::after {
+  box-sizing: border-box;
+}
+
+.kbot-feature__live-preflight-root h2,
+.kbot-feature__live-preflight-root p {
+  margin: 0;
+}
+
+/* ============ header panel ============ */
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+/* ============ request form ============ */
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  align-items: end;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The frozen field captions: muted uppercase micro-labels. */
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__field {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-width: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+/* Identifiers and the mode word are technical values: restrained
+   mono on the navy canvas, wrapping rather than widening the page.
+   The explicit resets keep the caption treatment from leaking in. */
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__input {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  background: var(--navy, #0e1c29);
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12.5px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__input:focus {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+}
+
+/* ============ Run preflight: the one affirmative primary ============ */
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 13px;
+  background: var(--sage, #b3dda8);
+  border: 1px solid var(--sage, #b3dda8);
+  border-radius: var(--radius-control, 7px);
+  color: var(--action-primary-text, #172a1d);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+}
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ============ verdict panel ============ */
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__result {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--panel, #18354a) 22%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+}
+
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__result-line {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+/* Technical values: the backend identifiers, in restrained mono with
+   tabular numerals, wrapping rather than widening the page. */
+.kbot-feature__live-preflight-root
+  .kbot-feature__live-preflight-root__result-line--tech {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--muted, #abc4d8);
+}
+
+/* Verdict reinforcement only: sage for an ok verdict, coral-derived
+   for a refusal. The verbatim code label and ok flag carry the state;
+   a refusal never reads as a success tint. */
+.kbot-feature__live-preflight-root
+  .kbot-feature__live-preflight-root__result-line--ok {
+  color: var(--sage, #b3dda8);
+  font-weight: 700;
+}
+
+.kbot-feature__live-preflight-root
+  .kbot-feature__live-preflight-root__result-line--refused {
+  color: var(--danger-text, #e0a296);
+  font-weight: 700;
+}
+
+/* ============ failed request (honest error state) ============ */
+
+/* Read failures keep the muted panel surface with a coral-derived
+   border; the sentence carries the state, never a success tint. */
+.kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__error {
+  margin: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+/* ============ focus visibility ============ */
+
+.kbot-feature__live-preflight-root :is(button, input, select):focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============ narrow / mobile composition (390px) ============ */
+
+@media (max-width: 640px) {
+  .kbot-feature__live-preflight-root {
+    gap: 12px;
+  }
+
+  /* The frozen field set stacks instead of overflowing. */
+  .kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__form {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  /* Ordinary controls keep 44px touch targets on narrow screens. Same
+     specificity as the base rules above, later in the file, so they
+     win inside the media query. */
+  .kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__input,
+  .kbot-feature__live-preflight-root .kbot-feature__live-preflight-root__action {
+    min-height: 44px;
+    width: 100%;
+  }
+}
