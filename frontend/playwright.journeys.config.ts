@@ -15,7 +15,9 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "journeys",
-  testMatch: /j[1-7]-.*\.spec\.ts/,
+  // Custom suffix avoids Vitest's existing *.spec.ts collection without
+  // changing its configuration or excluding any existing unit/e2e test.
+  testMatch: /j[1-7]-.*\.journey\.ts/,
   fullyParallel: false,
   workers: 2,
   retries: 0,
