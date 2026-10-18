@@ -19,6 +19,8 @@
  * result-route requested exactly once per completed run.
  */
 import type { Page, Response } from "@playwright/test";
+import {readFileSync} from "node:fs";
+import {waitForTraceWindowEnd} from "./helpers/trace-window";
 import { expect, test } from "../e2e/journey-harness/journey-harness";
 import {
   SMA_CROSS_FIXTURE_JSON,
@@ -304,28 +306,25 @@ test.describe("J4 inspect", () => {
     expect(mounted).toBeLessThan(500);
 
     const scrollContainer = page.getByTestId("research-trace-scroll");
-    const firstLabel = await scrollContainer.locator("button").first().innerText();
+    const firstLabel = (await scrollContainer.locator("button").first().innerText()).trim();
+    expect(firstLabel).toMatch(/^\d+$/);
+    const lastCsvLine=readFileSync(journey.workstation.rows100kCsv,"utf8").trim().split("\n").at(-1)!;
+    const expectedLastLabel=lastCsvLine.split(",",1)[0];
 
     // Scroll to bottom — settle within the baseline's 10s window.
     const scrollStart = Date.now();
     await scrollContainer.evaluate((el: HTMLElement) => {
       el.scrollTop = el.scrollHeight;
     });
-    await page.waitForFunction(
-      () => {
-        const el = document.querySelector(
-          '[data-testid="research-trace-scroll"]',
-        ) as HTMLElement | null;
-        if (!el) return false;
-        return el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-      },
-      undefined,
-      { timeout: 10_000 },
-    );
+    // React's virtual-window update follows the native scroll event.
+    // Geometry alone can be settled while the old top rows remain mounted.
+    const remaining=()=>Math.max(1,10_000-(Date.now()-scrollStart));
+    await waitForTraceWindowEnd(page,{firstLabel,lastLabel:expectedLastLabel,timeoutMs:remaining()});
     const lastButton = scrollContainer.locator("button").last();
-    await expect(lastButton).toBeVisible({ timeout: 10_000 });
+    await expect(lastButton).toBeVisible({ timeout: remaining() });
     const lastLabel = (await lastButton.innerText()).trim();
     expect(lastLabel).not.toBe(firstLabel);
+    expect(lastLabel).toBe(expectedLastLabel);
     const firstStillVisible = await scrollContainer
       .locator("button", { hasText: firstLabel })
       .first()
@@ -333,6 +332,7 @@ test.describe("J4 inspect", () => {
       .catch(() => false);
     expect(firstStillVisible).toBe(false);
     const bottomElapsed = Date.now() - scrollStart;
+    expect(bottomElapsed).toBeLessThanOrEqual(10_000);
 
     // Scroll to middle, click a bar — the detail opens.
     await scrollContainer.evaluate((el: HTMLElement) => {
