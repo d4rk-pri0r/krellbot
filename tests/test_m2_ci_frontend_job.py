@@ -13,7 +13,7 @@ The invariants this module locks down:
 
 1. The top-level ``on:`` block still contains ``pull_request`` (the
    trigger that gates PR #5).
-2. A job named ``frontend`` exists with ``runs-on: ubuntu-latest`` and
+2. A job named ``frontend`` exists with ``runs-on: ubuntu-24.04`` and
    ``timeout-minutes`` ≤ 30.
 3. The job body contains, in this order, the seven gate substrings the
    brief requires:
@@ -165,7 +165,7 @@ def test_on_block_still_includes_pull_request() -> None:
 
 
 def test_frontend_job_exists_with_runs_on_and_timeout() -> None:
-    """A ``frontend`` job must exist with ``runs-on: ubuntu-latest`` and a timeout.
+    """A ``frontend`` job must exist with ``runs-on: ubuntu-24.04`` and a timeout.
 
     The brief caps ``timeout-minutes`` at 30 (the job is actually 25);
     we assert the literal to be exact rather than upper-bounding.
@@ -175,7 +175,7 @@ def test_frontend_job_exists_with_runs_on_and_timeout() -> None:
     body = _extract_job_body(text, "frontend")
     body_text = _body_joined(body)
 
-    assert "runs-on: ubuntu-latest" in body_text, "the `frontend:` job must declare `runs-on: ubuntu-latest`"
+    assert "runs-on: ubuntu-24.04" in body_text, "the `frontend:` job must declare `runs-on: ubuntu-24.04`"
 
     match = re.search(r"timeout-minutes:\s*(\d+)", body_text)
     assert match is not None, "the `frontend:` job must declare `timeout-minutes: <int>`"

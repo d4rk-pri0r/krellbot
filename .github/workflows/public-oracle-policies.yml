@@ -2,14 +2,13 @@ name: Public oracle policies
 
 # Once on main, pull_request_target uses this base-branch workflow definition.
 # Never check out/execute PR product code here. All PR source is Git blob data.
-# The finite Phase 2 branch push registers this new workflow for explicit
-# bootstrap workflow_dispatch validation before Joe merges it.
+# workflow_dispatch re-audits one PR's Git objects with the same trusted scripts.
 on:
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
-    branches: [main, phase2/public-oracle-ci]
+    branches: [main]
   workflow_dispatch:
     inputs:
       audit_pr:

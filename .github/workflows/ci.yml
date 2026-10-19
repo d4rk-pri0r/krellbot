@@ -4,12 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
-    inputs:
-      audit_pr:
-        description: Optional public journey PR number to test with this workflow
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -29,7 +23,7 @@ jobs:
           - os: macos-latest
             image: macos-26
           - os: windows-latest
-            image: windows-2025-vs2026
+            image: windows-2025
     runs-on: ${{ matrix.image }}
     timeout-minutes: 10
     steps:
@@ -135,40 +129,15 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: read
     env:
       KRELLBOT_ENABLE_LIVE: "0"
       PYTHON_KEYRING_BACKEND: tests.fakes.fake_keyring.FakeKeyring
       CI: "true"
     steps:
-      - name: Select the exact journey candidate
-        id: target
-        env:
-          GH_TOKEN: ${{ github.token }}
-          AUDIT_PR: ${{ inputs.audit_pr }}
-          EVENT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          python3 - <<'PY'
-          import json, os, re, subprocess
-          number = os.environ.get('AUDIT_PR', '')
-          sha = os.environ['EVENT_HEAD']
-          if number:
-              if not re.fullmatch(r'[1-9][0-9]*', number):
-                  raise SystemExit('audit_pr must be a positive PR number')
-              repo = os.environ['GITHUB_REPOSITORY']
-              pr = json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/pulls/{number}'],text=True))
-              if pr['base']['repo']['full_name'] != repo or pr['base']['ref'] != 'main':
-                  raise SystemExit('Only a public-oracle PR targeting this main is supported')
-              sha = pr['head']['sha']
-          if not re.fullmatch(r'[0-9a-f]{40}', sha):
-              raise SystemExit('Expected an exact head SHA')
-          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
-              out.write(f'sha={sha}\n')
-          print(f'Journey test subject: {sha} (audit_pr={number or "event"})')
-          PY
+      # Test the exact PR head on pull_request and the pushed commit on main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
         with:
-          ref: ${{ steps.target.outputs.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Isolate workstation data and dependency cache
         run: |
