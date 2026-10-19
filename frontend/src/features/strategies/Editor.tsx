@@ -181,6 +181,15 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   };
 
   const handleImport = (): void => {
+    // Import acts on the chosen file when there is one: it must never
+    // validate the (unrelated) textarea bytes while a picked file sits in
+    // the picker — that would clear the file's own refusal and look like
+    // an import that never happened.
+    const file = fileInputRef.current?.files?.[0];
+    if (file) {
+      importPackFile(file);
+      return;
+    }
     requireValidPack();
   };
 
@@ -265,11 +274,13 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     }
   };
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Reads and seeds the draft from a pack file. Shared by the file picker
+  // and the Import button so both act on the same chosen bytes; a file
+  // that does not parse refuses with "Invalid JSON" on the import-error
+  // surface and leaves the current draft untouched.
+  const importPackFile = (file: File): void => {
     const reader = new FileReader();
     reader.onload = () => {
       const text = typeof reader.result === "string" ? reader.result : "";
@@ -294,6 +305,14 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       setRawJson(text);
     };
     reader.readAsText(file);
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    importPackFile(file);
   };
 
   const handleExport = (): void => {
@@ -500,6 +519,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                 </span>
                 <input
                   id="kbot-strategy-editor-file"
+                  ref={fileInputRef}
                   className="kbot-strategy-editor__input"
                   type="file"
                   accept="application/json,.json"
