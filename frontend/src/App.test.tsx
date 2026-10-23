@@ -349,7 +349,7 @@ describe("App view routing", () => {
     expect(screen.getByLabelText(/^from$/i)).toBeDefined();
     expect(screen.getByLabelText(/^to$/i)).toBeDefined();
     expect(screen.getByRole("button", { name: /^run$/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /synthetic fixture/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /synthetic fixture/i })).toBeNull();
   });
 
   it("choosing Research hides the workstation heading", () => {
