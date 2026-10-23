@@ -48,13 +48,12 @@ describe("SavedStrategyLibrary search toolbar accessibility", () => {
     fireEvent.change(screen.getByTestId("library-search"), { target: { value: "  " } });
     expect(screen.queryByTestId("library-search-clear")).toBeNull();
   });
-
   it("keeps the state filter label binding and announces its shortcut", async () => {
     await mount();
     const select = screen.getByTestId<HTMLSelectElement>("library-state-filter");
     expect(screen.getByLabelText("State")).toBe(select);
     expect(select.getAttribute("id")).toBe("library-state-filter");
-    expect(select.getAttribute("aria-keyshortcuts")).toBe("Mod+Alt+S");
+    expect(select.getAttribute("aria-keyshortcuts")).toBe("Control+Alt+S Meta+Alt+S");
   });
 
   it("keeps the in-input Escape clear behavior byte-equal in effect", async () => {
@@ -65,5 +64,43 @@ describe("SavedStrategyLibrary search toolbar accessibility", () => {
     expect(input.value).toBe("");
     expect(screen.queryByTestId("library-search-clear")).toBeNull();
     expect(screen.getAllByTestId("library-row")).toHaveLength(2);
+  });
+
+  it("honors the announced Escape on the Clear control itself and returns focus to search", async () => {
+    await mount();
+    const input = screen.getByTestId<HTMLInputElement>("library-search");
+    fireEvent.change(input, { target: { value: "validated" } });
+    const clear = screen.getByTestId<HTMLButtonElement>("library-search-clear");
+    clear.focus();
+    expect(document.activeElement).toBe(clear);
+    expect(fireEvent.keyDown(clear, { key: "Escape" })).toBe(false);
+    expect(input.value).toBe("");
+    expect(screen.queryByTestId("library-search-clear")).toBeNull();
+    expect(document.activeElement).toBe(input);
+    expect(screen.getAllByTestId("library-row")).toHaveLength(2);
+  });
+
+  it("moves focus to search with the announced Control+F chord from inside the library", async () => {
+    await mount();
+    const input = screen.getByTestId<HTMLInputElement>("library-search");
+    const other = screen.getAllByRole<HTMLButtonElement>("button", {
+      name: /compare revisions of/i,
+    })[0];
+    other.focus();
+    expect(document.activeElement).toBe(other);
+    expect(fireEvent.keyDown(other, { key: "f", ctrlKey: true })).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("moves focus to the state filter with the announced Control+Alt+S chord", async () => {
+    await mount();
+    const select = screen.getByTestId<HTMLSelectElement>("library-state-filter");
+    const input = screen.getByTestId<HTMLInputElement>("library-search");
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    expect(
+      fireEvent.keyDown(input, { key: "s", ctrlKey: true, altKey: true }),
+    ).toBe(false);
+    expect(document.activeElement).toBe(select);
   });
 });
