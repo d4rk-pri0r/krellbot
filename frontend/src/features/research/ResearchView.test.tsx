@@ -99,13 +99,18 @@ describe("ResearchView form", () => {
     expect(screen.getByLabelText(/holdout from/i)).toBeDefined();
     expect(screen.getByLabelText(/holdout to/i)).toBeDefined();
     expect(screen.getByRole("button", { name: /^run$/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /synthetic fixture/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /synthetic fixture/i })).toBeNull();
   });
 
-  it("'Synthetic fixture' fills dataset path with 'fixtures/synthetic.csv' and does not call the client", () => {
+  it("no 'Synthetic fixture' button exists; typing the dataset path fills 'fixtures/synthetic.csv' and does not call the client", () => {
     const client = makeClient();
     render(<ResearchView client={client} />);
-    fireEvent.click(screen.getByRole("button", { name: /synthetic fixture/i }));
+    expect(
+      screen.queryByRole("button", { name: /synthetic fixture/i }),
+    ).toBeNull();
+    fireEvent.change(screen.getByLabelText(/dataset path/i), {
+      target: { value: "fixtures/synthetic.csv" },
+    });
     const datasetInput = screen.getByLabelText(/dataset path/i) as HTMLInputElement;
     expect(datasetInput.value).toBe("fixtures/synthetic.csv");
     expect(client.submitRun).not.toHaveBeenCalled();

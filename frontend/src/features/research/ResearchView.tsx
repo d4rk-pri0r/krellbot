@@ -39,8 +39,6 @@ type MetricCell = {
   source: string;
 };
 
-const SYNTHETIC_FIXTURE_PATH = "fixtures/synthetic.csv";
-
 const TRACE_ROW_HEIGHT = 24;
 const TRACE_OVERSCAN_ROWS = 8;
 const TRACE_VIEWPORT_HEIGHT = 480;
@@ -328,10 +326,6 @@ export function ResearchView({
   const [exportResultStatus, setExportResultStatus] = useState("");
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  const handleSyntheticFixture = (): void => {
-    setDatasetPath(SYNTHETIC_FIXTURE_PATH);
-  };
 
   // UTC date/time <-> exact millisecond echoing. Each bound keeps a single
   // source of truth: when the UTC control was edited last it owns the value
@@ -697,15 +691,6 @@ export function ResearchView({
               spellCheck={false}
             />
           </label>
-          <div>
-            <button
-              type="button"
-              className="kbot-research__action"
-              onClick={handleSyntheticFixture}
-            >
-              Synthetic fixture
-            </button>
-          </div>
         </section>
 
         <section

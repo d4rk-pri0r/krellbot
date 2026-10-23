@@ -91,8 +91,8 @@ describe("ResearchView Signal layout: setup panels", () => {
     const data = screen.getByTestId("research-setup-panel-data");
     expect(within(data).getByLabelText(/dataset path/i)).toBeDefined();
     expect(
-      within(data).getByRole("button", { name: /synthetic fixture/i }),
-    ).toBeDefined();
+      within(data).queryByRole("button", { name: /synthetic fixture/i }),
+    ).toBeNull();
 
     const window = screen.getByTestId("research-setup-panel-window");
     expect(within(window).getByLabelText(/^from$/i)).toBeDefined();
