@@ -90,6 +90,12 @@ class PaperVenue:
         self._validate_transport = validate_transport
         self._clock = clock
         self._state = self._load_state()
+        if "last_applied_ts" not in self._state:
+            pairs = {str(o["pair"]) for o in self._state["open_orders"] if o.get("stop_price") is not None}
+            if pairs:
+                # Legacy stops have no replay boundary; only future bars may fill them.
+                self._state["last_applied_ts"] = max(self._latest_bar_ts(pair) for pair in sorted(pairs))
+                self._persist()
         if starting_cash is not None and not self._state.get("seeded"):
             self._state["balances"]["USD"] = starting_cash
             self._state["seeded"] = True
@@ -185,8 +191,8 @@ class PaperVenue:
             }
         )
 
-        self._persist()
         self._state["last_applied_ts"] = self._latest_bar_ts(pair)
+        self._persist()
 
         # Kraken paper shape check: validate=true POST, no fill.
         if self.venue == "kraken" and self._has_stored_key and self._validate_transport is not None:
@@ -328,6 +334,7 @@ class PaperVenue:
                 "ts_ms": ts_ms,
             }
         )
+        self._state["last_applied_ts"] = self._latest_bar_ts(pair)
         self._persist()
 
     # ---- paper-specific helpers (used by the engine) ----------------------
