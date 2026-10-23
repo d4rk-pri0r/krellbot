@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState, type JSX } from "react";
 import "./RehearsalPanel.signal.css";
+import { RehearsalFillsCsvExport } from "./RehearsalFillsCsvExport";
 import type {
   RehearsalClient,
   RehearsalCommandResult,
@@ -611,6 +612,7 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
                     No simulated fills in this rehearsal yet
                   </p>
                 )}
+                <RehearsalFillsCsvExport fills={state.status.recent_fills} />
               </section>
             ) : null}
             <section
