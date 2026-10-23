@@ -140,8 +140,6 @@ test.describe("J3 research + jobs", () => {
     // Also listen for the completion moment on the wire (GUI-triggered).
     const completedAt = await completion;
     await resultShown;
-    // Journey gap: https://github.com/d4rk-pri0r/krellbot/issues/98
-    test.fail(true, "https://github.com/d4rk-pri0r/krellbot/issues/98");
 
     // With Jobs still open and untouched, its text flips to the final
     // state within 15s of that completion.
