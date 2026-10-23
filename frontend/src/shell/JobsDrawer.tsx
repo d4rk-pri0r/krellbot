@@ -22,6 +22,9 @@ const BLOCKED_TEXT = "Jobs blocked — local-only preview.";
 const LOCAL_PREVIEW_BADGE = "Local preview";
 const RETRY_TEXT = "Retry";
 
+/** Bounded periodic refresh while the drawer is open (#98). */
+const JOBS_REFRESH_INTERVAL_MS = 2000;
+
 /**
  * A read the local loopback API refuses (HTTP 403) is a blocked read, not a
  * generic load failure: the workstation is running but this surface is
@@ -81,30 +84,68 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
   const [jobs, setJobs] = useState<JobRow[] | null>(null);
   const [error, setError] = useState<{ blocked: boolean; detail: string } | null>(null);
   const requestIdRef = useRef(0);
+  const readInFlightRef = useRef(false);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /**
+   * Reads are sequenced at start and only the newest read may apply its
+   * result, so a late resolution of an abandoned read (closed drawer,
+   * unmounted drawer, replaced client, superseded request) is discarded.
+   * A "replace" read (open, manual Refresh, Retry) clears the visible rows
+   * first; a background refresh keeps the current rows until a fresh
+   * snapshot lands so the list never flashes empty between reads.
+   */
+  const startRead = useCallback(
+    (mode: "replace" | "background"): void => {
+      const requestId = ++requestIdRef.current;
+      readInFlightRef.current = true;
+      if (mode === "replace") {
+        setJobs(null);
+        setError(null);
+      }
+      const list = client?.list ?? listJobs;
+      void list()
+        .then(
+          (rows) => {
+            if (!mountedRef.current || requestId !== requestIdRef.current) {
+              return;
+            }
+            setJobs(rows);
+            setError(null);
+          },
+          (err: unknown) => {
+            if (!mountedRef.current || requestId !== requestIdRef.current) {
+              return;
+            }
+            const detail = failureMessage(err);
+            setJobs(null);
+            setError({ blocked: isBlockedRead(detail), detail });
+          },
+        )
+        .then(() => {
+          if (requestId === requestIdRef.current) {
+            readInFlightRef.current = false;
+          }
+        });
+    },
+    [client],
+  );
 
   const load = useCallback((): void => {
-    const requestId = ++requestIdRef.current;
-    setJobs(null);
-    setError(null);
-    const list = client?.list ?? listJobs;
-    void list().then(
-      (rows) => {
-        if (requestId !== requestIdRef.current) {
-          return;
-        }
-        setJobs(rows);
-        setError(null);
-      },
-      (err: unknown) => {
-        if (requestId !== requestIdRef.current) {
-          return;
-        }
-        const detail = failureMessage(err);
-        setJobs(null);
-        setError({ blocked: isBlockedRead(detail), detail });
-      },
-    );
-  }, [client]);
+    startRead("replace");
+  }, [startRead]);
+
+  const startReadRef = useRef(startRead);
+  useEffect(() => {
+    startReadRef.current = startRead;
+  }, [startRead]);
 
   const close = useCallback((): void => {
     requestIdRef.current += 1;
@@ -119,6 +160,24 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
     }
     load();
   }, [open, load]);
+
+  // While the drawer stays open, follow the jobs list on a bounded cadence
+  // so a running job reaches its terminal state without a manual reload.
+  // The timer only reads, and never starts a read while one is in flight.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      if (readInFlightRef.current) {
+        return;
+      }
+      startReadRef.current("background");
+    }, JOBS_REFRESH_INTERVAL_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [open]);
 
   return (
     <div className="kbot-shell__jobs-root">
