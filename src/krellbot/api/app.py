@@ -216,6 +216,22 @@ def _gate_get(request: Request, s: _AppState) -> Response | None:
     return None
 
 
+def _paper_details_decimal(value: object) -> str | None:
+    """Render a finite Decimal without exponent, padding, or precision loss."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        return None
+    try:
+        number = Decimal(str(value))
+    except InvalidOperation:
+        return None
+    if not number.is_finite():
+        return None
+    if number.is_zero():
+        return "0"
+    text = format(number, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
 # ---- paper history projection (read-only) ---------------------------------
 
 PAPER_HISTORY_MAX_RUNS = 20
@@ -1125,6 +1141,58 @@ def create_app(
             "pack_id": armed.pack_id,
         }
         return JSONResponse(body, status_code=200)
+
+    @app.get("/api/v1/paper/details")
+    async def paper_details(request: Request) -> Response:
+        """Read configured paper deposit/percent and this pair's durable stop.
+
+        The deposit is not free cash, and the cap is not a currency amount.
+        Only the first armed record is projected, and only in paper mode.
+        Reading raw state never constructs a venue, seeds balances, evaluates
+        stops, or infers a fill. Existing status/position contracts stay closed.
+        """
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        config = kb_config.load_config(s.home)
+        if not config.armed or config.armed[0].mode != "paper":
+            return JSONResponse(
+                {"schema_version": SCHEMA_VERSION, "armed": False},
+                headers={"Cache-Control": "no-store"},
+            )
+
+        armed = config.armed[0]
+        from krellbot.ui.server import _read_paper_state
+
+        try:
+            state = _read_paper_state(s.home, armed.venue)
+        except UnicodeError:
+            state = {}
+        orders = state.get("open_orders") if isinstance(state, dict) else None
+        resting_stop = None
+        if isinstance(orders, list):
+            # Match PaperVenue.resting_stop's first matching non-null stop,
+            # but fail closed on malformed/nonfinite persisted values.
+            for order in orders:
+                if isinstance(order, dict) and order.get("pair") == armed.pair and order.get("stop_price") is not None:
+                    resting_stop = _paper_details_decimal(order["stop_price"])
+                    break
+
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "armed": True,
+                "venue": armed.venue,
+                "pair": armed.pair,
+                "pack_id": armed.pack_id,
+                "starting_cash": _paper_details_decimal(armed.starting_cash),
+                "risk_cap_pct": _paper_details_decimal(armed.cap),
+                "resting_stop": resting_stop,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/v1/paper/position")
     async def paper_position(request: Request) -> Response:
