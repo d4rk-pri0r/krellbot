@@ -43,7 +43,7 @@ function jobTexts(): string[] {
 }
 
 function runningThen(): {
-  list: ReturnType<typeof vi.fn>;
+  list: () => Promise<JobRow[]>;
   gate: Deferred<JobRow[]>;
 } {
   const gate = deferred<JobRow[]>();
