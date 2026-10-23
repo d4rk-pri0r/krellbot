@@ -67,7 +67,6 @@ test("J7.2 I can export paper status and history, and the file matches the paper
   const panel=page.getByTestId("rehearsal-fills-panel");
   const historyButton=panel.getByRole("button",{name:/export/i});
   // Journey gap: https://github.com/d4rk-pri0r/krellbot/issues/106
-  test.fail(true, "https://github.com/d4rk-pri0r/krellbot/issues/106");
   await expect(historyButton,"visible paper history needs an export affordance").toBeVisible({timeout:5_000});
   const history=await download(page,historyButton);const table=csv(history.text);
   const fills=JSON.parse(readFileSync(join(journey.workstation.homeDir,"rehearsal/run/paper-kraken.json"),"utf8")).recent_fills;
