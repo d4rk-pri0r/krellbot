@@ -405,8 +405,8 @@
 }
 
 .kbot-rehearsal .kbot-rehearsal__action--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
-  border-color: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+  background: color-mix(in srgb, var(--sage, #b3dda8) 92%, var(--paint-white));
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 92%, var(--paint-white));
 }
 
 /* ============ focus visibility ============ */

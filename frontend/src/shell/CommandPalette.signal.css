@@ -56,7 +56,7 @@
   );
   font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
   box-shadow:
-    0 22px 60px color-mix(in srgb, #000 50%, transparent),
+    0 22px 60px color-mix(in srgb, var(--paint-black) 50%, transparent),
     0 0 0 1px color-mix(in srgb, var(--navy, #0e1c29) 60%, transparent);
 }
 
