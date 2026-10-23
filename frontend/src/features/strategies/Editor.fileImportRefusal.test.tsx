@@ -104,10 +104,11 @@ describe("Editor file-import refusal is not cleared by the adjacent Import butto
       chooseFile(malformedBytes);
 
       // Import while the asynchronous read has not completed: it must not
-      // fall back to the unrelated (still-empty) textarea. It acts on the
-      // chosen file again, so a second read is queued behind the same file.
+      // fall back to the unrelated (still-empty) textarea. Import only
+      // validates the raw JSON box and never reads the file, so no second
+      // read is queued behind the still-pending one.
       fireEvent.click(importButton());
-      expect(readAsText).toHaveBeenCalledTimes(2);
+      expect(readAsText).toHaveBeenCalledTimes(1);
 
       releaseRead();
       const refusal = await screen.findByTestId("editor-import-error");

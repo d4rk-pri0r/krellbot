@@ -51,6 +51,14 @@ export type EditorProps = {
   onRevision?: (summary: DraftSummary, bytes: string) => void;
 };
 
+/** A visible import refusal. `fromFile` marks refusals produced by a
+ * chosen pack file: those are sticky against the Import button and are
+ * cleared only by a new file choice or an edit to the raw JSON box. */
+type ImportRefusal = {
+  message: string;
+  fromFile: boolean;
+};
+
 function parsePack(text: string): Pack | null {
   try {
     const value = JSON.parse(text);
@@ -93,7 +101,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   });
   const [venue, setVenue] = useState("kraken");
   const [paperBalance, setPaperBalance] = useState("1000");
-  const [importError, setImportError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<ImportRefusal | null>(null);
   // True after a starter example seeded the draft: the next Save must
   // create a fresh revision even when an `initial` revision was
   // previously loaded (a starter pick is never a reopen/edit).
@@ -102,6 +110,14 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const saveInFlight = useRef(false);
+  // Race guard for asynchronous pack-file reads: every draft replacement
+  // (a new file read, a textarea edit, a starter pick, the owned form)
+  // bumps this token, so a stale read's onload can never overwrite the
+  // newer draft content.
+  const fileReadToken = useRef(0);
+  const invalidatePendingFileRead = (): void => {
+    fileReadToken.current += 1;
+  };
   const [validateError, setValidateError] = useState<string | null>(null);
   const [armError, setArmError] = useState<string | null>(null);
   const [arming, setArming] = useState(false);
@@ -122,6 +138,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const handleStartOwnedStrategy = (): void => {
     const form = seedOwnedStrategyForm();
     const pack = seedOwnedStrategyPack(form.name);
+    invalidatePendingFileRead();
     setOwnedForm({ ...form, id: pack.id as string });
     setRawJson(JSON.stringify(pack, null, 2));
     setImportError(null);
@@ -133,10 +150,12 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       // Save still sends a pack the schema accepts.
       return;
     }
+    invalidatePendingFileRead();
     setRawJson(JSON.stringify(pack, null, 2));
   };
 
   const handleLabelChange = (nextLabel: string): void => {
+    invalidatePendingFileRead();
     if (currentPack) {
       const merged: Pack = { ...currentPack, label: nextLabel };
       setRawJson(JSON.stringify(merged, null, 2));
@@ -152,6 +171,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     // fresh revision through client.create (never edit on the loaded
     // parent), and transient errors from the prior draft do not leak
     // into the seeded one.
+    invalidatePendingFileRead();
     setRawJson(JSON.stringify(example.pack, null, 2));
     setLastSummary(null);
     setSeededFresh(true);
@@ -162,6 +182,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   };
 
   const handleRawJsonChange = (text: string): void => {
+    invalidatePendingFileRead();
     setRawJson(text);
     if (importError !== null) {
       setImportError(null);
@@ -171,7 +192,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const requireValidPack = (): Pack | null => {
     const pack = parsePack(rawJson);
     if (!pack) {
-      setImportError("Invalid JSON");
+      setImportError({ message: "Invalid JSON", fromFile: false });
       return null;
     }
     if (importError !== null) {
@@ -181,13 +202,11 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   };
 
   const handleImport = (): void => {
-    // Import acts on the chosen file when there is one: it must never
-    // validate the (unrelated) textarea bytes while a picked file sits in
-    // the picker — that would clear the file's own refusal and look like
-    // an import that never happened.
-    const file = fileInputRef.current?.files?.[0];
-    if (file) {
-      importPackFile(file);
+    // Import validates only the raw JSON box; it never reads a file. A
+    // refusal that came from a chosen file is sticky against Import:
+    // only a new file choice or a textarea edit clears it, so pressing
+    // Import preserves the refusal and imports/saves nothing.
+    if (importError?.fromFile) {
       return;
     }
     requireValidPack();
@@ -276,17 +295,33 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Reads and seeds the draft from a pack file. Shared by the file picker
-  // and the Import button so both act on the same chosen bytes; a file
-  // that does not parse refuses with "Invalid JSON" on the import-error
-  // surface and leaves the current draft untouched.
+  // Reads and seeds the draft from a chosen pack file. The Import button
+  // never calls this: only an explicit file selection does. A file that
+  // does not parse refuses with "Invalid JSON" on the import-error
+  // surface and leaves the current draft untouched; that refusal is
+  // sticky against Import until another file is chosen or the raw JSON
+  // is edited. After every completed read (success, refusal or read
+  // error) the picker's value is cleared so choosing the same file
+  // again is a real second read, and a stale read whose draft was
+  // replaced meanwhile (new file, textarea edit, starter pick) is
+  // discarded by the token guard instead of overwriting it.
   const importPackFile = (file: File): void => {
+    const token = ++fileReadToken.current;
+    const clearPicker = (): void => {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    };
     const reader = new FileReader();
     reader.onload = () => {
+      clearPicker();
+      if (token !== fileReadToken.current) {
+        return;
+      }
       const text = typeof reader.result === "string" ? reader.result : "";
       const pack = parsePack(text);
       if (!pack) {
-        setImportError("Invalid JSON");
+        setImportError({ message: "Invalid JSON", fromFile: true });
         return;
       }
       // An imported file is a seed for a NEW draft, exactly like a starter
@@ -303,6 +338,13 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       setValidateError(null);
       setArmError(null);
       setRawJson(text);
+    };
+    reader.onerror = () => {
+      clearPicker();
+      if (token !== fileReadToken.current) {
+        return;
+      }
+      setImportError({ message: "Could not read pack file", fromFile: true });
     };
     reader.readAsText(file);
   };
@@ -555,7 +597,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
               role="alert"
               data-testid="editor-import-error"
             >
-              {importError}
+              {importError.message}
             </p>
           ) : null}
         </div>
