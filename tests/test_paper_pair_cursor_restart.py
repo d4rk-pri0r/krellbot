@@ -68,13 +68,22 @@ print(json.dumps({'pid': os.getpid(), 'stage': stage, 'loaded': loaded, 'state':
 def run_process(home: Path, stage: str, mode: str, sequence: int) -> dict:
     home.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
-    env.update(HOME=str(home), KRELLBOT_HOME=str(home), KRELLBOT_ENABLE_LIVE="0",
-               PYTHON_KEYRING_BACKEND="tests.fakes.fake_keyring.FakeKeyring")
+    env.update(
+        HOME=str(home),
+        KRELLBOT_HOME=str(home),
+        KRELLBOT_ENABLE_LIVE="0",
+        PYTHON_KEYRING_BACKEND="tests.fakes.fake_keyring.FakeKeyring",
+    )
     argv = [sys.executable, "-c", PROCESS, stage, mode]
     cwd = Path(__file__).resolve().parents[1]
     result = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True, timeout=30, check=False)
-    record = {"argv": argv, "cwd": str(cwd), "exit": result.returncode,
-              "stdout": result.stdout, "stderr": result.stderr}
+    record = {
+        "argv": argv,
+        "cwd": str(cwd),
+        "exit": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
     (home / f"process-{sequence}-{stage}.json").write_text(json.dumps(record, indent=2))
     assert result.returncode == 0, result.stdout + result.stderr
     body = json.loads(result.stdout)
@@ -116,11 +125,14 @@ def test_ordinary_pair_cursors_survive_distinct_processes_without_skipping_slow_
     assert len({body["pid"] for body in [entry, restarted, filled, repeated]}) == 4
 
 
-@pytest.mark.parametrize("mode,expected,after", [
-    ("scalar", {PAIRS[0]: 100, PAIRS[1]: 100}, {PAIRS[0]: 101, PAIRS[1]: 101}),
-    ("none", {PAIRS[0]: 10, PAIRS[1]: -1}, {PAIRS[0]: 11, PAIRS[1]: 0}),
-    ("mixed", {PAIRS[0]: 10, PAIRS[1]: 100}, {PAIRS[0]: 11, PAIRS[1]: 101}),
-])
+@pytest.mark.parametrize(
+    "mode,expected,after",
+    [
+        ("scalar", {PAIRS[0]: 100, PAIRS[1]: 100}, {PAIRS[0]: 101, PAIRS[1]: 101}),
+        ("none", {PAIRS[0]: 10, PAIRS[1]: -1}, {PAIRS[0]: 11, PAIRS[1]: 0}),
+        ("mixed", {PAIRS[0]: 10, PAIRS[1]: 100}, {PAIRS[0]: 11, PAIRS[1]: 101}),
+    ],
+)
 def test_legacy_file_migration_then_independent_new_process_restart(tmp_path, mode, expected, after):
     created = run_process(tmp_path, "legacy", mode, 1)
     migrated = run_process(tmp_path, "snapshot", mode, 2)

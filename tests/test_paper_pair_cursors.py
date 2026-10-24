@@ -21,8 +21,9 @@ def rules(_pair: str) -> PairRules:
 
 
 def bar(ts: int, low: str = "9", open_: str = "10") -> Candle:
-    return Candle(ts_ms=ts, open=Decimal(open_), high=Decimal(11), low=Decimal(low),
-                  close=Decimal(10), volume=Decimal(100))
+    return Candle(
+        ts_ms=ts, open=Decimal(open_), high=Decimal(11), low=Decimal(low), close=Decimal(10), volume=Decimal(100)
+    )
 
 
 class Reader:
@@ -34,8 +35,14 @@ class Reader:
 
 
 def venue_at(home: Path, reader: Reader, rules_provider=rules) -> PaperVenue:
-    return PaperVenue("kraken", rules_provider=rules_provider, candle_reader=reader, home=home,
-                      starting_cash=Decimal(1000), clock=lambda: 1)
+    return PaperVenue(
+        "kraken",
+        rules_provider=rules_provider,
+        candle_reader=reader,
+        home=home,
+        starting_cash=Decimal(1000),
+        clock=lambda: 1,
+    )
 
 
 def saved(home: Path) -> dict:
@@ -45,12 +52,21 @@ def saved(home: Path) -> dict:
 def legacy_state(home: Path, **markers) -> None:
     path = home / "run/paper-kraken.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({
-        "venue": "kraken", "seeded": True,
-        "balances": {"USD": "900", "ADA": "5", "SUI": "5"}, "recent_fills": [],
-        "open_orders": [{"coid": f"legacy-{pair}", "pair": pair, "side": "sell", "qty": "5",
-                         "stop_price": "8", "ts_ms": 1} for pair in PAIRS], **markers,
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "venue": "kraken",
+                "seeded": True,
+                "balances": {"USD": "900", "ADA": "5", "SUI": "5"},
+                "recent_fills": [],
+                "open_orders": [
+                    {"coid": f"legacy-{pair}", "pair": pair, "side": "sell", "qty": "5", "stop_price": "8", "ts_ms": 1}
+                    for pair in PAIRS
+                ],
+                **markers,
+            }
+        )
+    )
 
 
 @pytest.mark.parametrize("reverse", [False, True])
@@ -69,11 +85,14 @@ def test_each_pair_processes_its_own_new_bars_in_either_pair_iteration(tmp_path,
     for pair in reversed(PAIRS):
         venue.place_entry_with_stop(f"entry-{pair}", Decimal(5), Decimal(8), pair=pair)
     second_ts = 200 if overlap else 20
-    reader.bars = {PAIRS[0]: [bar(200, "7", "7"), bar(100)],
-                   PAIRS[1]: [bar(second_ts, "6", "6"), bar(100 if overlap else 10)]}
+    reader.bars = {
+        PAIRS[0]: [bar(200, "7", "7"), bar(100)],
+        PAIRS[1]: [bar(second_ts, "6", "6"), bar(100 if overlap else 10)],
+    }
     truth = venue.snapshot()
     assert {fill.pair: fill.price for fill in truth.recent_fills if fill.side == "sell"} == {
-        PAIRS[0]: Decimal("6.9965"), PAIRS[1]: Decimal("5.9970"),
+        PAIRS[0]: Decimal("6.9965"),
+        PAIRS[1]: Decimal("5.9970"),
     }
     assert truth.open_orders == []
     assert saved(tmp_path)["last_applied_ts_by_pair"] == {PAIRS[0]: 200, PAIRS[1]: second_ts}
@@ -154,12 +173,15 @@ def test_replacement_with_older_or_empty_reader_never_regresses_own_cursor(tmp_p
     assert venue.resting_stop(PAIRS[0]) == Decimal(8)
 
 
-@pytest.mark.parametrize("markers,expected", [
-    ({"last_applied_ts": 100}, {PAIRS[0]: 100, PAIRS[1]: 100}),
-    ({}, {PAIRS[0]: 30, PAIRS[1]: -1}),
-    ({"last_applied_ts": 100, "last_applied_ts_by_pair": {PAIRS[0]: 0}}, {PAIRS[0]: 0, PAIRS[1]: 100}),
-    ({"last_applied_ts_by_pair": {PAIRS[0]: -1}}, {PAIRS[0]: -1, PAIRS[1]: -1}),
-])
+@pytest.mark.parametrize(
+    "markers,expected",
+    [
+        ({"last_applied_ts": 100}, {PAIRS[0]: 100, PAIRS[1]: 100}),
+        ({}, {PAIRS[0]: 30, PAIRS[1]: -1}),
+        ({"last_applied_ts": 100, "last_applied_ts_by_pair": {PAIRS[0]: 0}}, {PAIRS[0]: 0, PAIRS[1]: 100}),
+        ({"last_applied_ts_by_pair": {PAIRS[0]: -1}}, {PAIRS[0]: -1, PAIRS[1]: -1}),
+    ],
+)
 def test_frozen_legacy_and_mixed_migration_matrix(tmp_path, markers, expected):
     legacy_state(tmp_path, **markers)
     reader = Reader({PAIRS[0]: [bar(30), bar(10)], PAIRS[1]: None})
