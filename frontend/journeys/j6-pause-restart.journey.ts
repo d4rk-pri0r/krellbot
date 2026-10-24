@@ -123,7 +123,6 @@ test("J6.5 If the workstation stops while the GUI is open, the GUI says it can't
   // Correlate its own response so stale retained Entries active cannot pass.
   const start=Date.now();
   // Journey gap: https://github.com/d4rk-pri0r/krellbot/issues/105
-  test.fail(true, "https://github.com/d4rk-pri0r/krellbot/issues/105");
   const success=page.waitForResponse(r=>r.request().method()==="GET"&&new URL(r.url()).pathname==="/api/v1/paper/status"&&r.status()===200,{timeout:10_000});
   await paperRefresh(page).click();
   await success;
