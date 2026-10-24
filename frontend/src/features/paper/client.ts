@@ -1,4 +1,4 @@
-import { getCsrf } from "../../session";
+import { getCsrf, recoverPaperStatusSession } from "../../session";
 import type { RehearsalClient } from "./rehearsalClient";
 import { createRehearsalHttpClient } from "./rehearsalClient";
 
@@ -148,13 +148,23 @@ export type PaperPosition = {
 };
 
 async function getJson(url: string): Promise<PaperStatus> {
-  const response = await fetch(url, {
+  const read = () => fetch(url, {
     method: "GET",
     credentials: "include",
     headers: {
       "X-Krellbot-CSRF": getCsrf(),
     },
   });
+  let response = await read();
+  // Only this safe status read can recover and retry, once. Commands and
+  // other client families deliberately retain their existing no-retry paths.
+  if (
+    url === "/api/v1/paper/status" &&
+    response.status === 403 &&
+    await recoverPaperStatusSession()
+  ) {
+    response = await read();
+  }
   if (!response.ok) {
     throw new Error(`paper status failed: ${response.status}`);
   }
