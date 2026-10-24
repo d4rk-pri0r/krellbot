@@ -137,20 +137,56 @@ describe("SavedStrategyLibrary — Control+Alt+C / Meta+Alt+C activation", () =>
   it("opens the first row's Compare when the library region itself holds focus", async () => {
     await mountLibrary();
     const section = screen.getByTestId("saved-strategy-library");
-    const active = vi
-      .spyOn(document, "activeElement", "get")
-      .mockReturnValue(section);
-    try {
-      expect(chord(section)).toBe(false);
-    } finally {
-      active.mockRestore();
-    }
+    // Real focus on the focusable region; no faked document.activeElement.
+    section.focus();
+    expect(document.activeElement).toBe(section);
+    expect(chord(section)).toBe(false);
     expect(screen.getByTestId("revision-compare")).toBeDefined();
     // rows[0] is the first listed revision ("Edited", rev-2), and the compare
     // surface preselects it as the later pick.
     expect(
       (screen.getByTestId("revision-compare-right") as HTMLSelectElement).value,
     ).toBe("rev-2");
+  });
+
+  it("opens the first FILTERED row's Compare from region focus, not rows[0]", async () => {
+    await mountLibrary([
+      summary({
+        revision_id: "rev-2",
+        label: "Edited",
+        state: "validated",
+        runnable: true,
+        created_at: "2026-10-07T12:00:00Z",
+        parent_revision_id: "rev-1",
+      }),
+      summary(),
+      summary({
+        revision_id: "rev-a",
+        strategy_id: "range-scout",
+        id: "range-scout",
+        label: "Alpha range",
+        pair: "ETHUSD",
+        state: "validated",
+        runnable: true,
+      }),
+    ]);
+    fireEvent.change(screen.getByTestId("library-search"), {
+      target: { value: "range" },
+    });
+    expect(screen.getAllByTestId("library-row")).toHaveLength(1);
+    const section = screen.getByTestId("saved-strategy-library");
+    section.focus();
+    expect(document.activeElement).toBe(section);
+    expect(chord(section)).toBe(false);
+    expect(screen.getByTestId("revision-compare")).toBeDefined();
+    // filteredRows[0] is "Alpha range" (rev-a). It has no parent in rows, so
+    // it lands in the earlier pick; rows[0] (rev-2) must NOT be the pick.
+    expect(
+      (screen.getByTestId("revision-compare-left") as HTMLSelectElement).value,
+    ).toBe("rev-a");
+    expect(
+      (screen.getByTestId("revision-compare-right") as HTMLSelectElement).value,
+    ).toBe("");
   });
 
   it("honors event.repeat and never auto-repeats the activation", async () => {

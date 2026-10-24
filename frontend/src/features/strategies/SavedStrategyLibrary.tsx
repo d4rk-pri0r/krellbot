@@ -2,6 +2,7 @@ import "./SavedStrategyLibrary.signal.css";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type JSX,
   type KeyboardEvent,
@@ -96,6 +97,8 @@ export function SavedStrategyLibrary({
   const [compareRow, setCompareRow] = useState<OwnedDraftSummary | null>(null);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<"all" | OwnedDraftSummary["state"]>("all");
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const stateFilterRef = useRef<HTMLSelectElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -189,17 +192,46 @@ export function SavedStrategyLibrary({
     setQuery("");
   };
 
+  const focusSearch = (): void => {
+    searchRef.current?.focus();
+  };
+
   /**
-   * Ctrl+Alt+C / Cmd+Alt+C opens Compare for the row whose Compare button
-   * holds focus; when the library region itself holds focus, the first row's
-   * Compare opens. Auto-repeat never re-fires the activation.
+   * Library-scoped keyboard contract. The handler lives on the library
+   * region, so it only sees keys typed while focus is inside the mounted
+   * library: browser/editor shortcuts elsewhere are never intercepted.
+   * Auto-repeat never re-fires an activation.
    */
-  const handleCompareShortcut = (event: KeyboardEvent<HTMLElement>): void => {
-    if (
-      !(event.ctrlKey || event.metaKey) ||
-      !event.altKey ||
-      (event.key !== "c" && event.key !== "C")
-    ) {
+  const handleLibraryKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+    const chordOf = (key: string): boolean =>
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      (event.key === key || event.key === key.toUpperCase());
+
+    // Control+Alt+S / Meta+Alt+S → focus the state filter.
+    if (event.altKey && chordOf("s")) {
+      event.preventDefault();
+      if (!event.repeat) {
+        stateFilterRef.current?.focus();
+      }
+      return;
+    }
+    // Control+F / Meta+F → focus search. Alt/Shift variants stay with the
+    // browser so unrelated chords keep their native behavior.
+    if (!event.altKey && chordOf("f")) {
+      event.preventDefault();
+      if (!event.repeat) {
+        focusSearch();
+      }
+      return;
+    }
+    if (!event.altKey || !(event.ctrlKey || event.metaKey)) {
+      return;
+    }
+    // Ctrl+Alt+C / Cmd+Alt+C opens Compare for the row whose Compare button
+    // holds focus; when the library region itself holds focus, the first
+    // filtered visible row's Compare opens.
+    if (event.key !== "c" && event.key !== "C") {
       return;
     }
     event.preventDefault();
@@ -221,7 +253,7 @@ export function SavedStrategyLibrary({
       return;
     }
     if (active === event.currentTarget) {
-      setCompareRow(rows[0] ?? null);
+      setCompareRow(filteredRows[0] ?? null);
     }
   };
 
@@ -234,7 +266,8 @@ export function SavedStrategyLibrary({
       role="region"
       aria-label="Saved strategy library"
       data-testid="saved-strategy-library"
-      onKeyDown={handleCompareShortcut}
+      tabIndex={0}
+      onKeyDown={handleLibraryKeyDown}
     >
       <header className="kbot-strategy-library__head">
         <div className="kbot-strategy-library__heading">
@@ -261,6 +294,7 @@ export function SavedStrategyLibrary({
         <div className="kbot-strategy-library__toolbar">
           <div className="kbot-strategy-library__search">
             <input
+              ref={searchRef}
               type="search"
               id="library-search"
               className="kbot-strategy-library__search-input"
@@ -287,6 +321,15 @@ export function SavedStrategyLibrary({
                 aria-label="Clear search query"
                 aria-keyshortcuts="Escape"
                 onClick={clearQuery}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    clearQuery();
+                    // The Clear control unmounts with the query, so focus
+                    // returns to the search input it serves.
+                    focusSearch();
+                  }
+                }}
               >
                 Clear search
               </button>
@@ -295,10 +338,11 @@ export function SavedStrategyLibrary({
           <div className="kbot-strategy-library__search">
             <label htmlFor="library-state-filter">State</label>
             <select
+              ref={stateFilterRef}
               id="library-state-filter"
               data-testid="library-state-filter"
               className="kbot-strategy-library__select kbot-strategy-library__search-input"
-              aria-keyshortcuts="Mod+Alt+S"
+              aria-keyshortcuts="Control+Alt+S Meta+Alt+S"
               value={stateFilter}
               onChange={(event) => {
                 setStateFilter(event.target.value as "all" | OwnedDraftSummary["state"]);
