@@ -90,12 +90,21 @@ class PaperVenue:
         self._validate_transport = validate_transport
         self._clock = clock
         self._state = self._load_state()
-        if "last_applied_ts" not in self._state:
-            pairs = {str(o["pair"]) for o in self._state["open_orders"] if o.get("stop_price") is not None}
-            if pairs:
-                # Legacy stops have no replay boundary; only future bars may fill them.
-                self._state["last_applied_ts"] = max(self._latest_bar_ts(pair) for pair in sorted(pairs))
-                self._persist()
+        self._cursor_migration_pending = False
+        cursors = self._state.setdefault("last_applied_ts_by_pair", {})
+        pairs = {str(o["pair"]) for o in self._state["open_orders"] if o.get("stop_price") is not None}
+        legacy_ts = self._state.get("last_applied_ts")
+        for pair in sorted(pairs):
+            if pair not in cursors:
+                # A scalar cannot reveal independent historical pair processing.
+                # Preserve its conservative no-replay boundary, never infer history.
+                cursors[pair] = int(legacy_ts) if legacy_ts is not None else self._latest_bar_ts(pair)
+                self._cursor_migration_pending = True
+        if self._cursor_migration_pending and legacy_ts is None:
+            self._state["last_applied_ts"] = max(cursors.values())
+            self._persist()
+        # Scalar-bearing files retain their bytes on construction (#111).
+        # Persist the seeded map with the next snapshot or state mutation.
         if starting_cash is not None and not self._state.get("seeded"):
             self._state["balances"]["USD"] = starting_cash
             self._state["seeded"] = True
@@ -191,7 +200,7 @@ class PaperVenue:
             }
         )
 
-        self._state["last_applied_ts"] = self._latest_bar_ts(pair)
+        self._advance_pair_cursor(pair, self._latest_bar_ts(pair))
         self._persist()
 
         # Kraken paper shape check: validate=true POST, no fill.
@@ -311,6 +320,8 @@ class PaperVenue:
         imprecisely-quantized stop. The owner-of-position tick carries
         `metadata_refusal` so the operator can investigate independently.
         """
+        if self.order_by_coid(coid) is not None:
+            return
         try:
             rules = self.rules(pair)
         except InstrumentMetadataError:
@@ -334,7 +345,7 @@ class PaperVenue:
                 "ts_ms": ts_ms,
             }
         )
-        self._state["last_applied_ts"] = self._latest_bar_ts(pair)
+        self._advance_pair_cursor(pair, self._latest_bar_ts(pair))
         self._persist()
 
     # ---- paper-specific helpers (used by the engine) ----------------------
@@ -395,9 +406,13 @@ class PaperVenue:
 
     def _latest_bar_ts(self, pair: str) -> int:
         candles = self._reader(self.venue, pair) or []
-        if not candles:
-            return int(self._state.get("last_applied_ts", -1))
-        return int(candles[-1].ts_ms)
+        return max((int(candle.ts_ms) for candle in candles), default=-1)
+
+    def _advance_pair_cursor(self, pair: str, ts: int) -> None:
+        cursors = self._state["last_applied_ts_by_pair"]
+        cursors[pair] = max(int(cursors.get(pair, -1)), ts)
+        # Compatibility metadata only: never a post-migration processing gate.
+        self._state["last_applied_ts"] = max(int(self._state.get("last_applied_ts", -1)), cursors[pair])
 
     def _apply_triggered_stops(self) -> None:
         """Fill a resting stop when a newer closed bar's low touches it.
@@ -409,14 +424,15 @@ class PaperVenue:
         pairs = {str(o.get("pair", "")) for o in self._state.get("open_orders", []) if o.get("stop_price") is not None}
         if not pairs:
             return
-        changed = False
+        changed = self._cursor_migration_pending
         for pair in sorted(pairs):
-            candles = list(self._reader(self.venue, pair) or [])
-            last_applied = int(self._state.get("last_applied_ts", -1))
+            candles = sorted(self._reader(self.venue, pair) or [], key=lambda candle: int(candle.ts_ms))
+            last_applied = int(self._state["last_applied_ts_by_pair"][pair])
             for candle in candles:
                 if int(candle.ts_ms) <= last_applied:
                     continue
-                self._state["last_applied_ts"] = int(candle.ts_ms)
+                last_applied = int(candle.ts_ms)
+                self._advance_pair_cursor(pair, last_applied)
                 changed = True
                 stop = self.resting_stop(pair)
                 if stop is None or Decimal(str(candle.low)) > stop:
@@ -471,6 +487,7 @@ class PaperVenue:
         path.parent.mkdir(parents=True, exist_ok=True)
         body = json.dumps(self._state, sort_keys=True, default=_decimal_default)
         kb_paths.atomic_write(path, body.encode("utf-8"))
+        self._cursor_migration_pending = False
 
 
 # ---- helpers --------------------------------------------------------------
