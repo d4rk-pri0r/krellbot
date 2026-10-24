@@ -416,8 +416,6 @@ def run(
         if entry["warning"]:
             warnings.append(f"{entry['venue']} {entry['pair']}: {entry['warning']}")
 
-    ok = len(warnings) == 0
-
     projection_status = import_legacy.compare_legacy_projection(home)
     if projection_status == import_legacy.PROJECTION_MISMATCH:
         warnings.append("legacy journal projection mismatch")
@@ -431,6 +429,8 @@ def run(
             warnings.append("backup round-trip failed")
     else:
         backup_ok = None
+
+    ok = len(warnings) == 0
 
     # Readiness: install_ready means the runtime can serve the local UI.
     # trading_ready is the stricter gate: install_ready AND a non-stale
