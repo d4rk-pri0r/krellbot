@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import "./JobsDrawer.signal.css";
 import { JobsDrawerCsvExport } from "../features/studio/JobsDrawerCsvExport";
 import { getCsrf } from "../session";
@@ -86,6 +93,7 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
   const requestIdRef = useRef(0);
   const readInFlightRef = useRef(false);
   const mountedRef = useRef(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -154,6 +162,45 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
     setOpen(false);
   }, []);
 
+  /**
+   * Closing the dialog (visible Close button or Escape) also returns real
+   * DOM focus to the Jobs trigger so keyboard users are not dropped to the
+   * body after the dialog unmounts.
+   */
+  const closeAndRefocusTrigger = useCallback((): void => {
+    close();
+    triggerRef.current?.focus();
+  }, [close]);
+
+  /**
+   * Escape dismisses the open dialog through the normal close path. The
+   * handler lives on this component's own elements (trigger + dialog), so
+   * Escape owned by any other overlay or surface is never intercepted, and
+   * only an ordinary unmodified, non-composing, not-yet-prevented Escape is
+   * claimed.
+   */
+  const onKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>): void => {
+      if (!open || event.key !== "Escape" || event.defaultPrevented) {
+        return;
+      }
+      const native = event.nativeEvent;
+      if (
+        native.isComposing ||
+        native.keyCode === 229 ||
+        native.ctrlKey ||
+        native.altKey ||
+        native.metaKey ||
+        native.shiftKey
+      ) {
+        return;
+      }
+      event.preventDefault();
+      closeAndRefocusTrigger();
+    },
+    [open, closeAndRefocusTrigger],
+  );
+
   useEffect(() => {
     if (!open) {
       return;
@@ -183,10 +230,12 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
     <div className="kbot-shell__jobs-root">
       <button
         type="button"
+        ref={triggerRef}
         className="kbot-jobs__trigger"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls="kbot-jobs-drawer"
+        onKeyDown={onKeyDown}
         onClick={() => {
           if (open) {
             return;
@@ -206,6 +255,7 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
           role="dialog"
           aria-modal="true"
           aria-label="Jobs"
+          onKeyDown={onKeyDown}
         >
           <div className="kbot-jobs__dialog" data-testid="kbot-jobs-dialog">
             <div className="kbot-jobs__head">
@@ -217,7 +267,7 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
                 type="button"
                 className="kbot-jobs__close"
                 aria-label="Close jobs drawer"
-                onClick={close}
+                onClick={closeAndRefocusTrigger}
               >
                 Close
               </button>
