@@ -28,6 +28,11 @@
 
 .kbot-shell__revision-root {
   display: grid;
+  /* One explicit track clamped to min 0: the widest <option> label
+   * (64-char revision id + label + date ≈ 704px of intrinsic select
+   * min-content) must never size the implicit auto track and blow the
+   * panel past its viewport. Children own their containment below. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   min-width: 0;
   max-width: 100%;
@@ -37,7 +42,10 @@
   border-radius: 11px;
   color: var(--text, #e9f0f5);
   font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
-  overflow-wrap: break-word;
+  /* `anywhere` (not break-word): a 64-char revision id inside the flex
+   * summary/empty lines must wrap mid-token and contribute ~1ch of
+   * min-content, or those anonymous flex items overflow the panel. */
+  overflow-wrap: anywhere;
 }
 
 .kbot-shell__revision-root *,
@@ -332,6 +340,27 @@
   line-height: 1.6;
   color: var(--muted, #abc4d8);
   transition: opacity 120ms ease;
+}
+
+/* --- narrow (<=720px): reachable controls, stacked selection rows.
+ * The scoped 34px rules above out-specify the shell's narrow
+ * `.kbot-shell button { min-height: 44px }`, so this block restores
+ * the KRELL-SIGNAL-20261010 touch-target contract on the same
+ * breakpoint the host library surface (SavedStrategyLibrary) uses.
+ * Selects take their own full-width row: the stored 64-char revision
+ * ids stay intact in the option list while the closed control gets
+ * the widest affordance the panel can offer. --- */
+
+@media (max-width: 720px) {
+  .kbot-shell__revision-root .kbot-revision-compare__close,
+  .kbot-shell__revision-root .kbot-revision-compare__run {
+    min-height: 44px;
+  }
+
+  .kbot-shell__revision-root .kbot-revision-compare__picks select {
+    min-height: 44px;
+    flex: 1 1 100%;
+  }
 }
 
 /* --- mobile (<=390px): rows stack, the page never widens --- */
