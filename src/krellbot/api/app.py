@@ -1164,11 +1164,13 @@ def create_app(
             )
 
         armed = config.armed[0]
-        from krellbot.ui.server import _read_paper_state
-
         try:
-            state = _read_paper_state(s.home, armed.venue)
-        except UnicodeError:
+            # Unlike the legacy display reader, preserve raw JSON fractions
+            # as Decimal: binary floats can round a price or underflow to zero.
+            # Keep the default integer parser's safety limit local and intact.
+            path = s.home / "run" / f"paper-{armed.venue}.json"
+            state = json.loads(path.read_text(encoding="utf-8"), parse_float=Decimal)
+        except (OSError, ValueError, InvalidOperation, RecursionError):
             state = {}
         orders = state.get("open_orders") if isinstance(state, dict) else None
         resting_stop = None

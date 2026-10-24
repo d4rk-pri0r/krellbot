@@ -69,7 +69,7 @@ def _read_new_process(home: Path, expected: dict) -> dict:
 def test_persisted_stop_and_raise_survive_new_app_without_reads_mutating_state(home: Path) -> None:
     _arm(home)
     venue = _venue(home)
-    venue.place_stop("synthetic-protection", Decimal("5"), Decimal("3.8"), pair="SUIUSD")
+    venue.place_stop("synthetic-protection", Decimal(5), Decimal("3.8"), pair="SUIUSD")
     path = home / "run" / "paper-kraken.json"
     persisted = json.loads(path.read_text(encoding="utf-8"))
     assert persisted["open_orders"][0]["stop_price"] == "3.8000"
@@ -93,7 +93,7 @@ def test_persisted_stop_and_raise_survive_new_app_without_reads_mutating_state(h
 def test_new_process_reads_durable_stop_then_later_update_not_initial_setting(home: Path) -> None:
     _arm(home)
     venue = _venue(home)
-    venue.place_stop("synthetic-protection", Decimal("5"), Decimal("3.8"), pair="SUIUSD")
+    venue.place_stop("synthetic-protection", Decimal(5), Decimal("3.8"), pair="SUIUSD")
     first = _read_new_process(home, _expected(resting_stop="3.8"))
     # First interpreter has exited before a real local venue updates state.
     _venue(home).raise_stop("SUIUSD", Decimal("4.125"))
