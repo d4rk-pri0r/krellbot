@@ -208,17 +208,26 @@ export function SavedStrategyLibrary({
       !event.shiftKey &&
       (event.key === key || event.key === key.toUpperCase());
 
-    // Control+Alt+S / Meta+Alt+S → focus the state filter.
+    // Control+Alt+S / Meta+Alt+S → focus the state filter. The chord is
+    // claimed only when that control is actually rendered: with no toolbar
+    // (loading, empty or failed list) the browser keeps its own shortcut.
     if (event.altKey && chordOf("s")) {
+      if (!stateFilterRef.current) {
+        return;
+      }
       event.preventDefault();
       if (!event.repeat) {
-        stateFilterRef.current?.focus();
+        stateFilterRef.current.focus();
       }
       return;
     }
-    // Control+F / Meta+F → focus search. Alt/Shift variants stay with the
-    // browser so unrelated chords keep their native behavior.
+    // Control+F / Meta+F → focus search, again only when the search input
+    // is rendered. Alt/Shift variants stay with the browser so unrelated
+    // chords keep their native behavior.
     if (!event.altKey && chordOf("f")) {
+      if (!searchRef.current) {
+        return;
+      }
       event.preventDefault();
       if (!event.repeat) {
         focusSearch();
