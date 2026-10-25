@@ -18,8 +18,6 @@ from .base import (
     Venue,
     WithdrawCapableError,
 )
-from .coinbase import CoinbaseVenue
-from .kraken import KrakenVenue
 
 __all__ = [
     "Balance",
@@ -34,3 +32,23 @@ __all__ = [
     "Venue",
     "WithdrawCapableError",
 ]
+
+
+def __dir__() -> list[str]:
+    """Keep lazy public adapters discoverable without importing them."""
+    return sorted(set(globals()) | set(__all__))
+
+
+def __getattr__(name: str) -> object:
+    """Load remote adapters only when their public re-export is requested."""
+    if name == "CoinbaseVenue":
+        from .coinbase import CoinbaseVenue
+
+        globals()[name] = CoinbaseVenue
+        return CoinbaseVenue
+    if name == "KrakenVenue":
+        from .kraken import KrakenVenue
+
+        globals()[name] = KrakenVenue
+        return KrakenVenue
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
