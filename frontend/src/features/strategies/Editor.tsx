@@ -59,6 +59,18 @@ type ImportRefusal = {
   fromFile: boolean;
 };
 
+/** The draft, client and revision identity an asynchronous Save or
+ * Validate started against. Its completion may apply a summary, outcome
+ * or error only while that exact scope is still the editor's current
+ * one; otherwise the result belongs to a replaced draft and is dropped,
+ * never reattached. */
+type DraftOpScope = {
+  client: StrategyClient;
+  lifetime: number;
+  revisionId: string | null;
+  validateSeq: number | null;
+};
+
 function parsePack(text: string): Pack | null {
   try {
     const value = JSON.parse(text);
@@ -110,6 +122,34 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const saveInFlight = useRef(false);
+  // Draft lifetime: bumped by every fresh-draft seed (a chosen pack file,
+  // a starter pick), so an asynchronous Save/Validate completion for the
+  // replaced draft cannot reattach its revision, outcome, errors or
+  // fresh-create identity, and cannot invoke a stale onRevision. Text
+  // edits deliberately do NOT bump it: saving the currently edited draft
+  // keeps applying its result (existing policy).
+  const draftLifetime = useRef(0);
+  const seedFreshDraft = (): void => {
+    draftLifetime.current += 1;
+  };
+  // Latest-value mirrors readable from promise continuations after awaits.
+  const clientRef = useRef(client);
+  clientRef.current = client;
+  const lastSummaryRef = useRef(lastSummary);
+  const setTrackedLastSummary = (next: DraftSummary | null): void => {
+    lastSummaryRef.current = next;
+    setLastSummary(next);
+  };
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  // Validates have no single-flight lock (existing behavior); each start
+  // supersedes any still-pending older attempt's right to apply.
+  const validateSeq = useRef(0);
   // Race guard for asynchronous pack-file reads: every draft replacement
   // (a new file read, a textarea edit, a starter pick, the owned form)
   // bumps this token, so a stale read's onload can never overwrite the
@@ -172,8 +212,9 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     // parent), and transient errors from the prior draft do not leak
     // into the seeded one.
     invalidatePendingFileRead();
+    seedFreshDraft();
     setRawJson(JSON.stringify(example.pack, null, 2));
-    setLastSummary(null);
+    setTrackedLastSummary(null);
     setSeededFresh(true);
     setImportError(null);
     setSaveOutcome(null);
@@ -212,6 +253,20 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     requireValidPack();
   };
 
+  const captureDraftOpScope = (): DraftOpScope => ({
+    client,
+    lifetime: draftLifetime.current,
+    revisionId: lastSummaryRef.current?.revision_id ?? null,
+    validateSeq: null,
+  });
+
+  const draftOpScopeIsCurrent = (scope: DraftOpScope): boolean =>
+    mountedRef.current &&
+    clientRef.current === scope.client &&
+    draftLifetime.current === scope.lifetime &&
+    (lastSummaryRef.current?.revision_id ?? null) === scope.revisionId &&
+    (scope.validateSeq === null || validateSeq.current === scope.validateSeq);
+
   const handleSave = async (): Promise<void> => {
     if (saveInFlight.current) {
       return;
@@ -224,6 +279,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     setSaving(true);
     setSaveOutcome(null);
     setSaveError(null);
+    const scope = captureDraftOpScope();
     const parentId = seededFresh
       ? null
       : lastSummary?.revision_id ?? initial?.revision_id;
@@ -231,6 +287,12 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       const summary = parentId
         ? await client.edit(parentId, pack)
         : await client.create(pack);
+      if (!draftOpScopeIsCurrent(scope)) {
+        // A newer fresh draft, revision, client or component lifetime
+        // superseded this Save: its result stays out of the current
+        // editor instead of republishing the replaced draft's revision.
+        return;
+      }
       setSeededFresh(false);
       if (summary.outcome === "unchanged") {
         setSaveOutcome(summarizeSaveOutcome("unchanged", summary.revision_id).label);
@@ -244,11 +306,16 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
         // W3: missing server outcome must not render "Saved new".
         setSaveOutcome(summarizeSaveOutcome("other", summary.revision_id).label);
       }
-      setLastSummary(summary);
+      setTrackedLastSummary(summary);
       onRevision?.(summary, rawJson);
     } catch (err) {
+      if (!draftOpScopeIsCurrent(scope)) {
+        return;
+      }
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
+      // Always releases the single-flight lock and the Saving… surface:
+      // the replacement must not block the next explicit Save.
       saveInFlight.current = false;
       setSaving(false);
     }
@@ -280,12 +347,25 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     if (!lastSummary) {
       return;
     }
+    const scope: DraftOpScope = {
+      ...captureDraftOpScope(),
+      validateSeq: ++validateSeq.current,
+    };
     setValidateError(null);
     try {
       const summary = await client.validate(lastSummary.revision_id);
-      setLastSummary(summary);
+      if (!draftOpScopeIsCurrent(scope)) {
+        // A newer draft, revision, client, component lifetime or newer
+        // validate attempt superseded this one: its result is not
+        // reattached to the current editor.
+        return;
+      }
+      setTrackedLastSummary(summary);
       onRevision?.(summary, rawJson);
     } catch (err) {
+      if (!draftOpScopeIsCurrent(scope)) {
+        return;
+      }
       // Keep the last known revision/state; never imply validation succeeded.
       setValidateError(
         `Validation failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -329,8 +409,12 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       // next Save creates a fresh revision through client.create instead
       // of silently editing the reopened one, and stale outcome/error
       // surfaces from that revision do not leak into the imported draft.
+      // Seeding also bumps the draft lifetime, so Save/Validate
+      // completions still in flight for the replaced draft are dropped
+      // rather than reattaching its revision here.
+      seedFreshDraft();
       setOwnedForm(readOwnedStrategy(pack));
-      setLastSummary(null);
+      setTrackedLastSummary(null);
       setSeededFresh(true);
       setImportError(null);
       setSaveOutcome(null);
