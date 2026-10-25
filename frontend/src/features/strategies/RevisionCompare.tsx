@@ -34,6 +34,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+type JsonValueKind =
+  | "string"
+  | "number"
+  | "boolean"
+  | "null"
+  | "object"
+  | "array"
+  | "other";
+
+function jsonValueKind(value: unknown): JsonValueKind {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  if (isRecord(value)) {
+    return "object";
+  }
+  const type = typeof value;
+  if (type === "string" || type === "number" || type === "boolean") {
+    return type;
+  }
+  return "other";
+}
+
 function formatValue(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -47,6 +73,17 @@ function formatValue(value: unknown): string {
     // Circular or otherwise unserializable; fall through to String().
   }
   return String(value);
+}
+
+function formatTypeChangedValue(value: unknown): string {
+  if (typeof value === "string") {
+    // On a type-changed row a JSON string is shown JSON-quoted (with
+    // escaping) so a stored number 14 and a stored string "14" stay
+    // distinguishable in both directions.
+    const text = JSON.stringify(value);
+    return typeof text === "string" ? text : `"${value}"`;
+  }
+  return formatValue(value);
 }
 
 function childPath(path: string, key: string): string {
@@ -117,16 +154,30 @@ function diffValue(
     }
     return;
   }
-  const previousText = formatValue(previous);
-  const nextText = formatValue(next);
-  if (previousText !== nextText) {
-    out.push({
-      path,
-      kind: "changed",
-      previous: previousText,
-      next: nextText,
-    });
+  // Compare the parsed JSON values, never their formatted display text:
+  // formatValue unquotes strings, so a stored number 14 and a stored
+  // string "14" would otherwise collide. Identical values returned above
+  // and same-type containers handled above, so a differing kind at this
+  // point is always a real type change and must produce a row.
+  if (jsonValueKind(previous) === jsonValueKind(next)) {
+    const previousText = formatValue(previous);
+    const nextText = formatValue(next);
+    if (previousText !== nextText) {
+      out.push({
+        path,
+        kind: "changed",
+        previous: previousText,
+        next: nextText,
+      });
+    }
+    return;
   }
+  out.push({
+    path,
+    kind: "changed",
+    previous: formatTypeChangedValue(previous),
+    next: formatTypeChangedValue(next),
+  });
 }
 
 function diffRevisionPacks(
