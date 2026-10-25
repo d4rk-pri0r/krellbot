@@ -1,10 +1,26 @@
-import { useEffect, useRef, type JSX } from "react";
+import {
+  useEffect,
+  useRef,
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import "./CommandPalette.signal.css";
 
 type CommandPaletteProps = {
   open: boolean;
   onClose: () => void;
 };
+
+function isOwnedPlainTabKeydown(event: KeyboardEvent): boolean {
+  return (
+    event.key === "Tab" &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.isComposing &&
+    event.keyCode !== 229
+  );
+}
 
 export function CommandPalette({
   open,
@@ -40,6 +56,22 @@ export function CommandPalette({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  const handleCommandInputKeyDown = (
+    event: ReactKeyboardEvent<HTMLInputElement>,
+  ) => {
+    const nativeEvent = event.nativeEvent;
+    if (!isOwnedPlainTabKeydown(nativeEvent)) {
+      return;
+    }
+    if (nativeEvent.defaultPrevented) {
+      return;
+    }
+    if (document.activeElement !== inputRef.current) {
+      return;
+    }
+    event.preventDefault();
+  };
 
   if (!open) {
     return null;
@@ -78,6 +110,7 @@ export function CommandPalette({
           spellCheck={false}
           placeholder="Type to search actions, strategies, or views"
           aria-label="Command input"
+          onKeyDown={handleCommandInputKeyDown}
         />
         <p className="kbot-palette__hint kbot-shell__palette-hint">
           Press Esc to close · Ctrl+K from anywhere
