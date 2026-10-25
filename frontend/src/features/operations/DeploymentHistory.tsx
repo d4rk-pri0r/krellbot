@@ -93,6 +93,7 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
 
   const previousLoading = useRef(true);
   const [hasRefreshed, setHasRefreshed] = useState(false);
+  const detailRequestRef = useRef(0);
 
   useEffect(() => {
     if (loading && !previousLoading.current) setHasRefreshed(true);
@@ -100,6 +101,11 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
   }, [loading]);
 
   const loadRows = useCallback(async (): Promise<void> => {
+    detailRequestRef.current += 1;
+    setExpandedId(null);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(false);
     const fetchRows = client.listDeploymentRecords;
     if (!fetchRows) {
       setLoading(false);
@@ -122,10 +128,15 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
 
   useEffect(() => {
     void loadRows();
+    return () => {
+      detailRequestRef.current += 1;
+    };
   }, [loadRows]);
 
   const handleRowClick = useCallback(
     (row: DeploymentRecordRow): void => {
+      const requestId = detailRequestRef.current + 1;
+      detailRequestRef.current = requestId;
       if (expandedId === row.deployment_id) {
         setExpandedId(null);
         setDetail(null);
@@ -145,13 +156,16 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
       void fetchDetail
         .call(client, row.deployment_id)
         .then((record) => {
+          if (detailRequestRef.current !== requestId) return;
           setDetail(record);
         })
         .catch((failure: unknown) => {
+          if (detailRequestRef.current !== requestId) return;
           setDetail(null);
           setDetailError(failure instanceof Error ? failure.message : String(failure));
         })
         .finally(() => {
+          if (detailRequestRef.current !== requestId) return;
           setDetailLoading(false);
         });
     },
