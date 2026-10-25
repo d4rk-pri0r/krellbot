@@ -134,10 +134,15 @@ function fillSideTone(side: string): string {
 function reducer(state: PanelState, action: PanelAction): PanelState {
   switch (action.type) {
     case "status": {
+      // A newly confirmed read is the reconciliation the
+      // unknown-outcome warning asks for: it replaces the stale
+      // last-confirmed projection and re-arms the running-loop poll
+      // without any automatic command retry.
       return {
         ...state,
         status: action.status,
         loadFailed: null,
+        unknownOutcome: null,
       };
     }
     case "load-failed": {
@@ -201,6 +206,10 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
   const retryHasFiredRef = useRef(false);
   // Synchronous double-click guard, mirroring StatusPanel.
   const inFlightRef = useRef(false);
+  // Guards the automatic poll's own reads only. It is deliberately
+  // separate from inFlightRef: a slow poll read must never block or
+  // delay commands or manual refreshes.
+  const pollReadInFlightRef = useRef(false);
   const epochRef = useRef(0);
   const commandInFlightRef = useRef<Set<string>>(new Set());
   // Keep the affordance active through runCommand's follow-up status read.
@@ -252,9 +261,16 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
     }
     let cancelled = false;
     const timer = window.setInterval(() => {
-      if (cancelled || inFlightRef.current) {
+      if (cancelled || inFlightRef.current || pollReadInFlightRef.current) {
         return;
       }
+      // One automatic read at a time: while a slower-than-interval GET
+      // is pending, the next tick skips instead of starting another
+      // read and bumping the epoch, so the pending read's completion —
+      // success or failure — always lands. The epoch guard still gives
+      // commands and manual refreshes precedence: they invalidate a
+      // poll read that was already in flight when they started.
+      pollReadInFlightRef.current = true;
       const epoch = ++epochRef.current;
       client
         .getStatus()
@@ -274,6 +290,9 @@ export function RehearsalPanel({ client }: RehearsalPanelProps): JSX.Element {
               `Rehearsal status refresh failed: ${transportDetail(reason)}. ` +
               "The last confirmed state is shown; refresh to reconcile.",
           });
+        })
+        .finally(() => {
+          pollReadInFlightRef.current = false;
         });
     }, POLL_INTERVAL_MS);
     return () => {
