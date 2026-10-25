@@ -99,11 +99,23 @@ export function SavedStrategyLibrary({
   const [stateFilter, setStateFilter] = useState<"all" | OwnedDraftSummary["state"]>("all");
   const searchRef = useRef<HTMLInputElement | null>(null);
   const stateFilterRef = useRef<HTMLSelectElement | null>(null);
+  // Intent lifetime for editor-changing reads. Each Reopen/Copy read
+  // captures the current generation; a newer New owned strategy intent,
+  // a client replacement, or unmount retires the generation so a late
+  // success/error/finalizer can no longer change the host editor or
+  // this library's busy/error state. Reads started inside the current
+  // generation (including parallel Copies) settle normally.
+  const readGenerationRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
     setPhase("loading");
     setError(null);
+    // The effect only re-runs for a new client generation: retire the
+    // previous generation's busy markers here because their finalizers
+    // are invalidated below and would otherwise never clear them.
+    setOpeningRevision(null);
+    setCopyingRevisions([]);
     client
       .listOwned()
       .then((owned) => {
@@ -124,6 +136,9 @@ export function SavedStrategyLibrary({
       });
     return () => {
       cancelled = true;
+      // Client replacement and unmount both retire every still-pending
+      // revision read of the old generation.
+      readGenerationRef.current += 1;
     };
   }, [client]);
 
@@ -145,19 +160,31 @@ export function SavedStrategyLibrary({
     }
     setReopenError(null);
     setOpeningRevision(summary.revision_id);
+    const generation = readGenerationRef.current;
     client
       .getJson(summary.revision_id)
       .then((loaded) => {
+        if (readGenerationRef.current !== generation) {
+          // A newer editor intent superseded this read: drop the late
+          // result so it cannot replace the newer editor.
+          return;
+        }
         // Read-only open: the stored revision's state and bytes are
         // never rewritten and nothing is armed here.
         onReopen(summary, loaded.bytes);
       })
       .catch((err: unknown) => {
+        if (readGenerationRef.current !== generation) {
+          return;
+        }
         setReopenError(
           err instanceof Error ? err.message : String(err),
         );
       })
       .finally(() => {
+        if (readGenerationRef.current !== generation) {
+          return;
+        }
         setOpeningRevision(null);
       });
   };
@@ -168,24 +195,46 @@ export function SavedStrategyLibrary({
     }
     setCopyError(null);
     setCopyingRevisions((pending) => [...pending, summary.revision_id]);
+    const generation = readGenerationRef.current;
     client
       .getJson(summary.revision_id)
       .then((loaded) => {
+        if (readGenerationRef.current !== generation) {
+          // A newer editor intent superseded this read: drop the late
+          // result so it cannot replace the newer editor.
+          return;
+        }
         // Copy only reads bytes: the origin revision's stored bytes,
         // state and arm/deploy state are never touched, and no save,
         // validate or arm happens here.
         onCopyAsNew?.(summary, loaded.bytes);
       })
       .catch((err: unknown) => {
+        if (readGenerationRef.current !== generation) {
+          return;
+        }
         setCopyError(
           err instanceof Error ? err.message : String(err),
         );
       })
       .finally(() => {
+        if (readGenerationRef.current !== generation) {
+          return;
+        }
         setCopyingRevisions((pending) =>
           pending.filter((revisionId) => revisionId !== summary.revision_id),
         );
       });
+  };
+
+  const handleNewStrategyClick = (): void => {
+    // The host replaces the editor with a fresh owned draft: every
+    // still-pending Reopen/Copy read is superseded, so retire them and
+    // release their busy markers (their finalizers will not run).
+    readGenerationRef.current += 1;
+    setOpeningRevision(null);
+    setCopyingRevisions([]);
+    onNewStrategy?.();
   };
 
   const clearQuery = (): void => {
@@ -293,7 +342,7 @@ export function SavedStrategyLibrary({
             type="button"
             data-testid="library-new-owned-strategy"
             className="kbot-strategy-library__new"
-            onClick={onNewStrategy}
+            onClick={handleNewStrategyClick}
           >
             New owned strategy
           </button>
