@@ -57,6 +57,13 @@ function sideBadgeTone(side: string): string {
   return "";
 }
 
+/** Stable run identity: the exact composite the runs table uses as its
+ *  row key. Refreshes replace every run object, so selection survives a
+ *  refresh only by comparing this identity, never object references. */
+function runIdentity(run: PaperRun): string {
+  return `${run.venue}|${run.pair}|${run.pack_id}|${run.first_ts_ms}`;
+}
+
 export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
   const detailId = useId();
   const [runs, setRuns] = useState<PaperRun[] | null>(null);
@@ -73,6 +80,20 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
     try {
       const history = await client.listRuns();
       setRuns(history.runs);
+      // Reconcile the selection with what the wire actually returned: the
+      // same identity re-selects its fresh object (actual detail and fills,
+      // row highlight/aria follow it); an identity the refresh no longer
+      // returns closes its obsolete detail. A closed detail stays closed —
+      // this never auto-selects, and a failed read below never lands here.
+      setSelected((previous) => {
+        if (previous === null) {
+          return null;
+        }
+        return (
+          history.runs.find((run) => runIdentity(run) === runIdentity(previous)) ??
+          null
+        );
+      });
     } catch (err) {
       // A failed read leaves the last good table in place when there is
       // one; otherwise the panel says so instead of inventing runs.
@@ -251,7 +272,7 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
                     const isSelected = selected === run;
                     return (
                       <tr
-                        key={`${run.venue}|${run.pair}|${run.pack_id}|${run.first_ts_ms}`}
+                        key={runIdentity(run)}
                         className={`kbot-paper-runs__row${
                           isSelected ? " kbot-paper-runs__row--selected" : ""
                         }`}
