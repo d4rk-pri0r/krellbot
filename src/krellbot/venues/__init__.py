@@ -34,6 +34,11 @@ __all__ = [
 ]
 
 
+def __dir__() -> list[str]:
+    """Keep lazy public adapters discoverable without importing them."""
+    return sorted(set(globals()) | set(__all__))
+
+
 def __getattr__(name: str) -> object:
     """Load remote adapters only when their public re-export is requested."""
     if name == "CoinbaseVenue":

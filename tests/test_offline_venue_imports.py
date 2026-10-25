@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REMOTE_MODULES = {"krellbot.venues.kraken", "krellbot.venues.coinbase"}
 PUBLIC_NAMES = [
@@ -200,6 +199,41 @@ def test_all_is_preserved_without_resolving_lazy_names(tmp_path):
         """,
     )
     assert REMOTE_MODULES.isdisjoint(observed["modules"]), observed["modules"]
+
+
+@pytest.mark.parametrize("resolved_name", [None, "KrakenVenue", "CoinbaseVenue"])
+def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, resolved_name):
+    observed = run_import(
+        tmp_path,
+        f"""
+        import krellbot.venues as venues
+        remote_modules = {{'krellbot.venues.kraken', 'krellbot.venues.coinbase'}}
+        assert remote_modules.isdisjoint(sys.modules)
+        names = dir(venues)
+        assert set({PUBLIC_NAMES!r}).issubset(names)
+        assert set(vars(venues)).issubset(names)
+        assert names == sorted(set(names))
+        assert remote_modules.isdisjoint(sys.modules)
+        assert 'KrakenVenue' not in vars(venues)
+        assert 'CoinbaseVenue' not in vars(venues)
+        resolved_name = {resolved_name!r}
+        if resolved_name is not None:
+            resolved = getattr(venues, resolved_name)
+            loaded = set(sys.modules)
+            names = dir(venues)
+            assert set({PUBLIC_NAMES!r}).issubset(names)
+            assert set(vars(venues)).issubset(names)
+            assert names == sorted(set(names))
+            assert set(sys.modules) == loaded
+            assert vars(venues)[resolved_name] is resolved
+        """,
+    )
+    expected_remote = {
+        None: set(),
+        "KrakenVenue": {"krellbot.venues.kraken"},
+        "CoinbaseVenue": {"krellbot.venues.coinbase"},
+    }
+    assert set(observed["modules"]) & REMOTE_MODULES == expected_remote[resolved_name]
 
 
 @pytest.mark.parametrize(("module", "name"), [("kraken", "KrakenVenue"), ("coinbase", "CoinbaseVenue")])
