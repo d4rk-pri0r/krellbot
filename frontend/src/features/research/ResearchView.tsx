@@ -415,6 +415,34 @@ export function ResearchView({
       setSubmitError("holdout bounds must both be set");
       return;
     }
+    // issue149: a FILLED optional holdout bound must additionally be a
+    // finite safe integer before any result/selection is cleared or a
+    // request is built. Plain Number() conversion would silently round
+    // unsafe integer text (9007199254740993 -> 9007199254740992) and
+    // turn arbitrarily long digit text into Infinity. Blank stays an
+    // optional omission; required-field semantics are untouched.
+    let holdoutFromValue: number | null = null;
+    let holdoutToValue: number | null = null;
+    if (holdoutFromFilled && holdoutToFilled) {
+      const holdoutFromField = parseRequiredIntegerField(
+        holdoutFromTrimmed,
+        "Holdout from must be a finite safe integer",
+      );
+      if (!holdoutFromField.ok) {
+        setSubmitError(holdoutFromField.error);
+        return;
+      }
+      holdoutFromValue = holdoutFromField.value;
+      const holdoutToField = parseRequiredIntegerField(
+        holdoutToTrimmed,
+        "Holdout to must be a finite safe integer",
+      );
+      if (!holdoutToField.ok) {
+        setSubmitError(holdoutToField.error);
+        return;
+      }
+      holdoutToValue = holdoutToField.value;
+    }
     setSubmitError(null);
     setJobError(null);
     setExportError(null);
@@ -435,11 +463,11 @@ export function ResearchView({
       } else {
         request.packPath = readStringField(packPath);
       }
-      if (holdoutFromFilled) {
-        request.holdoutFromMs = Number(holdoutFromTrimmed);
+      if (holdoutFromValue !== null) {
+        request.holdoutFromMs = holdoutFromValue;
       }
-      if (holdoutToFilled) {
-        request.holdoutToMs = Number(holdoutToTrimmed);
+      if (holdoutToValue !== null) {
+        request.holdoutToMs = holdoutToValue;
       }
       runInFlight.current = true;
       setSubmitting(true);
