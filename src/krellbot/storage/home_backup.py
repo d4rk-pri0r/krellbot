@@ -204,32 +204,31 @@ def create(home: Path, out: Path, *, now: int) -> dict:
 
     for path in files:
         rel = _posix_relpath(home, path)
+        if rel == _OPS_FILENAME:
+            # Inspect the online snapshot, not the raw main file: committed
+            # pages (including secrets) may still live only in the WAL.
+            continue
         data = path.read_bytes()
         if _detect_secret(data):
             raise BackupError("secret_detected", rel)
         sha = _bytes_sha256(data)
         manifest_files.append({"path": rel, "sha256": sha, "size": len(data)})
-        if rel == _OPS_FILENAME:
-            pass
-        else:
-            captures.append((rel, data))
+        captures.append((rel, data))
 
     ops_rows: int | None = None
     ops_rows_sha256: str | None = None
+    snap_bytes: bytes | None = None
     ops_sqlite_path = home / _OPS_FILENAME
     if ops_sqlite_path.is_file():
         with tempfile.TemporaryDirectory() as td:
             snap_path = Path(td) / _OPS_FILENAME
             _sqlite_backup.online_backup(ops_sqlite_path, snap_path)
             snap_bytes = snap_path.read_bytes()
+            if _detect_secret(snap_bytes):
+                raise BackupError("secret_detected", _OPS_FILENAME)
             sha = _bytes_sha256(snap_bytes)
-            entries = [e for e in manifest_files if e["path"] == _OPS_FILENAME]
-            if entries:
-                entries[0]["sha256"] = sha
-                entries[0]["size"] = len(snap_bytes)
-            else:
-                manifest_files.append({"path": _OPS_FILENAME, "sha256": sha, "size": len(snap_bytes)})
-                manifest_files.sort(key=lambda e: e["path"])
+            manifest_files.append({"path": _OPS_FILENAME, "sha256": sha, "size": len(snap_bytes)})
+            manifest_files.sort(key=lambda e: e["path"])
             try:
                 store = OperationalStore(snap_path)
                 try:
@@ -257,21 +256,17 @@ def create(home: Path, out: Path, *, now: int) -> dict:
     fd = os.open(str(out), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
         with os.fdopen(fd, "wb") as raw:
-            gz_fileobj = gzip.GzipFile(
-                fileobj=raw,
-                mode="wb",
-                mtime=0,
-            )
-            with tarfile.open(fileobj=gz_fileobj, mode="w") as tf:
+            with (
+                gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as gz_fileobj,
+                tarfile.open(fileobj=gz_fileobj, mode="w") as tf,
+            ):
                 _add_member(tf, "manifest.json", manifest_bytes)
-                if ops_sqlite_path.is_file():
-                    with tempfile.TemporaryDirectory() as td:
-                        snap_path = Path(td) / _OPS_FILENAME
-                        _sqlite_backup.online_backup(ops_sqlite_path, snap_path)
-                        _add_member(tf, f"files/{_OPS_FILENAME}", snap_path.read_bytes())
+                if snap_bytes is not None:
+                    # Archive exactly the bytes hashed and inspected above;
+                    # writers may have committed again since that capture.
+                    _add_member(tf, f"files/{_OPS_FILENAME}", snap_bytes)
                 for rel, data in captures:
                     _add_member(tf, f"files/{rel}", data)
-            gz_fileobj.close()
             raw.flush()
             try:
                 os.fsync(raw.fileno())
