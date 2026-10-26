@@ -582,6 +582,13 @@ export function SavedStrategyLibrary({
         : null}
       {compareRow !== null && phase === "ready" ? (
         <RevisionCompare
+          // The revision that opened the surface owns it: a Compare click
+          // on a different revision replaces the instance (fresh
+          // parent/child or parentless defaults, old results/error/loading
+          // discarded, pending reads retired by the unmount cleanup), while
+          // the same revision keeps the user's manual picks across rerenders
+          // that merely create new row object identities.
+          key={compareRow.revision_id}
           client={client}
           rows={rows}
           row={compareRow}
