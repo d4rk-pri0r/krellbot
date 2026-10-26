@@ -153,17 +153,24 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
   }, []);
 
   // Buckets offered for filtering are only those the loaded records actually
-  // report; the control never promises products the server did not send.
+  // report; the control never promises products the server did not send. The
+  // one exception is the operator's own selection: when a refresh drops that
+  // bucket from the inventory, it stays represented as an explicit option so
+  // the control keeps showing the filter that is truthfully applied (0 of N)
+  // instead of silently snapping to "all". It re-merges without duplication
+  // once the bucket returns.
   const buckets = useMemo(() => {
-    if (rows === null) {
-      return [] as PackRow["bucket"][];
-    }
     const seen = new Set<PackRow["bucket"]>();
-    for (const row of rows) {
-      seen.add(row.bucket);
+    if (rows !== null) {
+      for (const row of rows) {
+        seen.add(row.bucket);
+      }
+    }
+    if (bucketFilter !== ALL_BUCKETS && !seen.has(bucketFilter as PackRow["bucket"])) {
+      seen.add(bucketFilter as PackRow["bucket"]);
     }
     return [...seen];
-  }, [rows]);
+  }, [rows, bucketFilter]);
 
   const visibleRows = useMemo(() => {
     if (rows === null) {
