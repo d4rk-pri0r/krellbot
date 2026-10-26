@@ -146,6 +146,16 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
 
   const venues = Array.from(new Set((runs ?? []).map((run) => run.venue)));
   const statuses = Array.from(new Set((runs ?? []).map((run) => run.status)));
+  // A refresh can remove the last record matching an explicit filter
+  // selection. The select keeps its controlled value, so that value has
+  // to survive as a real option: a native select whose value matches no
+  // option reads as all/blank while the predicate still filters. Derived
+  // options come first, the merge never duplicates a value that returns
+  // on a later refresh, and "" (all) is never re-added.
+  const venueOptions =
+    venue === "" ? venues : Array.from(new Set([...venues, venue]));
+  const statusOptions =
+    status === "" ? statuses : Array.from(new Set([...statuses, status]));
   const needle = query.trim().toLowerCase();
   const filteredRuns = (runs ?? []).filter((runRow) =>
     (venue === "" || runRow.venue === venue) &&
@@ -180,7 +190,7 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
             Venue
             <select aria-label="Filter runs by venue" value={venue} onChange={(event) => setVenue(event.target.value)} data-testid="paper-last-runs-filter-venue">
               <option value="">all</option>
-              {venues.map((option) => <option key={option} value={option}>Venue: {option}</option>)}
+              {venueOptions.map((option) => <option key={option} value={option}>Venue: {option}</option>)}
             </select>
           </label>
           <label>
@@ -191,7 +201,7 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
             Status
             <select aria-label="Filter runs by status" value={status} onChange={(event) => setStatus(event.target.value)} data-testid="paper-last-runs-filter-status">
               <option value="">all</option>
-              {statuses.map((option) => <option key={option} value={option}>{option}</option>)}
+              {statusOptions.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
           </label>
           {filtersActive ? (
