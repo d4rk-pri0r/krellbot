@@ -1,4 +1,12 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type JSX } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import "./DeploymentHistory.signal.css";
 import type { DeploymentRecordRow, OperationsClient } from "./client";
 
@@ -14,6 +22,9 @@ const LOCAL_PREVIEW_BADGE = "Local preview";
 const CLIENT_UNAVAILABLE = "history client is unavailable in this build";
 const READ_ONLY_HELPER =
   "Read-only: historical records can be inspected but not edited, started, or promoted.";
+const ROW_EXPAND_HINT = "Expand to inspect read-only details";
+const ROW_COLLAPSE_HINT = "Collapse details";
+const ROW_KEY_SHORTCUTS = "Enter Space";
 
 export type DeploymentHistoryProps = {
   client: OperationsClient;
@@ -25,6 +36,10 @@ function rowTestId(deploymentId: string): string {
 
 function detailTestId(deploymentId: string): string {
   return `ops-history-detail-${deploymentId}`;
+}
+
+function detailDomId(deploymentId: string): string {
+  return `ops-history-detail-${deploymentId.replace(/\s+/g, "-")}`;
 }
 
 function formatTs(createdAtMs: number): string {
@@ -45,7 +60,11 @@ function renderDetailPanel(
   const configEntries = subsetEntries(detail.config);
   const scheduleEntries = subsetEntries(detail.schedule);
   return (
-    <div className="kbot-ops__history-detail" data-testid={detailTestId(detail.deployment_id)}>
+    <div
+      className="kbot-ops__history-detail"
+      data-testid={detailTestId(detail.deployment_id)}
+      id={detailDomId(detail.deployment_id)}
+    >
       {pending ? (
         <p className="kbot-ops__empty" data-testid="ops-history-detail-loading">
           {DETAIL_LOADING_TEXT}
@@ -172,6 +191,18 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
     [client, expandedId],
   );
 
+  const handleRowKeyDown = useCallback(
+    (row: DeploymentRecordRow, event: ReactKeyboardEvent<HTMLTableRowElement>): void => {
+      if (event.defaultPrevented) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      // Suppress the Space page-scroll (and any Enter default) so keyboard
+      // activation only ever toggles the focused record's read-only detail.
+      event.preventDefault();
+      handleRowClick(row);
+    },
+    [handleRowClick],
+  );
+
   return (
     <div className="kbot-ops__history">
       <div className="kbot-ops__history-head">
@@ -249,9 +280,20 @@ export function DeploymentHistory({ client }: DeploymentHistoryProps): JSX.Eleme
                   <tr
                     data-testid={rowTestId(row.deployment_id)}
                     onClick={() => handleRowClick(row)}
+                    onKeyDown={(event) => handleRowKeyDown(row, event)}
+                    tabIndex={0}
                     aria-expanded={expandedId === row.deployment_id}
+                    aria-controls={
+                      expandedId === row.deployment_id ? detailDomId(row.deployment_id) : undefined
+                    }
+                    aria-keyshortcuts={ROW_KEY_SHORTCUTS}
                   >
-                    <td>{row.deployment_id}</td>
+                    <td>
+                      <span className="kbot-ops__history-id">{row.deployment_id}</span>
+                      <span className="kbot-ops__history-row-hint">
+                        {expandedId === row.deployment_id ? ROW_COLLAPSE_HINT : ROW_EXPAND_HINT}
+                      </span>
+                    </td>
                     <td>{row.venue}</td>
                     <td>{row.pair}</td>
                     <td>{formatTs(row.created_at_ms)}</td>
