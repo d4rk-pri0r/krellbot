@@ -176,12 +176,27 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   );
 
   const handleStartOwnedStrategy = (): void => {
+    // An explicit fresh-owned seed starts a NEW draft, exactly like a
+    // starter pick or a chosen pack file: the previously-loaded or
+    // just-saved revision identity is dropped so the next Save creates
+    // through client.create instead of editing the old parent (whose
+    // different generated pack id the backend rightly refuses), the
+    // lifetime bump drops still-pending Save/Validate completions for
+    // the replaced draft, and its outcome/error surfaces do not leak
+    // into the fresh one.
     const form = seedOwnedStrategyForm();
     const pack = seedOwnedStrategyPack(form.name);
     invalidatePendingFileRead();
+    seedFreshDraft();
     setOwnedForm({ ...form, id: pack.id as string });
-    setRawJson(JSON.stringify(pack, null, 2));
+    setTrackedLastSummary(null);
+    setSeededFresh(true);
     setImportError(null);
+    setSaveOutcome(null);
+    setSaveError(null);
+    setValidateError(null);
+    setArmError(null);
+    setRawJson(JSON.stringify(pack, null, 2));
   };
 
   const handleOwnedApply = (pack: Pack | null): void => {
