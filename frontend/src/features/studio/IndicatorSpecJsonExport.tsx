@@ -41,18 +41,35 @@ export function IndicatorSpecJsonExport({
   const handleClick = (): void => {
     setExporting(true);
     setStatus(`Exporting spec ${spec.name}…`);
-    const blob = new Blob([indicatorSpecToJson(spec)], {
-      type: "application/json;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = indicatorSpecFilename(spec.name, stamp);
-    anchor.click();
-    URL.revokeObjectURL(url);
+    let objectUrl: string | null = null;
+    let failed = false;
+    try {
+      const blob = new Blob([indicatorSpecToJson(spec)], {
+        type: "application/json;charset=utf-8",
+      });
+      objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = indicatorSpecFilename(spec.name, stamp);
+      anchor.click();
+    } catch {
+      failed = true;
+    } finally {
+      if (objectUrl !== null) {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          failed = true;
+        }
+      }
+    }
     queueMicrotask(() => {
       setExporting(false);
-      setStatus(`Export complete for spec ${spec.name}`);
+      setStatus(
+        failed
+          ? `Export failed for spec ${spec.name}`
+          : `Export complete for spec ${spec.name}`,
+      );
     });
   };
   return (
