@@ -175,6 +175,52 @@
   overflow-wrap: anywhere;
 }
 
+/* --- nested boolean condition groups ---
+ *
+ * Every all/any group owns one labelled <li> whose nested <ul> holds only
+ * that group's children. The group reads as a contained block: a
+ * navy-tinted box with a line border for the outer scope, a panel-tinted
+ * box for subgroups inside it, and disc → circle → square markers for the
+ * DSL's three supported group levels. Ownership stays visible on narrow
+ * layouts; long leaf text wraps inside the boxes instead of widening. */
+
+.kbot-feature__strategy-explanation-condition-group {
+  min-width: 0;
+  max-width: 100%;
+  padding: 7px 10px 8px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 50%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--line, #22465d) 65%, transparent);
+  border-radius: 7px;
+}
+
+.kbot-feature__strategy-explanation-condition-group-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-feature__strategy-explanation-condition-group-list {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 5px;
+  padding-left: 17px;
+  list-style: circle;
+}
+
+.kbot-feature__strategy-explanation-condition-group-list
+  .kbot-feature__strategy-explanation-condition-group-list {
+  list-style: square;
+}
+
+.kbot-feature__strategy-explanation-condition-group
+  .kbot-feature__strategy-explanation-condition-group {
+  background: color-mix(in srgb, var(--panel, #18354a) 24%, var(--surface, #14222e));
+}
+
 .kbot-feature__strategy-explanation-list-item {
   padding: 6px 10px;
   font-size: 12.5px;
@@ -245,6 +291,21 @@
 
   .kbot-feature__strategy-explanation-actions > * {
     flex: 1 1 auto;
+  }
+
+  /* Nested condition groups stay contained: shrink the indents so the
+   * DSL-maximum three group levels still fit without horizontal scroll. */
+  .kbot-feature__strategy-explanation-list--conditions {
+    padding-left: 10px;
+  }
+
+  .kbot-feature__strategy-explanation-condition-group {
+    padding: 6px 8px 7px;
+  }
+
+  .kbot-feature__strategy-explanation-condition-group-list {
+    gap: 3px;
+    padding-left: 13px;
   }
 
   /* ≥44px touch targets on the action button. */

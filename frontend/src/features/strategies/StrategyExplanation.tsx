@@ -18,16 +18,18 @@ export type StrategyExplanationProps = {
 function ConditionList({ condition }: { condition: ConditionExplanation }): JSX.Element {
   if (condition.kind === "group") {
     return (
-      <>
-        <li>
+      <li className="kbot-feature__strategy-explanation-condition-group">
+        <span className="kbot-feature__strategy-explanation-condition-group-label">
           {condition.joiner === "all"
             ? "All of these are true:"
             : "Any of these is true:"}
-        </li>
-        {condition.children.map((child, index) => (
-          <ConditionList key={index} condition={child} />
-        ))}
-      </>
+        </span>
+        <ul className="kbot-feature__strategy-explanation-condition-group-list">
+          {condition.children.map((child, index) => (
+            <ConditionList key={index} condition={child} />
+          ))}
+        </ul>
+      </li>
     );
   }
   return <li>{condition.text}</li>;
