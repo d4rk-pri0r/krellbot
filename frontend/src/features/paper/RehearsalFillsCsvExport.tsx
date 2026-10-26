@@ -88,33 +88,53 @@ export function RehearsalFillsCsvExport({
     }
     inFlightRef.current = true;
     let url: string | null = null;
+    let anchor: HTMLAnchorElement | null = null;
+    let anchorAttached = false;
+    let failure: { reason: unknown } | null = null;
     try {
       // Build the complete CSV before creating any download artifact, so
       // a failure can never leave a partial file behind.
       const csv = toRehearsalFillsCsv(fills);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
+      anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = `krellbot-rehearsal-fills-${exportTimestamp()}.csv`;
       document.body.appendChild(anchor);
+      anchorAttached = true;
       anchor.click();
-      document.body.removeChild(anchor);
     } catch (reason) {
-      if (url !== null) {
-        URL.revokeObjectURL(url);
+      failure = { reason };
+    } finally {
+      // This click owns the anchor and the object URL it allocated: each
+      // cleanup is attempted independently (one refusal cannot skip or
+      // escape the other) and a refused cleanup never retracts a file the
+      // browser has already taken or changes the delivery outcome.
+      if (anchorAttached && anchor !== null) {
+        try {
+          document.body.removeChild(anchor);
+        } catch {
+          // removal refused — contained
+        }
       }
+      if (url !== null) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // revoke refused — contained
+        }
+      }
+      inFlightRef.current = false;
+    }
+    if (failure !== null) {
       setOutcome({
         kind: "failed",
         message: `Visible fills export failed: ${transportDetail(
-          reason,
+          failure.reason,
         )}. No complete file was offered.`,
       });
       return;
-    } finally {
-      inFlightRef.current = false;
     }
-    URL.revokeObjectURL(url);
     setOutcome({ kind: "complete" });
   };
 
