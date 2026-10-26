@@ -222,7 +222,15 @@ def create(home: Path, out: Path, *, now: int) -> dict:
     if ops_sqlite_path.is_file():
         with tempfile.TemporaryDirectory() as td:
             snap_path = Path(td) / _OPS_FILENAME
-            _sqlite_backup.online_backup(ops_sqlite_path, snap_path)
+            try:
+                _sqlite_backup.online_backup(ops_sqlite_path, snap_path)
+            except sqlite3.DatabaseError:
+                # A malformed database cannot yield a snapshot, but still
+                # preserves the prior typed refusal for marker-bearing bytes.
+                # Non-secret SQLite failures retain their original exception.
+                if _detect_secret(ops_sqlite_path.read_bytes()):
+                    raise BackupError("secret_detected", _OPS_FILENAME) from None
+                raise
             snap_bytes = snap_path.read_bytes()
             if _detect_secret(snap_bytes):
                 raise BackupError("secret_detected", _OPS_FILENAME)

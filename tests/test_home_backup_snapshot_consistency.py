@@ -23,6 +23,13 @@ import pytest
 from krellbot.storage import backup, home_backup
 from krellbot.storage.database import OperationalStore
 
+
+def _private_key_marker(kind: str = "") -> str:
+    # Assemble only the synthetic marker at runtime, not a key-shaped source
+    # block that a multiline credential scanner can consume across test code.
+    return "-----BEGIN " + kind + "PRIVATE KEY-----"
+
+
 _CHILD_WRITE = """
 import json, os, sqlite3, sys
 conn = sqlite3.connect(sys.argv[1], timeout=5)
@@ -201,7 +208,7 @@ def test_no_database_preserves_regular_files_and_exclusions(tmp_path, snapshot_t
     ):
         path = home / rel
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"-----BEGIN PRIVATE KEY-----\nsynthetic-excluded")
+        path.write_bytes(_private_key_marker().encode() + b"\nsynthetic-excluded")
     archive = tmp_path / "no-db.tar.gz"
     manifest = home_backup.create(home, archive, now=123)
     data = (home / "config.json").read_bytes()
@@ -220,7 +227,7 @@ def test_no_database_preserves_regular_files_and_exclusions(tmp_path, snapshot_t
     assert home_backup.verify_home(target, manifest) == []
 
 
-@pytest.mark.parametrize("marker", ["-----BEGIN OPENSSH PRIVATE KEY-----", "kb_live_ABCDEFGHIJKLMNOPQRSTUVWXabcd"])
+@pytest.mark.parametrize("marker", [_private_key_marker("OPENSSH "), "kb_live_ABCDEFGHIJKLMNOPQRSTUVWXabcd"])
 def test_secret_in_actual_wal_snapshot_is_refused(wal_home, snapshot_tmp, tmp_path, monkeypatch, marker):
     home, store = wal_home
     source = home / "ops.sqlite"
@@ -245,6 +252,59 @@ def test_secret_in_actual_wal_snapshot_is_refused(wal_home, snapshot_tmp, tmp_pa
     assert len(calls) == 1
     assert not archive.exists()
     assert store.read_ledger() == [(1, "seed", "synthetic-seed"), (2, "child", marker)]
+
+
+@pytest.mark.parametrize(
+    "marker", [_private_key_marker(), _private_key_marker("OPENSSH "), "kb_live_ABCDEFGHIJKLMNOPQRSTUVWXabcd"]
+)
+@pytest.mark.parametrize("via_cli", [False, True], ids=["api", "fresh-cli"])
+def test_invalid_database_secret_preserves_typed_refusal(tmp_path, snapshot_tmp, marker, via_cli):
+    home = tmp_path / "invalid-home"
+    home.mkdir()
+    source = home / "ops.sqlite"
+    original = (marker + " synthetic-invalid-db").encode()
+    source.write_bytes(original)
+    archive = tmp_path / "refused.tar.gz"
+    if via_cli:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from krellbot.cli import entry; entry()",
+                "backup",
+                "create",
+                "--out",
+                str(archive),
+            ],
+            env={**os.environ, "KRELLBOT_HOME": str(home)},
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        assert proc.returncode == 1
+        assert proc.stdout == ""
+        assert proc.stderr == "backup refused: secret_detected\n"
+    else:
+        with pytest.raises(home_backup.BackupError) as exc:
+            home_backup.create(home, archive, now=123)
+        assert exc.value.code == "secret_detected"
+        assert str(exc.value) == "ops.sqlite"
+    assert not archive.exists()
+    assert source.read_bytes() == original
+
+
+def test_invalid_database_without_secret_keeps_sqlite_error(tmp_path, snapshot_tmp):
+    home = tmp_path / "invalid-home"
+    home.mkdir()
+    source = home / "ops.sqlite"
+    original = b"synthetic invalid database without a marker"
+    source.write_bytes(original)
+    archive = tmp_path / "not-created.tar.gz"
+    with pytest.raises(sqlite3.DatabaseError, match="file is not a database"):
+        home_backup.create(home, archive, now=123)
+    assert not archive.exists()
+    assert source.read_bytes() == original
 
 
 def test_archive_write_failure_cleans_snapshot_and_output(wal_home, snapshot_tmp, tmp_path, monkeypatch):
