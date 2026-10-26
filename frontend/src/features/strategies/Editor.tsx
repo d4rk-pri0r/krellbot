@@ -669,7 +669,7 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                 </button>
                 <EditorCsvExport
                   lastSummary={lastSummary}
-                  currentPack={currentPack}
+                  currentPack={lastSummary ? lastSummary.pack : null}
                 />
               </div>
             </div>
