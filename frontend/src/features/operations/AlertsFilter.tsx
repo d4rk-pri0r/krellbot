@@ -19,6 +19,15 @@ export function AlertsFilter({ alerts, children }: AlertsFilterProps) {
   const [severity, setSeverity] = useState<string>(ALL_SEVERITIES);
   const [query, setQuery] = useState("");
 
+  // Keep an explicitly selected severity represented even after a refresh
+  // drops the last row of that severity, so the select always describes the
+  // filter actually applied. Row-derived options and their order are
+  // unchanged, and no duplicate is added when the severity reappears.
+  const options = severityOptions(alerts);
+  if (severity !== ALL_SEVERITIES && !options.includes(severity)) {
+    options.push(severity);
+  }
+
   const needle = query.trim().toLowerCase();
   const visible = alerts.filter((alert) => {
     if (severity !== ALL_SEVERITIES && alert.severity !== severity) {
@@ -46,7 +55,7 @@ export function AlertsFilter({ alerts, children }: AlertsFilterProps) {
           value={severity}
           onChange={(event) => setSeverity(event.target.value)}
         >
-          {severityOptions(alerts).map((option) => (
+          {options.map((option) => (
             <option key={option} value={option}>
               {option === ALL_SEVERITIES ? ALL_LABEL : option}
             </option>
