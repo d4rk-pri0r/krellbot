@@ -642,11 +642,16 @@
     flex-direction: column;
   }
 
-  /* Ordinary controls keep 44px touch targets on narrow screens. */
+  /* Ordinary controls keep 44px touch targets on narrow screens.
+     The Search input selector mirrors the shell's own
+     ``.kbot-shell input:not([type="checkbox"]):not([type="radio"])``
+     control rule (frontend/src/styles/shell.css) so this 44px floor
+     outspecifies the shell's 34px one whichever order the CSS chunks
+     are emitted in; scope stays the alerts filter input only. */
   .kbot-ops button,
   .kbot-ops .kbot-ops__kill-row input,
   .kbot-ops .kbot-ops__alerts-filter select,
-  .kbot-ops .kbot-ops__alerts-filter input {
+  .kbot-ops .kbot-ops__alerts-filter input:not([type="checkbox"]):not([type="radio"]) {
     min-height: 44px;
   }
 
