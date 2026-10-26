@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { JSX } from "react";
 import type { DraftSummary, Pack } from "./client";
 
@@ -70,23 +71,45 @@ export function EditorCsvExport({
   lastSummary,
   currentPack,
 }: EditorCsvExportProps): JSX.Element {
+  const [exportFailed, setExportFailed] = useState(false);
+
   const handleExportCsv = (): void => {
     if (!lastSummary) {
       return;
     }
-    const blob = new Blob([buildCsv(lastSummary, currentPack)], {
-      type: "text/csv",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `krellbot-revision-${
-      lastSummary.revision_id || "unknown"
-    }-${exportTimestamp()}.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
+    let objectUrl: string | null = null;
+    let anchor: HTMLAnchorElement | null = null;
+    try {
+      const blob = new Blob([buildCsv(lastSummary, currentPack)], {
+        type: "text/csv",
+      });
+      objectUrl = URL.createObjectURL(blob);
+      anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `krellbot-revision-${
+        lastSummary.revision_id || "unknown"
+      }-${exportTimestamp()}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      setExportFailed(false);
+    } catch {
+      setExportFailed(true);
+    } finally {
+      if (anchor !== null && anchor.parentNode === document.body) {
+        try {
+          document.body.removeChild(anchor);
+        } catch {
+          // Removal refusal must not skip independent objectURL revocation.
+        }
+      }
+      if (objectUrl !== null) {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          // Revocation refusal must not surface or retract the attempt.
+        }
+      }
+    }
   };
 
   return (
@@ -100,6 +123,15 @@ export function EditorCsvExport({
       >
         Export CSV
       </button>
+      {exportFailed && lastSummary !== null ? (
+        <p
+          role="status"
+          className="kbot-strategy-editor__revision"
+          data-testid="strategies-editor-csv-export-failure"
+        >
+          Export failed. Try again.
+        </p>
+      ) : null}
       {lastSummary === null ? (
         <p
           className="kbot-strategy-editor__revision"
