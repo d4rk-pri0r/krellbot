@@ -75,13 +75,24 @@ def _sma(candles: list[Candle], params: dict) -> list[float | None]:
     out: list[float | None] = [None] * len(candles)
     if n < 1 or len(src) < n:
         return out
-    s = 0.0
-    for i, v in enumerate(src):
-        s += v
-        if i >= n:
-            s -= src[i - n]
-        if i >= n - 1:
-            out[i] = s / n
+    for i in range(n - 1, len(src)):
+        # Average exactly the CURRENT window. A single rolling running sum
+        # keeps low-order residue from expired bars after the subtraction
+        # (e.g. closes [1e16, 1e16, 1, 1] with len=2 left 0.0 in the last
+        # window instead of 1.0), contaminating every later window. fsum
+        # sums the window exactly, so no expired bar can leak into the
+        # current mean; the correctly rounded float64 division follows.
+        window = src[i - n + 1 : i + 1]
+        try:
+            total = math.fsum(window)
+        except OverflowError:
+            # The window's exact sum overflows float64; keep the IEEE
+            # inf-overflow semantics plain addition has always produced
+            # instead of raising fsum's intermediate-overflow error.
+            total = 0.0
+            for v in window:
+                total += v
+        out[i] = total / n
     return out
 
 
