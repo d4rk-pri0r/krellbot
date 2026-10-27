@@ -4,6 +4,10 @@ export type ExecutionPack = Record<string, unknown>;
 
 export const DRAFTS_PATH = "/api/v1/strategies/drafts/";
 
+// Fixed total read deadline (read-deadline-20261027): the save must
+// settle within 10000ms across the response headers AND the JSON body.
+export const EXECUTION_EDIT_READ_DEADLINE_MS = 10000;
+
 function buildUrl(revisionId: string): string {
   return `${DRAFTS_PATH}${encodeURIComponent(revisionId)}`;
 }
@@ -17,18 +21,10 @@ export type ExecutionEditOutcome = {
   state?: string;
 };
 
-/**
- * Persist a (possibly edited) pack as a (possibly new) child revision
- * of the given revision. The server returns the revision summary;
- * the caller updates the in-memory ``savedRevision`` from
- * ``revisionId`` and ``pack`` without an extra round-trip.
- *
- * The server's ``outcome`` literal (created/unchanged/existing) and
- * ``state`` are surfaced verbatim — this function never invents them.
- */
-export async function applyExecutionEdit(
+async function sendExecutionEdit(
   revisionId: string,
   pack: ExecutionPack,
+  signal: AbortSignal,
 ): Promise<ExecutionEditOutcome> {
   const response = await fetch(buildUrl(revisionId), {
     method: "PUT",
@@ -38,6 +34,7 @@ export async function applyExecutionEdit(
       "X-Krellbot-CSRF": getCsrf(),
     },
     body: JSON.stringify({ pack }),
+    signal,
   });
   if (!response.ok) {
     let code: string | undefined;
@@ -80,4 +77,47 @@ export async function applyExecutionEdit(
     outcome,
     state,
   };
+}
+
+/**
+ * Persist a (possibly edited) pack as a (possibly new) child revision
+ * of the given revision. The server returns the revision summary;
+ * the caller updates the in-memory ``savedRevision`` from
+ * ``revisionId`` and ``pack`` without an extra round-trip.
+ *
+ * The server's ``outcome`` literal (created/unchanged/existing) and
+ * ``state`` are surfaced verbatim — this function never invents them.
+ *
+ * The whole read — response headers and JSON body — is bounded by a
+ * fixed ``EXECUTION_EDIT_READ_DEADLINE_MS`` deadline. A stalled read
+ * rejects with an honest read-timeout Error, aborts the request this
+ * call owns, and a late response from the expired attempt can never
+ * settle this save. The deadline timer is cleared on every exit.
+ */
+export async function applyExecutionEdit(
+  revisionId: string,
+  pack: ExecutionPack,
+): Promise<ExecutionEditOutcome> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(
+        new Error(
+          `execution edit read timed out after ${EXECUTION_EDIT_READ_DEADLINE_MS}ms`,
+        ),
+      );
+    }, EXECUTION_EDIT_READ_DEADLINE_MS);
+  });
+  const read = sendExecutionEdit(revisionId, pack, controller.signal);
+  // The expired attempt keeps its own rejection handled so the abort
+  // or a late response cannot surface as an unhandled rejection after
+  // the deadline already settled this save.
+  void read.catch(() => {});
+  try {
+    return await Promise.race([read, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
