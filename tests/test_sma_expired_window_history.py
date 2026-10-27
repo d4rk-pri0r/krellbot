@@ -21,6 +21,9 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
+import subprocess
+import sys
 from decimal import Decimal
 from pathlib import Path
 
@@ -358,3 +361,248 @@ def test_research_service_offline_healthy_cross_still_trades(tmp_path: Path, mon
     trace = result.detail["trace"]
     assert trace[2]["target"]["reason"] == "entry"
     assert trace[2]["indicators"]["sma2"] == 11.0
+
+
+# ---------------------------------------------------------------------------
+# 8. Mixed +/-inf (and finite Decimal 1e400/-1e400) in ONE SMA window.
+#
+# math.fsum raises ValueError('-inf + inf in fsum') when a single window
+# holds both +inf and -inf. Before the repair that ValueError escaped
+# compute/evaluate/Backtester/ResearchService and the real CLI as a raw
+# Python traceback. The repair treats it exactly like the existing
+# OverflowError fallback: plain IEEE addition -> nan for that window only,
+# so the product boundary answers instead of crashing. These rows were the
+# independent review's REJECT evidence (opus-b40-run422, 20261027).
+# ---------------------------------------------------------------------------
+
+
+def _inf_candles(closes: list[str]) -> list[Candle]:
+    """Candles from literal CSV spellings, preserving inf/1e400 semantics.
+
+    Decimal('Infinity')/Decimal('-Infinity') and the finite literals
+    Decimal('1e400')/Decimal('-1e400') both survive Decimal parsing; only
+    indicators._series' float() conversion produces float('inf') /
+    float('-inf') (the 1e400 pair overflows float64 the same way).
+    """
+    out = []
+    for i, c in enumerate(closes):
+        d = Decimal(c)
+        out.append(
+            Candle(
+                ts_ms=i * TF_MS_1H,
+                open=d,
+                high=d,
+                low=d,
+                close=d,
+                volume=Decimal(100),
+            )
+        )
+    return out
+
+
+@pytest.mark.parametrize("spelling", ["Infinity", "1e400"])
+def test_sma_mixed_inf_window_is_nan_not_a_crash(spelling: str):
+    # Both spellings make _series produce [inf, -inf, ...]; the mixed window
+    # mean must be the IEEE nan, computed by plain addition — never a raise.
+    closes = [spelling, "-" + spelling if spelling == "1e400" else "-Infinity", 1.0, 1.0]
+    out = indicators.compute(_inf_candles(closes), {"fn": "sma", "src": "close", "len": 2})
+
+    assert out == [None, out[1], -math.inf, 1.0]
+    assert isinstance(out[1], float)
+    assert math.isnan(out[1])  # the old code raised ValueError here
+    assert out[3] == 1.0  # once the pair has expired the clean window recovers exactly
+
+
+def test_sma_mixed_inf_only_that_window_is_nan():
+    # n=3, closes [inf, 1, -inf, 3, 4, 5]. The mixed window [inf,1,-inf] is
+    # nan (plain addition). The later windows hold only -inf, so fsum itself
+    # answers -inf without raising; the clean [3,4,5] window keeps its exact
+    # fsum mean.
+    closes = ["Infinity", "1", "-Infinity", "3", "4", "5"]
+    out = indicators.compute(_inf_candles(closes), {"fn": "sma", "src": "close", "len": 3})
+
+    assert out[:2] == [None, None]
+    assert math.isnan(out[2])  # [inf, 1, -inf]: plain addition -> nan
+    assert out[3] == -math.inf  # [1, -inf, 3]: fsum answers one-sided -inf itself
+    assert out[4] == -math.inf  # [-inf, 3, 4]: same
+    assert out[5] == _exact_mean([3.0, 4.0, 5.0])  # clean window: exact mean
+
+
+def test_sma_one_sided_inf_keeps_inf_semantics():
+    # Only +inf in the window: fsum answers +inf itself (its ValueError is
+    # exclusively the +inf/-inf mix), so the means stay +inf.
+    closes = ["Infinity", "Infinity", "1"]
+    out = indicators.compute(_inf_candles(closes), {"fn": "sma", "src": "close", "len": 2})
+
+    assert out == [None, math.inf, math.inf]
+
+
+def test_sma_huge_finite_window_keeps_overflow_fallback():
+    # The pre-existing OverflowError lane is untouched: a window of two 1e308
+    # closes overflows fsum's intermediate; plain IEEE addition yields inf
+    # exactly as before this repair, and clean neighbors keep exact means.
+    closes = [1e308, 1e308, 1.0]
+    out = indicators.compute(_candles(closes), {"fn": "sma", "src": "close", "len": 2})
+
+    assert out[1] == math.inf
+    _assert_window_mean(out[2], [1e308, 1.0])
+
+
+# Packs for the mixed-inf rows. Entry requires mean < 0.5: the nan window
+# itself never fires (nan comparisons are False); the following [-inf, 1]
+# window has the IEEE -inf mean and DOES fire -- current-window semantics.
+# The exits are chosen so neither depends on a poisoned close comparison.
+MIXED_INF_ENTRY_ONLY_PACK = {
+    **PHANTOM_ENTRY_ONLY_PACK,
+    "id": "sma-mixed-inf-entry",
+    "label": "SMA mixed-inf regression (entry only)",
+    "exit": ["close", ">", 1000000000],  # never true: bar 0 is warmup, the rest are <= 1
+}
+
+MIXED_INF_ROUND_TRIP_PACK = {
+    **MIXED_INF_ENTRY_ONLY_PACK,
+    "id": "sma-mixed-inf-rt",
+    "label": "SMA mixed-inf regression (round trip)",
+    "exit": ["sma2", ">", 0.5],  # true again once the clean [1, 1] windows return
+}
+
+
+@pytest.mark.parametrize("spelling", ["Infinity", "1e400"])
+def test_evaluate_mixed_inf_window_answers_without_raising(spelling: str):
+    closes = [spelling, "-" + spelling if spelling == "1e400" else "-Infinity", 1.0, 1.0, 1.0]
+
+    targets = kb_evaluate.run_series(MIXED_INF_ENTRY_ONLY_PACK, _inf_candles(closes))
+
+    # The mixed window itself is nan and nan < 0.5 is False (no phantom
+    # entry from the poisoned window). The NEXT window [-inf, 1] has the
+    # IEEE -inf mean and does fire entry -- current-window semantics, not a
+    # crash; the exit condition (close > 1e9) never becomes true.
+    assert [t.reason for t in targets] == ["warmup", "flat", "entry", "flat", "flat"]
+    assert [t.long for t in targets] == [False, False, True, False, False]
+    # per-bar decision parity is preserved
+    candles = _inf_candles(closes)
+    for k in range(1, len(candles) + 1):
+        assert kb_evaluate.run(MIXED_INF_ENTRY_ONLY_PACK, candles[:k]) == targets[k - 1]
+
+
+def test_backtester_mixed_inf_window_answers_without_raising():
+    # Finite Decimal 1e400/-1e400 candles: the run completes end to end.
+    # The entry from the [-inf, 1] window fills at the next bar's FINITE
+    # open (1), the clean [1, 1] window's exit sells back at 1, and the
+    # ledger never leaves its finite money domain.
+    closes = ["1e400", "-1e400", 1.0, 1.0, 1.0, 1.0]
+
+    bt = Backtester(MIXED_INF_ROUND_TRIP_PACK, _inf_candles(closes), fee_bps=0, slippage_bps=0)
+
+    records = bt.run()
+
+    assert bt.trade_count == 1
+    fills = [(r.t, r.fill) for r in records if r.fill is not None]
+    assert [(t, f["side"], f["price"]) for t, f in fills] == [(3, "buy", Decimal(1)), (4, "sell", Decimal(1))]
+    assert all(r.equity == Decimal(10000) for r in records)
+
+
+def _write_literal_csv(path: Path, closes: list[str]) -> Path:
+    """Like _write_csv but for literal spellings (Infinity/1e400...)."""
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["ts_ms", "open", "high", "low", "close", "volume"])
+        for i, c in enumerate(closes):
+            d = Decimal(c)
+            w.writerow([i * TF_MS_1H, str(d), str(d), str(d), str(d), "100"])
+    return path
+
+
+@pytest.mark.parametrize("spelling", ["Infinity", "1e400"])
+def test_research_service_mixed_inf_dataset_answers_not_crashes(tmp_path: Path, monkeypatch, spelling: str):
+    """The blocking row: a dataset CSV with +inf/-inf (or 1e400/-1e400) in
+    one SMA window reaches ResearchService.run through the product's own
+    parser. The service must return its typed boundary answer — BASE main
+    refused ±inf with numeric_out_of_range and accepted ±1e400 with an
+    exit-0 zero-trade receipt — never raise a raw ValueError."""
+    monkeypatch.setenv("KRELLBOT_HOME", str(tmp_path))
+    pack_path = _write_pack(tmp_path / "pack.json", MIXED_INF_ROUND_TRIP_PACK)
+    negative = "-" + spelling if spelling == "1e400" else "-Infinity"
+    csv_path = _write_literal_csv(tmp_path / "data.csv", [spelling, negative, 1.0, 1.0, 1.0, 1.0])
+
+    result = ResearchService(home=tmp_path).run(
+        ResearchRequest(
+            pack_path=pack_path,
+            venue="kraken",
+            dataset_csv=csv_path,
+            fee_bps=0,
+            slippage_bps=0,
+        )
+    )
+
+    if spelling == "Infinity":
+        # Literal inf candles never reach the money domain: the engine's
+        # 0 * inf equity guard raises decimal.InvalidOperation and the
+        # service maps it to the typed refusal -- exactly BASE main's
+        # answer to this dataset.
+        assert not result.ok, result.detail
+        assert result.refusal is not None
+        assert result.refusal["code"] == "numeric_out_of_range"
+    else:
+        # Finite Decimal 1e400/-1e400 candles run to completion: the -inf
+        # window's entry fills at the next FINITE open (1) and the clean
+        # window's exit sells back, so one round trip, all equities finite.
+        assert result.ok, result.refusal
+        assert result.legacy_receipt is not None
+        assert result.legacy_receipt["metrics"]["trade_count"] == 1
+        assert result.detail["trade_count"] == 1
+        assert math.isfinite(result.legacy_receipt["metrics"]["total_return_pct"])
+        entry_rows = [t for t in result.detail["trace"] if t["target"]["reason"] == "entry"]
+        assert len(entry_rows) == 1
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _run_cli(home: Path, *args: str) -> subprocess.CompletedProcess:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("KRELLBOT_")}
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env["KRELLBOT_API"] = "http://127.0.0.1:9"  # unreachable; --data keeps the run offline
+    env["KRELLBOT_HOME"] = str(home)
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-m", "krellbot.cli", *args],
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        timeout=60,
+    )
+
+
+@pytest.mark.parametrize("spelling", ["Infinity", "1e400"])
+def test_cli_backtest_mixed_inf_dataset_no_traceback(tmp_path: Path, monkeypatch, spelling: str):
+    """The reviewer's CLI row: real `krellbot backtest <pack> --data csv
+    --json` subprocess. Before the repair the process died with a raw
+    `ValueError: -inf + inf in fsum` traceback (exit 1). After it the CLI
+    answers with its normal refusal sentence (BASE behavior) or its normal
+    --json zero-trade receipt, and never prints a Python traceback."""
+    home = tmp_path
+    monkeypatch.setenv("KRELLBOT_HOME", str(home))
+    pack_path = _write_pack(home / "pack.json", MIXED_INF_ROUND_TRIP_PACK)
+    negative = "-" + spelling if spelling == "1e400" else "-Infinity"
+    csv_path = _write_literal_csv(home / "data.csv", [spelling, negative, 1.0, 1.0, 1.0, 1.0])
+
+    r = _run_cli(home, "backtest", str(pack_path), "--venue", "kraken", "--data", str(csv_path), "--json")
+
+    # Never a Python traceback: that raw ValueError escape was the defect.
+    assert "Traceback" not in r.stderr, r.stderr
+    if spelling == "Infinity":
+        # BASE main's answer to the literal-inf dataset: typed refusal
+        # sentence on stderr, exit 1.
+        assert r.returncode == 1
+        assert "numeric" in r.stderr.lower(), r.stderr
+    else:
+        # BASE main's answer to the finite 1e400 dataset: exit-0 --json
+        # receipt (now with the deterministic one-round-trip outcome).
+        assert r.returncode == 0, r.stderr
+        receipt = json.loads(r.stdout)
+        assert receipt["metrics"]["trade_count"] == 1
+        assert math.isfinite(receipt["metrics"]["total_return_pct"])

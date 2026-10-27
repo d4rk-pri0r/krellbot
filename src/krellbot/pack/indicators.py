@@ -85,10 +85,14 @@ def _sma(candles: list[Candle], params: dict) -> list[float | None]:
         window = src[i - n + 1 : i + 1]
         try:
             total = math.fsum(window)
-        except OverflowError:
-            # The window's exact sum overflows float64; keep the IEEE
-            # inf-overflow semantics plain addition has always produced
-            # instead of raising fsum's intermediate-overflow error.
+        except (OverflowError, ValueError):
+            # fsum raises OverflowError when the window's exact sum exceeds
+            # float64, and ValueError when one window holds both +inf and
+            # -inf (or finite Decimal literals like 1e400/-1e400 that
+            # convert to them). Either way fall back to plain IEEE
+            # addition, which has always produced inf-overflow and
+            # nan-cancellation semantics for that window only; every other
+            # window keeps its exact fsum mean.
             total = 0.0
             for v in window:
                 total += v
