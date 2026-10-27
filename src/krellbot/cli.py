@@ -1533,18 +1533,27 @@ def _drop_secret_fields(record: Any) -> Any:
 
 
 def _read_journal_records(home: Path) -> list:
-    """Return all valid journal records under `<home>/journal`, in file order."""
+    """Return all valid journal records under `<home>/journal`, in file order.
+
+    The writer (krellbot.journal.append) frames each record as one JSON
+    object terminated by a single byte-LF. Records may legitimately contain
+    U+2028/U+2029/U+0085 inside JSON string fields, so framing must split on
+    the writer's real byte-LF boundaries only — never on generic Unicode
+    display-line breaks, which would silently drop those records. A trailing
+    carriage return (CRLF files) is part of the physical record boundary and
+    is stripped, but CR inside a JSON string is preserved by json.loads.
+    """
     journal_dir = Path(home) / "journal"
     if not journal_dir.is_dir():
         return []
     records: list = []
     for path in sorted(journal_dir.glob("*.jsonl")):
         try:
-            text = path.read_text(encoding="utf-8")
+            raw = path.read_bytes()
         except OSError:
             continue
-        for line in text.splitlines():
-            line = line.strip()
+        for chunk in raw.split(b"\n"):
+            line = chunk.decode("utf-8", errors="replace").strip()
             if not line:
                 continue
             try:
