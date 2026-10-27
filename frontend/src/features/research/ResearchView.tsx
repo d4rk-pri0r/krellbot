@@ -514,7 +514,28 @@ export function ResearchView({
         if (jobIdRef.current !== targetJobId) {
           return;
         }
-        const result = await client.getResult(targetJobId);
+        // issue282: the automatic result read can fail (for example a 503
+        // from the local API). Catch it so the rejection is never
+        // unhandled and the view stops silently claiming it is still
+        // waiting. The stale-job guard runs BEFORE any error is
+        // published, so a late rejection after another Run or a manual
+        // intent cannot poison the current intent. Job identity and the
+        // explicit Load result retry stay untouched; there is no
+        // automatic retry loop, no resubmission and no synthesized
+        // result here.
+        let result: Awaited<ReturnType<ResearchClient["getResult"]>>;
+        try {
+          result = await client.getResult(targetJobId);
+        } catch (err) {
+          if (jobIdRef.current !== targetJobId) {
+            return;
+          }
+          setJobError({
+            code: "result_read_failed",
+            message: `job succeeded but reading its result failed (${err instanceof Error ? err.message : String(err)}) — use Load result to retry`,
+          });
+          return;
+        }
         if (jobIdRef.current !== targetJobId) {
           return;
         }
@@ -1067,7 +1088,11 @@ export function ResearchView({
           {exportError}
         </p>
       ) : null}
-      {jobError ? (
+      {/* issue282: an automatic result-read error describes the current
+          job's missing result; once an explicit Load result retry for
+          that job actually succeeds, the stored result is the truth and
+          the superseded read error must not keep rendering. */}
+      {jobError && storedResult === null ? (
         <p
           className="kbot-research__error"
           role="alert"
