@@ -1533,25 +1533,35 @@ def _drop_secret_fields(record: Any) -> Any:
 
 
 def _read_journal_records(home: Path) -> list:
-    """Return all valid journal records under `<home>/journal`, in file order."""
+    """Return all valid journal records under `<home>/journal`, in file order.
+
+    Lines that are not valid UTF-8 are skipped exactly like torn JSON lines,
+    so one corrupted file never fails the whole read; unreadable files
+    (OSError, e.g. permissions) contribute no records either.
+    """
     journal_dir = Path(home) / "journal"
     if not journal_dir.is_dir():
         return []
     records: list = []
     for path in sorted(journal_dir.glob("*.jsonl")):
         try:
-            text = path.read_text(encoding="utf-8")
+            data = path.read_bytes()
         except OSError:
             continue
-        for line in text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
+        for raw_line in data.splitlines():
             try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
+                text = raw_line.decode("utf-8")
+            except UnicodeDecodeError:
                 continue
-            records.append(rec)
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                records.append(rec)
     return records
 
 
