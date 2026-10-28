@@ -24,9 +24,15 @@ function pad(value: number, width = 2): string {
  * Seconds are included only when non-zero, and the sub-second fraction is
  * emitted in the spec-canonical shortest form, so the controlled value
  * equals what the input normalizes it to. Nothing is rounded or shifted.
+ * Milliseconds outside the JS Date range are an invalid Date and render
+ * the empty field value, exactly like non-integer advanced text — never
+ * a fabricated instant or a NaN component string.
  */
 export function msToUtcFieldValue(ms: number): string {
   const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
   const datePart =
     `${pad(date.getUTCFullYear(), 4)}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}` +
     `T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
