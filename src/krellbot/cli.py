@@ -1542,6 +1542,11 @@ def _read_journal_records(home: Path) -> list:
     display-line breaks, which would silently drop those records. A trailing
     carriage return (CRLF files) is part of the physical record boundary and
     is stripped, but CR inside a JSON string is preserved by json.loads.
+
+    Decoding stays STRICT, exactly like the BASE reader this replaced: a
+    journal file holding bytes that are not valid UTF-8 must still refuse
+    with UnicodeDecodeError (CLI exit 1) instead of being silently coerced
+    into U+FFFD replacement characters that masquerade as real records.
     """
     journal_dir = Path(home) / "journal"
     if not journal_dir.is_dir():
@@ -1553,7 +1558,7 @@ def _read_journal_records(home: Path) -> list:
         except OSError:
             continue
         for chunk in raw.split(b"\n"):
-            line = chunk.decode("utf-8", errors="replace").strip()
+            line = chunk.decode("utf-8").strip()
             if not line:
                 continue
             try:

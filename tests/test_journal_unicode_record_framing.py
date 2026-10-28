@@ -13,6 +13,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -273,3 +277,143 @@ def test_reader_ignores_non_jsonl_files(home):
     (month / "2023-11.json").write_text('{"ts": 1}\n', encoding="utf-8")
     (month / "2023-11.jsonl").write_text('{"ts": 2}\n', encoding="utf-8")
     assert [r["ts"] for r in _read_journal_records(home)] == [2]
+
+
+# --- Undecodable bytes stay refused (BASE-equal refusal, no mojibake) --------
+
+
+REPO = Path(__file__).resolve().parents[1]
+
+# Every `krellbot journal` argv form BASE refuses on an undecodable file.
+JOURNAL_ARGV_FORMS = [
+    pytest.param([], id="default"),
+    pytest.param(["--tail", "5"], id="tail5"),
+    pytest.param(["--tail", "100"], id="tail100"),
+    pytest.param(["--json"], id="json"),
+    pytest.param(["--json", "--tail", "3"], id="json-tail3"),
+    pytest.param(["--since", "24h"], id="since-24h"),
+    pytest.param(["--since", "14d"], id="since-14d"),
+    pytest.param(["--since", "24h", "--json"], id="since-24h-json"),
+    pytest.param(["--since", "14d", "--json", "--tail", "7"], id="since-14d-json-tail7"),
+]
+
+
+def _run_cli(home: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run the real `krellbot journal` CLI in a child process, BASE style.
+
+    Follows the repo's established real-CLI pattern (test_pack_cli.py):
+    `-m krellbot.cli` with a controlled environment so the exit code is the
+    interpreter's, not pytest's. stderr is decoded with errors="replace" so
+    the assertion can show the real traceback while the payload stays bytes.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("KRELLBOT_")}
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env["KRELLBOT_HOME"] = str(home)
+    env["PYTHONPATH"] = str(REPO / "src")
+    return subprocess.run(
+        [sys.executable, "-m", "krellbot.cli", "journal", *args],
+        capture_output=True,
+        check=False,
+        env=env,
+        timeout=30,
+    )
+
+
+@pytest.mark.parametrize("argv", JOURNAL_ARGV_FORMS)
+def test_cli_undecodable_record_refused_like_base(home, argv):
+    """Invalid UTF-8 inside a JSON string: every journal argv form exits 1.
+
+    BASE (str-based read_text) refuses with UnicodeDecodeError exit 1. The
+    byte-LF framing must not soften that: undecodable bytes must never be
+    swallowed into U+FFFD mojibake printed as a genuine record with exit 0.
+    """
+    month = home / "journal"
+    month.mkdir(parents=True, exist_ok=True)
+    (month / "2023-11.jsonl").write_bytes(
+        b'{"ts": 1700000000, "kind": "tick", "venue": "kraken", "detail": {"note": "before \xff\xfe after"}}\n'
+    )
+
+    result = _run_cli(home, *argv)
+    assert result.returncode == 1, f"stderr: {result.stderr.decode('utf-8', 'replace')}"
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert "UnicodeDecodeError" in stderr
+    # No record was printed as success: stdout carries no journal record and
+    # no U+FFFD replacement character.
+    out = result.stdout.decode("utf-8", errors="replace")
+    assert out == ""
+    assert "\ufffd" not in out
+    assert "\ufffd" not in stderr
+
+
+def test_cli_latin1_month_file_refused_like_base(home):
+    """A non-UTF-8 (Latin-1) older month file refuses exactly like BASE.
+
+    BASE exits 1 with UnicodeDecodeError; it must never render the file as a
+    healthy record like `caf<U+FFFD> du march<U+00E9>`.
+    """
+    month = home / "journal"
+    month.mkdir(parents=True, exist_ok=True)
+    # 'caf<0xE9>' is Latin-1 for café; 0xE9 is not a valid UTF-8 start byte.
+    (month / "2023-07.jsonl").write_bytes(
+        b'{"ts": 1690000000, "kind": "tick", "venue": "kraken", "detail": {"note": "caf\xe9 du march\xc3\xa9"}}\n'
+    )
+
+    result = _run_cli(home, "--tail", "5")
+    assert result.returncode == 1, f"stderr: {result.stderr.decode('utf-8', 'replace')}"
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert "UnicodeDecodeError" in stderr
+    out = result.stdout.decode("utf-8", errors="replace")
+    assert out == ""
+    assert "\ufffd" not in out
+    assert "caf" not in out
+
+
+def test_reader_refuses_undecodable_record(home):
+    """The reader raises UnicodeDecodeError instead of yielding mojibake."""
+    month = home / "journal"
+    month.mkdir(parents=True, exist_ok=True)
+    (month / "2023-11.jsonl").write_bytes(b'{"ts": 1700000000, "detail": {"note": "bad \xff byte"}}\n')
+    with pytest.raises(UnicodeDecodeError):
+        _read_journal_records(home)
+
+
+def test_reader_refuses_undecodable_older_month_only(home):
+    """Even a healthy current file cannot mask an undecodable older month.
+
+    BASE refused while iterating `sorted(glob)`; the strict byte reader must
+    keep the same refusal regardless of which month file is undecodable.
+    """
+    journal_dir = home / "journal"
+    journal_dir.mkdir(parents=True, exist_ok=True)
+    (journal_dir / "2023-07.jsonl").write_bytes(b'{"ts": 1690000000, "note": "caf\xe9"}\n')
+    (journal_dir / "2023-11.jsonl").write_bytes(b'{"ts": 1700000000, "note": "healthy"}\n')
+    with pytest.raises(UnicodeDecodeError):
+        _read_journal_records(home)
+
+
+def test_cli_undecodable_current_month_refused_with_healthy_older(home):
+    """B7 shape with neighbors: undecodable record refuses, prints nothing."""
+    journal_dir = home / "journal"
+    journal_dir.mkdir(parents=True, exist_ok=True)
+    (journal_dir / "2023-07.jsonl").write_bytes(b'{"ts": 1690000000, "note": "old healthy"}\n')
+    (journal_dir / "2023-11.jsonl").write_bytes(b'{"ts": 1700000000, "detail": {"note": "before \xff\xfe after"}}\n')
+    result = _run_cli(home, "--json")
+    assert result.returncode == 1
+    out = result.stdout.decode("utf-8", errors="replace")
+    assert out == ""
+    assert "\ufffd" not in out
+
+
+def test_healthy_unicode_records_still_print_after_strict_decode(home, capsys):
+    """Strict decode keeps healthy multi-byte records genuine (B2/B3 guard).
+
+    A run with valid UTF-8 (é, U+2028, CJK) still exits 0 and re-emits the
+    exact text — strictness only affects undecodable bytes.
+    """
+    _append(1_700_000_000, {"note": "caf\u00e9 \u4e2d\u6587 \u2028 fine"})
+    _append(1_700_000_001, {"note": "plain"})
+    rc = cmd_journal(["--json"], now=1_700_000_100)
+    assert rc == 0
+    emitted = _emit(capsys)
+    assert [r["detail"]["note"] for r in emitted] == ["caf\u00e9 \u4e2d\u6587 \u2028 fine", "plain"]
