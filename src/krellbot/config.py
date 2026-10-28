@@ -24,6 +24,7 @@ An `ArmedPack` record has:
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -68,12 +69,22 @@ class Config:
 
 
 def load_config(home: Path) -> Config:
-    """Load the armed-pack config. Returns an empty Config if the file is missing."""
+    """Load the armed-pack config. Returns an empty Config if the file is missing.
+
+    A `config.json` that exists but cannot be read (chmod 000, it is a
+    directory, any OSError) is refused like the sibling CLI surfaces refuse:
+    the refusal names the file on stderr and exits non-zero (1), never a raw
+    traceback and never a silent empty-Config fallback for unreadable bytes.
+    Torn JSON and non-dict shapes keep the silent empty-Config fallback.
+    """
     path = config_path(home)
     if not path.exists():
         return Config()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        print(f"config load refused: cannot read {CONFIG_FILENAME} at {path} ({type(exc).__name__})", file=sys.stderr)
+        raise SystemExit(1)
     except json.JSONDecodeError:
         return Config()
     if not isinstance(raw, dict):
