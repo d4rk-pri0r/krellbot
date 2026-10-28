@@ -1558,10 +1558,12 @@ def _read_journal_records(home: Path) -> list:
 def cmd_journal(args, *, now: float | None = None):
     """`krellbot journal --tail N | --since 24h|14d [--json]`.
 
-    `--since` accepts `24h` or `14d` only; unknown values exit 2. `--json`
-    emits one JSON object per line and drops `key`, `secret`, `license`,
-    and `balance` fields at any depth. `now` is injected for tests so the
-    since-window math does not depend on wall-clock time.
+    `--tail` must be a positive integer; zero, negative, and non-numeric
+    values exit 2. `--since` accepts `24h` or `14d` only; unknown values
+    exit 2. `--json` emits one JSON object per line and drops `key`,
+    `secret`, `license`, and `balance` fields at any depth. `now` is
+    injected for tests so the since-window math does not depend on
+    wall-clock time.
     """
     import time
 
@@ -1578,6 +1580,9 @@ def cmd_journal(args, *, now: float | None = None):
             try:
                 tail = int(args[i + 1])
             except ValueError:
+                print(f"invalid --tail: {args[i + 1]}", file=sys.stderr)
+                return 2
+            if tail < 1:
                 print(f"invalid --tail: {args[i + 1]}", file=sys.stderr)
                 return 2
             i += 2
