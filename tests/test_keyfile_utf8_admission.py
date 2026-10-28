@@ -179,9 +179,7 @@ def test_utf8_refusal_writes_neither_keyring_nor_plaintext_ack(isolated_home, fr
 
     keyfile = isolated_home / "keys.csv"
     _write_invalid_keyfile(keyfile)
-    rc = cli_mod.main(
-        ["krellbot", "keys", "add", "kraken", "--file", str(keyfile), "--i-understand-plaintext"]
-    )
+    rc = cli_mod.main(["krellbot", "keys", "add", "kraken", "--file", str(keyfile), "--i-understand-plaintext"])
     assert rc == 2
     captured = capsys.readouterr()
     assert captured.err.strip() == f"Key file is not valid UTF-8: {keyfile}"
@@ -191,9 +189,7 @@ def test_utf8_refusal_writes_neither_keyring_nor_plaintext_ack(isolated_home, fr
     assert not (isolated_home / "run" / "plaintext-ack").exists()
 
 
-def test_setup_kraken_utf8_refusal_writes_neither_keyring_nor_plaintext_ack(
-    isolated_home, fresh_keyring, capsys
-):
+def test_setup_kraken_utf8_refusal_writes_neither_keyring_nor_plaintext_ack(isolated_home, fresh_keyring, capsys):
     """The setup-kraken alias shares the refusal and its negative invariants."""
     import krellbot.cli as cli_mod
 
