@@ -39,31 +39,73 @@ export function getCsrf(): string {
 }
 
 /**
+ * Fixed total deadline bounding one existing-session CSRF recovery
+ * read. The deadline spans the whole read — response headers AND the
+ * JSON body — so a stalled local server can never wedge shell startup
+ * forever, and a late answer can never install a token afterwards.
+ */
+const CSRF_RECOVERY_READ_DEADLINE_MS = 10000;
+
+/**
  * Recover the CSRF token for an existing session after a reload.
  *
  * A page reload drops the module-memory token while the HttpOnly
  * session cookie survives. `GET /api/v1/session/csrf` re-reads the
- * token for that cookie. Resolves `false` (never throws) when the
- * session is gone, the body carries no token, or the request itself
- * fails.
+ * token for that cookie. The read is bounded by a fixed 10000ms total
+ * deadline: at the deadline this resolves `false` (never throws),
+ * aborts its owned read, and never commits a token from a response
+ * that arrives late — even if the transport ignores the AbortSignal.
+ * Resolves `false` when the session is gone, the body carries no
+ * token, or the request itself fails; any previously held token keeps
+ * its current failure treatment (it is neither cleared nor replaced).
  */
 export async function recoverCsrf(): Promise<boolean> {
+  const controller = new AbortController();
+  let expired = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let settleDeadline: (ok: boolean) => void = () => {};
+  const deadline = new Promise<boolean>((resolve) => {
+    settleDeadline = resolve;
+  });
+  timer = setTimeout(() => {
+    timer = null;
+    expired = true;
+    controller.abort();
+    settleDeadline(false);
+  }, CSRF_RECOVERY_READ_DEADLINE_MS);
+  const read = (async (): Promise<boolean> => {
+    try {
+      const response = await fetch("/api/v1/session/csrf", {
+        method: "GET",
+        credentials: "include",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        return false;
+      }
+      const body = (await response.json()) as { csrf_token?: unknown };
+      if (expired) {
+        // The deadline already fired: never commit a late token, even
+        // if this transport ignored the abort signal.
+        return false;
+      }
+      if (typeof body.csrf_token !== "string" || body.csrf_token.length === 0) {
+        return false;
+      }
+      csrfToken = body.csrf_token;
+      return true;
+    } catch {
+      return false;
+    }
+  })();
   try {
-    const response = await fetch("/api/v1/session/csrf", {
-      method: "GET",
-      credentials: "include",
-    });
-    if (!response.ok) {
-      return false;
+    return await Promise.race([read, deadline]);
+  } finally {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
     }
-    const body = (await response.json()) as { csrf_token?: unknown };
-    if (typeof body.csrf_token !== "string" || body.csrf_token.length === 0) {
-      return false;
-    }
-    csrfToken = body.csrf_token;
-    return true;
-  } catch {
-    return false;
+    settleDeadline(false);
   }
 }
 
