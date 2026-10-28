@@ -360,11 +360,7 @@ def test_healthy_decimal_shapes_still_import(tmp_path: Path):
     accepted on main and must stay accepted byte-identically; the admission
     fix may not swap Decimal for a narrower digit check.
     """
-    body = (
-        "time,open,high,low,close,volume,count\n"
-        "1700000000,1.5E+2,2,-0.5,+2.25,1e3,1\n"
-        "1700003600, 3 ,4,2,3,10,1\n"
-    )
+    body = "time,open,high,low,close,volume,count\n1700000000,1.5E+2,2,-0.5,+2.25,1e3,1\n1700003600, 3 ,4,2,3,10,1\n"
     zip_path = _write_zip(tmp_path / "shapes.zip", {"SUIUSD_60.csv": body.encode("utf-8")})
 
     home = tmp_path / "kb"
