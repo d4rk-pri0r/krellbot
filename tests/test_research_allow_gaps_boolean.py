@@ -40,10 +40,10 @@ import pytest
 
 from krellbot.api.app import create_app
 from krellbot.api.jobs import JobManager, canonical_receipt_bytes
+from tests.test_ns04_research_service import PACK_DICT, _write_pack, _write_synthetic_csv
 from tests.test_ns06_api import TEST_PORT
 from tests.test_ns06_jobs import _bootstrap_session, _submit_job
 from tests.test_ns09_research_api import _get_result, _wait_for_terminal
-from tests.test_ns04_research_service import PACK_DICT, _write_pack, _write_synthetic_csv
 
 # Sentinel meaning "the allow_gaps key is absent from the payload".
 _OMIT = object()
