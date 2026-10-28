@@ -106,6 +106,14 @@ async function putJson(url: string, body: unknown): Promise<DraftSummary> {
   return adapt((await response.json()) as RawSummary);
 }
 
+/** An arm result is confirmed only by a JSON object whose `ok` field is
+ * the literal boolean `true`. Anything else — a missing, null,
+ * nonboolean or non-object confirmation — is not evidence that the
+ * backend accepted the command, nor evidence that it refused it. */
+function isJsonObject(body: unknown): body is Record<string, unknown> {
+  return typeof body === "object" && body !== null && !Array.isArray(body);
+}
+
 async function adaptHttpError(response: Response): Promise<Error> {
   let code: string | undefined;
   let message: string | undefined;
@@ -178,10 +186,29 @@ export function createHttpClient(): StrategyClient {
       if (!response.ok) {
         throw new Error(`arm failed: ${response.status}`);
       }
-      const body = (await response.json()) as { ok?: boolean; code?: string };
-      if (body.ok === false) {
-        throw new Error(body.code || "arm refused");
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        // Not valid JSON: the command's outcome is unknown. Report an
+        // unconfirmed malformed result; do not resolve as if it armed.
+        throw new Error("arm unconfirmed: malformed response (not valid JSON)");
       }
+      if (isJsonObject(body)) {
+        if (body.ok === true) {
+          return;
+        }
+        if (body.ok === false) {
+          const code = body.code;
+          throw new Error(code ? String(code) : "arm refused");
+        }
+      }
+      // Missing, null, nonboolean or non-object confirmation: the
+      // outcome is unknown — never report success, and never assert a
+      // refusal the body did not state.
+      throw new Error(
+        "arm unconfirmed: malformed response (missing ok=true confirmation)",
+      );
     },
     async saveEditor(
       revisionId: string,
