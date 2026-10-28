@@ -35,6 +35,12 @@
   --sage: #b3dda8;
   --coral: #cc9689;
 
+  /* --- primitive paint tokens (white/black color-mix operands) ---
+   * The only raw white/black allowed in operational color-mix()
+   * paint; referenced as var(--paint-white)/var(--paint-black). */
+  --paint-white: #ffffff;
+  --paint-black: #000000;
+
   /* --- semantic roles --- */
   --canvas-bg: var(--navy);
   --panel-bg: var(--surface);

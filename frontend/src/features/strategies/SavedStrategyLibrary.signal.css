@@ -171,8 +171,8 @@
 
 .kbot-strategy-library .kbot-strategy-library__new:hover:not(:disabled),
 .kbot-strategy-library .kbot-strategy-library__reopen:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
-  border-color: color-mix(in srgb, var(--sage, #b3dda8) 92%, #ffffff);
+  background: color-mix(in srgb, var(--sage, #b3dda8) 92%, var(--paint-white));
+  border-color: color-mix(in srgb, var(--sage, #b3dda8) 92%, var(--paint-white));
 }
 
 /* seafoam supports the secondary selection/inspection actions */
