@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Protocol
 
@@ -82,7 +83,9 @@ def fetch_coinbase_candles(
         if end_unix_s is not None:
             params["end"] = str(end_unix_s)
         body = transport.get(url, params)
-        rows = body.get("candles") or []
+        if not isinstance(body, Mapping) or not isinstance(body.get("candles"), list):
+            raise TransportError("coinbase: malformed page: expected a mapping with a candles list")
+        rows = body["candles"]
         if not rows:
             break
         added = 0

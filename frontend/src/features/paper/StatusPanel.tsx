@@ -47,13 +47,13 @@ export function isValidPaperBalance(value: string): boolean {
 const LAST_ARMED_BALANCE_STORAGE_KEY = "krellbot.paper.lastArmedBalance";
 
 function readLastArmedBalance(): string | null {
-  if (
-    typeof window === "undefined" ||
-    typeof window.localStorage === "undefined"
-  ) {
+  if (typeof window === "undefined") {
     return null;
   }
   try {
+    // Acquiring the storage capability itself may throw (e.g. a
+    // SecurityError when browser policy denies storage access), so the
+    // acquisition and the read are guarded together.
     return window.localStorage.getItem(LAST_ARMED_BALANCE_STORAGE_KEY);
   } catch {
     return null;
@@ -61,17 +61,14 @@ function readLastArmedBalance(): string | null {
 }
 
 function writeLastArmedBalance(value: string): void {
-  if (
-    typeof window === "undefined" ||
-    typeof window.localStorage === "undefined"
-  ) {
+  if (typeof window === "undefined") {
     return;
   }
   try {
     window.localStorage.setItem(LAST_ARMED_BALANCE_STORAGE_KEY, value);
   } catch {
-    // Storage may be unavailable (quota, privacy mode): the affordance is
-    // best-effort and never blocks arming.
+    // Storage may be unavailable (denied access, quota, privacy mode):
+    // the affordance is best-effort and never blocks arming.
   }
 }
 
