@@ -722,9 +722,17 @@ def cmd_backtest(args):
     from_ms = None
     to_ms = None
     if from_date:
-        from_ms = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        try:
+            from_ms = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        except ValueError:
+            print(f"invalid --from: {from_date}", file=sys.stderr)
+            return 1
     if to_date:
-        to_ms = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        try:
+            to_ms = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        except ValueError:
+            print(f"invalid --to: {to_date}", file=sys.stderr)
+            return 1
 
     svc = ResearchService(home=kb_paths.home(), fetch=None)
     result = svc.run(
