@@ -306,6 +306,14 @@ export function ResearchView({
   const [holdoutToEditedUtcLast, setHoldoutToEditedUtcLast] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
+  // issue282 D-cancel-late-503: jobIdRef tracks the poll loop's identity
+  // and is deliberately NOT cleared by handleCancel (the loop keeps its
+  // BASE behavior, including displaying a late passing result after
+  // Cancel). The live jobId STATE is the user-facing identity — Cancel
+  // clears it — so the automatic result-read failure path mirrors it here
+  // to recognize a cancelled job as stale without touching any other
+  // guard.
+  const liveJobIdRef = useRef<string | null>(null);
   const [storedResult, setStoredResult] = useState<StoredResult | null>(null);
   const [selectedBarTs, setSelectedBarTs] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -476,6 +484,7 @@ export function ResearchView({
         const summary = await client.submitRun(request);
         setJobId(summary.id);
         jobIdRef.current = summary.id;
+        liveJobIdRef.current = summary.id;
         // Poll for the result so the UI auto-populates when the job
         // succeeds. The brief's e2e path waits for ``research-result``
         // without a manual Load result click; the original Load button
@@ -522,12 +531,19 @@ export function ResearchView({
         // intent cannot poison the current intent. Job identity and the
         // explicit Load result retry stay untouched; there is no
         // automatic retry loop, no resubmission and no synthesized
-        // result here.
+        // result here. D-cancel-late-503: the guard also compares the
+        // live jobId state mirror — handleCancel clears the state without
+        // resetting jobIdRef — so a cancelled/cleared job identity is
+        // stale and no recovery instruction referencing the gone Load
+        // result control is published after Cancel.
         let result: Awaited<ReturnType<ResearchClient["getResult"]>>;
         try {
           result = await client.getResult(targetJobId);
         } catch (err) {
-          if (jobIdRef.current !== targetJobId) {
+          if (
+            jobIdRef.current !== targetJobId ||
+            liveJobIdRef.current !== targetJobId
+          ) {
             return;
           }
           setJobError({
@@ -572,6 +588,10 @@ export function ResearchView({
     try {
       await client.cancelJob(jobId);
       setJobId(null);
+      // Mirror the live state for the automatic result-read failure
+      // guard (see liveJobIdRef); jobIdRef intentionally keeps the poll
+      // loop's BASE behavior.
+      liveJobIdRef.current = null;
     } catch (err) {
       setCancelError(
         `Cancel job failed: ${err instanceof Error ? err.message : String(err)} — outcome unknown: the command may not have been sent or applied — check state before retrying`,

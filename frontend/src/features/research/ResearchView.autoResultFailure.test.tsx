@@ -295,4 +295,134 @@ describe("Research automatic result-read failure feedback (issue282)", () => {
       unhandled.stop();
     }
   });
+
+  // D-cancel-late-503 regression: handleCancel clears the jobId state but
+  // not the poll loop's jobIdRef, so a late automatic result-read failure
+  // arriving after Cancel must ALSO be treated as stale. BASE (main
+  // b592ed3) shows no error row for this flow — its rejection surfaces as
+  // an absorbed pageerror — and once the job id, Cancel and Load result
+  // controls are gone, no recovery-instruction row may be published.
+  it("cancel-then-late-503 publishes no error row and no gone-button instruction (BASE-equal UI)", async () => {
+    const unhandled = trackUnhandledRejections();
+    let jobPolls = 0;
+    let cancelPosts = 0;
+    const heldRead: { release: ((response: Response) => void) | null } = {
+      release: null,
+    };
+    const fetchMock = vi.fn((url: string | URL | Request): Promise<Response> => {
+      const path = String(url);
+      if (path === "/api/v1/research/jobs") {
+        return Promise.resolve(jsonResponse({ id: "job-cancel-503", state: "queued" }));
+      }
+      if (path === "/api/v1/jobs/job-cancel-503") {
+        jobPolls += 1;
+        return Promise.resolve(
+          jsonResponse(
+            jobPolls === 1
+              ? { id: "job-cancel-503", state: "running" }
+              : { id: "job-cancel-503", state: "succeeded" },
+          ),
+        );
+      }
+      if (path === "/api/v1/jobs/job-cancel-503/result") {
+        return new Promise<Response>((resolve) => {
+          heldRead.release = resolve;
+        });
+      }
+      if (path === "/api/v1/jobs/job-cancel-503/cancel") {
+        cancelPosts += 1;
+        return Promise.resolve(jsonResponse({}));
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(<ResearchView client={createHttpClient()} />);
+      fillForm();
+      await runToJob();
+      await waitFor(() => expect(heldRead.release).not.toBeNull());
+
+      // Cancel the job while its automatic result read is in flight, and
+      // wait until the cancel took effect on the live UI.
+      fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
+      await waitFor(() => {
+        expect(screen.queryByTestId("research-job-id")).toBeNull();
+      });
+      expect(cancelPosts).toBe(1);
+      expect(screen.queryByRole("button", { name: /^Load result$/ })).toBeNull();
+
+      heldRead.release?.(jsonResponse({ code: "service_unavailable" }, 503));
+      await settle();
+
+      expect(screen.queryByTestId("research-job-error")).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Load result$/ })).toBeNull();
+      expect(screen.queryByTestId("research-result")).toBeNull();
+      expect(screen.queryByTestId("research-job-status")).toBeNull();
+      expect(unhandled.caught).toEqual([]);
+    } finally {
+      unhandled.stop();
+    }
+  });
+
+  // The sibling cancel flow whose BASE behavior is already correct and
+  // must stay equal: a late result read that PASSES after Cancel still
+  // displays the stored result (the success path's stale guards are
+  // untouched by the repair), with no error row.
+  it("cancel-then-late-pass still displays the stored result with no error row (BASE-equal inherited)", async () => {
+    const unhandled = trackUnhandledRejections();
+    let jobPolls = 0;
+    const heldRead: { release: ((response: Response) => void) | null } = {
+      release: null,
+    };
+    const fetchMock = vi.fn((url: string | URL | Request): Promise<Response> => {
+      const path = String(url);
+      if (path === "/api/v1/research/jobs") {
+        return Promise.resolve(jsonResponse({ id: "job-cancel-pass", state: "queued" }));
+      }
+      if (path === "/api/v1/jobs/job-cancel-pass") {
+        jobPolls += 1;
+        return Promise.resolve(
+          jsonResponse(
+            jobPolls === 1
+              ? { id: "job-cancel-pass", state: "running" }
+              : { id: "job-cancel-pass", state: "succeeded" },
+          ),
+        );
+      }
+      if (path === "/api/v1/jobs/job-cancel-pass/result") {
+        return new Promise<Response>((resolve) => {
+          heldRead.release = resolve;
+        });
+      }
+      if (path === "/api/v1/jobs/job-cancel-pass/cancel") {
+        return Promise.resolve(jsonResponse({}));
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(<ResearchView client={createHttpClient()} />);
+      fillForm();
+      await runToJob();
+      await waitFor(() => expect(heldRead.release).not.toBeNull());
+
+      fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
+      await waitFor(() => {
+        expect(screen.queryByTestId("research-job-id")).toBeNull();
+      });
+
+      heldRead.release?.(jsonResponse(storedBody));
+
+      const result = await screen.findByTestId("research-result");
+      expect(result.textContent).toContain("123");
+      expect(screen.queryByTestId("research-job-error")).toBeNull();
+      expect(screen.queryByTestId("research-job-id")).toBeNull();
+      expect(screen.queryByTestId("research-job-status")).toBeNull();
+      expect(unhandled.caught).toEqual([]);
+    } finally {
+      unhandled.stop();
+    }
+  });
 });
