@@ -765,7 +765,12 @@ class JobManager:
         slippage_mult = request_payload.get("slippage_mult")
         from_ms = request_payload.get("from_ms")
         to_ms = request_payload.get("to_ms")
-        allow_gaps = bool(request_payload.get("allow_gaps", False))
+        # COORDINATOR API CONTRACT: only the literal boolean ``True``
+        # may enable the allow_gaps override. Omission, ``False``,
+        # ``None``, strings (including "true"/"false"), numbers, arrays
+        # and objects are treated as ``False`` at this conversion
+        # boundary — never a new schema rejection.
+        allow_gaps = request_payload.get("allow_gaps") is True
         holdout_from_ms_raw = request_payload.get("holdout_from_ms")
         holdout_to_ms_raw = request_payload.get("holdout_to_ms")
 

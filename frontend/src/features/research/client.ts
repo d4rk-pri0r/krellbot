@@ -51,21 +51,52 @@ async function postJson(url: string, body: unknown): Promise<unknown> {
   return await response.json();
 }
 
+const READ_DEADLINE_MS = 10000;
+
+function readTimeoutError(): Error {
+  return new Error(`read timed out after ${READ_DEADLINE_MS}ms`);
+}
+
 async function getJson(url: string): Promise<unknown | null> {
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      "X-Krellbot-CSRF": getCsrf(),
-    },
+  const controller = new AbortController();
+  let expired = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true;
+      reject(readTimeoutError());
+      controller.abort();
+    }, READ_DEADLINE_MS);
   });
-  if (response.status === 404) {
-    return null;
+  try {
+    const response = (await Promise.race([
+      fetch(url, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "X-Krellbot-CSRF": getCsrf(),
+        },
+        signal: controller.signal,
+      }),
+      deadline,
+    ])) as Response;
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`request failed: ${response.status}`);
+    }
+    return (await Promise.race([response.json(), deadline])) as unknown;
+  } catch (err) {
+    if (expired) {
+      throw readTimeoutError();
+    }
+    throw err;
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
   }
-  if (!response.ok) {
-    throw new Error(`request failed: ${response.status}`);
-  }
-  return await response.json();
 }
 
 export function createHttpClient(): ResearchClient {
