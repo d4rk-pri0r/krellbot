@@ -592,6 +592,17 @@ export function ResearchView({
       // guard (see liveJobIdRef); jobIdRef intentionally keeps the poll
       // loop's BASE behavior.
       liveJobIdRef.current = null;
+      // issue282 D-cancel-after-row: Cancel owns the result-read error
+      // row published for the job it just removed — whether that row
+      // was already published or settles concurrently while the Cancel
+      // POST is in flight (the stale guard cannot classify it yet).
+      // Withdrawing it here keeps the post-Cancel UI BASE-equal: no
+      // "use Load result to retry" instruction may remain once the Load
+      // result control and the job id are gone. Other error codes keep
+      // their BASE post-Cancel behavior.
+      setJobError((prev) =>
+        prev !== null && prev.code === "result_read_failed" ? null : prev,
+      );
     } catch (err) {
       setCancelError(
         `Cancel job failed: ${err instanceof Error ? err.message : String(err)} — outcome unknown: the command may not have been sent or applied — check state before retrying`,
@@ -1111,8 +1122,15 @@ export function ResearchView({
       {/* issue282: an automatic result-read error describes the current
           job's missing result; once an explicit Load result retry for
           that job actually succeeds, the stored result is the truth and
-          the superseded read error must not keep rendering. */}
-      {jobError && storedResult === null ? (
+          the superseded read error must not keep rendering.
+          D-cancel-after-row: the row's recovery instruction references
+          the Load result control and the job id, so it may only render
+          while that job identity is still present — a cancelled job
+          never leaves a recovery instruction pointing at a gone
+          button/job id. Other error codes are unaffected. */}
+      {jobError &&
+      storedResult === null &&
+      (jobError.code !== "result_read_failed" || jobId !== null) ? (
         <p
           className="kbot-research__error"
           role="alert"

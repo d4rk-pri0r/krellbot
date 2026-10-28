@@ -365,6 +365,159 @@ describe("Research automatic result-read failure feedback (issue282)", () => {
     }
   });
 
+  // A60-R2 cancel-after-row regression: the automatic result-read failure
+  // is ALREADY published while the job is live (truthful row), and the
+  // user then Cancels. BASE (main b592ed3) shows no row for this flow —
+  // its rejection surfaces as an absorbed pageerror — so once Cancel
+  // removes the job id, the Cancel control and the Load result control,
+  // the published error row (whose instruction says "use Load result to
+  // retry") must be withdrawn too: no recovery instruction may point at
+  // controls that are gone.
+  it("cancel-after-error-published withdraws the error row and its gone-button instruction (BASE-equal UI)", async () => {
+    const unhandled = trackUnhandledRejections();
+    let jobPolls = 0;
+    let cancelPosts = 0;
+    const fetchMock = vi.fn((url: string | URL | Request): Promise<Response> => {
+      const path = String(url);
+      if (path === "/api/v1/research/jobs") {
+        return Promise.resolve(
+          jsonResponse({ id: "job-cancel-after-err", state: "queued" }),
+        );
+      }
+      if (path === "/api/v1/jobs/job-cancel-after-err") {
+        jobPolls += 1;
+        return Promise.resolve(
+          jsonResponse(
+            jobPolls === 1
+              ? { id: "job-cancel-after-err", state: "running" }
+              : { id: "job-cancel-after-err", state: "succeeded" },
+          ),
+        );
+      }
+      if (path === "/api/v1/jobs/job-cancel-after-err/result") {
+        return Promise.resolve(jsonResponse({ code: "service_unavailable" }, 503));
+      }
+      if (path === "/api/v1/jobs/job-cancel-after-err/cancel") {
+        cancelPosts += 1;
+        return Promise.resolve(jsonResponse({}));
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(<ResearchView client={createHttpClient()} />);
+      fillForm();
+      await runToJob();
+
+      // The truthful error row is published while the job identity (and
+      // the Load result control it references) is still live.
+      const alert = await screen.findByTestId("research-job-error");
+      expect(alert.textContent).toMatch(/Load result/);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
+      await waitFor(() => {
+        expect(screen.queryByTestId("research-job-id")).toBeNull();
+      });
+      expect(cancelPosts).toBe(1);
+      expect(screen.queryByRole("button", { name: /^Load result$/ })).toBeNull();
+
+      // The repair: Cancel withdraws the result-read error row it owns.
+      expect(screen.queryByTestId("research-job-error")).toBeNull();
+      expect(screen.queryByTestId("research-result")).toBeNull();
+      expect(screen.queryByTestId("research-job-status")).toBeNull();
+      expect(unhandled.caught).toEqual([]);
+    } finally {
+      unhandled.stop();
+    }
+  });
+
+  // A60-R2 503-during-cancel-inflight regression: the automatic
+  // result-read 503 settles WHILE the Cancel POST is still in flight, so
+  // the stale-job guard cannot classify it yet and the error row is
+  // published concurrently. BASE (main b592ed3) shows no row for this
+  // flow; once the in-flight Cancel completes and removes the job id and
+  // the Load result control, the concurrently published row must be gone
+  // with it.
+  it("503 landing while the Cancel POST is in flight leaves no error row after Cancel completes (BASE-equal UI)", async () => {
+    const unhandled = trackUnhandledRejections();
+    let jobPolls = 0;
+    let cancelPosts = 0;
+    const heldRead: { release: ((response: Response) => void) | null } = {
+      release: null,
+    };
+    const heldCancel: { release: ((response: Response) => void) | null } = {
+      release: null,
+    };
+    const fetchMock = vi.fn((url: string | URL | Request): Promise<Response> => {
+      const path = String(url);
+      if (path === "/api/v1/research/jobs") {
+        return Promise.resolve(
+          jsonResponse({ id: "job-503-in-cancel", state: "queued" }),
+        );
+      }
+      if (path === "/api/v1/jobs/job-503-in-cancel") {
+        jobPolls += 1;
+        return Promise.resolve(
+          jsonResponse(
+            jobPolls === 1
+              ? { id: "job-503-in-cancel", state: "running" }
+              : { id: "job-503-in-cancel", state: "succeeded" },
+          ),
+        );
+      }
+      if (path === "/api/v1/jobs/job-503-in-cancel/result") {
+        return new Promise<Response>((resolve) => {
+          heldRead.release = resolve;
+        });
+      }
+      if (path === "/api/v1/jobs/job-503-in-cancel/cancel") {
+        cancelPosts += 1;
+        return new Promise<Response>((resolve) => {
+          heldCancel.release = resolve;
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(<ResearchView client={createHttpClient()} />);
+      fillForm();
+      await runToJob();
+      await waitFor(() => expect(heldRead.release).not.toBeNull());
+
+      // Cancel first: its POST stays in flight.
+      fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
+      await waitFor(() => expect(heldCancel.release).not.toBeNull());
+      expect(screen.getByTestId("research-job-id").textContent).toContain(
+        "job-503-in-cancel",
+      );
+
+      // The 503 lands while the Cancel POST is still in flight: the
+      // row is published concurrently (the job is still live).
+      heldRead.release?.(jsonResponse({ code: "service_unavailable" }, 503));
+      const alert = await screen.findByTestId("research-job-error");
+      expect(alert.textContent).toMatch(/Load result/);
+
+      // The in-flight Cancel completes and removes the job identity.
+      heldCancel.release?.(jsonResponse({}));
+      await waitFor(() => {
+        expect(screen.queryByTestId("research-job-id")).toBeNull();
+      });
+      expect(cancelPosts).toBe(1);
+      expect(screen.queryByRole("button", { name: /^Load result$/ })).toBeNull();
+
+      // The repair: the concurrently published row is withdrawn with it.
+      expect(screen.queryByTestId("research-job-error")).toBeNull();
+      expect(screen.queryByTestId("research-result")).toBeNull();
+      expect(screen.queryByTestId("research-job-status")).toBeNull();
+      expect(unhandled.caught).toEqual([]);
+    } finally {
+      unhandled.stop();
+    }
+  });
+
   // The sibling cancel flow whose BASE behavior is already correct and
   // must stay equal: a late result read that PASSES after Cancel still
   // displays the stored result (the success path's stale guards are
