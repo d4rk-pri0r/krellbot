@@ -38,8 +38,14 @@ function detailTestId(id: string): string {
   return `ops-ack-detail-${id}`;
 }
 
+const UNAVAILABLE_TIMESTAMP_TEXT = "—";
+const MAX_VALID_DATE_MS = 8.64e15;
+
 function formatTs(ts: number): string {
-  return new Date(ts * 1000).toISOString().replace("T", " ").slice(0, 19);
+  if (!Number.isFinite(ts)) return UNAVAILABLE_TIMESTAMP_TEXT;
+  const ms = ts * 1000;
+  if (!Number.isFinite(ms) || Math.abs(ms) > MAX_VALID_DATE_MS) return UNAVAILABLE_TIMESTAMP_TEXT;
+  return new Date(ms).toISOString().replace("T", " ").slice(0, 19);
 }
 
 // Same sentinel value AlertsFilter.severityOptions() hardcodes as its first option.
