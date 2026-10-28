@@ -428,6 +428,13 @@ def cmd_keys_add(args):
         print("--file is required", file=sys.stderr)
         return 2
 
+    key_file = Path(file_path)
+    try:
+        raw = key_file.read_text(encoding="utf-8")
+    except (FileNotFoundError, IsADirectoryError, PermissionError):
+        print(f"No such file: {file_path}", file=sys.stderr)
+        return 2
+
     kb_paths.ensure_layout()
 
     if i_understand:
@@ -438,7 +445,6 @@ def cmd_keys_add(args):
             kb_paths.atomic_write(ack, payload, mode=0o600)
 
     lines: list[str] = []
-    raw = Path(file_path).read_text(encoding="utf-8")
     for line in raw.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
