@@ -428,6 +428,13 @@ def cmd_keys_add(args):
         print("--file is required", file=sys.stderr)
         return 2
 
+    key_file = Path(file_path)
+    try:
+        raw = key_file.read_text(encoding="utf-8")
+    except (FileNotFoundError, IsADirectoryError, PermissionError):
+        print(f"No such file: {file_path}", file=sys.stderr)
+        return 2
+
     kb_paths.ensure_layout()
 
     if i_understand:
@@ -438,7 +445,6 @@ def cmd_keys_add(args):
             kb_paths.atomic_write(ack, payload, mode=0o600)
 
     lines: list[str] = []
-    raw = Path(file_path).read_text(encoding="utf-8")
     for line in raw.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -716,9 +722,17 @@ def cmd_backtest(args):
     from_ms = None
     to_ms = None
     if from_date:
-        from_ms = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        try:
+            from_ms = int(datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        except ValueError:
+            print(f"invalid --from: {from_date}", file=sys.stderr)
+            return 1
     if to_date:
-        to_ms = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        try:
+            to_ms = int(datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        except ValueError:
+            print(f"invalid --to: {to_date}", file=sys.stderr)
+            return 1
 
     svc = ResearchService(home=kb_paths.home(), fetch=None)
     result = svc.run(
@@ -1533,18 +1547,32 @@ def _drop_secret_fields(record: Any) -> Any:
 
 
 def _read_journal_records(home: Path) -> list:
-    """Return all valid journal records under `<home>/journal`, in file order."""
+    """Return all valid journal records under `<home>/journal`, in file order.
+
+    The writer (krellbot.journal.append) frames each record as one JSON
+    object terminated by a single byte-LF. Records may legitimately contain
+    U+2028/U+2029/U+0085 inside JSON string fields, so framing must split on
+    the writer's real byte-LF boundaries only — never on generic Unicode
+    display-line breaks, which would silently drop those records. A trailing
+    carriage return (CRLF files) is part of the physical record boundary and
+    is stripped, but CR inside a JSON string is preserved by json.loads.
+
+    Decoding stays STRICT, exactly like the BASE reader this replaced: a
+    journal file holding bytes that are not valid UTF-8 must still refuse
+    with UnicodeDecodeError (CLI exit 1) instead of being silently coerced
+    into U+FFFD replacement characters that masquerade as real records.
+    """
     journal_dir = Path(home) / "journal"
     if not journal_dir.is_dir():
         return []
     records: list = []
     for path in sorted(journal_dir.glob("*.jsonl")):
         try:
-            text = path.read_text(encoding="utf-8")
+            raw = path.read_bytes()
         except OSError:
             continue
-        for line in text.splitlines():
-            line = line.strip()
+        for chunk in raw.split(b"\n"):
+            line = chunk.decode("utf-8").strip()
             if not line:
                 continue
             try:
@@ -1558,10 +1586,12 @@ def _read_journal_records(home: Path) -> list:
 def cmd_journal(args, *, now: float | None = None):
     """`krellbot journal --tail N | --since 24h|14d [--json]`.
 
-    `--since` accepts `24h` or `14d` only; unknown values exit 2. `--json`
-    emits one JSON object per line and drops `key`, `secret`, `license`,
-    and `balance` fields at any depth. `now` is injected for tests so the
-    since-window math does not depend on wall-clock time.
+    `--tail` must be a positive integer; zero, negative, and non-numeric
+    values exit 2. `--since` accepts `24h` or `14d` only; unknown values
+    exit 2. `--json` emits one JSON object per line and drops `key`,
+    `secret`, `license`, and `balance` fields at any depth. `now` is
+    injected for tests so the since-window math does not depend on
+    wall-clock time.
     """
     import time
 
@@ -1578,6 +1608,9 @@ def cmd_journal(args, *, now: float | None = None):
             try:
                 tail = int(args[i + 1])
             except ValueError:
+                print(f"invalid --tail: {args[i + 1]}", file=sys.stderr)
+                return 2
+            if tail < 1:
                 print(f"invalid --tail: {args[i + 1]}", file=sys.stderr)
                 return 2
             i += 2

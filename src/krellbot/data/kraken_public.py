@@ -13,7 +13,7 @@ import json
 import urllib.error
 import urllib.request
 import zipfile
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from krellbot.pack.model import Candle
@@ -265,17 +265,22 @@ def import_kraken_ohlcvt_cached(
                 checkpoint.commit(next_member_index=len(selected), next_row_index=0, phase="parsed")
 
             rows = checkpoint.load_candles()
-            candles: list[Candle] = [
-                Candle(
-                    ts_ms=ts_ms,
-                    open=Decimal(open_s),
-                    high=Decimal(high_s),
-                    low=Decimal(low_s),
-                    close=Decimal(close_s),
-                    volume=Decimal(volume_s),
-                )
-                for ts_ms, open_s, high_s, low_s, close_s, volume_s in rows
-            ]
+            candles: list[Candle] = []
+            for ts_ms, open_s, high_s, low_s, close_s, volume_s in rows:
+                try:
+                    candle = Candle(
+                        ts_ms=ts_ms,
+                        open=Decimal(open_s),
+                        high=Decimal(high_s),
+                        low=Decimal(low_s),
+                        close=Decimal(close_s),
+                        volume=Decimal(volume_s),
+                    )
+                except InvalidOperation as exc:
+                    raise refuse(
+                        f"checkpoint holds a non-decimal price or volume at ts_ms={ts_ms}; refusing to resume"
+                    ) from exc
+                candles.append(candle)
             candles.sort(key=lambda c: c.ts_ms)
         csv_path, digest = write_cache(Path(home), "kraken", pair, tf, candles)
         checkpoint.discard()
@@ -371,11 +376,14 @@ def _source_accounting(zf: zipfile.ZipFile, infos, selected):
 
 
 def _row_to_candle(row: list[str] | None) -> Candle | None:
-    """Apply the historical row rule: one accepted candle or `None` to skip.
+    """Apply the historical row rule: one accepted candle, a skip, or a refusal.
 
     The first field must be numeric (headers and non-numeric rows are skipped),
     the row must have exactly 7 fields (wrong-width rows are skipped), and the
-    accepted prices/volume are exact decimal text.
+    accepted prices/volume are exact decimal text. A structurally admitted row
+    whose decimal conversion fails is refused with `ImportProgressError` -
+    the shared rule never repairs or fabricates a price, and the enabled CLI
+    turns the refusal into its existing typed `import refused:` exit 1 path.
     """
     if not row:
         return None
@@ -385,13 +393,23 @@ def _row_to_candle(row: list[str] | None) -> Candle | None:
     if len(row) != 7:
         return None
     time_s, open_s, high_s, low_s, close_s, vol_s, _count = row
+    ts_ms = parse_timestamp(time_s.strip())
+    converted: dict[str, Decimal] = {}
+    for name, field in (("open", open_s), ("high", high_s), ("low", low_s), ("close", close_s), ("volume", vol_s)):
+        text = field.strip()
+        try:
+            converted[name] = Decimal(text)
+        except InvalidOperation as exc:
+            raise ImportProgressError(
+                f"kraken zip: candle row at time {first} carries a non-decimal {name} field {text!r}"
+            ) from exc
     return Candle(
-        ts_ms=parse_timestamp(time_s.strip()),
-        open=Decimal(open_s.strip()),
-        high=Decimal(high_s.strip()),
-        low=Decimal(low_s.strip()),
-        close=Decimal(close_s.strip()),
-        volume=Decimal(vol_s.strip()),
+        ts_ms=ts_ms,
+        open=converted["open"],
+        high=converted["high"],
+        low=converted["low"],
+        close=converted["close"],
+        volume=converted["volume"],
     )
 
 
