@@ -24,6 +24,12 @@ Command contracts:
     transport. Paper commands are local-only.
   * `entries_paused` persists and survives `load_config`. Pause and resume
     are idempotent. Pause does NOT disarm or liquidate.
+  * An armed-pack `config.json` that exists but cannot be read (chmod 000,
+    it is a directory) raises `kb_config.ConfigUnreadableError` — the same
+    typed refusal `load_config` raises — from every method that reads the
+    config (`_revision` guards the first read). The process is never
+    exited from the service; the CLI boundary renders the one-line refusal
+    with rc 1 and API/UI callers keep their existing OSError handlers.
   * Invalid venue, mode, pack, balance, stop, or a live command sent here
     refuses before any config byte changes. Refusals leave `revision_after`
     equal to `revision_before`.
@@ -119,10 +125,24 @@ class CommandResultV1:
 
 
 def _revision(home: Path) -> str | None:
+    """Hash the on-disk armed-pack config bytes, or None when the file is absent.
+
+    `disarm`, `stop` (`raise_stop`), `pause_entries`, `resume_entries`,
+    `arm`, and `export` all read the config through here first. A
+    `config.json` that exists but cannot be read (chmod 000, it is a
+    directory) is routed to the same typed refusal as `load_config`:
+    `kb_config.ConfigUnreadableError`, never a raw OSError traceback. The
+    CLI boundary renders it as the one-line refusal with rc 1; API/UI
+    callers keep their existing OSError handlers.
+    """
     path = kb_config.config_path(home)
     if not path.exists():
         return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise kb_config.ConfigUnreadableError(path, exc) from exc
+    return hashlib.sha256(data).hexdigest()
 
 
 def _resolve_pair(pack_path: Path, venue: str) -> str:
