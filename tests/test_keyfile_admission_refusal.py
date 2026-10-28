@@ -111,18 +111,38 @@ def test_setup_kraken_directory_is_typed_refusal(tmp_path):
     assert "Stored" not in proc.stdout
 
 
-@pytest.mark.skipif(
-    not hasattr(os, "geteuid") or os.geteuid() == 0,
-    reason="permission bits are not enforced for root",
-)
-def test_keys_add_unreadable_file_is_typed_refusal(tmp_path):
-    keyfile = tmp_path / "keys.csv"
+def test_keys_add_unreadable_file_is_typed_refusal(isolated_home, fresh_keyring, capsys, monkeypatch):
+    """PermissionError at the key-file read boundary is the same typed refusal.
+
+    The CLI chmod-000 shape is uid-dependent (root ignores permission bits),
+    so the unreadable-file edge is pinned in process at the exact file-read
+    boundary cmd_keys_add uses: the read raises PermissionError, and the
+    admission refuses with the same exit code 2 and one-line stderr message
+    the CLI-level cases assert. It runs identically under any uid, root
+    included, because no permission bit is ever relied upon.
+    """
+    import krellbot.cli as cli_mod
+
+    keyfile = isolated_home / "keys.csv"
     _write_keyfile(keyfile)
-    keyfile.chmod(0o000)
-    proc = _run_cli(tmp_path, "keys", "add", "kraken", "--file", str(keyfile))
-    assert proc.returncode == 2
-    assert proc.stderr.strip() == f"No such file: {keyfile}"
-    assert "Stored" not in proc.stdout
+
+    real_read_text = Path.read_text
+
+    def unreadable_read_text(self, *args, **kwargs):
+        if self == keyfile:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", unreadable_read_text)
+
+    rc = cli_mod.main(["krellbot", "keys", "add", "kraken", "--file", str(keyfile)])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert captured.err.strip() == f"No such file: {keyfile}"
+    assert "Stored" not in captured.out
+    assert fresh_keyring.get_password("krellbot:kraken", "key") is None
+    assert fresh_keyring.get_password("krellbot:kraken", "secret") is None
+    assert not (isolated_home / "run" / "plaintext-ack").exists()
 
 
 # --- Healthy two-line control stays byte-identical ---
