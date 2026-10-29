@@ -43,7 +43,11 @@ function detailDomId(deploymentId: string): string {
 }
 
 function formatTs(createdAtMs: number): string {
-  return new Date(createdAtMs).toISOString().replace("T", " ").slice(0, 19);
+  const createdAt = new Date(createdAtMs);
+  if (Number.isNaN(createdAt.getTime())) {
+    return "—";
+  }
+  return createdAt.toISOString().replace("T", " ").slice(0, 19);
 }
 
 function subsetEntries(

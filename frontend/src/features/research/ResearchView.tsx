@@ -306,6 +306,14 @@ export function ResearchView({
   const [holdoutToEditedUtcLast, setHoldoutToEditedUtcLast] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
+  // issue282 D-cancel-late-503: jobIdRef tracks the poll loop's identity
+  // and is deliberately NOT cleared by handleCancel (the loop keeps its
+  // BASE behavior, including displaying a late passing result after
+  // Cancel). The live jobId STATE is the user-facing identity — Cancel
+  // clears it — so the automatic result-read failure path mirrors it here
+  // to recognize a cancelled job as stale without touching any other
+  // guard.
+  const liveJobIdRef = useRef<string | null>(null);
   const [storedResult, setStoredResult] = useState<StoredResult | null>(null);
   const [selectedBarTs, setSelectedBarTs] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -476,6 +484,7 @@ export function ResearchView({
         const summary = await client.submitRun(request);
         setJobId(summary.id);
         jobIdRef.current = summary.id;
+        liveJobIdRef.current = summary.id;
         // Poll for the result so the UI auto-populates when the job
         // succeeds. The brief's e2e path waits for ``research-result``
         // without a manual Load result click; the original Load button
@@ -514,7 +523,35 @@ export function ResearchView({
         if (jobIdRef.current !== targetJobId) {
           return;
         }
-        const result = await client.getResult(targetJobId);
+        // issue282: the automatic result read can fail (for example a 503
+        // from the local API). Catch it so the rejection is never
+        // unhandled and the view stops silently claiming it is still
+        // waiting. The stale-job guard runs BEFORE any error is
+        // published, so a late rejection after another Run or a manual
+        // intent cannot poison the current intent. Job identity and the
+        // explicit Load result retry stay untouched; there is no
+        // automatic retry loop, no resubmission and no synthesized
+        // result here. D-cancel-late-503: the guard also compares the
+        // live jobId state mirror — handleCancel clears the state without
+        // resetting jobIdRef — so a cancelled/cleared job identity is
+        // stale and no recovery instruction referencing the gone Load
+        // result control is published after Cancel.
+        let result: Awaited<ReturnType<ResearchClient["getResult"]>>;
+        try {
+          result = await client.getResult(targetJobId);
+        } catch (err) {
+          if (
+            jobIdRef.current !== targetJobId ||
+            liveJobIdRef.current !== targetJobId
+          ) {
+            return;
+          }
+          setJobError({
+            code: "result_read_failed",
+            message: `job succeeded but reading its result failed (${err instanceof Error ? err.message : String(err)}) — use Load result to retry`,
+          });
+          return;
+        }
         if (jobIdRef.current !== targetJobId) {
           return;
         }
@@ -551,6 +588,21 @@ export function ResearchView({
     try {
       await client.cancelJob(jobId);
       setJobId(null);
+      // Mirror the live state for the automatic result-read failure
+      // guard (see liveJobIdRef); jobIdRef intentionally keeps the poll
+      // loop's BASE behavior.
+      liveJobIdRef.current = null;
+      // issue282 D-cancel-after-row: Cancel owns the result-read error
+      // row published for the job it just removed — whether that row
+      // was already published or settles concurrently while the Cancel
+      // POST is in flight (the stale guard cannot classify it yet).
+      // Withdrawing it here keeps the post-Cancel UI BASE-equal: no
+      // "use Load result to retry" instruction may remain once the Load
+      // result control and the job id are gone. Other error codes keep
+      // their BASE post-Cancel behavior.
+      setJobError((prev) =>
+        prev !== null && prev.code === "result_read_failed" ? null : prev,
+      );
     } catch (err) {
       setCancelError(
         `Cancel job failed: ${err instanceof Error ? err.message : String(err)} — outcome unknown: the command may not have been sent or applied — check state before retrying`,
@@ -1067,7 +1119,18 @@ export function ResearchView({
           {exportError}
         </p>
       ) : null}
-      {jobError ? (
+      {/* issue282: an automatic result-read error describes the current
+          job's missing result; once an explicit Load result retry for
+          that job actually succeeds, the stored result is the truth and
+          the superseded read error must not keep rendering.
+          D-cancel-after-row: the row's recovery instruction references
+          the Load result control and the job id, so it may only render
+          while that job identity is still present — a cancelled job
+          never leaves a recovery instruction pointing at a gone
+          button/job id. Other error codes are unaffected. */}
+      {jobError &&
+      storedResult === null &&
+      (jobError.code !== "result_read_failed" || jobId !== null) ? (
         <p
           className="kbot-research__error"
           role="alert"

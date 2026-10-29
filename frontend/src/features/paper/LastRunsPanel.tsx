@@ -8,11 +8,19 @@ export type LastRunsPanelProps = {
   client: PaperClient & PaperRunsClient;
 };
 
+// Run-row times render as UTC ISO strings; a missing, non-finite or
+// out-of-Date-range stamp shows the same "—" as an absent one, never a
+// fabricated date — and never a RangeError that would take the whole
+// history table down with one bad row.
 function formatTime(ts_ms: number): string {
-  if (!ts_ms) {
+  if (!ts_ms || !Number.isFinite(ts_ms)) {
     return "—";
   }
-  return new Date(ts_ms).toISOString();
+  const date = new Date(ts_ms);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return date.toISOString();
 }
 
 // Fills render in the viewer's local time, unlike the run rows above which

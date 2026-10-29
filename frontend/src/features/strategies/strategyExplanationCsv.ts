@@ -11,15 +11,34 @@ export type ExplanationCsvRow = {
 };
 
 /**
+ * Literal-text neutralization policy for the CSV export.
+ *
+ * Metadata and explanation text come from saved packs and is untrusted: a
+ * value beginning with `=`, `+`, `-` or `@` (optionally after leading
+ * tab/CR/LF or other whitespace) is interpreted as a formula by spreadsheet
+ * consumers when the downloaded file is opened. The serializer prefixes every
+ * such field with a single apostrophe — the spreadsheet literal-text prefix —
+ * so the cell renders as literal text instead of executing. Ordinary text,
+ * empty fields and non-formula-leading values are exported byte-identical,
+ * and the prefix is applied before RFC 4180 quoting so structure is unchanged.
+ */
+const FORMULA_LEADING_PATTERN = /^[\t\r\n ]*[=+\-@]/;
+const LITERAL_TEXT_PREFIX = "'";
+
+/**
  * Escape a single CSV field per RFC 4180: quote only when the field contains a
  * comma, a double quote, or a line break, doubling embedded double quotes.
- * Embedded newlines are preserved inside the quoted field.
+ * Embedded newlines are preserved inside the quoted field. Formula-leading
+ * untrusted text is first neutralized with the literal-text prefix above.
  */
 export function explanationCsvField(value: string): string {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const literal = FORMULA_LEADING_PATTERN.test(value)
+    ? LITERAL_TEXT_PREFIX + value
+    : value;
+  if (/[",\r\n]/.test(literal)) {
+    return `"${literal.replace(/"/g, '""')}"`;
   }
-  return value;
+  return literal;
 }
 
 /** Column headers for the explanation export: section, key, value. */
