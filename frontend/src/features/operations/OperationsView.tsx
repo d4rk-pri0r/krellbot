@@ -110,6 +110,21 @@ function clearRowEntry<T>(
   });
 }
 
+// Widest ECMAScript Date range, in milliseconds (±100,000,000 days from the
+// epoch). A finite last_ts beyond it would make new Date(...).toISOString()
+// throw RangeError mid-render and abort the whole Operations view, so the
+// affected meta line falls back to the shared unavailable presentation.
+const MAX_DATE_MS = 8.64e15;
+const ALERT_LAST_TS_UNAVAILABLE_TEXT = "—";
+
+function formatAlertLastTs(lastTs: number): string {
+  const ms = lastTs * 1000;
+  if (!Number.isFinite(ms) || Math.abs(ms) > MAX_DATE_MS) {
+    return ALERT_LAST_TS_UNAVAILABLE_TEXT;
+  }
+  return new Date(ms).toISOString().replace("T", " ").slice(0, 19);
+}
+
 function killStateText(engaged: boolean, reason: string | null): string {
   if (!engaged) {
     return KILL_RELEASED_TEXT;
@@ -718,7 +733,7 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                                   </span>
                                   <span className="kbot-ops__alert-count">×{alert.count}</span>
                                   <span className="kbot-ops__alert-ts">
-                                    last {new Date(alert.last_ts * 1000).toISOString().replace("T", " ").slice(0, 19)}
+                                    last {formatAlertLastTs(alert.last_ts)}
                                   </span>
                                   {alert.acknowledged ? (
                                     <span className="kbot-ops__alert-ack">acknowledged</span>
