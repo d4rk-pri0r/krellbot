@@ -2045,6 +2045,9 @@ def _cmd_community_install(pack_id, *, transport):
     except kb_community.IndexError_ as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    except kb_community.InstallPayloadError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     except (OSError, urllib.error.URLError) as exc:
         print(f"install failed: {type(exc).__name__}", file=sys.stderr)
         return 1
