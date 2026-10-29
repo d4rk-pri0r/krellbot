@@ -24,6 +24,7 @@ An `ArmedPack` record has:
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -31,6 +32,57 @@ from pathlib import Path
 from krellbot import paths
 
 CONFIG_FILENAME = "config.json"
+
+
+def config_refusal_message(path: Path, cause: BaseException) -> str:
+    """The one-line typed refusal for an unreadable `config.json`."""
+
+    return f"config load refused: cannot read {CONFIG_FILENAME} at {path} ({type(cause).__name__})"
+
+
+class ConfigUnreadableError(OSError):
+    """`config.json` exists but its bytes cannot be read (chmod 000, it is a
+    directory, any OSError).
+
+    An `OSError` subclass so API/UI/rehearsal callers keep their existing
+    `except OSError` / `except (OSError, ValueError)` handlers (including
+    the `/paper/history` fallback) and the server keeps serving typed
+    responses instead of dying. Library code never exits the process: the
+    one-line refusal above is rendered with rc 1 only where the exception
+    reaches a process boundary uncaught — the CLI surfaces — via
+    `_config_refusal_excepthook` installed below.
+    """
+
+    def __init__(self, path: Path, cause: BaseException):
+        self.config_path = Path(path)
+        self.read_error = cause
+        super().__init__(config_refusal_message(path, cause))
+        self.errno = getattr(cause, "errno", None)
+
+
+def _install_config_refusal_excepthook() -> None:
+    """Render an uncaught `ConfigUnreadableError` as the one-line typed refusal.
+
+    This is the CLI-boundary mapping for `krellbot status` / `doctor` /
+    `disarm` / `stop` / `tick` / `arm`: their command handlers do not catch
+    `OSError`, so a `ConfigUnreadableError` that reaches the process top is
+    printed as the single refusal line (exit code stays 1, never a raw
+    traceback). Every caller that handles `OSError` — the workstation API,
+    the dashboard, rehearsal — is unaffected because the exception never
+    reaches this hook there. All other exceptions chain to the previous
+    hook unchanged.
+    """
+
+    previous = sys.excepthook
+
+    def _config_refusal_excepthook(exc_type, exc, tb) -> None:
+        if isinstance(exc, ConfigUnreadableError):
+            print(config_refusal_message(exc.config_path, exc.read_error), file=sys.stderr)
+            return
+        previous(exc_type, exc, tb)
+
+    if getattr(sys.excepthook, "__name__", "") != "_config_refusal_excepthook":
+        sys.excepthook = _config_refusal_excepthook
 
 
 def config_path(home: Path) -> Path:
@@ -68,12 +120,23 @@ class Config:
 
 
 def load_config(home: Path) -> Config:
-    """Load the armed-pack config. Returns an empty Config if the file is missing."""
+    """Load the armed-pack config. Returns an empty Config if the file is missing.
+
+    A `config.json` that exists but cannot be read (chmod 000, it is a
+    directory, any OSError) raises `ConfigUnreadableError` — a typed
+    `OSError` subclass naming `config.json`. The process is never exited
+    from here: CLI surfaces render the one-line typed refusal with rc 1 at
+    the process boundary (`_config_refusal_excepthook`), and API/UI/
+    rehearsal callers keep their existing `except OSError` handlers.
+    Torn JSON and non-dict shapes keep the silent empty-Config fallback.
+    """
     path = config_path(home)
     if not path.exists():
         return Config()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ConfigUnreadableError(path, exc) from exc
     except json.JSONDecodeError:
         return Config()
     if not isinstance(raw, dict):
@@ -160,3 +223,6 @@ def adopt_pending_version(armed: ArmedPack) -> None:
     if armed.pending_version and armed.owned_qty == Decimal(0):
         armed.pack_version = armed.pending_version
         armed.pending_version = None
+
+
+_install_config_refusal_excepthook()
