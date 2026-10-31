@@ -101,6 +101,8 @@ def install(
     index_body = transport.get(INDEX_URL)
     try:
         index = json.loads(index_body)
+    except UnicodeDecodeError as exc:
+        raise IndexError_(f"community index is not valid UTF-8: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise IndexError_(f"community index is not valid JSON: {exc}") from exc
     if isinstance(index, list):
