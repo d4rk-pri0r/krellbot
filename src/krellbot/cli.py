@@ -431,6 +431,9 @@ def cmd_keys_add(args):
     key_file = Path(file_path)
     try:
         raw = key_file.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        print(f"Key file is not valid UTF-8: {file_path}", file=sys.stderr)
+        return 2
     except (FileNotFoundError, IsADirectoryError, PermissionError):
         print(f"No such file: {file_path}", file=sys.stderr)
         return 2
