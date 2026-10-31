@@ -55,14 +55,25 @@ function DeferredSelfReadStatusStrip(): JSX.Element {
   return armed ? <SelfReadStatusStripBody /> : <StatusStripBody live={null} />;
 }
 
+// Largest magnitude Date can represent (±8.64e15 ms); beyond this the
+// time value clips to NaN and toISOString would throw RangeError.
+const MAX_EPOCH_MS = 8.64e15;
+
 function engagedAtText(engagedAt: number | null): string | null {
   if (engagedAt === null) {
+    return null;
+  }
+  const epochMs = engagedAt * 1000;
+  // A NaN/±Infinity or Date-out-of-range engaged_at has no truthful
+  // timestamp to show: render without the suffix rather than throw the
+  // whole strip away or fabricate a time.
+  if (!Number.isFinite(epochMs) || Math.abs(epochMs) > MAX_EPOCH_MS) {
     return null;
   }
   // The server reports epoch seconds; surface it explicitly in UTC so the
   // strip never implies a local-clock claim it cannot verify.
   return (
-    new Date(engagedAt * 1000).toISOString().replace("T", " ").slice(0, 19) +
+    new Date(epochMs).toISOString().replace("T", " ").slice(0, 19) +
     ENGAGED_AT_SUFFIX
   );
 }
