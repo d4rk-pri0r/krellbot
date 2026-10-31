@@ -62,6 +62,20 @@ _RUNNABLE_STATES = frozenset({STATE_VALIDATED, STATE_DEPLOYED})
 _IS_WINDOWS = sys.platform == "win32"
 
 
+def _as_runnable(value: object) -> bool:
+    """Admit ``value`` as runnable only when it is the literal JSON
+    boolean ``true``.
+
+    Persisted metadata is untrusted at the read boundary: missing,
+    ``null``, ``false``, strings (``"false"`` and ``"true"`` alike),
+    numbers, arrays, and objects are all ``False``. The value is
+    neither repaired nor trusted as a state label; honest ``false``
+    keeps its exact prior refusal.
+    """
+
+    return value is True
+
+
 def _canonical_bytes(pack: dict) -> bytes:
     """Render the canonical supported v1 JSON for ``pack``.
 
@@ -397,7 +411,7 @@ class StrategyDraftService:
         snap = self.get(revision_id)
         if snap is None:
             return False
-        return bool(snap.get("runnable"))
+        return snap.get("runnable") is True
 
     def canonical_bytes(self, revision_id: str) -> bytes:
         """Return the on-disk canonical bytes of ``revision_id``."""
@@ -458,7 +472,7 @@ class StrategyDraftService:
                         "revision_id": revision_id,
                         "parent_revision_id": meta.get("parent_revision_id"),
                         "state": str(meta.get("state", STATE_DRAFT)),
-                        "runnable": bool(meta.get("runnable", False)),
+                        "runnable": _as_runnable(meta.get("runnable")),
                         "created_at": str(meta.get("created_at", "")),
                         "id": pack.get("id") if isinstance(pack.get("id"), str) else "",
                         "label": (pack.get("label") if isinstance(pack.get("label"), str) else ""),
@@ -485,7 +499,7 @@ class StrategyDraftService:
         snap = self.get(revision_id)
         if snap is None:
             raise RevisionNotFound(revision_id)
-        if not snap.get("runnable"):
+        if snap.get("runnable") is not True:
             raise DraftNotRunnable(revision_id, reason="state is not validated")
         return self.revision_path(revision_id), snap["pack"]
 
@@ -518,7 +532,7 @@ class StrategyDraftService:
             "revision_id": revision_id,
             "parent_revision_id": meta.get("parent_revision_id"),
             "state": str(meta.get("state", STATE_DRAFT)),
-            "runnable": bool(meta.get("runnable", False)),
+            "runnable": _as_runnable(meta.get("runnable")),
             "created_at": str(meta.get("created_at", "")),
             "errors": list(meta.get("errors") or []),
             "pack": pack,
