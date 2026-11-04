@@ -233,6 +233,10 @@
   cursor: default;
 }
 
+.kbot-shell__jobs-root .kbot-jobs__row[role="button"] {
+  cursor: pointer;
+}
+
 .kbot-shell__jobs-root .kbot-jobs__row:focus-visible {
   outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
   outline-offset: 1px;

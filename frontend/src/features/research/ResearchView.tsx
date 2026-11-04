@@ -19,6 +19,7 @@ export type { ResearchClient, StoredResult } from "./client";
 export type ResearchViewProps = {
   client: ResearchClient;
   revisionId?: string | null;
+  openedJob?: { id: string } | null;
 };
 
 type TraceCondition = {
@@ -284,6 +285,7 @@ function readPath(condition: TraceCondition): string {
 export function ResearchView({
   client,
   revisionId,
+  openedJob,
 }: ResearchViewProps): JSX.Element {
   const [datasetPath, setDatasetPath] = useState("");
   const [packPath, setPackPath] = useState("");
@@ -334,6 +336,36 @@ export function ResearchView({
   const [exportResultStatus, setExportResultStatus] = useState("");
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Explicit Jobs selection replaces the visible result, not the saved
+  // strategy or the form. Never submit a new run to reopen stored evidence.
+  useEffect(() => {
+    if (!openedJob) return;
+    const id = openedJob.id;
+    let current = true;
+    jobIdRef.current = id;
+    liveJobIdRef.current = id;
+    setJobId(id);
+    setStoredResult(null);
+    setSelectedBarTs(null);
+    setJobError(null);
+    setSubmitError(null);
+    setSubmitFailed(false);
+    setLoadError(null);
+    setCancelError(null);
+    setExportError(null);
+    void client.getResult(id).then((result) => {
+      if (current && liveJobIdRef.current === id) setStoredResult(result);
+    }, (err: unknown) => {
+      if (current && liveJobIdRef.current === id) {
+        setJobError({
+          code: "result_read_failed",
+          message: `Reading the saved result failed (${err instanceof Error ? err.message : String(err)}) — use Load result to retry`,
+        });
+      }
+    });
+    return () => { current = false; };
+  }, [client, openedJob]);
 
   // UTC date/time <-> exact millisecond echoing. Each bound keeps a single
   // source of truth: when the UTC control was edited last it owns the value
