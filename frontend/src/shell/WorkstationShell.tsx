@@ -224,6 +224,9 @@ export function WorkstationShell({
   }, [active, savedRevision]);
 
   const researchRevisionKey = savedRevision?.revision_id ?? "__none__";
+  const [openedResearchJob, setOpenedResearchJob] = useState<{
+    id: string; revisionKey: string;
+  } | null>(null);
 
   useEffect(() => {
     const detached = researchDetachedRef.current;
@@ -658,7 +661,10 @@ export function WorkstationShell({
           </button>
           <div className="kbot-shell__head-utils">
             <StatusStrip live={bootstrapDone ? undefined : null} />
-            <JobsDrawer />
+            <JobsDrawer onOpenResult={(id) => {
+              setOpenedResearchJob({ id, revisionKey: researchRevisionKey });
+              setActive("research");
+            }} />
             <button
               type="button"
               className="kbot-shell__palette-hint"
@@ -935,6 +941,7 @@ export function WorkstationShell({
         ? createPortal(
             <ResearchView
               key={researchRevisionKey}
+              openedJob={openedResearchJob?.revisionKey === researchRevisionKey ? openedResearchJob : null}
               client={research}
               revisionId={savedRevision?.revision_id ?? null}
             />,

@@ -293,7 +293,6 @@ test.describe("J3 research + jobs", () => {
     // The row itself must be clickable (button semantics or row click
     // handler); a row that cannot be opened is the gap.
     // Journey gap: https://github.com/d4rk-pri0r/krellbot/issues/102
-    test.fail(true, "https://github.com/d4rk-pri0r/krellbot/issues/102");
     await row.click({ timeout: 10_000 });
 
     // Whatever surface opens, it must show the SAME metrics Research

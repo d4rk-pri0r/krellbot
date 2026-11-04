@@ -84,9 +84,10 @@ function isNonemptyString(value: unknown): value is string {
 
 export type JobsDrawerProps = {
   client?: JobsClient;
+  onOpenResult?: (jobId: string) => void;
 };
 
-export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
+export function JobsDrawer({ client, onOpenResult }: JobsDrawerProps = {}): JSX.Element {
   const [open, setOpen] = useState(false);
   const [jobs, setJobs] = useState<JobRow[] | null>(null);
   const [error, setError] = useState<{ blocked: boolean; detail: string } | null>(null);
@@ -313,6 +314,20 @@ export function JobsDrawer({ client }: JobsDrawerProps = {}): JSX.Element {
                       className="kbot-jobs__row"
                       data-testid="job-row"
                       tabIndex={0}
+                      role={onOpenResult && job.kind === "research.backtest" && job.state === "succeeded" ? "button" : undefined}
+                      aria-label={onOpenResult && job.kind === "research.backtest" && job.state === "succeeded" ? `Open research result ${job.id}` : undefined}
+                      onClick={() => {
+                        if (onOpenResult && job.kind === "research.backtest" && job.state === "succeeded") {
+                          closeAndRefocusTrigger();
+                          onOpenResult(job.id);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+                          event.preventDefault();
+                          event.currentTarget.click();
+                        }
+                      }}
                     >
                       <span className="kbot-jobs__id">{job.id}</span>{" "}
                       <span className="kbot-jobs__kind">
