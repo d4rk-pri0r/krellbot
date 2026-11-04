@@ -95,18 +95,33 @@ export function adaptRehearsalStatus(
 }
 
 async function getStatus(): Promise<RehearsalStatus> {
-  const response = await fetch("/api/v1/rehearsal/status", {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      "X-Krellbot-CSRF": getCsrf(),
-    },
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error("rehearsal status read timed out after 15000ms"));
+      controller.abort();
+    }, 15000);
   });
-  if (!response.ok) {
-    throw new Error(`rehearsal status failed: ${response.status}`);
+  try {
+    const response = await Promise.race([
+      fetch("/api/v1/rehearsal/status", {
+        method: "GET",
+        credentials: "include",
+        headers: { "X-Krellbot-CSRF": getCsrf() },
+        signal: controller.signal,
+      }),
+      deadline,
+    ]);
+    if (!response.ok) {
+      throw new Error(`rehearsal status failed: ${response.status}`);
+    }
+    // The same deadline covers both headers and JSON body consumption.
+    const raw = await Promise.race([response.json(), deadline]) as Record<string, unknown>;
+    return adaptRehearsalStatus(raw);
+  } finally {
+    clearTimeout(timer);
   }
-  const raw = (await response.json()) as Record<string, unknown>;
-  return adaptRehearsalStatus(raw);
 }
 
 async function postCommand(
