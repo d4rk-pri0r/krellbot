@@ -492,6 +492,9 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     expect(callArg.feeBps).toBe(10);
     expect(callArg.fromMs).toBe(0);
     expect(callArg.toMs).toBe(9999999999999);
+    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    expect(screen.getByTestId("editor-revision-id").textContent).toContain("rev-new");
+    expect(screen.getByTestId("editor-revision-id").textContent).toContain("Validated");
     expect(callArg.packPath === undefined || callArg.packPath === "").toBe(
       true,
     );

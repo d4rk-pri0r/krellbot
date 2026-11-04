@@ -122,6 +122,39 @@ async function flushEffects(): Promise<void> {
 }
 
 describe("WorkstationShell — saved strategy library", () => {
+  it.each(["Home", "Research"])("retains unsaved label edits across %s navigation without saving", async (destination) => {
+    const strategy = makeStrategyClient();
+    render(<WorkstationShell strategyClient={strategy} paperClient={makePaperClient()} researchClient={makeResearchClient()} />);
+    expect(screen.queryByLabelText(/^label$/i)).toBeNull();
+    openStrategiesView();
+    fireEvent.change(labelInput(), { target: { value: "Keep my unsaved draft" } });
+    fireEvent.click(screen.getByRole("button", { name: destination }));
+    expect(screen.queryByLabelText(/^label$/i)).toBeNull();
+    openStrategiesView();
+    expect(labelInput().value).toBe("Keep my unsaved draft");
+    expect(strategy.create).not.toHaveBeenCalled();
+    expect(strategy.edit).not.toHaveBeenCalled();
+    expect(strategy.validate).not.toHaveBeenCalled();
+    expect(strategy.arm).not.toHaveBeenCalled();
+    await flushEffects();
+  });
+
+  it("retains incomplete raw JSON exactly across navigation and still permits an explicit new draft", async () => {
+    renderShell();
+    openStrategiesView();
+    const bytes = '  {"label": "unfinished",\n "entry": [';
+    fireEvent.change(rawJsonTextarea(), { target: { value: bytes } });
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    expect(screen.queryByLabelText(/raw json/i)).toBeNull();
+    openStrategiesView();
+    expect(rawJsonTextarea().value).toBe(bytes);
+    fireEvent.click(screen.getByRole("button", { name: "Library" }));
+    await screen.findByTestId("library-new-owned-strategy");
+    fireEvent.click(screen.getByTestId("library-new-owned-strategy"));
+    expect(rawJsonTextarea().value).toBe("");
+    await flushEffects();
+  });
+
   it("keeps the library hidden until the Library toggle is pressed", async () => {
     renderShell();
     openStrategiesView();
