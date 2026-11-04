@@ -17,7 +17,10 @@ Security: [SECURITY.md](SECURITY.md)
 ## Install
 
 ```sh
-# macOS / Linux
+# Linux
+curl -fsSL https://krellbot.dev/api/install?os=linux | sh
+
+# macOS
 curl -fsSL https://krellbot.dev/api/install?os=mac | sh
 
 # Windows (PowerShell)
