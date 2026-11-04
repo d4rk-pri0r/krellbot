@@ -16,6 +16,18 @@ Security: [SECURITY.md](SECURITY.md)
 
 ## Install
 
+For a new Linux **paper workstation**, use [Build and run the current
+workstation](#build-and-run-the-current-workstation), including its prerequisites,
+then [Arm your first paper strategy](#arm-your-first-paper-strategy). No exchange
+account, API keys, or paid pack is needed.
+
+The frozen Linux installer below currently supplies **0.9.4**, not current main.
+Its legacy dashboard opens, but arming a DSL pack fails because the archive is
+missing `krellbot/pack/schema.json`; it also lacks the React workstation. Until
+a corrected release is published, use the source route for paper deployment.
+The commands below remain the frozen-release route, not a workaround for that
+missing file. Minimal Linux images need CA certificates, curl and unzip first.
+
 ```sh
 # macOS / Linux
 curl -fsSL https://krellbot.dev/api/install?os=mac | sh
@@ -116,6 +128,30 @@ exchange keys. New research jobs retain their status and completed results under
 `interrupted`; they never resume automatically. Submit a new run to retry.
 The older `krellbot ui` command below serves the legacy dashboard,
 not the workstation.
+
+### Arm your first paper strategy
+
+With the workstation running on `127.0.0.1:8765`:
+
+1. Open **Strategies**, choose a free starter example, then **Save** and
+   **Validate**. These examples ship with the public source checkout.
+2. In the paper-arm form, use venue `kraken` and starting paper balance `1000`,
+   then click **Arm**. This is simulated cash, not an exchange deposit.
+3. Open **Operations**: the deployment must say `paper` and `active`, and live
+   trading must remain disabled. **Workstation** also shows the armed paper row.
+4. In a second terminal, from the source checkout, verify with
+   `uv run --no-sync krellbot status`. Use this installed project executable,
+   not an older frozen `krellbot` launcher elsewhere on PATH.
+
+A research run is optional before arming. If you want an offline demonstration,
+[paper trading](docs/paper.md) documents the public repository pack/candle
+fixtures; demonstration fixture results are not market performance.
+
+On a headless machine without a persistent OS keychain, `krellbot doctor` can
+exit nonzero with keychain, missing-key, scheduler or stale-tick warnings and
+`install_ready=false` / `trading_ready=false`. These diagnostics do not require
+you to add keys for paper use. Verify paper readiness with the armed row and
+status above; do not use the Exchange wizard or load credentials for this path.
 
 ### Private access from your Tailscale devices
 
