@@ -197,6 +197,32 @@ export function WorkstationShell({
     researchDetachedRef.current = document.createElement("div");
     researchDetachedRef.current.setAttribute("data-kbot-research-portal", "");
   }
+  // Keep unsaved editor state just as Research keeps its in-flight form.
+  // The stable portal is detached while inactive, so hidden editor controls
+  // do not remain in the document, tab order or accessibility tree.
+  const [hasEverVisitedEditor, setHasEverVisitedEditor] = useState(false);
+  const editorHostRef = useRef<HTMLDivElement | null>(null);
+  const pendingEditorReset = useRef(false);
+  const editorDetachedRef = useRef<HTMLDivElement | null>(null);
+  if (editorDetachedRef.current === null && typeof document !== "undefined") {
+    editorDetachedRef.current = document.createElement("div");
+  }
+  useEffect(() => {
+    const detached = editorDetachedRef.current;
+    if (!detached) return;
+    if (active === "strategies") {
+      const host = editorHostRef.current;
+      if (host && detached.parentNode !== host) host.appendChild(detached);
+      setHasEverVisitedEditor(true);
+      if (pendingEditorReset.current) {
+        pendingEditorReset.current = false;
+        setEditorEpoch((epoch) => epoch + 1);
+      }
+    } else if (detached.parentNode !== null) {
+      detached.parentNode.removeChild(detached);
+    }
+  }, [active, savedRevision]);
+
   const researchRevisionKey = savedRevision?.revision_id ?? "__none__";
 
   useEffect(() => {
@@ -499,6 +525,12 @@ export function WorkstationShell({
   const showStudioControls = studioHasPack && !plainWorkload;
 
   const handleSaveExecution = useCallback(async (): Promise<void> => {
+    const acceptStudioRevision = (revision: LoadedRevision): void => {
+      setSavedRevision(revision);
+      // Apply explicit Studio replacements when the Editor is next visible,
+      // avoiding hidden remounts and their optional catalogue/status reads.
+      pendingEditorReset.current = true;
+    };
     setStudioSaveError(null);
     setStudioSaveOutcome(null);
     if (!savedRevision || !workingPack) {
@@ -537,7 +569,7 @@ export function WorkstationShell({
           state: existingState,
           bytes: JSON.stringify(outcome.pack),
         };
-        setSavedRevision(existingRevision);
+        acceptStudioRevision(existingRevision);
         setStudioRevisionId(outcome.revisionId);
         setStudioSaveOutcome(
           `Selected existing revision ${outcome.revisionId}`,
@@ -550,7 +582,7 @@ export function WorkstationShell({
               state: validated.state,
               bytes: JSON.stringify(validated.pack ?? outcome.pack),
             };
-            setSavedRevision(validatedRevision);
+            acceptStudioRevision(validatedRevision);
           } catch {
             // best-effort
           }
@@ -563,7 +595,7 @@ export function WorkstationShell({
           state: "draft",
           bytes: JSON.stringify(outcome.pack),
         };
-        setSavedRevision(nextRevision);
+        acceptStudioRevision(nextRevision);
         setStudioRevisionId(outcome.revisionId);
         setStudioSaveOutcome(`Saved new revision ${outcome.revisionId}`);
         try {
@@ -573,7 +605,7 @@ export function WorkstationShell({
             state: validated.state,
             bytes: JSON.stringify(validated.pack ?? outcome.pack),
           };
-          setSavedRevision(validatedRevision);
+          acceptStudioRevision(validatedRevision);
         } catch {
           // validation is best-effort here; the new revision id is
           // surfaced either way so the e2e can drive the assertion.
@@ -589,7 +621,7 @@ export function WorkstationShell({
         state: "draft",
         bytes: JSON.stringify(outcome.pack),
       };
-      setSavedRevision(nextRevision);
+      acceptStudioRevision(nextRevision);
       setStudioRevisionId(outcome.revisionId);
       setStudioSaveOutcome(`Saved revision ${outcome.revisionId}`);
       try {
@@ -599,7 +631,7 @@ export function WorkstationShell({
           state: validated.state,
           bytes: JSON.stringify(validated.pack ?? outcome.pack),
         };
-        setSavedRevision(validatedRevision);
+        acceptStudioRevision(validatedRevision);
       } catch {
         // best-effort
       }
@@ -699,21 +731,7 @@ export function WorkstationShell({
                 onCopyAsNew={handleLibraryCopyAsNew}
               />
             ) : null}
-            <Editor
-              key={`editor-${editorEpoch}`}
-              client={client}
-              paperClient={defaultWorkstationPaperClient}
-              initial={savedRevision ?? undefined}
-              copiedDraft={copiedDraft ?? undefined}
-              onRevision={(summary, bytes) => {
-                setSavedRevision({
-                  revision_id: summary.revision_id,
-                  state: summary.state,
-                  bytes,
-                });
-                setEditedPack(null);
-              }}
-            />
+            <div ref={editorHostRef} data-testid="editor-host" />
             <StrategyExplanation
               bytes={savedRevision?.bytes ?? ""}
               revisionId={savedRevision?.revision_id ?? null}
@@ -893,6 +911,26 @@ export function WorkstationShell({
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
       />
+      {hasEverVisitedEditor && editorDetachedRef.current
+        ? createPortal(
+            <Editor
+              key={`editor-${editorEpoch}`}
+              client={client}
+              paperClient={defaultWorkstationPaperClient}
+              initial={savedRevision ?? undefined}
+              copiedDraft={copiedDraft ?? undefined}
+              onRevision={(summary, bytes) => {
+                setSavedRevision({
+                  revision_id: summary.revision_id,
+                  state: summary.state,
+                  bytes,
+                });
+                setEditedPack(null);
+              }}
+            />,
+            editorDetachedRef.current,
+          )
+        : null}
       {hasEverVisitedResearch && researchDetachedRef.current
         ? createPortal(
             <ResearchView
