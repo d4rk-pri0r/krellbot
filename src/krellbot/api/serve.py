@@ -21,6 +21,7 @@ Server and joins the thread; the daemon flag is the backstop.
 
 from __future__ import annotations
 
+import os
 import secrets
 import socket
 import threading
@@ -104,6 +105,10 @@ class WorkstationServer:
             return
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
+            if os.name != "nt":
+                # Allow an ordinary fixed-port restart after browser keep-alive
+                # sockets enter TIME_WAIT. Windows reuse semantics differ.
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind((_BIND_HOST, self._requested_port))
         except OSError:
             sock.close()
