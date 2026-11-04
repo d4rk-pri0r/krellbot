@@ -46,10 +46,13 @@ function freshId(base: string): string {
   const slug = base
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 23);
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  return `${slug || "strategy"}-copy-${suffix}`.slice(0, ID_MAX);
+    .replace(/^-+|-+$/g, "");
+  // Reserve the random suffix before truncating the human-readable prefix.
+  // Truncating the assembled id discarded all randomness for long origins.
+  const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 20);
+  const marker = "-copy-";
+  const prefix = (slug || "strategy").slice(0, ID_MAX - marker.length - suffix.length);
+  return `${prefix}${marker}${suffix}`;
 }
 
 export function copyOriginLabel(origin: OwnedCopyOrigin): string {
