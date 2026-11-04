@@ -105,7 +105,6 @@ test("J6.4 A backtest that was running when the workstation stopped shows as int
   await page.getByRole("button",{name:"Jobs",exact:true}).click();
   const retained=page.getByTestId("kbot-jobs-dialog").getByTestId("job-row").filter({hasText:jobId});
   // Journey gap: https://github.com/d4rk-pri0r/krellbot/issues/104
-  test.fail(true, "https://github.com/d4rk-pri0r/krellbot/issues/104");
   await expect(retained,"interrupted job must not disappear").toBeVisible({timeout:10_000});
   await expect(retained.locator(".kbot-jobs__state")).toHaveText(/interrupted/i);
 });

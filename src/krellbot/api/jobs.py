@@ -30,6 +30,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from krellbot.paths import atomic_write
+
 SCHEMA_VERSION = "1"
 
 DATASET_CATALOG_FILENAME = "datasets.json"
@@ -43,8 +45,9 @@ JOB_STATE_CANCELLING = "cancelling"
 JOB_STATE_CANCELLED = "cancelled"
 JOB_STATE_SUCCEEDED = "succeeded"
 JOB_STATE_FAILED = "failed"
+JOB_STATE_INTERRUPTED = "interrupted"
 
-JOB_STATES_TERMINAL = frozenset({JOB_STATE_SUCCEEDED, JOB_STATE_FAILED, JOB_STATE_CANCELLED})
+JOB_STATES_TERMINAL = frozenset({JOB_STATE_SUCCEEDED, JOB_STATE_FAILED, JOB_STATE_CANCELLED, JOB_STATE_INTERRUPTED})
 JOB_STATES_CANCEL = frozenset({JOB_STATE_RUNNING, JOB_STATE_CANCELLING})
 
 JOB_ERROR_QUEUE_FULL = "queue_full"
@@ -405,6 +408,42 @@ class JobManager:
         self._stop = threading.Event()
         self._worker: threading.Thread | None = None
         self._worker_started = False
+        self._restore_jobs()
+
+    def _persist_job(self, internal: _InternalJob) -> None:
+        """Persist observable evidence, never a request to replay on restart."""
+        directory = self._home / "research-jobs"
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        payload = {"job": internal.job.to_dict(), "result": internal.result}
+        atomic_write(directory / f"{internal.id}.json", json.dumps(payload).encode("utf-8"))
+
+    def _restore_jobs(self) -> None:
+        records = []
+        for path in (self._home / "research-jobs").glob("*.json"):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            job = JobV1(**payload["job"])
+            internal = _InternalJob(
+                id=job.id,
+                kind=job.kind,
+                correlation_id=job.correlation_id,
+                created_at=job.created_at,
+                job=job,
+                result=payload["result"],
+            )
+            if job.state not in JOB_STATES_TERMINAL:
+                job.state = JOB_STATE_INTERRUPTED
+                job.finished_at = _now_iso()
+                job.result_ref = None
+                job.error = {
+                    "code": "interrupted",
+                    "message": "Workstation stopped before the job finished; submit a new run to retry.",
+                }
+                internal.result = None
+                self._persist_job(internal)
+            records.append(internal)
+        for internal in sorted(records, key=lambda record: record.created_at):
+            self._jobs[internal.id] = internal
+        # No recovered job is queued or started; only a new explicit submission runs.
 
     # ---- public ----------------------------------------------------------
 
@@ -476,6 +515,7 @@ class JobManager:
                     payload={"state": JOB_STATE_QUEUED, "kind": kind},
                 )
 
+            self._persist_job(internal)
             snapshot = internal.snapshot()
 
         self._wake.set()
@@ -541,6 +581,7 @@ class JobManager:
                 internal.job.state = JOB_STATE_CANCELLED
                 internal.job.finished_at = _now_iso()
                 internal.job.result_ref = None
+                self._persist_job(internal)
                 self._events.append(
                     kind=EVENT_KIND_JOB_CHANGED,
                     subject_id=internal.id,
@@ -553,6 +594,7 @@ class JobManager:
 
             if internal.job.state == JOB_STATE_RUNNING:
                 internal.job.state = JOB_STATE_CANCELLING
+                self._persist_job(internal)
                 self._events.append(
                     kind=EVENT_KIND_JOB_CHANGED,
                     subject_id=internal.id,
@@ -603,6 +645,7 @@ class JobManager:
                     self._queue_order.pop(0)
                     internal.job.state = JOB_STATE_CANCELLED
                     internal.job.finished_at = _now_iso()
+                    self._persist_job(internal)
                     self._events.append(
                         kind=EVENT_KIND_JOB_CHANGED,
                         subject_id=internal.id,
@@ -621,6 +664,7 @@ class JobManager:
             self._running_id = next_id
             internal.job.state = JOB_STATE_RUNNING
             internal.job.started_at = _now_iso()
+            self._persist_job(internal)
             self._events.append(
                 kind=EVENT_KIND_JOB_CHANGED,
                 subject_id=internal.id,
@@ -698,6 +742,7 @@ class JobManager:
     def _finalize_state(self, internal: _InternalJob, state: str) -> None:
         internal.job.state = state
         internal.job.finished_at = _now_iso()
+        self._persist_job(internal)
         self._events.append(
             kind=EVENT_KIND_JOB_CHANGED,
             subject_id=internal.id,
@@ -709,6 +754,7 @@ class JobManager:
         internal.job.finished_at = _now_iso()
         internal.job.result_ref = None
         internal.job.error = None
+        self._persist_job(internal)
         self._events.append(
             kind=EVENT_KIND_JOB_CHANGED,
             subject_id=internal.id,
@@ -720,6 +766,7 @@ class JobManager:
         internal.job.finished_at = _now_iso()
         internal.job.result_ref = None
         internal.job.error = {"code": code, "message": message}
+        self._persist_job(internal)
         self._events.append(
             kind=EVENT_KIND_JOB_CHANGED,
             subject_id=internal.id,

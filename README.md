@@ -111,7 +111,10 @@ KRELLBOT_ENABLE_LIVE=0 uv run --no-sync krellbot workstation --port 8765
 
 Open `http://127.0.0.1:8765/`. Start in Strategies, pick a free starter example,
 Save, then Validate. Research accepts a local candle CSV; paper mode needs no
-exchange keys. The older `krellbot ui` command below serves the legacy dashboard,
+exchange keys. New research jobs retain their status and completed results under
+`$KRELLBOT_HOME/research-jobs/`. After a restart, unfinished jobs appear as
+`interrupted`; they never resume automatically. Submit a new run to retry.
+The older `krellbot ui` command below serves the legacy dashboard,
 not the workstation.
 
 ### Private access from your Tailscale devices
