@@ -38,12 +38,13 @@ The site installer downloads a per-user, one-directory frozen release,
 verifies its SHA-256 digest before staging anything, and writes the
 launcher next to your shell's `PATH`.
 
-On macOS or Linux:
+Choose the endpoint for your OS; `os=mac` is not a Linux installer:
 
 ```sh
-curl -fsSL https://krellbot.dev/api/install?os=mac | sh
-# or
+# Linux
 curl -fsSL https://krellbot.dev/api/install?os=linux | sh
+# macOS
+curl -fsSL https://krellbot.dev/api/install?os=mac | sh
 ```
 
 On Windows (PowerShell):
