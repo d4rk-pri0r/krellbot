@@ -101,12 +101,43 @@ place keys, paper state, the journal, and receipts live.
 ## Build and run the current workstation
 
 The source checkout includes the React workstation (Studio, Library, Research,
-Operations and paper deployment). Build it before starting the service:
+Operations and paper deployment). This is a source installation, separate from
+the frozen release above. It requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/),
+Python 3.13 (uv can download it), and Node.js 24 with npm. Use the CI-tested
+Python version explicitly: an unqualified `uv sync` on a machine without
+Python can select a newer interpreter whose locked dependencies lack wheels.
+
+On Ubuntu 24.04, install ordinary OS utilities first (as an administrator):
+
+```sh
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git xz-utils
+```
+
+Then, as your normal user, install missing development prerequisites. If you
+already have uv and Node.js 24 on PATH, skip this block. These are upstream
+installers, not Krellbot binaries; [nvm](https://github.com/nvm-sh/nvm) installs
+Node and npm per user:
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm install 24
+uv --version
+node --version
+npm --version
+```
+
+Build the frontend before starting the service. Run these commands in the
+same shell (or reload your uv/nvm PATH in a new shell):
 
 ```sh
 git clone https://github.com/d4rk-pri0r/krellbot
 cd krellbot
-uv sync --frozen --group dev
+uv sync --frozen --group dev --python 3.13
 npm --prefix frontend ci --include=dev
 npm --prefix frontend run build
 KRELLBOT_ENABLE_LIVE=0 uv run --no-sync krellbot workstation --port 8765
