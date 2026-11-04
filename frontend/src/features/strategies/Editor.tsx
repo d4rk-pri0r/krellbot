@@ -240,6 +240,9 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
   const handleRawJsonChange = (text: string): void => {
     invalidatePendingFileRead();
     setRawJson(text);
+    // Only deliberate raw-input intent refreshes the readable form; a
+    // blanket effect would erase partial/invalid form typing on rerender.
+    setOwnedForm(readOwnedStrategy(parsePack(text)));
     if (importError !== null) {
       setImportError(null);
     }
