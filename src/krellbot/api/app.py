@@ -30,6 +30,7 @@ from krellbot.api.security import (
     is_loopback_host,
     is_loopback_origin,
 )
+from krellbot.api.tailnet import TailnetAccess
 from krellbot.application import alerts as alerts_app
 from krellbot.application import live_gate
 from krellbot.application import operations as operations_view_app
@@ -499,6 +500,7 @@ def create_app(
     bootstrap_token: str,
     runner: Callable | None = None,
     dist_dir: Path | None = None,
+    tailnet_access: TailnetAccess | None = None,
 ) -> FastAPI:
     state = _AppState(
         home=Path(home),
@@ -543,7 +545,7 @@ def create_app(
     _static.register(
         app,
         _resolve_dist_dir(dist_dir),
-        bootstrap_token=lambda: None if state.bootstrap_used else bootstrap_token,
+        bootstrap_token=lambda: None if state.bootstrap_used or tailnet_access else bootstrap_token,
     )
 
     @app.middleware("http")
@@ -552,6 +554,9 @@ def create_app(
         if not is_loopback_host(host, port=port):
             return JSONResponse({"detail": "loopback only"}, status_code=403)
         return await call_next(request)
+
+    if tailnet_access is not None:
+        tailnet_access.install(app, state.sessions, port=port, dist_dir=_resolve_dist_dir(dist_dir))
 
     @app.post("/api/v1/session/bootstrap")
     async def bootstrap(request: Request) -> Response:

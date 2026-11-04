@@ -1923,6 +1923,8 @@ def cmd_workstation(args):
 
     port = 0
     dist_dir: Path | None = None
+    tailscale_origin: str | None = None
+    tailscale_user: str | None = None
     do_open = False
     i = 0
     while i < len(args):
@@ -1933,6 +1935,14 @@ def cmd_workstation(args):
             except ValueError:
                 print(f"invalid --port: {args[i + 1]}", file=sys.stderr)
                 return 2
+            i += 2
+            continue
+        if a == "--tailscale-origin" and i + 1 < len(args):
+            tailscale_origin = args[i + 1]
+            i += 2
+            continue
+        if a == "--tailscale-user" and i + 1 < len(args):
+            tailscale_user = args[i + 1]
             i += 2
             continue
         if a == "--dist" and i + 1 < len(args):
@@ -1957,7 +1967,17 @@ def cmd_workstation(args):
         )
         return 2
 
-    server = WorkstationServer(home=kb_paths.home(), port=port, dist_dir=dist_dir)
+    try:
+        server = WorkstationServer(
+            home=kb_paths.home(),
+            port=port,
+            dist_dir=dist_dir,
+            tailscale_origin=tailscale_origin,
+            tailscale_user=tailscale_user,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     server.start()
 
     if do_open:
