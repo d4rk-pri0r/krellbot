@@ -95,6 +95,49 @@ installer's README has the exact `PATH` line per shell.
 `$KRELLBOT_HOME` is independent of the install path and is the only
 place keys, paper state, the journal, and receipts live.
 
+## Build and run the current workstation
+
+The source checkout includes the React workstation (Studio, Library, Research,
+Operations and paper deployment). Build it before starting the service:
+
+```sh
+git clone https://github.com/d4rk-pri0r/krellbot
+cd krellbot
+uv sync --frozen --group dev
+npm --prefix frontend ci --include=dev
+npm --prefix frontend run build
+KRELLBOT_ENABLE_LIVE=0 uv run --no-sync krellbot workstation --port 8765
+```
+
+Open `http://127.0.0.1:8765/`. Start in Strategies, pick a free starter example,
+Save, then Validate. Research accepts a local candle CSV; paper mode needs no
+exchange keys. The older `krellbot ui` command below serves the legacy dashboard,
+not the workstation.
+
+### Private access from your Tailscale devices
+
+For an always-on workstation, keep the backend on loopback and let
+[Tailscale Serve](https://tailscale.com/kb/1312/serve) provide tailnet-only HTTPS:
+
+```sh
+KRELLBOT_ENABLE_LIVE=0 uv run --no-sync krellbot workstation --port 8765 \
+  --tailscale-origin https://your-machine.your-tailnet.ts.net \
+  --tailscale-user you@example.com
+tailscale serve --bg http://127.0.0.1:8765
+```
+
+Use your actual machine's HTTPS origin and the exact login name from Tailscale.
+Open that URL on a device signed into that account, then click **Log in with
+Tailscale**. Each browser gets its own session; no separate Krellbot password is
+stored or shared. Reopen the URL to log in again after a service restart.
+
+Both options are required together. Only the configured user, origin and
+loopback proxy are accepted. Tailscale Serve removes spoofed identity headers;
+never expose the backend directly or use Funnel. Tagged devices have no user
+identity and cannot use this owner-login flow. Existing session, CSRF and
+live-order refusal checks still apply. Without these options, the workstation
+retains its original loopback-only bootstrap behavior.
+
 ## Commands
 
 ```

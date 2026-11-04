@@ -29,6 +29,8 @@ from pathlib import Path
 
 import uvicorn
 
+from krellbot.api.tailnet import TailnetAccess
+
 _BIND_HOST = "127.0.0.1"
 
 
@@ -74,7 +76,10 @@ class WorkstationServer:
         *,
         port: int = 0,
         dist_dir: Path | None = None,
+        tailscale_origin: str | None = None,
+        tailscale_user: str | None = None,
     ) -> None:
+        self._tailnet_access = TailnetAccess.from_options(tailscale_origin, tailscale_user)
         self._home = Path(home)
         self._requested_port = int(port)
         self._dist_dir = Path(dist_dir) if dist_dir is not None else None
@@ -119,6 +124,7 @@ class WorkstationServer:
             port=self.bound_port,
             bootstrap_token=bootstrap_token,
             dist_dir=self._dist_dir,
+            tailnet_access=self._tailnet_access,
         )
         self.bootstrap_token = bootstrap_token
 
@@ -127,6 +133,7 @@ class WorkstationServer:
             host=_BIND_HOST,
             port=self.bound_port,
             log_level="warning",
+            proxy_headers=False,
         )
         server = uvicorn.Server(config)
         self._server = server
