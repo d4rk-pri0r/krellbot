@@ -2,6 +2,21 @@
 
 The client is free. It runs on your computer. It does not hold your money.
 
+## Start with paper (no exchange credentials)
+
+For the current Linux workstation, follow the [README source installation and
+prerequisites](../README.md#build-and-run-the-current-workstation), then
+[arm a free starter strategy](../README.md#arm-your-first-paper-strategy).
+The frozen Linux 0.9.4 release described below opens the legacy dashboard but
+cannot arm DSL packs: its archive omits `krellbot/pack/schema.json`. It is not
+current main and does not contain the React workstation. Use the documented
+source route rather than copying files into that frozen release.
+
+Paper mode needs neither an exchange account nor a key or paid license. Skip
+the exchange-key instructions and legacy Exchange wizard below for paper.
+Headless/keychain warnings in `doctor` are not a request to load credentials;
+verify your paper deployment in Operations and `krellbot status`.
+
 ## What an API key is
 
 An API key is a password your exchange gives to a program. Krellbot uses it to ask Kraken what to do. The key stays in a file on your machine. krellbot.dev never receives it.
