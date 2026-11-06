@@ -58,6 +58,7 @@ POSIX modes:
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 import zipfile
 from pathlib import Path
@@ -76,6 +77,15 @@ _EXE_WINDOWS = "krellbot.exe"
 # Its presence proves the build bundled the static assets at the
 # packaged path (not the checkout).
 _STATIC_REL = Path("static") / "index.html"
+
+# Required runtime package data. `krellbot.pack.lint` reads the schema
+# through `importlib.resources.files("krellbot.pack")`, so the frozen
+# one-dir bundle must contain this file. v0.9.4 and v0.9.5 omitted it on
+# every native platform, which broke paper arm at first use. The first-use
+# smoke proves it at runtime; this check also refuses to zip an incomplete
+# tree. PyInstaller 6.x puts package data under `_internal/`; the root
+# layout is accepted for older PyInstaller versions.
+_PACK_SCHEMA_REL = Path("krellbot") / "pack" / "schema.json"
 
 # Fixed ZIP timestamp — gives deterministic zip output for identical
 # inputs. PyInstaller-built executables embed their own timestamps, so
@@ -97,6 +107,8 @@ def _validate_dist(dist: Path, *, os_tag: str) -> None:
     Refuses:
       * a missing executable (`krellbot` on POSIX, `krellbot.exe` on Windows)
       * a missing `static/index.html` (bundled UI assets)
+      * a missing or invalid `krellbot/pack/schema.json` (runtime pack
+        validation data; v0.9.4/v0.9.5 shipped without it)
       * symlinks whose target resolves outside the validated dist root
       * any member whose path is absolute or contains `..` segments
 
@@ -135,6 +147,30 @@ def _validate_dist(dist: Path, *, os_tag: str) -> None:
             f"required payload missing: {_STATIC_REL.as_posix()} "
             f"(looked under: {searched})"
         )
+
+    # The pack schema is loaded at runtime through importlib.resources.
+    # A one-dir bundle without it fails every lint/arm with
+    # FileNotFoundError on the user's first paper attempt. Refuse to
+    # archive that tree rather than publish a bundle the smoke will
+    # (correctly) reject.
+    schema_candidates = [
+        dist / _PACK_SCHEMA_REL,
+        dist / "_internal" / _PACK_SCHEMA_REL,
+    ]
+    schema = next((p for p in schema_candidates if p.is_file()), None)
+    if schema is None:
+        searched = ", ".join(str(p.relative_to(dist)) for p in schema_candidates)
+        raise FileNotFoundError(
+            f"required runtime data missing: {_PACK_SCHEMA_REL.as_posix()} "
+            f"(looked under: {searched})"
+        )
+    try:
+        json.loads(schema.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"required runtime data is not valid JSON: {schema.relative_to(dist)}: "
+            f"{type(exc).__name__}"
+        ) from exc
 
     resolved_dist = dist.resolve()
     for member in dist.rglob("*"):
