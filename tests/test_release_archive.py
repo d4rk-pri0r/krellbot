@@ -36,6 +36,9 @@ def _fake_dist_one_dir(dist: Path, *, exe_bytes: bytes = b"fake executable") -> 
     static = dist / "static"
     static.mkdir()
     (static / "index.html").write_text("local", encoding="utf-8")
+    schema = dist / "_internal" / "krellbot" / "pack" / "schema.json"
+    schema.parent.mkdir(parents=True)
+    schema.write_text('{"type": "object"}', encoding="utf-8")
 
 
 # ---------- happy path ----------
@@ -175,6 +178,55 @@ def test_missing_static_index_is_refused(tmp_path):
         )
 
 
+def test_missing_bundled_pack_schema_is_refused(tmp_path):
+    """A dist tree without the runtime pack schema is refused.
+
+    v0.9.4 and v0.9.5 shipped without ``krellbot/pack/schema.json`` in
+    every native archive. The frozen first-use smoke catches that at
+    runtime; archive validation also refuses the incomplete tree so a
+    broken bundle cannot even be zipped once the smoke is wired.
+    """
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / _EXE_NAME).write_bytes(b"x")
+    (dist / "static").mkdir()
+    (dist / "static" / "index.html").write_text("local", encoding="utf-8")
+    out = tmp_path / "out.zip"
+    with pytest.raises((FileNotFoundError, ValueError)):
+        build_archive(
+            dist,
+            out,
+            version="0.9.6",
+            platform_tag="linux",
+            arch="x86_64",
+            url="https://example.com/out.zip",
+        )
+    assert not out.exists()
+
+
+def test_invalid_bundled_pack_schema_is_refused(tmp_path):
+    """A present but non-JSON schema is not accepted as bundled data."""
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / _EXE_NAME).write_bytes(b"x")
+    (dist / "static").mkdir()
+    (dist / "static" / "index.html").write_text("local", encoding="utf-8")
+    schema = dist / "_internal" / "krellbot" / "pack" / "schema.json"
+    schema.parent.mkdir(parents=True)
+    schema.write_text("{not json", encoding="utf-8")
+    out = tmp_path / "out.zip"
+    with pytest.raises((FileNotFoundError, ValueError)):
+        build_archive(
+            dist,
+            out,
+            version="0.9.6",
+            platform_tag="linux",
+            arch="x86_64",
+            url="https://example.com/out.zip",
+        )
+    assert not out.exists()
+
+
 # ---------- platform / arch allowlist ----------
 
 
@@ -258,6 +310,9 @@ def test_windows_accepts_dotexe_executable(tmp_path):
     (dist / _WINDOWS_EXE_NAME).write_bytes(b"x")
     (dist / "static").mkdir()
     (dist / "static" / "index.html").write_text("local", encoding="utf-8")
+    schema = dist / "_internal" / "krellbot" / "pack" / "schema.json"
+    schema.parent.mkdir(parents=True)
+    schema.write_text('{"type": "object"}', encoding="utf-8")
     out = tmp_path / "out.zip"
     result = build_archive(
         dist,

@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from fakes.fake_kraken import FakeKrakenTransport
 
 from krellbot.venues.base import (
@@ -36,6 +37,8 @@ from krellbot.venues.base import (
     KeyProbeOutcome,
     KeyProbeResult,
 )
+
+pytestmark = pytest.mark.usefixtures("live_capable_release")
 
 KRAKEN_TEST_KEY = "FAKE_KEY_FOR_KRAKEN_TESTS"
 KRAKEN_TEST_SECRET_B64 = "kQH5HW/8p1uGOVjbgWA7FunAmGO8lsSUXNsu3eow76sz84Q18fWxnyRzBHCd3pd5nE9qa99HAZtuZuj6F1huXg=="

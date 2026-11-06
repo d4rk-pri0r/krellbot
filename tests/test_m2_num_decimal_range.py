@@ -207,8 +207,9 @@ def test_research_service_just_below_bound_is_unclamped(fresh_home: Path, tmp_pa
 def test_ordinary_receipt_is_byte_identical_to_base(fresh_home: Path, tmp_path: Path):
     """The 400-row zig-zag at cash 10000 must hash to the pinned base SHA.
 
-    Computed at base ``01a1229``. The engine and metrics are now byte-
-    identical to base for sub-1e20 inputs, so the receipt must match.
+    Computed at base ``01a1229`` (engine version 0.9.5). Release-version
+    metadata is checked separately, then only that field is normalized to
+    the pinned base. All engine, data, metrics and equity bytes must match.
     """
     csv_path = tmp_path / "zz400.csv"
     _write_zigzag(csv_path, 400)
@@ -229,7 +230,13 @@ def test_ordinary_receipt_is_byte_identical_to_base(fresh_home: Path, tmp_path: 
         )
     )
     assert result.ok is True, result
-    body = canonical_receipt_bytes(result.legacy_receipt)
+    from krellbot import __version__
+
+    assert result.legacy_receipt is not None
+    assert result.legacy_receipt["engine_version"] == __version__
+    # Keep the original numeric/data golden hash, not a new observed digest.
+    baseline_receipt = {**result.legacy_receipt, "engine_version": "0.9.5"}
+    body = canonical_receipt_bytes(baseline_receipt)
     digest = hashlib.sha256(body).hexdigest()
     assert digest == PINNED_BASE_SHA256, (digest, len(body))
 

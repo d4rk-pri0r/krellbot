@@ -23,12 +23,15 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from fakes.live_grant import write_grant
 
 from krellbot.config import ArmedPack, Config, save_config
 from krellbot.pack.model import Candle
 from krellbot.storage.database import OperationalStore
 from krellbot.venues.base import Balance, Fill, KeyPerms, OpenOrder, OrderRef, PairRules, Truth
+
+pytestmark = pytest.mark.usefixtures("live_capable_release")
 
 # ---------------------------------------------------------------------------
 # Fake venue that exposes the outbox state to the test.

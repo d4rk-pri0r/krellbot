@@ -32,6 +32,17 @@ def _load_frozen_main_module():
     return module
 
 
+def test_installed_preview_smoke_expects_current_release_version():
+    """The installed-payload smoke must not reject the declared release."""
+    import re
+
+    from krellbot import __version__
+
+    smoke = FROZEN_MAIN.with_name("ci_smoke_installed_preview.mjs").read_text(encoding="utf-8")
+    expected_version_check = f"/^{re.escape(__version__)}\\s*$/"
+    assert expected_version_check in smoke
+
+
 def test_frozen_main_module_imports_entry_from_krellbot_cli():
     """Static check: the module wires `from krellbot.cli import entry` directly."""
     module = _load_frozen_main_module()

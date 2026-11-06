@@ -9,7 +9,7 @@ publish workflow may exist at all. This test pins three invariants:
 2. ``.github/workflows/release-frozen.yml`` still fires on ``v*`` tags
    and its publish job still gates on ``refs/tags/v`` and passes
    ``--prerelease`` to ``gh release create``.
-3. The engine version literal (``0.9.5``) agrees across the package
+3. The engine version literal (``0.9.6``) agrees across the package
    metadata, the lockfile, the package ``__version__``, and the
    workflow's ``KRELLBOT_VERSION:`` env.
 
@@ -116,9 +116,9 @@ def test_release_frozen_still_fires_on_v_tags() -> None:
 
 
 def test_version_literals_agree() -> None:
-    """All four engine-version literals must equal ``"0.9.5"``.
+    """All four engine-version literals must equal ``"0.9.6"``.
 
-    The workstation preview tag is ``v0.9.5``; the engine literal
+    The workstation preview tag is ``v0.9.6``; the engine literal
     moves with it. Any other version in any of these four files
     fails the test so the diff cannot ship with a stale pin.
     """
@@ -126,14 +126,14 @@ def test_version_literals_agree() -> None:
     pyproject = _read_text(PYPROJECT)
     match_pyproject = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
     assert match_pyproject is not None, 'pyproject.toml must declare `version = "..."`'
-    assert match_pyproject.group(1) == "0.9.5", (
-        f"pyproject.toml version must be 0.9.5; got {match_pyproject.group(1)!r}"
+    assert match_pyproject.group(1) == "0.9.6", (
+        f"pyproject.toml version must be 0.9.6; got {match_pyproject.group(1)!r}"
     )
 
     # Read the krellbot __version__ from the package source.
     import krellbot  # local import keeps this test self-contained
 
-    assert krellbot.__version__ == "0.9.5", f"krellbot.__version__ must be 0.9.5; got {krellbot.__version__!r}"
+    assert krellbot.__version__ == "0.9.6", f"krellbot.__version__ must be 0.9.6; got {krellbot.__version__!r}"
 
     lock = _read_text(UV_LOCK)
     match_lock = re.search(
@@ -143,9 +143,9 @@ def test_version_literals_agree() -> None:
     assert match_lock is not None, (
         'uv.lock must contain a `[[package]] name = "krellbot"` entry with a `version = "..."` line'
     )
-    assert match_lock.group(1) == "0.9.5", f"uv.lock krellbot version must be 0.9.5; got {match_lock.group(1)!r}"
+    assert match_lock.group(1) == "0.9.6", f"uv.lock krellbot version must be 0.9.6; got {match_lock.group(1)!r}"
 
     workflow = _read_text(RELEASE_WORKFLOW)
     match_wf = re.search(r'^\s*KRELLBOT_VERSION:\s*"([^"]+)"', workflow, re.MULTILINE)
     assert match_wf is not None, 'release-frozen.yml must declare `KRELLBOT_VERSION: "..."`'
-    assert match_wf.group(1) == "0.9.5", f"release-frozen.yml KRELLBOT_VERSION must be 0.9.5; got {match_wf.group(1)!r}"
+    assert match_wf.group(1) == "0.9.6", f"release-frozen.yml KRELLBOT_VERSION must be 0.9.6; got {match_wf.group(1)!r}"

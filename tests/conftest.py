@@ -35,3 +35,18 @@ def home(monkeypatch, tmp_path):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
     return tmp_path
+
+
+@pytest.fixture
+def live_capable_release(monkeypatch):
+    """Test-only simulation of a future owner-approved live-capable release.
+
+    v0.9.6 ships paper-only (see ``krellbot.release_policy``). Legacy
+    live-mechanics suites opt into this fixture so the dormant live code
+    stays covered and the documented re-enable seam is exercised. No
+    environment variable, config file, or UI control can do this.
+    """
+    from krellbot import release_policy
+
+    monkeypatch.setattr(release_policy, "PAPER_ONLY_RELEASE", False)
+    return release_policy

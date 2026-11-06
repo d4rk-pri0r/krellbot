@@ -15,6 +15,8 @@ import pytest
 
 from krellbot.application import live_gate
 
+pytestmark = pytest.mark.usefixtures("live_capable_release")
+
 # ---------------------------------------------------------------------------
 # Shared constants and fixture-style helpers
 # ---------------------------------------------------------------------------
@@ -397,6 +399,8 @@ def test_live_status_shape_with_no_files(tmp_path: Path) -> None:
     assert result == {
         "schema_version": "1",
         "live_enabled": False,
+        "release_policy": "live_allowed",
+        "release_policy_code": live_gate.CODE_OK,
         "authorized": [],
         "kill_switch": {"engaged": False, "reason": None, "engaged_at": None},
         "promotion_available": False,

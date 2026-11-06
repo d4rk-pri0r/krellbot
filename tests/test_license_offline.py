@@ -12,6 +12,10 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("live_capable_release")
+
 
 def _write_pack(home: Path, name: str = "sma_cross.json") -> Path:
     """Write a valid DSL pack file under KRELLBOT_HOME/packs/."""

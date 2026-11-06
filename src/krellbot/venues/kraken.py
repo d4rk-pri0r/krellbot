@@ -26,7 +26,7 @@ from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 from typing import Any, Protocol
 
-from krellbot import journal, paths, sanitize
+from krellbot import journal, paths, release_policy, sanitize
 from krellbot.venues.base import (
     Balance,
     Fill,
@@ -276,6 +276,7 @@ class KrakenVenue:
         )
 
     def place_entry_with_stop(self, coid: str, qty: Decimal, stop: Decimal, *, pair: str) -> OrderRef:
+        release_policy.ensure_live_orders_allowed()
         if not pair:
             raise ValueError("kraken entry requires a pair")
         existing = self._existing(coid)
@@ -298,6 +299,7 @@ class KrakenVenue:
         return self._place(ADD_ORDER, form, coid=coid, side="buy", qty=lot, stop=price)
 
     def place_exit(self, coid: str, qty: Decimal, *, pair: str) -> OrderRef:
+        release_policy.ensure_live_orders_allowed()
         if not pair:
             raise ValueError("kraken exit requires a pair")
         existing = self._existing(coid)
@@ -317,6 +319,7 @@ class KrakenVenue:
         return self._place(ADD_ORDER, form, coid=coid, side="sell", qty=lot, stop=None)
 
     def cancel_stops(self, pair: str) -> None:
+        release_policy.ensure_live_orders_allowed()
         # Refuse to cancel the whole account. Cancel open orders tagged as stop
         # for this pair, by txid; the doc lists cancelOrder for one txid.
         snapshot = self.snapshot()
@@ -325,6 +328,7 @@ class KrakenVenue:
                 self._private("CancelOrder", {"txid": order.id})
 
     def raise_stop(self, pair: str, new_stop: Decimal) -> None:
+        release_policy.ensure_live_orders_allowed()
         rules = self.rules(pair)
         price = _quantize_price(new_stop, rules.price_decimals)
         snapshot = self.snapshot()

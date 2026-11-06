@@ -1,5 +1,22 @@
 # Live trading
 
+## v0.9.6 is paper-only
+
+This release refuses every live order send regardless of environment,
+stored keys, authorization files, or live state armed before an upgrade.
+`KRELLBOT_ENABLE_LIVE=1` and a valid `live-authorization.json` do not change
+that: the gate refuses with `live_disabled_paper_only_release` before it
+reads either. Real-venue entry, exit, cancel, and stop-edit methods fail
+closed the same way. Paper trading and every read-only operation (status,
+snapshots, key permission checks) keep working.
+
+This is temporary, not a permanent removal. Live trading returns only
+through an owner-approved code/release change that sets
+`PAPER_ONLY_RELEASE = False` in `src/krellbot/release_policy.py`; there is
+no environment variable, config file, or UI switch for it.
+
+The rest of this document describes the dormant live implementation.
+
 Live mode runs a pack against the real venue. The local engine still owns
 the lifecycle — licensing, locking, journaling, and stop placement — but
 orders hit the exchange. Live mode is off by default and requires a typed

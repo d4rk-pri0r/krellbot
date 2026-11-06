@@ -19,6 +19,8 @@ from krellbot.venues.kraken import (
     sign,
 )
 
+pytestmark = pytest.mark.usefixtures("live_capable_release")
+
 KRAKEN_TEST_KEY = "FAKE_KEY_FOR_KRAKEN_TESTS"
 KRAKEN_TEST_SECRET = "kQH5HW/8p1uGOVjbgWA7FunAmGO8lsSUXNsu3eow76sz84Q18fWxnyRzBHCd3pd5nE9qa99HAZtuZuj6F1huXg=="
 

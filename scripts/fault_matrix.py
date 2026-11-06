@@ -810,6 +810,14 @@ def _child_live_refused_env_one_no_grant(home: Path) -> int:
 def _child_live_outbox_commit_before_send(home: Path) -> int:
     """Live arm, env=1, grant written by parent. The fake reads ops.sqlite
     at send time and records whether a sent:false, mode:live row existed."""
+    # The harness drives the dormant live path with a scripted fake venue.
+    # v0.9.6 ships paper-only; simulate the future owner-approved
+    # live-capable release here, as the test suite's ``live_capable_release``
+    # fixture does. This is not reachable from any product entry point.
+    from krellbot import release_policy
+
+    release_policy.PAPER_ONLY_RELEASE = False
+
     spy = Spy(home / SPY_FILENAME)
     pack_path = _write_pack(home)
     _arm_live(home, pack_path)

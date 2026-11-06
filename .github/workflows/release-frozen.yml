@@ -12,6 +12,7 @@ on:
       - "tests/test_release_archive.py"
       - "tests/test_frozen_main.py"
       - "tests/test_ci_smoke_ui.py"
+      - "tests/test_ci_smoke_frozen_paper.py"
   push:
     tags: ["v*"]
 
@@ -39,7 +40,8 @@ jobs:
             archive_name: krellbot-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
     env:
-      KRELLBOT_VERSION: "0.9.5"
+      PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
+      KRELLBOT_VERSION: "0.9.6"
       # Pass the immutable release base URL through from the repo
       # variable explicitly so the fail-closed verification step
       # always has the variable available. If the repo variable is
@@ -84,7 +86,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run unit tests
-        run: uv run pytest -q tests/test_release_archive.py tests/test_frozen_main.py tests/test_ci_smoke_ui.py
+        run: uv run pytest -q tests/test_release_archive.py tests/test_frozen_main.py tests/test_ci_smoke_ui.py tests/test_ci_smoke_frozen_paper.py
         env:
           PYTHONUTF8: "1"
 
@@ -140,7 +142,7 @@ jobs:
         shell: bash
         env:
           KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
-          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+          PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
         run: |
           set -euo pipefail
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
@@ -174,7 +176,7 @@ jobs:
         shell: bash
         env:
           KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
-          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+          PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
         run: |
           set -euo pipefail
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
@@ -231,7 +233,7 @@ jobs:
         shell: bash
         env:
           KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
-          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+          PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
         run: |
           set -euo pipefail
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
@@ -244,6 +246,51 @@ jobs:
             --port 0 \
             --home "${{ runner.temp }}/krellbot-home" \
             --log workstation_smoke.log
+
+      - name: "Frozen paper first-use smoke (native)"
+        # The release gate that the v0.9.4/v0.9.5 workflows lacked. It
+        # executes the actual PyInstaller one-dir bundle after copying it
+        # outside the checkout, with a fresh isolated home and a stripped
+        # credential/PYTHONPATH environment. The helper proves the frozen
+        # runtime can validate a supplied example pack (bundled
+        # krellbot/pack/schema.json), paper-arm it, report status, disarm,
+        # serve the *built* workstation shell (404 shell_not_built fails),
+        # and hard-refuse a live arm with KRELLBOT_ENABLE_LIVE=1 as
+        # paper-only. A missing bundled pack/schema.json fails phase 1 at
+        # runtime, not by inspecting an inventory. Publish depends on this
+        # build matrix, so a failure here blocks the release.
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            BIN="dist/krellbot/krellbot.exe"
+          else
+            BIN="dist/krellbot/krellbot"
+          fi
+          # Bash on Windows is Git Bash; Python/uv are already on PATH.
+          # The helper copies the bundle into the workdir, so the runtime
+          # executes from outside the checkout. It sets its own isolated
+          # KRELLBOT_HOME / HOME / keyring backend and never reads CI
+          # credentials even if the runner happens to export them.
+          uv run python scripts/ci_smoke_frozen_paper.py \
+            --binary "$BIN" \
+            --home "${{ runner.temp }}/krellbot-frozen-paper-home" \
+            --workdir "${{ runner.temp }}/krellbot-frozen-paper-work" \
+            --pack docs/example-pack.json
+
+      - name: "Preserve frozen paper first-use evidence"
+        # Always upload the helper's log and staged runtime diagnostics,
+        # including the failing platform. Release evidence must survive a
+        # failed smoke so the missing resource/refusal can be diagnosed
+        # without re-running a native build.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frozen-paper-smoke-${{ matrix.platform_tag }}-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/krellbot-frozen-paper-work/frozen-paper-smoke.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Install Chromium for native Windows installed-app qualification
         if: matrix.os == 'windows-latest'

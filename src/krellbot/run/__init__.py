@@ -153,7 +153,9 @@ def arm_pack(
     if mode == "live":
         gate_result = live_gate.check_live_send(home, venue=venue, pair=pair)
         if not gate_result.ok:
-            if gate_result.code == live_gate.CODE_LIVE_DISABLED:
+            if gate_result.code == live_gate.CODE_PAPER_ONLY_RELEASE:
+                print(f"live refused: {gate_result.message}", flush=True)
+            elif gate_result.code == live_gate.CODE_LIVE_DISABLED:
                 print("live is off; set KRELLBOT_ENABLE_LIVE=1 to arm a live pack", flush=True)
             else:
                 print(f"live refused: {gate_result.code}", flush=True)

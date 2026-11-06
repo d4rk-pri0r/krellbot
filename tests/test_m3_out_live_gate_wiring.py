@@ -37,6 +37,8 @@ from krellbot.config import ArmedPack, Config, save_config
 from krellbot.pack.model import Candle
 from krellbot.venues.base import Balance, Fill, KeyPerms, OpenOrder, OrderRef, PairRules, Truth
 
+pytestmark = pytest.mark.usefixtures("live_capable_release")
+
 # ---------------------------------------------------------------------------
 # Spy venue: every attribute access and method call is recorded.
 # ---------------------------------------------------------------------------
