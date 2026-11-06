@@ -1,13 +1,16 @@
-"""Gap detection: refuse a series that is missing more than 1% of its bars.
+"""Event-time order validation and gap detection for candle series.
 
 expected = (last_ts - first_ts) / tf_ms + 1. If (expected - actual) / expected
 > 0.01, the error names the pair and the missing count, unless the caller
 passed `allow_gaps=True`.
+Adjacent decreasing timestamps always refuse, including with `allow_gaps=True`.
+Equal timestamps retain the existing duplicate behavior.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from itertools import pairwise
 
 from krellbot.pack.model import Candle
 
@@ -15,7 +18,7 @@ from .candles import TF_MS
 
 
 class GapError(ValueError):
-    """Raised when a candle series is missing more than 1% of its bars."""
+    """Raised for decreasing timestamps or more than 1% missing bars."""
 
 
 def check_gaps(
@@ -26,7 +29,7 @@ def check_gaps(
     pair: str = "",
     allow_gaps: bool = False,
 ) -> None:
-    """Raise `GapError` if the series has more than 1% missing bars.
+    """Raise `GapError` for decreasing timestamps or more than 1% missing bars.
 
     `now_ms` is optional; when given, the expected count treats the most
     recent bar as the one whose `ts_ms + tf_ms` <= now_ms. When not given,
@@ -36,6 +39,12 @@ def check_gaps(
     if not candles:
         return
     tf_ms = TF_MS[tf]
+    for index, (previous, current) in enumerate(pairwise(candles), start=1):
+        if previous.ts_ms > current.ts_ms:
+            raise GapError(
+                f"event-time order refusal: pair={pair!r} tf={tf} index={index} "
+                f"previous_ts={previous.ts_ms} ts={current.ts_ms}"
+            )
     first = candles[0].ts_ms
     last = candles[-1].ts_ms
     expected = (last - first) // tf_ms + 1
