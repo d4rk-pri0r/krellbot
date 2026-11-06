@@ -82,7 +82,7 @@ try {
   } else {
     check('Application launcher installed', existsSync(path.join(env.XDG_DATA_HOME, 'applications', 'krellbot.desktop')));
   }
-  check('Installed version command runs without developer Python', /^0\.9\.5\s*$/.test(run(path.join(installed, exeName), ['--version'], env)));
+  check('Installed version command runs without developer Python', /^0\.9\.6\s*$/.test(run(path.join(installed, exeName), ['--version'], env)));
   const capturedUrl = path.join(evidence, 'opened-url.txt');
   const captureScript = path.join(evidence, 'capture-browser.mjs');
   writeFileSync(captureScript, `import {writeFileSync} from 'node:fs'; writeFileSync(${JSON.stringify(capturedUrl)}, process.argv[2]);\n`);
