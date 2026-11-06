@@ -84,14 +84,20 @@ def _redact_string(s: str) -> str:
 
 
 def redact(value):
-    """Walk value, replacing registered strings and privileged-key values with '***'."""
+    """Redact registered strings in values/string keys and mask privileged values.
+
+    Privileged matching uses the original key. Scrubbed-key collisions use
+    normal dict last-assignment semantics, retaining the first key position.
+    """
     if isinstance(value, dict):
         out = {}
         for k, v in value.items():
-            if k in _PRIVILEGED_KEYS:
-                out[k] = "***"
+            privileged = k in _PRIVILEGED_KEYS
+            redacted_key = _redact_string(k) if isinstance(k, str) else k
+            if privileged:
+                out[redacted_key] = "***"
             else:
-                out[k] = redact(v)
+                out[redacted_key] = redact(v)
         return out
     if isinstance(value, list):
         return [redact(v) for v in value]
