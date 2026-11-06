@@ -40,6 +40,7 @@ jobs:
             archive_name: krellbot-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
     env:
+      PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
       KRELLBOT_VERSION: "0.9.6"
       # Pass the immutable release base URL through from the repo
       # variable explicitly so the fail-closed verification step
@@ -141,7 +142,7 @@ jobs:
         shell: bash
         env:
           KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
-          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+          PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
         run: |
           set -euo pipefail
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
@@ -175,7 +176,7 @@ jobs:
         shell: bash
         env:
           KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
-          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+          PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
         run: |
           set -euo pipefail
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
@@ -232,7 +233,7 @@ jobs:
         shell: bash
         env:
           KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
-          PYTHONKEYRING_BACKEND: keyring.backends.fail.Keyring
+          PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
         run: |
           set -euo pipefail
           if [ "${{ matrix.os }}" = "windows-latest" ]; then

@@ -282,9 +282,36 @@ def test_child_env_strips_credentials_pythonpath_and_real_home(tmp_path):
     assert env["HOME"] == str(home)
     assert env["USERPROFILE"] == str(home)
     assert env["KRELLBOT_ENABLE_LIVE"] == "0"
-    assert env["PYTHONKEYRING_BACKEND"] == "keyring.backends.fail.Keyring"
+    assert env["PYTHON_KEYRING_BACKEND"] == "keyring.backends.fail.Keyring"
     assert env["PATH"] == base["PATH"]
     assert env["LANG"] == "C.UTF-8"
+
+
+def test_child_env_forces_fail_backend_selected_by_keyring(tmp_path, monkeypatch):
+    import keyring.core
+
+    module = _load_helper()
+    for inherited in (None, "keyring.backends.null.Keyring"):
+        base = {"PYTHONKEYRING_BACKEND": "keyring.backends.null.Keyring"}
+        if inherited is not None:
+            base["PYTHON_KEYRING_BACKEND"] = inherited
+        env = module._child_env(base, tmp_path / "home")
+        # Exercise the installed library's actual environment selection, not
+        # get_keyring(), which could discover a real OS keychain on failure.
+        with monkeypatch.context() as scoped:
+            scoped.setattr(os, "environ", env)
+            backend = keyring.core.load_env()
+        assert backend is not None, "keyring ignored the helper's backend override"
+        assert type(backend).__module__ == "keyring.backends.fail"
+        assert "PYTHONKEYRING_BACKEND" not in env
+
+
+def test_workflow_forces_fail_keyring_for_every_build_step():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    build_env = re.search(r"^    env:\n(?:^      .*\n)+", text, re.MULTILINE)
+    assert build_env is not None
+    assert "      PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring\n" in build_env.group()
+    assert "PYTHONKEYRING_BACKEND:" not in text
 
 
 def test_child_env_enables_live_only_when_explicitly_requested(tmp_path):

@@ -6,7 +6,7 @@ isolated home. Nothing in this helper imports application modules or reads
 the checkout's resources at runtime; the binary is copied into a scratch
 runtime directory and launched with a stripped environment.
 
-The gate has five phases, all mandatory:
+The gate has six phases, all mandatory:
 
 1. ``validate`` — ``krellbot lint <example pack>`` exits 0 and prints
    ``ok``. This reads the bundled ``krellbot/pack/schema.json`` through
@@ -111,6 +111,8 @@ _DROP_PYTHON_VARS = frozenset(
         "PYTHONSTARTUP",
         "PYTHONUSERBASE",
         "PYTHONEXECUTABLE",
+        "PYTHONKEYRING_BACKEND",
+        "PYTHON_KEYRING_BACKEND",
     }
 )
 
@@ -155,7 +157,7 @@ def _child_env(
     keep["XDG_CACHE_HOME"] = str(home / ".cache")
     keep["KRELLBOT_HOME"] = str(home)
     keep["KRELLBOT_ENABLE_LIVE"] = enable_live
-    keep["PYTHONKEYRING_BACKEND"] = "keyring.backends.fail.Keyring"
+    keep["PYTHON_KEYRING_BACKEND"] = "keyring.backends.fail.Keyring"
     keep["PYTHONUNBUFFERED"] = "1"
     keep["PYTHONDONTWRITEBYTECODE"] = "1"
     keep["PYTHONNOUSERSITE"] = "1"
