@@ -15,7 +15,9 @@ The body is first written to a separate temp directory, then validated:
 
 Any refusal raises `kb_community.InstallPayloadError` *before* any
 `os.replace` to the destination, so a previous install file (if any) is
-left unchanged. On success the staged file is renamed into
+left unchanged. The requested pack id is validated first: it must be a
+single path segment, because it names both the staged file and the
+installed file. On success the staged file is renamed into
 `<home>/packs/community/<pack_id>.json` via a single `os.replace`, which
 is atomic on POSIX.
 """
@@ -126,6 +128,26 @@ def _validate_raw_json_identity(body: bytes, pack_id: str) -> None:
         )
 
 
+def _validate_pack_id(pack_id: str) -> None:
+    """Refuse a requested id that is not exactly one path segment.
+
+    The id names both the staged file and the installed file, so any
+    separator or parent reference would let the write escape the
+    staging and install directories. Raises the typed
+    `kb_community.InstallPayloadError` before either directory is
+    touched.
+    """
+    from krellbot import community as kb_community
+
+    # Both separators are refused regardless of host OS: a backslash id is
+    # a literal name on POSIX but a path separator on Windows, and a
+    # drive-relative id ("C:pack") has no separator at all yet still
+    # names a location outside the staging/install directories there.
+    windows_drive = len(pack_id) >= 2 and pack_id[1] == ":" and pack_id[0].isalpha()
+    if "\x00" in pack_id or "/" in pack_id or "\\" in pack_id or windows_drive or pack_id in {".", ".."}:
+        raise kb_community.InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+
+
 def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
     """Stage `body` in a temp dir, validate, atomic-rename to install dir.
 
@@ -142,6 +164,7 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
     """
     from krellbot import community as kb_community
 
+    _validate_pack_id(pack_id)
     if not isinstance(body, (bytes, bytearray)):
         raise kb_community.InstallPayloadError(f"community pack body must be bytes, got {type(body).__name__}")
     if len(body) > MAX_BODY_BYTES:
