@@ -25,6 +25,8 @@ from krellbot.venues.coinbase import (
     detect_key,
 )
 
+pytestmark = pytest.mark.usefixtures("live_capable_release")
+
 # ---- helpers --------------------------------------------------------------
 
 

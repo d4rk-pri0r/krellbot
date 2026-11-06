@@ -1068,6 +1068,7 @@ class CandleFetchError(RuntimeError):
 
 
 LIVE_TICK_REFUSED = "live is off; set KRELLBOT_ENABLE_LIVE=1 to tick a live pack"
+PAPER_ONLY_TICK_REFUSED = "v0.9.6 is paper-only; live tick refused"
 
 
 def _default_fetch(venue: str, pair: str, tf: str, transport):
@@ -1247,6 +1248,8 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
 
     gate_result = kb_live_gate.check_live_send(home, venue=armed.venue, pair=armed.pair)
     if not gate_result.ok:
+        if gate_result.code == kb_live_gate.CODE_PAPER_ONLY_RELEASE:
+            return PAPER_ONLY_TICK_REFUSED
         if gate_result.code == kb_live_gate.CODE_LIVE_DISABLED:
             return LIVE_TICK_REFUSED
         return f"live refused: {gate_result.code}"
@@ -1286,6 +1289,8 @@ def _build_live_venue_for_offline(armed, *, transport):
     home = kb_paths.home()
     gate_result = kb_live_gate.check_live_send(home, venue=armed.venue, pair=armed.pair)
     if not gate_result.ok:
+        if gate_result.code == kb_live_gate.CODE_PAPER_ONLY_RELEASE:
+            return PAPER_ONLY_TICK_REFUSED
         if gate_result.code == kb_live_gate.CODE_LIVE_DISABLED:
             return LIVE_TICK_REFUSED
         return f"live refused: {gate_result.code}"

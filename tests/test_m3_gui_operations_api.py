@@ -311,7 +311,9 @@ def test_operations_disabled_when_no_live_env(home: Path, monkeypatch) -> None:
     assert dep["pair"] == "SUIUSD", dep
     assert dep["mode"] == "paper", dep
     assert dep["promotion"]["available"] is False, dep["promotion"]
-    assert dep["promotion"]["code"] == "live_disabled", dep["promotion"]
+    # v0.9.6 is paper-only, so the gate refuses before the env check.
+    assert dep["promotion"]["code"] == "live_disabled_paper_only_release", dep["promotion"]
+    assert decoded["live"]["release_policy"] == "paper_only", decoded["live"]
 
     raw = body.decode("utf-8")
     forbidden = ("cap", "stop", "starting_cash", "owned_qty", "pack_path", "pack_sha256")
@@ -336,8 +338,8 @@ def test_operations_preserves_live_mode_for_seeded_live_row(home: Path, monkeypa
     assert len(decoded["deployments"]) == 1
     dep = decoded["deployments"][0]
     assert dep["mode"] == "live", dep
-    # live_enabled is False (env unset), promotion.code must be live_disabled
-    assert dep["promotion"]["code"] == "live_disabled", dep["promotion"]
+    # The stored live row is preserved verbatim but cannot send in v0.9.6.
+    assert dep["promotion"]["code"] == "live_disabled_paper_only_release", dep["promotion"]
     assert decoded["live"]["live_enabled"] is False
 
 
@@ -360,7 +362,7 @@ def _post_command(app, csrf, session_value, body):
 
 
 def test_promote_refuses_when_live_disabled(home: Path, monkeypatch) -> None:
-    """Env unset -> live_disabled; spy transport never called; config untouched."""
+    """Paper-only release refuses first; spy transport never called; config untouched."""
     monkeypatch.delenv("KRELLBOT_ENABLE_LIVE", raising=False)
     token = _bootstrap_token(home)
     app = _build_app(home, bootstrap_token=token)
@@ -372,7 +374,8 @@ def test_promote_refuses_when_live_disabled(home: Path, monkeypatch) -> None:
     s, _h, body, _c = _post_command(app, csrf, session, _promote_payload(None))
     assert s == 200, (s, body)
     decoded = json.loads(body)
-    assert decoded["code"] == "live_disabled", decoded
+    assert decoded["code"] == "live_disabled_paper_only_release", decoded
+    assert "v0.9.6" in decoded["message"], decoded
     assert decoded["ok"] is False, decoded
     assert decoded["effect"] == "refused", decoded
     assert decoded["venue"] == "kraken"
@@ -382,7 +385,7 @@ def test_promote_refuses_when_live_disabled(home: Path, monkeypatch) -> None:
 
 
 def test_promote_refuses_when_no_grant(home: Path, monkeypatch) -> None:
-    """Env "1" with no operator grant -> live_not_authorized."""
+    """Env "1" without a grant still refuses with the paper-only release code."""
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
     token = _bootstrap_token(home)
     app = _build_app(home, bootstrap_token=token)
@@ -394,14 +397,14 @@ def test_promote_refuses_when_no_grant(home: Path, monkeypatch) -> None:
     s, _h, body, _c = _post_command(app, csrf, session, _promote_payload("1"))
     assert s == 200, (s, body)
     decoded = json.loads(body)
-    assert decoded["code"] == "live_not_authorized", decoded
+    assert decoded["code"] == "live_disabled_paper_only_release", decoded
     assert decoded["ok"] is False, decoded
     transport.send.assert_not_called()
     assert _config_bytes(home) == cfg_before
 
 
 def test_promote_refuses_owner_deferred_with_grant(home: Path, monkeypatch) -> None:
-    """Env "1" with a hand-written grant -> live_promotion_owner_deferred."""
+    """Env "1" with a hand-written grant -> paper-only refusal (never promotes)."""
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
     _write_operator_grant(home)
     token = _bootstrap_token(home)
@@ -414,14 +417,14 @@ def test_promote_refuses_owner_deferred_with_grant(home: Path, monkeypatch) -> N
     s, _h, body, _c = _post_command(app, csrf, session, _promote_payload("1"))
     assert s == 200, (s, body)
     decoded = json.loads(body)
-    assert decoded["code"] == "live_promotion_owner_deferred", decoded
+    assert decoded["code"] == "live_disabled_paper_only_release", decoded
     assert decoded["ok"] is False, decoded
     transport.send.assert_not_called()
     assert _config_bytes(home) == cfg_before
 
 
 def test_promote_refuses_when_kill_engaged(home: Path, monkeypatch) -> None:
-    """With kill engaged, promote returns kill_switch_engaged."""
+    """With kill engaged, the paper-only policy still refuses before the kill read."""
     from krellbot.application import live_gate
 
     monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
@@ -438,7 +441,7 @@ def test_promote_refuses_when_kill_engaged(home: Path, monkeypatch) -> None:
     s, _h, body, _c = _post_command(app, csrf, session, _promote_payload("1"))
     assert s == 200, (s, body)
     decoded = json.loads(body)
-    assert decoded["code"] == "kill_switch_engaged", decoded
+    assert decoded["code"] == "live_disabled_paper_only_release", decoded
     assert decoded["ok"] is False, decoded
     transport.send.assert_not_called()
     assert _config_bytes(home) == cfg_before

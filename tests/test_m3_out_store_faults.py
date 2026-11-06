@@ -34,6 +34,8 @@ from krellbot.storage.database import (
     StoreFull,
 )
 
+pytestmark = pytest.mark.usefixtures("live_capable_release")
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------

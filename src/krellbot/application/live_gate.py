@@ -1,6 +1,12 @@
 """Operator-owned live authorization gate and kill switch.
 
-Live order paths require THREE things, all of them true:
+This release (v0.9.6) is paper-only. ``check_live_send`` therefore refuses
+before it reads any operator state: no environment variable, authorization
+file, kill-switch release, or stored key can enable a live send. The
+policy lives in :mod:`krellbot.release_policy` and is temporary; an
+owner-approved code/release change is the only way to re-enable live.
+
+When live is re-enabled, order paths require THREE things, all of them true:
 
 1. ``KRELLBOT_ENABLE_LIVE`` is exactly the string ``"1"``.
 2. The operator-written authorization record under
@@ -24,6 +30,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from krellbot import release_policy
 from krellbot.paths import atomic_write
 
 SCHEMA_VERSION = "1"
@@ -35,6 +42,7 @@ CODE_KILL_SWITCH = "kill_switch_engaged"
 CODE_LIVE_DISABLED = "live_disabled"
 CODE_LIVE_NOT_AUTHORIZED = "live_not_authorized"
 CODE_PROMOTION_DEFERRED = "live_promotion_owner_deferred"
+CODE_PAPER_ONLY_RELEASE = release_policy.CODE_PAPER_ONLY_RELEASE
 
 
 @dataclass(frozen=True)
@@ -240,6 +248,8 @@ def check_live_send(
     now: int | None = None,
 ) -> LiveGateResult:
     """Authorize (or refuse) a single live send."""
+    if release_policy.paper_only_release_active():
+        return _refusal(CODE_PAPER_ONLY_RELEASE, release_policy.paper_only_message())
     if kill_state(home).engaged:
         return _refusal(CODE_KILL_SWITCH, "kill switch engaged; live send refused")
     if _resolve_env(env, "KRELLBOT_ENABLE_LIVE") != "1":
@@ -284,9 +294,12 @@ def live_status(
 ) -> dict[str, object]:
     """Return a read-only snapshot of every gate input for the UI."""
     grants = sorted(read_authorization(home, now=_resolve_now(now)))
+    paper_only = release_policy.paper_only_release_active()
     return {
         "schema_version": SCHEMA_VERSION,
-        "live_enabled": _resolve_env(env, "KRELLBOT_ENABLE_LIVE") == "1",
+        "live_enabled": (not paper_only) and _resolve_env(env, "KRELLBOT_ENABLE_LIVE") == "1",
+        "release_policy": "paper_only" if paper_only else "live_allowed",
+        "release_policy_code": CODE_PAPER_ONLY_RELEASE if paper_only else CODE_OK,
         "authorized": [{"venue": v, "pair": p} for v, p in grants],
         "kill_switch": kill_state(home).to_dict(),
         "promotion_available": False,

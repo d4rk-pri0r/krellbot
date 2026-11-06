@@ -26,7 +26,7 @@ from typing import Any, Protocol
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 
-from krellbot import sanitize
+from krellbot import release_policy, sanitize
 from krellbot.venues.base import (
     Balance,
     Fill,
@@ -246,6 +246,7 @@ class CoinbaseVenue:
         )
 
     def place_entry_with_stop(self, coid: str, qty: Decimal, stop: Decimal, *, pair: str) -> OrderRef:
+        release_policy.ensure_live_orders_allowed()
         if coid in self._recent:
             return self._recent[coid]
         product = pair or self._product_id
@@ -307,6 +308,7 @@ class CoinbaseVenue:
         return ref
 
     def place_exit(self, coid: str, qty: Decimal, *, pair: str) -> OrderRef:
+        release_policy.ensure_live_orders_allowed()
         product = pair or self._product_id
         if not product:
             raise ValueError("coinbase exit requires a pair")
@@ -337,6 +339,7 @@ class CoinbaseVenue:
         )
 
     def cancel_stops(self, pair: str) -> None:
+        release_policy.ensure_live_orders_allowed()
         snapshot = self.snapshot()
         for order in snapshot.open_orders:
             if order.pair == pair and order.stop_price is not None:
@@ -346,6 +349,7 @@ class CoinbaseVenue:
                 )
 
     def raise_stop(self, pair: str, new_stop: Decimal) -> None:
+        release_policy.ensure_live_orders_allowed()
         snapshot = self.snapshot()
         rules = self.rules(pair)
         price = _quantize_price(new_stop, rules.price_decimals)

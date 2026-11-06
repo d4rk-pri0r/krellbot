@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("live_capable_release")
+
 
 def _write_pack(home: Path, *, pair: str = "SUIUSD", pack_id: str = "int03") -> Path:
     body = {
