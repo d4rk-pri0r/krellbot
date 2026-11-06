@@ -8,6 +8,7 @@ Locked rules:
     * Signal on the close of bar t -> fill at the open of bar t+1
     * Stop, while long, checked on bar t before the signal fill of that bar
     * Stop, while long, fills on the triggering bar at min(stop, open) * (1 - sell_slip), before any signal fill.
+    * A fresh long is protected on its entry candle immediately after its open fill.
     * Buy fill = open * (1 + buy_slip); sell fill = open * (1 - sell_slip)
     * Fee on every fill, subtracted from cash on buys, deducted from proceeds on sells
     * Equity each bar = cash + qty * close
@@ -57,7 +58,7 @@ class BarRecord:
     cash_after: Decimal
     qty_after: Decimal
     equity: Decimal
-    fill: dict | None = None  # {side, price, qty, fee, is_stop}
+    fill: dict | None = None  # terminal fill of the bar: {side, price, qty, fee, is_stop}
 
 
 @dataclass
@@ -143,6 +144,27 @@ class Backtester:
                 if pending.side == "sell" and round_trip_open_qty is not None:
                     trade_count += 1
                     round_trip_open_qty = None
+                # A long filled at this open is protected for this candle too.
+                # The single fill slot records the terminal stop; the ledger
+                # reconciles both entry and exit without widening BarRecord.
+                if pending.side == "buy" and ledger.qty > ZERO and stop_price is not None and candle.low <= stop_price:
+                    stop_fired = True
+                    base = min(stop_price, candle.open)
+                    fill = self._execute_pending(
+                        PendingFill(side="sell", base_price=base, is_stop=True),
+                        ledger,
+                        candle.open,
+                    )
+                    fill_record = {
+                        "side": "sell",
+                        "price": fill,
+                        "qty": ledger.last_fill_qty,
+                        "fee": ledger.last_fill_fee,
+                        "is_stop": True,
+                    }
+                    trade_count += 1
+                    round_trip_open_qty = None
+                    stop_price = None
                 pending = None
 
             if not stop_fired:
