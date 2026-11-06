@@ -156,9 +156,9 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   expect(promoteResp.status()).toBe(200);
   const promoteBody = (await promoteResp.json()) as { ok: boolean; code: string };
   expect(promoteBody.ok).toBe(false);
-  expect(promoteBody.code).toBe("live_disabled");
+  expect(promoteBody.code).toBe("live_disabled_paper_only_release");
   const promoteResult = page.getByTestId("ops-promote-result-kraken-SUIUSD");
-  await expect(promoteResult).toContainText(/Refused: Live disabled/);
+  await expect(promoteResult).toContainText(/Refused:.*paper-only release/);
 
   await page.getByTestId("ops-pause-kraken-SUIUSD").click();
   await expect(
@@ -201,10 +201,12 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
     code: string;
   };
   expect(promoteBody2.ok).toBe(false);
-  expect(promoteBody2.code).toBe("kill_switch_engaged");
+  // The release policy refuses before the runtime kill gate; the kill
+  // controls themselves remain exercised above and below this request.
+  expect(promoteBody2.code).toBe("live_disabled_paper_only_release");
   await expect(
     page.getByTestId("ops-promote-result-kraken-SUIUSD"),
-  ).toContainText(/Refused: Kill switch engaged/);
+  ).toContainText(/Refused:.*paper-only release/);
 
   expect(readFileSync(configPath)).toEqual(cfgBefore);
 
