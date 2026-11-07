@@ -187,7 +187,7 @@ class ResearchService:
                 refusal=refusal,
             )
 
-        pair = self._resolve_pair(pack, request.venue)
+        pair = self._resolve_pair(pack, request.venue, request.pair)
         if pair is None:
             refusal = {
                 "code": CODE_PACK_HAS_NO_MARKET,
@@ -416,9 +416,9 @@ class ResearchService:
             return None
         return data if isinstance(data, dict) else None
 
-    def _resolve_pair(self, pack: dict, venue: str) -> str | None:
+    def _resolve_pair(self, pack: dict, venue: str, pair: str | None = None) -> str | None:
         for m in pack.get("markets") or []:
-            if m.get("venue") == venue and m.get("pair"):
+            if m.get("venue") == venue and m.get("pair") and (pair is None or m["pair"] == pair):
                 return str(m["pair"])
         return None
 
