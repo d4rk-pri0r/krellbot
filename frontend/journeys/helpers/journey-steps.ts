@@ -53,6 +53,9 @@ export async function openTechnicalJson(page: Page): Promise<Locator> {
   }
   const textarea = page.getByLabel(/raw json/i);
   await expect(textarea).toBeVisible();
+  // The editor mounts before the opened strategy document arrives; reading it
+  // immediately can capture an empty value and JSON.parse throws.
+  await expect(textarea).not.toHaveValue("", { timeout: 15_000 });
   return textarea;
 }
 
