@@ -1,8 +1,8 @@
 """Kraken public OHLC: JSON parser + OHLCVT zip import.
 
-The HTTP function `fetch_kraken_ohlc` is a thin wrapper tests never call.
-Tests pass a pre-fetched JSON object to `parse_kraken_ohlc` directly, and a
-fake zip path to `import_kraken_ohlcvt_zip`.
+The HTTP function `fetch_kraken_ohlc` uses a single request-start cutoff.
+Offline tests exercise its real parser/cache path through a synthetic TLS
+boundary response, without making exchange requests.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -41,9 +42,10 @@ OHLC_CAP = 720
 def fetch_kraken_ohlc(pair: str, tf: str) -> list[Candle]:
     """Fetch one window of Kraken OHLC. Returns up to 720 closed candles.
 
-    Network is only used here; tests must call `parse_kraken_ohlc` directly.
-    The 'last' integer in the response is ignored; the most recent array in
-    the pair key is the forming bar and is dropped after fetching.
+    Keep only bars closed at request start, before applying the 720-row tail.
+    The conservative cutoff cannot admit a still-forming response row merely
+    because it closes while the request is in flight. The 'last' cursor is
+    ignored; timestamp closure, not array position, determines eligibility.
     """
     if tf not in OHLC_TF_MINUTES:
         raise ValueError(f"kraken: unsupported timeframe {tf!r}")
@@ -52,10 +54,11 @@ def fetch_kraken_ohlc(pair: str, tf: str) -> list[Candle]:
     req = urllib.request.Request(url, headers={"user-agent": "krellbot/0.1"})
     from krellbot.tls import urlopen
 
+    cutoff_ms = time.time_ns() // 1_000_000
     with urlopen(req, timeout=20) as resp:
         body = resp.read()
     payload = json.loads(body.decode("utf-8"))
-    candles = parse_kraken_ohlc(payload, pair=pair, tf=tf)
+    candles = parse_kraken_ohlc(payload, pair=pair, now_ms=cutoff_ms, tf=tf)
     return candles[-OHLC_CAP:]
 
 
