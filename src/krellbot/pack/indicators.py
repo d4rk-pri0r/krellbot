@@ -145,9 +145,19 @@ def _vwma(candles: list[Candle], params: dict) -> list[float | None]:
         start = i - n + 1
         # Sum only the current window; subtracting expired float weights
         # retains residue that can turn unavailable volume into a signal.
-        vsum = math.fsum(vol[start : i + 1])
+        volumes = vol[start : i + 1]
+        try:
+            vsum = math.fsum(volumes)
+        except (OverflowError, ValueError):
+            vsum = sum(volumes)
         if vsum != 0.0:
-            psum = math.fsum(src[j] * vol[j] for j in range(start, i + 1))
+            products = [src[j] * vol[j] for j in range(start, i + 1)]
+            try:
+                psum = math.fsum(products)
+            except (OverflowError, ValueError):
+                # Preserve the legacy nonfinite float result at extremes,
+                # rather than introducing a new exception from fsum.
+                psum = sum(products)
             out[i] = psum / vsum
     return out
 

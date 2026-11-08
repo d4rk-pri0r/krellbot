@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict
 from decimal import Decimal
 
@@ -59,6 +60,17 @@ def test_current_window_reference_prefix_causality_and_shape(length):
         else:
             expected = float(sum(c.close * c.volume for c in window) / volume)
             assert values[i] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "volumes,closes,kind", [(["1e308", "1e308"], [1, 1], "nan"), ([1, 1], ["1e308", "1e308"], "inf")]
+)
+def test_extreme_windows_retain_float_result_instead_of_raising(volumes, closes, kind):
+    bars = _candles(volumes, closes)
+    values = compute(bars, {"fn": "vwma", "src": "close", "len": 2})
+    assert values[0] is None
+    assert isinstance(values[1], float)
+    assert math.isnan(values[1]) if kind == "nan" else math.isinf(values[1])
 
 
 def test_offline_research_and_shared_paper_trace_have_no_phantom_entry(home, monkeypatch, fresh_keyring):
