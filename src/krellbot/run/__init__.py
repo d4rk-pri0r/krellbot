@@ -542,7 +542,7 @@ def tick(
             candles = list(reader(venue, armed.pair) or [])
             latest = candles[-1] if candles else None
             bar_ts = int(latest.ts_ms) if latest is not None else 0
-            if candles and _already_journaled(home, armed.pack_id, bar_ts):
+            if candles and _already_journaled(home, armed.pack_id, bar_ts, venue=venue, pair=armed.pair):
                 continue
 
             base, _quote = _base_quote(armed.pair)
@@ -1100,7 +1100,7 @@ def _record_tick(
         pass
 
 
-def _already_journaled(home: Path, pack_id: str, bar_ts: int) -> bool:
+def _already_journaled(home: Path, pack_id: str, bar_ts: int, *, venue: str, pair: str) -> bool:
     journal_dir = Path(home) / "journal"
     if not journal_dir.is_dir():
         return False
@@ -1118,6 +1118,14 @@ def _already_journaled(home: Path, pack_id: str, bar_ts: int) -> bool:
             except json.JSONDecodeError:
                 continue
             if rec.get("kind") == "tick" and rec.get("pack") == pack_id and int(rec.get("bar_ts", 0)) == int(bar_ts):
+                recorded_venue = rec.get("venue")
+                detail = rec.get("detail")
+                recorded_pair = detail.get("pair") if isinstance(detail, dict) else None
+                # Ambiguous legacy dimensions remain conservative wildcards.
+                if isinstance(recorded_venue, str) and recorded_venue.strip() and recorded_venue != venue:
+                    continue
+                if isinstance(recorded_pair, str) and recorded_pair.strip() and recorded_pair != pair:
+                    continue
                 return True
     return False
 
