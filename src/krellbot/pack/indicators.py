@@ -141,19 +141,14 @@ def _vwma(candles: list[Candle], params: dict) -> list[float | None]:
     out: list[float | None] = [None] * len(candles)
     if n < 1 or len(src) < n:
         return out
-    psum = 0.0
-    vsum = 0.0
-    for i in range(len(src)):
-        psum += src[i] * vol[i]
-        vsum += vol[i]
-        if i >= n:
-            psum -= src[i - n] * vol[i - n]
-            vsum -= vol[i - n]
-        if i >= n - 1:
-            if vsum == 0.0:
-                out[i] = None
-            else:
-                out[i] = psum / vsum
+    for i in range(n - 1, len(src)):
+        start = i - n + 1
+        # Sum only the current window; subtracting expired float weights
+        # retains residue that can turn unavailable volume into a signal.
+        vsum = math.fsum(vol[start : i + 1])
+        if vsum != 0.0:
+            psum = math.fsum(src[j] * vol[j] for j in range(start, i + 1))
+            out[i] = psum / vsum
     return out
 
 
