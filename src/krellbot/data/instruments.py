@@ -519,11 +519,28 @@ def pairrules_from_instrument(record: InstrumentRulesV1) -> PairRules:
     derived for the existing adapter shape. Use this only after the
     record's freshness has been verified by the caller.
     """
+
+    def representable_places(field: str) -> int:
+        increment = getattr(record, field)
+        _sign, digits, exponent = Decimal(increment).as_tuple()
+        assert isinstance(exponent, int)  # InstrumentRulesV1 already validates finite, positive increments.
+        while len(digits) > 1 and digits[-1] == 0:
+            digits = digits[:-1]
+            exponent += 1
+        if digits != (1,) or exponent > 0:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                record.venue,
+                record.canonical_pair,
+                f"instrument: {field} {increment!r} cannot be represented by decimal-count paper rules",
+            )
+        return -exponent
+
     return PairRules(
         ordermin=Decimal(record.min_quantity),
         costmin=Decimal(record.min_notional),
-        lot_decimals=derive_decimal_places(record.quantity_increment),
-        price_decimals=derive_decimal_places(record.price_increment),
+        lot_decimals=representable_places("quantity_increment"),
+        price_decimals=representable_places("price_increment"),
     )
 
 
