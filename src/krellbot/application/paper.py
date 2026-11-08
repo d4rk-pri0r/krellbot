@@ -274,6 +274,8 @@ class PaperService:
                 correlation_id,
                 rev_before,
             )
+        if not paper_balance.is_finite():
+            return self._refusal(CODE_INVALID_BALANCE, "paper-balance must be finite", correlation_id, rev_before)
         if paper_balance <= Decimal(0):
             return self._refusal(
                 CODE_INVALID_BALANCE,
@@ -568,6 +570,8 @@ class PaperService:
                 rev_before,
             )
 
+        if not new_stop.is_finite():
+            return self._refusal(CODE_INVALID_STOP, "new stop must be finite", correlation_id, rev_before)
         if new_stop <= armed.stop:
             return self._refusal(
                 CODE_INVALID_STOP,
