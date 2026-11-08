@@ -171,6 +171,8 @@ class PaperVenue:
             Decimal(1).scaleb(-rules.price_decimals), rounding=ROUND_DOWN
         )
         base, quote = _base_quote(pair)
+        if notional + fee > self._state["balances"].get(quote, Decimal(0)):
+            raise ValueError("paper: insufficient quote cash for execution price and fee")
         self._state["balances"][quote] = self._state["balances"].get(quote, Decimal(0)) - notional - fee
         self._state["balances"][base] = self._state["balances"].get(base, Decimal(0)) + qty
 
