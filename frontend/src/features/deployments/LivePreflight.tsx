@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent, type JSX } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type JSX } from "react";
 import { getCsrf } from "../../session";
 import { summarizePreflightCode } from "./preflightCodeLabel";
 import "./LivePreflight.signal.css";
@@ -23,16 +23,28 @@ export function LivePreflight(): JSX.Element {
   const [result, setResult] = useState<LivePreflightResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const intent = useRef(0);
+  useEffect(() => () => { intent.current += 1; }, []);
+
+  const invalidate = (): void => {
+    intent.current += 1;
+    setResult(null);
+    setErrorMessage(null);
+    setPending(false);
+  };
 
   const handleAccountChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    invalidate();
     setAccountId(event.target.value);
   };
 
   const handleRevisionChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    invalidate();
     setRevisionId(event.target.value);
   };
 
   const handleModeChange = (event: ChangeEvent<HTMLSelectElement>): void => {
+    invalidate();
     setMode(event.target.value === "live" ? "live" : "sandbox");
   };
 
@@ -41,6 +53,7 @@ export function LivePreflight(): JSX.Element {
   // message are rendered in the result panel, not as an error.
   const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
+    const submittedIntent = ++intent.current;
     setPending(true);
     setResult(null);
     setErrorMessage(null);
@@ -62,14 +75,16 @@ export function LivePreflight(): JSX.Element {
           },
         }),
       });
+      if (intent.current !== submittedIntent) return;
       if (!response.ok) {
         throw new Error(`live.preflight failed: ${response.status}`);
       }
-      setResult((await response.json()) as LivePreflightResult);
+      const verdict = (await response.json()) as LivePreflightResult;
+      if (intent.current === submittedIntent) setResult(verdict);
     } catch {
-      setErrorMessage("Preflight request failed");
+      if (intent.current === submittedIntent) setErrorMessage("Preflight request failed");
     } finally {
-      setPending(false);
+      if (intent.current === submittedIntent) setPending(false);
     }
   };
 
