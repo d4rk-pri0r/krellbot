@@ -1,7 +1,7 @@
 """Ordinary finite synthetic power means must survive intermediate powers."""
 
 import json
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -52,6 +52,22 @@ def test_offline_service_runs_valid_power_mean(home, monkeypatch, fresh_keyring,
     assert result.legacy_receipt["metrics"]["exposure_pct"] == 0
     assert result.legacy_receipt["equity_curve"] == [0] * 6
     assert all(row["indicators"]["pm"] == pytest.approx(100) for row in result.detail["trace"][1:])
+
+
+@pytest.mark.parametrize("power", [1000, -1000, 2, -2])
+@pytest.mark.parametrize("prices", [["100", "200", "150"], ["1e200", "2e200", "3e200"], ["1e-200", "2e-200", "3e-200"]])
+def test_mixed_windows_match_high_precision_reference_and_are_causal(power, prices):
+    bars = _bars(prices)
+    params = {"fn": "power_mean", "src": "close", "len": 2, "p": power}
+    values = compute(bars, params)
+    assert values[0] is None and len(values) == len(bars)
+    with localcontext() as context:
+        context.prec = 80
+        for i in range(1, len(bars)):
+            window = [c.close for c in bars[i - 1 : i + 1]]
+            expected = float((sum(v**power for v in window) / 2) ** (Decimal(1) / power))
+            assert values[i] == pytest.approx(expected, rel=1e-12, abs=0)
+            assert compute(bars[: i + 1], params) == values[: i + 1]
 
 
 def test_nonpositive_windows_and_zero_power_keep_existing_contract():
