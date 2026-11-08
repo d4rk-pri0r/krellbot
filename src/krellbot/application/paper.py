@@ -431,6 +431,19 @@ class PaperService:
         return self._set_entries_paused(venue=venue, pair=pair, paused=False, correlation_id=correlation_id)
 
     def _set_entries_paused(self, *, venue: str, pair: str, paused: bool, correlation_id: str) -> CommandResultV1:
+        with kb_config._paper_command_transaction(self._home) as acquired:
+            if not acquired:
+                return self._refusal(
+                    CODE_INVALID_REQUEST,
+                    "another paper command is updating config",
+                    correlation_id,
+                    _revision(self._home),
+                )
+            return self._set_entries_paused_locked(venue=venue, pair=pair, paused=paused, correlation_id=correlation_id)
+
+    def _set_entries_paused_locked(
+        self, *, venue: str, pair: str, paused: bool, correlation_id: str
+    ) -> CommandResultV1:
         rev_before = _revision(self._home)
 
         if venue not in kb_secrets.VENUES:
@@ -506,6 +519,24 @@ class PaperService:
         pair: str,
         new_stop: Decimal,
         correlation_id: str = "",
+    ) -> CommandResultV1:
+        with kb_config._paper_command_transaction(self._home) as acquired:
+            if not acquired:
+                return self._refusal(
+                    CODE_INVALID_REQUEST,
+                    "another paper command is updating config",
+                    correlation_id,
+                    _revision(self._home),
+                )
+            return self._raise_stop_locked(venue=venue, pair=pair, new_stop=new_stop, correlation_id=correlation_id)
+
+    def _raise_stop_locked(
+        self,
+        *,
+        venue: str,
+        pair: str,
+        new_stop: Decimal,
+        correlation_id: str,
     ) -> CommandResultV1:
         rev_before = _revision(self._home)
 
