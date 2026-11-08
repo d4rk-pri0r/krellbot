@@ -23,7 +23,12 @@ An `ArmedPack` record has:
 
 from __future__ import annotations
 
+import errno
 import json
+import os
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -36,6 +41,63 @@ CONFIG_FILENAME = "config.json"
 def config_path(home: Path) -> Path:
     """Return the path to the armed-pack config JSON."""
     return Path(home) / CONFIG_FILENAME
+
+
+@contextmanager
+def _paper_command_transaction(home: Path, *, timeout: float = 5.0) -> Iterator[bool]:
+    """Serialize stop/pause/resume only; other config writers are not covered.
+
+    Keep the lock file's identity stable across handoffs. Kernel locks release
+    on process exit, and the deadline bounds waiting on another command.
+    """
+    home = Path(home)
+    home.mkdir(parents=True, exist_ok=True)
+    fd = os.open(home / ".paper-command.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    acquired = False
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            # Windows permits locking beyond EOF; no unlocked initialization
+            # write may race a competing process that already holds the byte.
+
+            def acquire() -> None:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+
+            def release() -> None:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            def acquire() -> None:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+            def release() -> None:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                acquire()
+                acquired = True
+                break
+            except OSError as exc:
+                if exc.errno not in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    yield False
+                    return
+                time.sleep(min(0.05, remaining))
+        yield True
+    finally:
+        try:
+            if acquired:
+                release()
+        finally:
+            os.close(fd)
 
 
 @dataclass
