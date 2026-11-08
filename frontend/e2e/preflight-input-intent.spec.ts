@@ -23,15 +23,20 @@ for (const width of [1280, 390]) {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     await page.route("**/api/**", async (route) => {
       const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== new URL(workstation.baseURL).origin) {
+        refused.push("non-workstation origin");
+        return route.abort("blockedbyclient");
+      }
       if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method())) return route.fallback();
-      if (new URL(request.url()).pathname === "/api/v1/session/bootstrap") return route.fallback();
+      if (request.method() === "POST" && url.pathname === "/api/v1/session/bootstrap") return route.fallback();
       const body = request.postDataJSON();
-      if (new URL(request.url()).pathname !== "/api/v1/commands" || body?.command !== "live.preflight" || body.payload?.mode !== "sandbox") {
+      if (request.method() !== "POST" || url.pathname !== "/api/v1/commands" || body?.command !== "live.preflight" || body.payload?.mode !== "sandbox") {
         refused.push(body?.command ?? "unknown mutation");
         return route.abort("blockedbyclient");
       }
       submitted.push(body.payload);
-      const response = await route.fetch({ maxRetries: 0 });
+      const response = await route.fetch({ maxRetries: 0, maxRedirects: 0 });
       expect(response.status()).toBe(200);
       if (delay) {
         delay = false;
