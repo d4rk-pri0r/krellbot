@@ -231,6 +231,37 @@ def test_transaction_timeout_distinct_homes_and_exception_cleanup(home, monkeypa
         assert (home / ".paper-command.lock").stat().st_ino == inode
 
 
+def test_windows_lock_acquires_without_an_unlocked_initialization_write(home, monkeypatch):
+    from types import SimpleNamespace
+
+    from krellbot import config as module
+
+    calls = []
+
+    def denied_write(*args):
+        raise PermissionError("synthetic locked-byte write denial")
+
+    windows_os = SimpleNamespace(
+        name="nt",
+        O_RDWR=os.O_RDWR,
+        O_CREAT=os.O_CREAT,
+        SEEK_SET=os.SEEK_SET,
+        open=os.open,
+        close=os.close,
+        lseek=os.lseek,
+        fstat=os.fstat,
+        write=denied_write,
+    )
+    windows_lock = SimpleNamespace(LK_NBLCK=1, LK_UNLCK=2, locking=lambda fd, mode, size: calls.append((mode, size)))
+    monkeypatch.setattr(module, "os", windows_os)
+    monkeypatch.setitem(sys.modules, "msvcrt", windows_lock)
+    with module._paper_command_transaction(home) as acquired:
+        assert acquired
+    assert calls == [(1, 1), (2, 1)]
+    # This is a Windows-branch ordering control, not native Windows race proof.
+    assert (home / ".paper-command.lock").read_bytes() == b""
+
+
 def test_kernel_releases_transaction_when_process_exits(home):
     from krellbot.config import _paper_command_transaction
 

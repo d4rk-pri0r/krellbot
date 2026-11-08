@@ -58,8 +58,8 @@ def _paper_command_transaction(home: Path, *, timeout: float = 5.0) -> Iterator[
         if os.name == "nt":
             import msvcrt
 
-            if os.fstat(fd).st_size == 0:
-                os.write(fd, b"\0")
+            # Windows permits locking beyond EOF; no unlocked initialization
+            # write may race a competing process that already holds the byte.
 
             def acquire() -> None:
                 os.lseek(fd, 0, os.SEEK_SET)
