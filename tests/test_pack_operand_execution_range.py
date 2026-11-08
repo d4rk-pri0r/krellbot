@@ -38,7 +38,10 @@ def test_numeric_refusal_reaches_lint_saved_draft_and_research(home, literal, ki
     errors = lint.check(pack)
     assert errors
     assert errors == [
-        {"field": f"{kind}.all[1].any[0][{side}]", "message": "numeric operand must be finite in the float64 execution domain"}
+        {
+            "field": f"{kind}.all[1].any[0][{side}]",
+            "message": "numeric operand must be finite in the float64 execution domain",
+        }
     ]
     assert json.dumps(pack, sort_keys=True) == before
     pack_path = home / "synthetic-bad-operand.json"
