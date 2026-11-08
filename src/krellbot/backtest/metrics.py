@@ -144,6 +144,7 @@ def _per_year(curve: list[CurvePoint]) -> dict[str, float]:
     out: dict[str, float] = {}
     year_open_eq: Decimal | None = None
     current_year: int | None = None
+    previous_eq = curve[0][1]
     for ts_ms, eq in curve:
         year = _dt.datetime.fromtimestamp(ts_ms / 1000, tz=_dt.timezone.utc).year
         if current_year is None:
@@ -152,12 +153,13 @@ def _per_year(curve: list[CurvePoint]) -> dict[str, float]:
         if year != current_year:
             assert year_open_eq is not None
             if year_open_eq > ZERO:
-                ret = float((eq / year_open_eq - ONE) * HUNDRED)
+                ret = float((previous_eq / year_open_eq - ONE) * HUNDRED)
             else:
                 ret = 0.0
             out[str(current_year)] = ret
             current_year = year
-            year_open_eq = eq
+            year_open_eq = previous_eq
+        previous_eq = eq
     if current_year is not None and year_open_eq is not None:
         last_eq = curve[-1][1]
         if year_open_eq > ZERO:
