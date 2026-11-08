@@ -223,8 +223,23 @@ def _power_mean(candles: list[Candle], params: dict) -> list[float | None]:
         if any(v <= 0.0 for v in window):
             out[i] = None
             continue
-        m = sum(v**p for v in window) / n
-        out[i] = m ** (1.0 / p)
+        try:
+            m = sum(v**p for v in window) / n
+            value = m ** (1.0 / p)
+            if value > 0.0 and math.isfinite(value):
+                out[i] = value
+                continue
+        except (OverflowError, ZeroDivisionError):
+            pass
+        # Only intermediate range failures take this path; retain ordinary
+        # finite results above. Shift log-powers so every exponential is <= 1.
+        if min(window) == max(window):
+            out[i] = window[0]
+            continue
+        logs = [math.log(v) for v in window]
+        anchor = max(logs) if p > 0.0 else min(logs)
+        mean_power = math.fsum(math.exp(p * (v - anchor)) for v in logs) / n
+        out[i] = math.exp(anchor + math.log(mean_power) / p)
     return out
 
 
