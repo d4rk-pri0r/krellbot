@@ -205,11 +205,11 @@ def test_research_service_just_below_bound_is_unclamped(fresh_home: Path, tmp_pa
 
 
 def test_ordinary_receipt_is_byte_identical_to_base(fresh_home: Path, tmp_path: Path):
-    """The 400-row zig-zag at cash 10000 must hash to the pinned base SHA.
+    """Pin unchanged receipt bytes and the five corrected benchmark values.
 
-    Computed at base ``01a1229`` (engine version 0.9.5). Release-version
-    metadata is checked separately, then only that field is normalized to
-    the pinned base. All engine, data, metrics and equity bytes must match.
+    The original base ``01a1229`` hash (engine version 0.9.5) still covers
+    every other value. GLaDOS approved only these five ROUND_DOWN changes
+    for #275; release-version metadata remains independently checked.
     """
     csv_path = tmp_path / "zz400.csv"
     _write_zigzag(csv_path, 400)
@@ -234,8 +234,28 @@ def test_ordinary_receipt_is_byte_identical_to_base(fresh_home: Path, tmp_path: 
 
     assert result.legacy_receipt is not None
     assert result.legacy_receipt["engine_version"] == __version__
-    # Keep the original numeric/data golden hash, not a new observed digest.
-    baseline_receipt = {**result.legacy_receipt, "engine_version": "0.9.5"}
+    # AUTH-5be46efe88 / AUTH-3d11e233d1: pin the corrected five values
+    # explicitly, then restore only those five to check the original hash.
+    metrics = result.legacy_receipt["metrics"]
+    benchmark = metrics["buy_and_hold"]
+    assert benchmark["total_return_pct"] == -2.438662818292365
+    assert benchmark["cagr_pct"] == -41.86564676533232
+    assert benchmark["max_drawdown_pct"] == 23.787606188695268
+    assert benchmark["return_to_dd"] == -1.759977293773612
+    assert benchmark["per_year"]["2023"] == -2.438662818292365
+    baseline_benchmark = {
+        **benchmark,
+        "total_return_pct": -2.4386628185333397,
+        "cagr_pct": -41.86564676848698,
+        "max_drawdown_pct": 23.787606190741716,
+        "return_to_dd": -1.759977293754819,
+        "per_year": {**benchmark["per_year"], "2023": -2.4386628185333397},
+    }
+    baseline_receipt = {
+        **result.legacy_receipt,
+        "engine_version": "0.9.5",
+        "metrics": {**metrics, "buy_and_hold": baseline_benchmark},
+    }
     body = canonical_receipt_bytes(baseline_receipt)
     digest = hashlib.sha256(body).hexdigest()
     assert digest == PINNED_BASE_SHA256, (digest, len(body))
