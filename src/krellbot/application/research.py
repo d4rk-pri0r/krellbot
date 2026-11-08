@@ -243,6 +243,20 @@ class ResearchService:
                 refusal=refusal,
             )
 
+        try:
+            check_gaps(candles, timeframe, pair=pair, allow_gaps=request.allow_gaps)
+        except GapError as exc:
+            refusal = {
+                "code": CODE_GAPPED_DATA,
+                "message": str(exc),
+            }
+            return ResearchResult(
+                ok=False,
+                legacy_receipt=None,
+                detail={"schema_version": SCHEMA_VERSION, "refusal": refusal},
+                refusal=refusal,
+            )
+
         if request.holdout_from_ms is not None or request.holdout_to_ms is not None:
             if (
                 request.holdout_from_ms is None
