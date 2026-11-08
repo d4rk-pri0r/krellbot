@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import "./OperationsView.signal.css";
 import { AlertsFilter } from "./AlertsFilter";
 import { DeploymentHistory } from "./DeploymentHistory";
@@ -229,6 +229,9 @@ function renderLiveBanner(live: OperationsViewModel["live"]): JSX.Element {
 
 export function OperationsView({ client }: OperationsViewProps): JSX.Element {
   const [killReason, setKillReason] = useState<string>("");
+  const killInFlight = useRef(false);
+  const [killPending, setKillPending] = useState(false);
+  const [killFeedback, setKillFeedback] = useState<string | null>(null);
   const [promoteResults, setPromoteResults] = useState<
     Record<string, { code: string; message: string }>
   >({});
@@ -360,20 +363,40 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
     [client, refresh, pending],
   );
 
-  const handleEngage = useCallback(async (): Promise<void> => {
-    const trimmed = killReason.trim();
-    if (!trimmed) {
+  const handleKill = useCallback(async (action: "engage" | "release"): Promise<void> => {
+    const reason = killReason;
+    if (killInFlight.current || (action === "engage" && !reason.trim())) {
       return;
     }
-    await client.engageKill(trimmed);
-    setKillReason("");
-    await refresh();
+    killInFlight.current = true;
+    setKillPending(true);
+    setKillFeedback(null);
+    try {
+      const result = action === "engage"
+        ? await client.engageKill(reason.trim())
+        : await client.releaseKill();
+      if (result?.ok === true) {
+        if (action === "engage") {
+          setKillReason((current) => current === reason ? "" : current);
+        }
+        await refresh();
+      } else if (result?.ok === false) {
+        const code = typeof result.code === "string" ? result.code : "refused";
+        const message = typeof result.message === "string" ? result.message : "command refused";
+        setKillFeedback(`Kill switch ${action} refused (${code}): ${message}`);
+        await refresh();
+      } else {
+        setKillFeedback(`Kill switch ${action} — ${UNKNOWN_OUTCOME_TEXT}`);
+      }
+    } catch (err) {
+      setKillFeedback(`Kill switch ${action} failed: ${
+        err instanceof Error ? err.message : String(err)
+      } — ${UNKNOWN_OUTCOME_TEXT}`);
+    } finally {
+      killInFlight.current = false;
+      setKillPending(false);
+    }
   }, [client, killReason, refresh]);
-
-  const handleRelease = useCallback(async (): Promise<void> => {
-    await client.releaseKill();
-    await refresh();
-  }, [client, refresh]);
 
   const handleAck = useCallback(
     async (alertId: string): Promise<void> => {
@@ -486,9 +509,10 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
               <button
                 type="button"
                 data-testid="ops-kill-engage"
-                disabled={killReason.trim() === ""}
+                disabled={killPending || killReason.trim() === ""}
+                aria-busy={killPending || undefined}
                 onClick={() => {
-                  void handleEngage();
+                  void handleKill("engage");
                 }}
               >
                 Engage kill switch
@@ -497,14 +521,21 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
                 <button
                   type="button"
                   data-testid="ops-kill-release"
+                  disabled={killPending}
+                  aria-busy={killPending || undefined}
                   onClick={() => {
-                    void handleRelease();
+                    void handleKill("release");
                   }}
                 >
                   Release kill switch
                 </button>
               ) : null}
             </div>
+            {killFeedback !== null ? (
+              <p className="kbot-ops__row-result" role="alert" data-testid="ops-kill-command-feedback">
+                {killFeedback}
+              </p>
+            ) : null}
             <p className="kbot-ops__kill-helper">{KILL_HELPER}</p>
           </section>
         </div>
