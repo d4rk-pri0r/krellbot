@@ -94,22 +94,49 @@ def store(venue: str, key: str, secret: str) -> str:
 
     sanitize.register_secret(key, secret)
 
+    from contextlib import suppress
+
     import keyring as _keyring
+    from keyring.errors import KeyringError
 
+    backend_errors = (KeyringError, OSError, RuntimeError, ValueError, TypeError)
     svc = _service(venue)
-    _keyring.set_password(svc, "key", key)
-    _keyring.set_password(svc, "secret", secret)
+    try:
+        previous = (_keyring.get_password(svc, "key"), _keyring.get_password(svc, "secret"))
+        backend = _keyring.get_keyring()
+        name = getattr(backend, "name", None)
+        backend_name = name if isinstance(name, str) and name else type(backend).__name__
+    except backend_errors:
+        raise RuntimeError("keyring prior state unreadable; update not attempted") from None
+    sanitize.register_secret(*(value for value in previous if isinstance(value, str)))
 
-    rb_k = _keyring.get_password(svc, "key")
-    rb_s = _keyring.get_password(svc, "secret")
-    if rb_k != key or rb_s != secret:
-        raise RuntimeError("keyring backend did not persist credentials")
-
-    backend = _keyring.get_keyring()
-    name = getattr(backend, "name", None)
-    if isinstance(name, str) and name:
-        return name
-    return type(backend).__name__
+    try:
+        _keyring.set_password(svc, "key", key)
+        _keyring.set_password(svc, "secret", secret)
+        if (_keyring.get_password(svc, "key"), _keyring.get_password(svc, "secret")) != (key, secret):
+            raise RuntimeError("keyring backend did not persist credentials")
+    except backend_errors:
+        # Compensate each slot independently, including a write that raised
+        # after persisting. Only readback can establish successful restoration.
+        for slot, value in zip(("key", "secret"), previous, strict=True):
+            with suppress(*backend_errors):
+                if value is None:
+                    _keyring.delete_password(svc, slot)
+                else:
+                    _keyring.set_password(svc, slot, value)
+        try:
+            restored = (_keyring.get_password(svc, "key"), _keyring.get_password(svc, "secret")) == previous
+        except backend_errors:
+            restored = False
+        if not restored:
+            # Do not leave a known mixed pair usable when the backend still
+            # permits removal. Removal itself may fail: never claim certainty.
+            for slot in ("key", "secret"):
+                with suppress(*backend_errors):
+                    _keyring.delete_password(svc, slot)
+            raise RuntimeError("keyring update failed; credential restoration uncertain") from None
+        raise RuntimeError("keyring update failed; previous credential state restored") from None
+    return backend_name
 
 
 def migrate_legacy() -> bool:
