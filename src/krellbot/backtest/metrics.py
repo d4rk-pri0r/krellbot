@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as _dt
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 ZERO = Decimal(0)
 ONE = Decimal(1)
@@ -89,7 +89,7 @@ def buy_and_hold_curve(
     slip = (Decimal(slippage_bps) / TEN_THOUSAND) * Decimal(str(slippage_mult))
     fill = enter_open * (ONE + slip)
     fee_mult = ONE + Decimal(fee_bps) / TEN_THOUSAND
-    qty = (starting_cash / (fill * fee_mult)).quantize(Decimal("0.00000001"))
+    qty = (starting_cash / (fill * fee_mult)).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
     cost = qty * fill
     fee = cost * Decimal(fee_bps) / TEN_THOUSAND
     cash_after = starting_cash - cost - fee
