@@ -3,8 +3,8 @@
 On POSIX the lock is an `fcntl.flock` on `<home>/run/<venue>.lock`. On Windows
 the lock is best-effort via `msvcrt.locking`. The lock is non-blocking: if the
 file is already held, `TickLock.acquire()` returns False and the caller exits
-0 with `another tick running`. The lock file is removed only when the lock is
-released in the same process (no stale removal across processes).
+0 with `another tick running`. The file remains after release so all contenders
+keep locking the same inode; an unlocked file does not imply an active holder.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ class TickLock:
         return True
 
     def release(self) -> None:
-        """Release the lock and remove the file. Safe to call when not held."""
+        """Release the lock without unlinking its inode. Safe when not held."""
         if self._fd is None:
             return
         fd = self._fd
@@ -83,10 +83,6 @@ class TickLock:
             try:
                 os.close(fd)
             except OSError:
-                pass
-            try:
-                self._lock_path.unlink()
-            except FileNotFoundError:
                 pass
 
     def __enter__(self) -> bool:
