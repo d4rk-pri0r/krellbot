@@ -119,7 +119,7 @@ type PanelAction =
   | { type: "command-refused"; message: string }
   | { type: "unknown-outcome"; message: string }
   | { type: "position"; position: PaperPosition }
-  | { type: "position-failed"; message: string }
+  | { type: "position-failed"; message: string; market: PaperStatus }
   | {
       type: "command-ok";
       status: PaperStatus | null;
@@ -229,6 +229,12 @@ async function postRaiseStop(
   return (await response.json()) as PaperCommandResult;
 }
 
+function samePaperMarket(a: PaperStatus | null, b: PaperStatus | PaperPosition | null): boolean {
+  return a?.armed === true && b?.armed === true && a.mode === "paper" && b.mode === "paper" &&
+    typeof a.venue === "string" && a.venue !== "" && a.venue === b.venue &&
+    typeof a.pair === "string" && a.pair !== "" && a.pair === b.pair;
+}
+
 function reducer(state: PanelState, action: PanelAction): PanelState {
   switch (action.type) {
     case "status": {
@@ -242,8 +248,8 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
         // A confirmed disarm/unarmed read invalidates the cached owned
         // position: the armed branch that renders it is gone, and the
         // next arm must re-read rather than reuse a stale sentence.
-        position: next.armed ? state.position : null,
-        positionError: next.armed ? state.positionError : null,
+        position: samePaperMarket(state.status, next) ? state.position : null,
+        positionError: samePaperMarket(state.status, next) ? state.positionError : null,
       };
     }
     case "unavailable": {
@@ -277,9 +283,13 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
       return { ...state, pending: null, unknownOutcome: action.message };
     }
     case "position": {
+      if (!samePaperMarket(state.status, action.position)) {
+        return { ...state, position: null, positionError: "position identity does not match the confirmed paper market" };
+      }
       return { ...state, position: action.position, positionError: null };
     }
     case "position-failed": {
+      if (!samePaperMarket(state.status, action.market)) return state;
       // A refused wire variant or a failed read is surfaced, never
       // rendered as a zero position.
       return { ...state, position: null, positionError: action.message };
@@ -293,8 +303,8 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
         status: action.status,
         sentence: action.sentence ?? state.sentence,
         raiseStopEcho: action.raiseStopEcho ?? state.raiseStopEcho,
-        position: action.status?.armed ? state.position : null,
-        positionError: action.status?.armed ? state.positionError : null,
+        position: samePaperMarket(state.status, action.status) ? state.position : null,
+        positionError: samePaperMarket(state.status, action.status) ? state.positionError : null,
       };
     }
   }
@@ -705,6 +715,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
     if (!positionReadable || state.status?.armed !== true) {
       return;
     }
+    const market = state.status;
     const epoch = ++positionEpochRef.current;
     const read = client.getPosition;
     if (read === undefined) {
@@ -727,6 +738,7 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
         dispatch({
           type: "position-failed",
           message: transportDetail(reason),
+          market,
         });
       });
     return () => {
