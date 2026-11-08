@@ -17,6 +17,7 @@ returns no errors and `is_legacy` returns True. Legacy packs list but do not run
 from __future__ import annotations
 
 import json
+import math
 from importlib import resources
 from typing import Any
 
@@ -117,6 +118,8 @@ def _semantic_checks(pack: dict) -> list[dict]:
     errors: list[dict] = []
     errors.extend(_check_indicators(pack))
     errors.extend(_check_operands(pack))
+    for kind in ("entry", "exit"):
+        errors.extend(_check_numeric_operands(pack.get(kind), kind))
     errors.extend(_check_depth(pack))
     errors.extend(_check_lookback(pack))
     errors.extend(_check_power_mean_p(pack))
@@ -154,6 +157,31 @@ def _check_operands(pack: dict) -> list[dict]:
                     "message": f"operand `{name}` is not a price field or a defined indicator",
                 }
             )
+    return errors
+
+
+def _check_numeric_operands(condition: Any, path: str) -> list[dict]:
+    errors: list[dict] = []
+    if isinstance(condition, dict):
+        for key in ("all", "any"):
+            for index, child in enumerate(condition.get(key, [])):
+                errors.extend(_check_numeric_operands(child, f"{path}.{key}[{index}]"))
+    elif isinstance(condition, list) and len(condition) == 3:
+        for index in (0, 2):
+            operand = condition[index]
+            if not isinstance(operand, (int, float)):
+                continue
+            try:
+                finite = math.isfinite(float(operand))
+            except OverflowError:
+                finite = False
+            if not finite:
+                errors.append(
+                    {
+                        "field": f"{path}[{index}]",
+                        "message": "numeric operand must be finite in the float64 execution domain",
+                    }
+                )
     return errors
 
 
