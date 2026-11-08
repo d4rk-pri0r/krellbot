@@ -440,6 +440,13 @@ class InstrumentRulesSnapshot:
                 canonical_pair,
                 f"instrument: no persisted record for {venue} {canonical_pair}",
             )
+        if record.venue != venue or record.canonical_pair != canonical_pair:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                venue,
+                canonical_pair,
+                f"instrument: persisted record identity does not match {venue} {canonical_pair}",
+            )
         if _iso_to_unix(record.usable_until) <= self._clock():
             raise InstrumentMetadataError(
                 METADATA_STALE,
