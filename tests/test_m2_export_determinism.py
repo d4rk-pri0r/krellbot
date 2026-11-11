@@ -14,8 +14,8 @@ Run with::
         PYTHON_KEYRING_BACKEND=tests.fakes.fake_keyring.FakeKeyring \
         uv run pytest -q -s -p no:cacheprovider tests/test_m2_export_determinism.py
 
-The test prints the run sha256 to stdout so the Steward can read it
-from the ``-s`` output without grepping.
+The test prints the run sha256 to stdout for manual inspection
+of the ``-s`` output.
 """
 
 from __future__ import annotations

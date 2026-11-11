@@ -812,7 +812,7 @@ class JobManager:
         slippage_mult = request_payload.get("slippage_mult")
         from_ms = request_payload.get("from_ms")
         to_ms = request_payload.get("to_ms")
-        # COORDINATOR API CONTRACT: only the literal boolean ``True``
+        # API contract: only the literal boolean ``True``
         # may enable the allow_gaps override. Omission, ``False``,
         # ``None``, strings (including "true"/"false"), numbers, arrays
         # and objects are treated as ``False`` at this conversion

@@ -15,7 +15,7 @@ process.env.TZ = "UTC";
  * `/api/v1/paper/history` serves — plus the mounted LastRunsPanel in
  * React/JSDOM.
  *
- * Coordinator contract under test:
+ * Behavior under test:
  *
  *  - formatting any run first_ts_ms/last_ts_ms never throws, whatever the
  *    wire put in the field: positive/negative out-of-range finite values,

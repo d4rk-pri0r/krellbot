@@ -1,6 +1,6 @@
 """M1R-T2 — ``krellbot workstation`` from a clean ``git archive`` export.
 
-Steward finding (M1-VERDICT row 1): from a clean checkout, a bare
+Clean-export regression: from a clean checkout, a bare
 ``krellbot workstation`` binds and prints a URL, and ``GET /`` returns
 ``404 {"code":"shell_not_built"}``. The user sees a dead page. The
 launcher must refuse up front and tell the operator how to build the
@@ -15,7 +15,7 @@ fresh directory.
 * ``test_clean_export_workstation_refuses_with_build_hint`` asserts
   the launcher exits 2 within 15 s, prints one stderr line containing
   both ``--dist`` and ``npm --prefix frontend run build``, and prints
-  no URL on stdout. This is the bug from the steward finding.
+  no URL on stdout. This guards the clean-export refusal.
 
 * ``test_clean_export_with_built_dist_serves_200`` writes a minimal
   ``frontend/dist/index.html`` into the same export, spawns the
@@ -24,9 +24,6 @@ fresh directory.
   tag the static layer injects. This guards the happy path so the
   refusal does not over-refuse.
 
-Hard limits from the brief: no commit, push, tag, or branch change.
-No build or commit of ``frontend/dist``. No network. No subagents.
-Format only touched files.
 """
 
 from __future__ import annotations

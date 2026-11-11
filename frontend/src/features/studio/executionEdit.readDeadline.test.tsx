@@ -27,8 +27,8 @@ import { WorkstationShell } from "../../shell/WorkstationShell";
 // bounded read behavior (read-deadline-20261027) as the shell consumes
 // it through the existing studio-save-error / studio-save-outcome rows.
 
-// The coordinator contract fixes the total read deadline (response
-// headers AND JSON body) at exactly 10000ms. The literal is repeated
+// The request's total read deadline includes response
+// headers and JSON body at exactly 10000ms. The literal is repeated
 // here on purpose so a module regression cannot silently retime it.
 const READ_DEADLINE_MS = 10000;
 

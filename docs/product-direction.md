@@ -38,14 +38,6 @@ Functional, hardened, capability-qualified, packaged and published are distinct 
 - Optional paid extensions: exact SKU/version rights, trusted package installation/update, website/local integration and separately authorized billing.
 - Certified release: exact-head CI/build, truthful platform/signing posture, operational evidence and explicit publication approval.
 
-## Migration baseline and next product work
-
-The standalone development checkout starts from accepted integration commit `8ec5022c17895ec6985e7ef6a4666d5f196f4bc3`, not an older `main`. This document does not claim any whole milestone accepted.
-
-The migration pilot delivered Research session continuity across in-session navigation, with reset when the saved revision changes (verified product commit `e3f375743a1c8c502a66965ce81aa3f5f0e820f7`). This is not an instruction to repeat that completed task. Next identified work concerns truthful Jobs observation, refresh/recovery, and the combined Research/Jobs journey. Each task still needs a concrete acceptance test and independent review; they are not an automatically executing queue.
-
-Prior unresolved ownership, recovery, hardening and release findings remain unresolved. Migration does not reopen exhausted repair lanes or authorize live trading, billing, production migration or publication. Historical requirements/findings are preserved outside the development workspace by the operator, not imported as executable instructions.
-
 ## Design reference (KRELL-SIGNAL-20261010)
 
 All product UI work follows the owner-approved Signal + Krell Asset Pack v2

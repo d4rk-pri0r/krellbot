@@ -1,4 +1,4 @@
-"""M3-FM: harness for the steward-runnable fault matrix.
+"""M3-FM: product fault-matrix test harness.
 
 The harness runs eight named cases; each case spawns fresh subprocesses
 that drive ``krellbot.run.tick`` through the real ``tick -> outbox -> store``

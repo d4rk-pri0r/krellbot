@@ -538,7 +538,7 @@ def test_cli_backup_restore_bad_archive_leaves_dir_uncreated(home, fresh_keyring
 
 
 def test_restore_roundtrip_script_runs_and_passes(home, fresh_keyring, tmp_path):
-    """The Steward harness exits 0 and every JSON row reports pass=true."""
+    """The restore test exits 0 and every JSON row reports pass=true."""
     repo_root = Path(__file__).resolve().parent.parent
     script = repo_root / "scripts" / "restore_roundtrip.py"
     # The script may not exist yet (RED). If it does not, skip — the test is

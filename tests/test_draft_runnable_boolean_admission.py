@@ -1,6 +1,6 @@
 """Draft runnable boolean admission — only literal JSON ``true`` arms.
 
-COORDINATOR CONTRACT: the persisted draft metadata's ``runnable`` field
+API contract: the persisted draft metadata's ``runnable`` field
 is admitted as runnable ONLY when it is the exact JSON boolean ``true``.
 Missing, ``null``, ``false``, and truthy-looking non-boolean forms
 (strings like ``"false"``/``"true"``, numbers like ``1``/``0``, arrays
@@ -49,7 +49,7 @@ from tests.test_ns08_strategy_drafts import (
 _MISSING = object()
 
 # Non-boolean forms for the persisted ``runnable`` meta field. Every one
-# of these is False under the coordinator contract, including the
+# of these is False under the API contract, including the
 # truthy-looking ones that ``bool()`` would admit today.
 MALFORMED_RUNNABLE_FORMS = [
     pytest.param("false", id="string-false"),

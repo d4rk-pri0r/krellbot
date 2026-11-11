@@ -1,4 +1,4 @@
-"""M3-FM: harness for the steward-runnable fault matrix.
+"""M3-FM: repeatable product fault-matrix test harness.
 
 Run the harness:
 
@@ -1428,7 +1428,7 @@ def _run_parent(args: argparse.Namespace) -> int:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="fault_matrix",
-        description="Steward-runnable fault matrix harness for krellbot's run.tick.",
+        description="Product fault matrix for krellbot's run.tick.",
     )
     parser.add_argument("--json-out", default=None, help="Write the rows array to this path as JSON.")
     parser.add_argument("--case", default=None, help="Run only this case (default: all 8).")

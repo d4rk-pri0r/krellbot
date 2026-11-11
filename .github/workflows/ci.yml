@@ -117,12 +117,6 @@ jobs:
           path: frontend/test-results/
           retention-days: 3
           if-no-files-found: ignore
-      - name: Record tested SHA for Steward
-        if: always()
-        run: |
-          echo "tested_sha=${{ github.event.pull_request.head.sha || github.sha }}"
-          git rev-parse HEAD
-
   journeys:
     name: journeys
     runs-on: ubuntu-24.04

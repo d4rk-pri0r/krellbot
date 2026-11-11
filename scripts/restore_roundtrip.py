@@ -1,4 +1,4 @@
-"""Steward harness: build a realistic home, archive, wipe, restore, verify.
+"""Restore test: build a realistic home, archive, wipe, restore, verify.
 
 The script takes no arguments. All state lives in a `tempfile.mkdtemp()`
 home and an adjacent archive directory; `~/.krellbot` is never read or
@@ -120,7 +120,7 @@ def _seed_home_via_subprocesses(home: Path) -> tuple[dict, list]:
                 "schema_version": 1,
                 "version": "1.0.0",
                 "label": "demo",
-                "author": "steward",
+                "author": "test-user",
                 "timeframe": "1h",
                 "indicators": {"sma2": {"fn": "sma", "src": "close", "len": 2}},
                 "entry": ["close", "crosses_above", "sma2"],
@@ -294,12 +294,12 @@ def _rmtree_with_retry(path: Path, *, attempts: int = 60, delay: float = 0.5) ->
 
 def main() -> int:
     rows: list[dict] = []
-    home = Path(tempfile.mkdtemp(prefix="steward-home-"))
-    archive_dir = Path(tempfile.mkdtemp(prefix="steward-archive-"))
+    home = Path(tempfile.mkdtemp(prefix="restore-test-home-"))
+    archive_dir = Path(tempfile.mkdtemp(prefix="restore-test-archive-"))
     archive = archive_dir / "backup.tar.gz"
     tampered = archive_dir / "tampered.tar.gz"
-    non_empty_target = Path(tempfile.mkdtemp(prefix="steward-nonempty-"))
-    fresh_target = Path(tempfile.mkdtemp(prefix="steward-fresh-"))
+    non_empty_target = Path(tempfile.mkdtemp(prefix="restore-test-nonempty-"))
+    fresh_target = Path(tempfile.mkdtemp(prefix="restore-test-fresh-"))
 
     try:
         source_shas, source_ledger = _seed_home_via_subprocesses(home)
@@ -348,7 +348,7 @@ def main() -> int:
         # deferred-close complete on Windows + Python 3.13 before the
         # restore subprocess opens the target home. On POSIX this is
         # a no-op (a few hundred milliseconds of wall-clock); the cost
-        # is bounded and acceptable for a Steward/harness script.
+        # is bounded and acceptable for a restore test.
         time.sleep(0.5)
         proc = _run_krellbot(home, "backup", "restore", "--from", str(archive))
         _record(rows, "backup restore rc", "0", str(proc.returncode))

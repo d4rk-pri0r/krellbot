@@ -22,8 +22,7 @@ The invariants this module locks down:
        ``npm run build`` → ``playwright install --with-deps chromium`` →
        ``npm run test:e2e``
 4. The job body also contains ``KRELLBOT_ENABLE_LIVE: "0"``,
-   ``FakeKeyring``, ``1.62.1``, ``KRELLBOT_E2E_SKIP_BUILD``, and
-   ``tested_sha=`` so the Steward can bind the run to the PR head SHA.
+   ``FakeKeyring``, ``1.62.1``, and ``KRELLBOT_E2E_SKIP_BUILD``.
 5. The job body contains no ``secrets.``, no ``continue-on-error``, and
    no ``|| true``: no permission creep, no soft gates.
 6. ``frontend/package.json`` still pins ``"@playwright/test": "1.62.1"``
@@ -60,7 +59,6 @@ REQUIRED_MARKERS: tuple[str, ...] = (
     "FakeKeyring",
     "1.62.1",
     "KRELLBOT_E2E_SKIP_BUILD",
-    "tested_sha=",
 )
 
 # Forbidden substrings: no permission creep, no soft gates.
@@ -205,13 +203,11 @@ def test_frontend_job_has_required_steps_in_order() -> None:
 
 
 def test_frontend_job_contains_required_markers() -> None:
-    """The job body must contain five markers (order-independent).
+    """The job body must contain the four runtime and test markers.
 
     ``KRELLBOT_ENABLE_LIVE: "0"`` blocks live arm. ``FakeKeyring`` is
-    the harness's keyring. ``1.62.1`` is the pinned Playwright version.
-    ``KRELLBOT_E2E_SKIP_BUILD`` lets CI skip the harness's auto-build.
-    ``tested_sha=`` is what the Steward reads to bind the job to the
-    PR head SHA.
+    the test keyring. ``1.62.1`` is the pinned Playwright version.
+    ``KRELLBOT_E2E_SKIP_BUILD`` avoids building the frontend twice.
     """
 
     text = _read_text(CI_WORKFLOW)
