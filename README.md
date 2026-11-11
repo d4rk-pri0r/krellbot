@@ -16,17 +16,9 @@ Security: [SECURITY.md](SECURITY.md)
 
 ## Install
 
-For a new Linux **paper workstation**, use [Build and run the current
-workstation](#build-and-run-the-current-workstation), including its prerequisites,
-then [Arm your first paper strategy](#arm-your-first-paper-strategy). No exchange
-account, API keys, or paid pack is needed.
-
-The frozen Linux installer below currently supplies **0.9.4**, not current main.
-Its legacy dashboard opens, but arming a DSL pack fails because the archive is
-missing `krellbot/pack/schema.json`; it also lacks the React workstation. Until
-a corrected release is published, use the source route for paper deployment.
-The commands below remain the frozen-release route, not a workaround for that
-missing file. Minimal Linux images need CA certificates, curl and unzip first.
+The site installer is the way to run Krellbot. No exchange account, API keys,
+or paid pack is needed for paper. Minimal Linux images need CA certificates,
+curl and unzip first.
 
 ```sh
 # Linux
@@ -45,8 +37,9 @@ The site installer downloads a per-user, one-directory frozen release
 `~/.local/share/krellbot/versions/<version>/` (POSIX) or
 `%LOCALAPPDATA%\Krellbot\versions\<version>\` (Windows), and creates a
 `krellbot` launcher at `~/.local/bin/krellbot` (POSIX) or
-`%LOCALAPPDATA%\Krellbot\bin\krellbot.cmd` (Windows). It then opens the
-local dashboard in your default browser.
+`%LOCALAPPDATA%\Krellbot\bin\krellbot.cmd` (Windows). Running `krellbot`
+with no arguments starts the workstation on loopback and opens it in your
+default browser. Then [arm your first paper strategy](#arm-your-first-paper-strategy).
 
 **Signing status (this release):** the downloaded artifact is verified
 against an HTTPS-pinned SHA-256 manifest, but the artifact itself is
@@ -110,72 +103,17 @@ installer's README has the exact `PATH` line per shell.
 `$KRELLBOT_HOME` is independent of the install path and is the only
 place keys, paper state, the journal, and receipts live.
 
-## Build and run the current workstation
+## Arm your first paper strategy
 
-The source checkout includes the React workstation (Studio, Library, Research,
-Operations and paper deployment). This is a source installation, separate from
-the frozen release above. It requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/),
-Python 3.13 (uv can download it), and Node.js 24 with npm. Use the CI-tested
-Python version explicitly: an unqualified `uv sync` on a machine without
-Python can select a newer interpreter whose locked dependencies lack wheels.
-
-On Ubuntu 24.04, install ordinary OS utilities first (as an administrator):
-
-```sh
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl git xz-utils
-```
-
-Then, as your normal user, install missing development prerequisites. If you
-already have uv and Node.js 24 on PATH, skip this block. These are upstream
-installers, not Krellbot binaries; [nvm](https://github.com/nvm-sh/nvm) installs
-Node and npm per user:
-
-```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-export NVM_DIR="$HOME/.nvm"
-. "$NVM_DIR/nvm.sh"
-nvm install 24
-uv --version
-node --version
-npm --version
-```
-
-Build the frontend before starting the service. Run these commands in the
-same shell (or reload your uv/nvm PATH in a new shell):
-
-```sh
-git clone https://github.com/d4rk-pri0r/krellbot
-cd krellbot
-uv sync --frozen --group dev --python 3.13
-npm --prefix frontend ci --include=dev
-npm --prefix frontend run build
-KRELLBOT_ENABLE_LIVE=0 uv run --no-sync krellbot workstation --port 8765
-```
-
-Open `http://127.0.0.1:8765/`. Start in Strategies, pick a free starter example,
-Save, then Validate. Research accepts a local candle CSV; paper mode needs no
-exchange keys. New research jobs retain their status and completed results under
-`$KRELLBOT_HOME/research-jobs/`. After a restart, unfinished jobs appear as
-`interrupted`; they never resume automatically. Submit a new run to retry.
-The older `krellbot ui` command below serves the legacy dashboard,
-not the workstation.
-
-### Arm your first paper strategy
-
-With the workstation running on `127.0.0.1:8765`:
+Start the workstation with `krellbot` (or `krellbot workstation --open`), then:
 
 1. Open **Strategies**, choose a free starter example, then **Save** and
-   **Validate**. These examples ship with the public source checkout.
+   **Validate**. The starter examples ship with the release.
 2. In the paper-arm form, use venue `kraken` and starting paper balance `1000`,
    then click **Arm**. This is simulated cash, not an exchange deposit.
 3. Open **Operations**: the deployment must say `paper` and `active`, and live
    trading must remain disabled. **Workstation** also shows the armed paper row.
-4. In a second terminal, from the source checkout, verify with
-   `uv run --no-sync krellbot status`. Use this installed project executable,
-   not an older frozen `krellbot` launcher elsewhere on PATH.
+4. In a terminal, verify with `krellbot status`.
 
 A research run is optional before arming. If you want an offline demonstration,
 [paper trading](docs/paper.md) documents the public repository pack/candle
@@ -187,13 +125,13 @@ exit nonzero with keychain, missing-key, scheduler or stale-tick warnings and
 you to add keys for paper use. Verify paper readiness with the armed row and
 status above; do not use the Exchange wizard or load credentials for this path.
 
-### Private access from your Tailscale devices
+## Private access from your Tailscale devices
 
 For an always-on workstation, keep the backend on loopback and let
 [Tailscale Serve](https://tailscale.com/kb/1312/serve) provide tailnet-only HTTPS:
 
 ```sh
-KRELLBOT_ENABLE_LIVE=0 uv run --no-sync krellbot workstation --port 8765 \
+KRELLBOT_ENABLE_LIVE=0 krellbot workstation --port 8765 \
   --tailscale-origin https://your-machine.your-tailnet.ts.net \
   --tailscale-user you@example.com
 tailscale serve --bg http://127.0.0.1:8765
@@ -265,9 +203,61 @@ exit code) are documented in [docs/service.md](docs/service.md).
 
 ## Working on the engine
 
+### Build and run the workstation from source
+
+The source checkout includes the React workstation (Studio, Library, Research,
+Operations and paper deployment). This route is for engine and UI development,
+separate from the installed release above. It requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/),
+Python 3.13 (uv can download it), and Node.js 24 with npm. Use the CI-tested
+Python version explicitly: an unqualified `uv sync` on a machine without
+Python can select a newer interpreter whose locked dependencies lack wheels.
+
+On Ubuntu 24.04, install ordinary OS utilities first (as an administrator):
+
+```sh
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git xz-utils
 ```
+
+Then, as your normal user, install missing development prerequisites. If you
+already have uv and Node.js 24 on PATH, skip this block. These are upstream
+installers, not Krellbot binaries; [nvm](https://github.com/nvm-sh/nvm) installs
+Node and npm per user:
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm install 24
+uv --version
+node --version
+npm --version
+```
+
+Build the frontend before starting the service. Run these commands in the
+same shell (or reload your uv/nvm PATH in a new shell):
+
+```sh
 git clone https://github.com/d4rk-pri0r/krellbot
 cd krellbot
-uv run pytest -q
-uv run krellbot list
+uv sync --frozen --group dev --python 3.13
+npm --prefix frontend ci --include=dev
+npm --prefix frontend run build
+KRELLBOT_ENABLE_LIVE=0 uv run --no-sync krellbot workstation --port 8765
+```
+
+Open `http://127.0.0.1:8765/`. Start in Strategies, pick a free starter example,
+Save, then Validate. Research accepts a local candle CSV; paper mode needs no
+exchange keys. New research jobs retain their status and completed results under
+`$KRELLBOT_HOME/research-jobs/`. After a restart, unfinished jobs appear as
+`interrupted`; they never resume automatically. Submit a new run to retry.
+The older `krellbot ui` command serves the legacy dashboard, not the
+workstation.
+
+Run the tests:
+
+```sh
+KRELLBOT_HOME=$(mktemp -d) uv run --no-sync pytest -q
 ```

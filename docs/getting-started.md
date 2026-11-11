@@ -4,13 +4,11 @@ The client is free. It runs on your computer. It does not hold your money.
 
 ## Start with paper (no exchange credentials)
 
-For the current Linux workstation, follow the [README source installation and
-prerequisites](../README.md#build-and-run-the-current-workstation), then
+[Install the free client](#install-the-free-client), start the workstation
+with `krellbot`, then
 [arm a free starter strategy](../README.md#arm-your-first-paper-strategy).
-The frozen Linux 0.9.4 release described below opens the legacy dashboard but
-cannot arm DSL packs: its archive omits `krellbot/pack/schema.json`. It is not
-current main and does not contain the React workstation. Use the documented
-source route rather than copying files into that frozen release.
+Building from source is only for working on the engine; see
+[Working on the engine](../README.md#working-on-the-engine).
 
 Paper mode needs neither an exchange account nor a key or paid license. Skip
 the exchange-key instructions and legacy Exchange wizard below for paper.
@@ -53,8 +51,9 @@ On Windows (PowerShell):
 irm https://krellbot.dev/api/install?os=win | iex
 ```
 
-The first install also opens the local dashboard in your default
-browser. Subsequent runs:
+Running `krellbot` with no arguments starts the workstation on loopback
+and opens it in your default browser. The legacy dashboard is still
+available:
 
 ```sh
 krellbot ui            # print the gated URL; do not open a browser
