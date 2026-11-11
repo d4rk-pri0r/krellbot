@@ -208,8 +208,8 @@ def test_ordinary_receipt_is_byte_identical_to_base(fresh_home: Path, tmp_path: 
     """Pin unchanged receipt bytes and the five corrected benchmark values.
 
     The original base ``01a1229`` hash (engine version 0.9.5) still covers
-    every other value. GLaDOS approved only these five ROUND_DOWN changes
-    for #275; release-version metadata remains independently checked.
+    every other value. Only five ROUND_DOWN values changed for issue #275;
+    release-version metadata remains independently checked.
     """
     csv_path = tmp_path / "zz400.csv"
     _write_zigzag(csv_path, 400)
@@ -234,7 +234,7 @@ def test_ordinary_receipt_is_byte_identical_to_base(fresh_home: Path, tmp_path: 
 
     assert result.legacy_receipt is not None
     assert result.legacy_receipt["engine_version"] == __version__
-    # AUTH-5be46efe88 / AUTH-3d11e233d1: pin the corrected five values
+    # Pin the corrected five values
     # explicitly, then restore only those five to check the original hash.
     metrics = result.legacy_receipt["metrics"]
     benchmark = metrics["buy_and_hold"]

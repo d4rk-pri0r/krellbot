@@ -7,7 +7,7 @@ an array (``[false]``) and an object (``{"enabled": false}``) were all
 coerced to a truthy value and silently bypassed the ``gapped_data``
 refusal — producing the same receipt and trace as a literal ``true``.
 
-The coordinator API contract: ONLY the actual boolean ``true`` may
+The API contract: ONLY the actual boolean ``true`` may
 enable the ``allow_gaps`` override. Omission, ``false``, ``null``,
 strings (including ``"true"``/``"false"``), numbers 0/1, arrays and
 objects must NOT bypass the missing-data checks; they are treated as

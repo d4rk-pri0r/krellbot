@@ -13,7 +13,7 @@ import type { RehearsalClient, RehearsalCommandResult, RehearsalStatus } from ".
  * StatusPanel component; they do NOT claim a real browser privacy setting,
  * backend, TCP or native environment was reproduced.
  *
- * Coordinator contract under test: the browser-local remembered balance is
+ * Behavior under test: the browser-local remembered balance is
  * optional and never authority — storage denial before opening Paper or
  * during a successful Arm must not crash the panel, must not prevent the
  * confirmed command follow-up status read, must not duplicate the command,

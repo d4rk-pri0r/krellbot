@@ -6,13 +6,7 @@ build/
 *.egg-info/
 .ruff_cache/
 
-# Local agent state (never part of the product)
-.hermes/
-.omo/
-.superpowers/
-.openhands/
-docs/superpowers/
-docs/ns31/
+# Local test output
 tests_tmp/
 
 # Secrets never belong here
