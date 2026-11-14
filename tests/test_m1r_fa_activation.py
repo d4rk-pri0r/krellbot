@@ -2,7 +2,7 @@
 
 Activation regressions covered:
 
-  F1. The fresh-install short-circuit in ``krellbot.ui.activate.redeem``
+  F1. The fresh-install short-circuit in ``krellbot.application.license_activation.redeem``
       returns ``"skipped: no paid account"`` when neither the license
       cache nor the catalog exists — so a first-time buyer can never
       redeem a key. The short-circuit must be gone; ``redeem`` behaves
@@ -16,8 +16,8 @@ Activation regressions covered:
       ``WorkstationServer.bootstrap_token`` instead.
 
 Every activation test here monkeypatches
-``krellbot.ui.activate.refresh_license`` and
-``krellbot.ui.activate.install_catalog`` — no test reaches the network.
+``krellbot.application.license_activation.refresh_license`` and
+``krellbot.application.license_activation.install_catalog`` — no test reaches the network.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 from krellbot.api.serve import WorkstationServer
-from krellbot.ui.activate import SAFE_MESSAGES
+from krellbot.application.license_activation import SAFE_MESSAGES
 
 # ---------------------------------------------------------------------------
 # Minimal loopback HTTP helpers (raw sockets, Host header always loopback)
@@ -198,10 +198,10 @@ def test_redeem_fresh_home_calls_refresh_license(fresh_home: Path, monkeypatch) 
 
     fake = _FakeRefresh()  # raises ValueError -> refused
     install = _FakeInstall()
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", fake)
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", install)
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", fake)
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", install)
 
-    from krellbot.ui.activate import redeem
+    from krellbot.application.license_activation import redeem
 
     outcome = redeem("K", home=fresh_home, now=1)
     assert len(fake.calls) == 1, fake.calls
@@ -217,10 +217,10 @@ def test_redeem_refused_key_outcome_is_secret_free(fresh_home: Path, monkeypatch
 
     secret = "DLX-SECRET-1234567890-XYZ"
     fake = _FakeRefresh()
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", fake)
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", _FakeInstall())
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", fake)
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", _FakeInstall())
 
-    from krellbot.ui.activate import redeem
+    from krellbot.application.license_activation import redeem
 
     outcome = redeem(secret, home=fresh_home, now=1)
     assert outcome.status == "dead", outcome
@@ -244,8 +244,8 @@ def test_api_redeem_requires_session_and_csrf(fresh_home: Path, monkeypatch, wor
 
     fake = _FakeRefresh()
     install = _FakeInstall()
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", fake)
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", install)
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", fake)
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", install)
 
     host, port = workstation.bound_host, workstation.bound_port
 
@@ -267,8 +267,8 @@ def test_api_redeem_after_bootstrap_uses_gate(fresh_home: Path, monkeypatch, wor
 
     fake = _FakeRefresh()
     install = _FakeInstall()
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", fake)
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", install)
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", fake)
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", install)
 
     host, port = workstation.bound_host, workstation.bound_port
     cookie, csrf = _bootstrap(host, port, workstation.bootstrap_token)
@@ -306,8 +306,8 @@ def test_api_redeem_gate_shape_is_unchanged_on_success(
         installed.append(key)
         return True
 
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", fake)
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", _install)
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", fake)
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", _install)
 
     host, port = workstation.bound_host, workstation.bound_port
     cookie, csrf = _bootstrap(host, port, workstation.bootstrap_token)

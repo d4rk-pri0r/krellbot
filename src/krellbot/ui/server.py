@@ -51,6 +51,7 @@ from krellbot import journal as kb_journal
 from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 from krellbot.application.paper import CODE_ARMED, CODE_DISARMED, PaperService
+from krellbot.application.paper import read_paper_state as _read_paper_state
 
 from . import activate as kb_activate
 from . import first_run, keys_status, trust
@@ -168,17 +169,6 @@ def _content_type_for(name: str) -> str:
 
 
 # ---- view layer ----------------------------------------------------------
-
-
-def _read_paper_state(home: Path, venue: str) -> dict:
-    """Read the paper venue's state file, or return a blank state."""
-    path = Path(home) / "run" / f"paper-{venue}.json"
-    if not path.is_file():
-        return {"venue": venue, "balances": {}, "open_orders": [], "recent_fills": []}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"venue": venue, "balances": {}, "open_orders": [], "recent_fills": []}
 
 
 def _read_receipts(home: Path) -> list[dict]:
@@ -1737,7 +1727,7 @@ def _make_handler(server_config: _ServerConfig):
 
                 1. Read ``activation_key`` once. A blank value is
                    rejected with 400 (no PRG — the form is invalid).
-                2. Delegate to :func:`krellbot.ui.activate.redeem`,
+                2. Delegate to :func:`krellbot.application.license_activation.redeem`,
                    which composes ``cli.check_license`` and
                    ``cli.download_catalog`` (no shelling out, no second
                    license format). The key never appears in any

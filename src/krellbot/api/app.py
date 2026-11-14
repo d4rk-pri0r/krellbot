@@ -37,6 +37,7 @@ from krellbot.application import operations as operations_view_app
 from krellbot.application import packs as app_packs
 from krellbot.application.live_preflight import SandboxTransport
 from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
+from krellbot.application.paper import read_paper_state
 from krellbot.application.strategy import (
     DraftNotRunnable,
     RevisionNotFound,
@@ -1244,9 +1245,7 @@ def create_app(
             )
 
         armed = config.armed[0]
-        from krellbot.ui.server import _read_paper_state
-
-        state = _read_paper_state(s.home, armed.venue)
+        state = read_paper_state(s.home, armed.venue)
         balances = state.get("balances") or {}
         if not isinstance(balances, dict):
             balances = {}
@@ -1668,7 +1667,7 @@ def create_app(
 
     @app.post("/api/v1/activation/redeem")
     async def redeem_activation(request: Request) -> Response:
-        """Delegate to ``krellbot.ui.activate.redeem``; never echoes a key.
+        """Delegate to ``krellbot.application.license_activation.redeem``; never echoes a key.
 
         The route is a state change (it can rewrite the license cache),
         so it runs the same session-cookie + CSRF + loopback-origin
@@ -1694,7 +1693,7 @@ def create_app(
         if not isinstance(key, str):
             key = ""
 
-        from krellbot.ui.activate import redeem
+        from krellbot.application.license_activation import redeem
 
         outcome = redeem(key, home=s.home, now=int(_now_seconds()))
         body = {
