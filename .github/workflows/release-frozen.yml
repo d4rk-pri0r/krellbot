@@ -11,7 +11,6 @@ on:
       - "uv.lock"
       - "tests/test_release_archive.py"
       - "tests/test_frozen_main.py"
-      - "tests/test_ci_smoke_ui.py"
       - "tests/test_ci_smoke_frozen_paper.py"
   push:
     tags: ["v*"]
@@ -86,7 +85,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run unit tests
-        run: uv run pytest -q tests/test_release_archive.py tests/test_frozen_main.py tests/test_ci_smoke_ui.py tests/test_ci_smoke_frozen_paper.py
+        run: uv run pytest -q tests/test_release_archive.py tests/test_frozen_main.py tests/test_ci_smoke_frozen_paper.py
         env:
           PYTHONUTF8: "1"
 
@@ -102,11 +101,12 @@ jobs:
           # `_internal/` inside the bundle. The launcher executable is
           # `dist/krellbot/krellbot` (POSIX) or `dist/krellbot/krellbot.exe`
           # (Windows); the bundled static directory lives at
-          # `dist/krellbot/_internal/krellbot/ui/static/`. We accept both
-          # the PyInstaller 6.x layout and the legacy root layout.
+          # `dist/krellbot/_internal/frontend/dist/` (the built
+          # workstation shell). We accept both the PyInstaller 6.x layout
+          # and the legacy root layout.
           CANDIDATES=(
-            "dist/krellbot/_internal/krellbot/ui/static/index.html"
-            "dist/krellbot/krellbot/ui/static/index.html"
+            "dist/krellbot/_internal/frontend/dist/index.html"
+            "dist/krellbot/frontend/dist/index.html"
           )
           STATIC=""
           for cand in "${CANDIDATES[@]}"; do
@@ -158,65 +158,15 @@ jobs:
           # `list` exits 0 whether or not packs exist; we just confirm
           # the bundled binary can launch its CLI loop.
 
-      - name: "Smoke test bundled token-gated dashboard"
-        # Spin up the bundled binary's `ui` command on a known port,
-        # parse the printed `http://127.0.0.1:PORT/<token>/` URL,
-        # and hit the gated index + a bundled static asset. A 403
-        # from any path proves the bundle is serving from the
-        # bundled static directory, not the checkout. A 200 with
-        # bytes proves the bundled UI assets actually shipped.
-        # Windows runs this through bash too because the workflow
-        # uses Git Bash; `start` / detached process not needed.
-        # The CLI prints the URL with `flush=True` so the helper
-        # can capture it from a real `subprocess.PIPE` on every
-        # platform — no tty, no winpty, no third-party dependency.
-        # Earlier reviews flagged the previous pty/winpty split
-        # because Windows GitHub Actions runners ship without
-        # winpty; the new path uses stdlib only.
-        shell: bash
-        env:
-          KRELLBOT_HOME: ${{ runner.temp }}/krellbot-home
-          PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
-        run: |
-          set -euo pipefail
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            BIN="dist/krellbot/krellbot.exe"
-          else
-            BIN="dist/krellbot/krellbot"
-          fi
-          # Bind port 0 and let the OS assign an available loopback port.
-          # The helper reads the actual gated URL from the child's stdout;
-          # probing a port in a separate process adds a race and nested
-          # Bash/Python quoting breaks on Windows runners.
-          # Cleanup: ``scripts/ci_smoke_ui.py`` owns the spawned
-          # child via its own ``finally:`` block (SIGINT + wait +
-          # SIGKILL fallback, then closes the capture). That covers
-          # success AND every early-exit path (curl failure, 403,
-          # etc.), so we do NOT install a bash ``trap`` here. The
-          # helper is the single source of truth for child
-          # cleanup; a workflow-side trap would either be
-          # POSIX-only (and therefore unavailable on Windows Git
-          # Bash runners, which ship without the GNU ``procps``
-          # tools) or would duplicate the helper's own cleanup in
-          # a way that's hard to reason about. See
-          # ``tests/test_ci_smoke_ui.py::test_workflow_smoke_block_*``.
-          uv run python scripts/ci_smoke_ui.py \
-            --binary "$BIN" \
-            --port 0 \
-            --home "${{ runner.temp }}/krellbot-home" \
-            --log ui_smoke.log
-
       - name: "Smoke test bundled workstation shell"
-        # INT06 — smoke the workstation launcher alongside the
-        # legacy dashboard smoke. The frozen binary's
+        # INT06 — smoke the workstation launcher. The frozen binary's
         # ``workstation`` subcommand binds the FastAPI shell to a
         # loopback socket and prints the URL with no token; the
         # helper parses the URL, GETs ``/`` with the loopback
         # ``Host`` header, and accepts either a 200 with
         # ``krellbot-bootstrap`` (built dist) or a 404 with
-        # ``shell_not_built`` (no dist). The brief forbids
-        # replacing ``krellbot ui``; this step runs beside it on
-        # every matrix entry, proving both shells are bundled.
+        # ``shell_not_built`` (no dist). This step runs on every
+        # matrix entry, proving the workstation shell is bundled.
         # The CLI prints the URL with ``flush=True`` so the
         # helper captures it from a real ``subprocess.PIPE`` on
         # every platform — no tty, no winpty, no third-party

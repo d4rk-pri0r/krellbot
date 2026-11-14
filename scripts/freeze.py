@@ -3,7 +3,7 @@
 This script is invoked by release CI on each of macOS / Windows / Linux.
 It produces a one-dir tree (PyInstaller's default for `--onedir`) at
 `<repo>/dist/krellbot/` containing the executable plus the bundled
-runtime, static UI assets, and keyring backends. The companion script
+runtime, the built workstation shell, and keyring backends. The companion script
 `scripts/release_archive.py` then zips that tree into an immutable
 release archive with a manifest.
 
@@ -13,9 +13,9 @@ and manifest as workflow artifacts.
 
 Why one-dir (not one-file)?
 
-* The static UI assets ship as ordinary files inside the directory;
-  `krellbot.ui.server` reads them with `Path(__file__).parent / "static"`,
-  which resolves inside the bundle at runtime.
+* The built workstation shell (`frontend/dist`) ships as ordinary
+  files inside the directory; the API shell resolver finds it under
+  `sys._MEIPASS` at runtime.
 * keyring backend discovery (`--collect-all keyring`) drops platform
   backends alongside the binary, so the user agent can resolve them.
 * Build is faster and reproducible; the directory layout is what
@@ -67,8 +67,6 @@ _RUNTIME_DATA_PACKAGES = (
 
 def _build_args(*, entry: Path, dist_root: Path, work_root: Path, spec_root: Path, repo_root: Path) -> list[str]:
     """Assemble the PyInstaller CLI args for our one-dir build."""
-    static_src = (repo_root / "src" / "krellbot" / "ui" / "static").resolve()
-    static_dest = Path("krellbot") / "ui" / "static"
     frontend_dist_src = (repo_root / "frontend" / "dist").resolve()
     frontend_dist_dest = Path("frontend") / "dist"
 
@@ -89,12 +87,6 @@ def _build_args(*, entry: Path, dist_root: Path, work_root: Path, spec_root: Pat
         str(spec_root.resolve()),
         "--add-data",
         f"{frontend_dist_src}{_SEP}{frontend_dist_dest}",
-        # Static UI assets — same path inside the bundle as in the
-        # source tree so `krellbot.ui.server._STATIC_DIR` resolves at
-        # runtime to the bundled copy, not the checkout. Absolute source
-        # path so PyInstaller resolves it regardless of cwd/specpath.
-        "--add-data",
-        f"{static_src}{_SEP}{static_dest}",
         # keyring backend discovery: copies every backend's Python files
         # and metadata into the bundle so any platform's keyring works.
         "--collect-all",
@@ -110,13 +102,6 @@ def _build_args(*, entry: Path, dist_root: Path, work_root: Path, spec_root: Pat
         "cryptography",
         "--hidden-import",
         "jsonschema",
-        # `krellbot.cli` imports krellbot.ui.* lazily inside the `ui`
-        # subcommand; PyInstaller's static analysis can't trace that,
-        # so force them in.
-        "--hidden-import",
-        "krellbot.ui.server",
-        "--hidden-import",
-        "krellbot.ui.launch",
         # Package data consumed through importlib.resources at runtime:
         # the starter catalogue JSONs, the pack schema, and the
         # rehearsal fixtures. These must resolve from the installed

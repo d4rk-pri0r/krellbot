@@ -13,9 +13,8 @@ inspect the loopback HTTP server the launcher binds. Required behavior:
      bootstrap token must not appear in stdout or the response body.
   3. ``krellbot workstation --host 0.0.0.0`` exits 2 and stderr contains
      ``Unknown argument: --host``. No server is started.
-  4. ``inspect.getsource(cmd_ui)`` still mentions ``DashboardServer`` and
-     does not mention ``WorkstationServer`` — the legacy dashboard CLI
-     is untouched.
+  4. The legacy dashboard command is gone: ``krellbot.cli`` has no
+     ``cmd_ui`` and ``ui`` falls through to usage (exit 2).
 
 The launcher must use a fresh ``KRELLBOT_HOME`` directory and strip
 venue key / secret / keyfile env vars so no real credential reaches
@@ -365,20 +364,31 @@ def test_workstation_rejects_non_integer_port(tmp_path):
     assert "invalid --port" in r.stderr, r.stderr
 
 
-# ----- 4. cmd_ui must still construct DashboardServer ----------------------
+# ----- 4. the legacy dashboard command is gone -----------------------------
 
 
-def test_cmd_ui_source_still_uses_dashboard_server():
-    """The legacy ``cmd_ui`` body still constructs ``DashboardServer`` and
-    must not be replaced by ``WorkstationServer``. The brief forbids
-    editing the body of ``cmd_ui``.
+def test_legacy_dashboard_command_is_gone(tmp_path):
+    """``krellbot.cli`` no longer defines ``cmd_ui``, and ``ui`` is not a
+    subcommand: it prints usage and exits 2 without starting a server.
     """
 
-    from krellbot.cli import cmd_ui
+    from krellbot import cli
 
-    src = inspect.getsource(cmd_ui)
-    assert "DashboardServer" in src, "cmd_ui no longer references DashboardServer"
-    assert "WorkstationServer" not in src, "cmd_ui body now references WorkstationServer; the brief forbids that"
+    assert not hasattr(cli, "cmd_ui"), "krellbot.cli still defines the legacy cmd_ui"
+    assert "DashboardServer" not in inspect.getsource(cli)
+
+    home = tmp_path / "home"
+    r = subprocess.run(
+        [sys.executable, "-m", "krellbot.cli", "ui"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=_sanitized_env(home),
+        timeout=10,
+        check=False,
+    )
+    assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
+    assert "Usage:" in r.stderr, r.stderr
 
 
 # ----- 5. usage line advertises the new subcommand -------------------------
@@ -386,7 +396,7 @@ def test_cmd_ui_source_still_uses_dashboard_server():
 
 def test_usage_advertises_workstation_subcommand():
     """The usage line must mention ``workstation [--port N] [--dist PATH] [--open]``.
-    The legacy ``ui [--port N]`` token must still be present.
+    The removed legacy ``ui [--port N]`` token must not be advertised.
     """
 
     import io
@@ -400,4 +410,4 @@ def test_usage_advertises_workstation_subcommand():
     assert rc == 2
     rendered = buf.getvalue()
     assert "workstation [--port N] [--dist PATH] [--open]" in rendered, rendered
-    assert "ui [--port N]" in rendered, rendered
+    assert "| ui [--port N]" not in rendered, rendered

@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from krellbot.ui.packs import list_installed, update_pack
+from krellbot.application.pack_library import list_installed, update_pack
 
 # ---- helpers --------------------------------------------------------------
 

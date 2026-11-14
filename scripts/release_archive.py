@@ -73,10 +73,13 @@ _ARCH_TAGS = frozenset({"x86_64", "arm64"})
 _EXE_POSIX = "krellbot"
 _EXE_WINDOWS = "krellbot.exe"
 
-# Required payload: a static index.html is what the loopback UI serves.
-# Its presence proves the build bundled the static assets at the
-# packaged path (not the checkout).
+# Required payload: the built workstation shell's index.html, which the
+# loopback workstation serves. Its presence proves the build bundled the
+# shell at the packaged path (not the checkout). ``_STATIC_REL`` is the
+# root-level layout; ``_SHELL_REL`` is where ``scripts/freeze.py`` places
+# the Vite build inside the bundle.
 _STATIC_REL = Path("static") / "index.html"
+_SHELL_REL = Path("frontend") / "dist" / "index.html"
 
 # Required runtime package data. `krellbot.pack.lint` reads the schema
 # through `importlib.resources.files("krellbot.pack")`, so the frozen
@@ -106,7 +109,8 @@ def _validate_dist(dist: Path, *, os_tag: str) -> None:
 
     Refuses:
       * a missing executable (`krellbot` on POSIX, `krellbot.exe` on Windows)
-      * a missing `static/index.html` (bundled UI assets)
+      * a missing UI index (`frontend/dist/index.html`, the bundled
+        workstation shell, or a root `static/index.html`)
       * a missing or invalid `krellbot/pack/schema.json` (runtime pack
         validation data; v0.9.4/v0.9.5 shipped without it)
       * symlinks whose target resolves outside the validated dist root
@@ -117,7 +121,7 @@ def _validate_dist(dist: Path, *, os_tag: str) -> None:
 
         dist/krellbot/krellbot                 # the launcher executable
         dist/krellbot/_internal/krellbot/...   # Python modules
-        dist/krellbot/_internal/krellbot/ui/static/index.html
+        dist/krellbot/_internal/frontend/dist/index.html
 
     Both layouts — payload at the dist root (older PyInstaller) and at
     `_internal/...` (6.x default) — are accepted.
@@ -132,14 +136,15 @@ def _validate_dist(dist: Path, *, os_tag: str) -> None:
             f"required executable not found in dist: {exe_name} (os={os_tag})"
         )
 
-    # The static payload must live somewhere under the dist tree. Look
-    # at the dist root first, then the `_internal/krellbot/ui/...` layout
+    # The UI payload must live somewhere under the dist tree. Look at
+    # the dist root first, then the `_internal/frontend/dist/...` layout
     # PyInstaller 6.x produces (the launcher executable is at
     # `dist/krellbot/krellbot`, with bytecode and data under
-    # `_internal/krellbot/`).
+    # `_internal/`).
     candidates = [
         dist / _STATIC_REL,
-        dist / "_internal" / "krellbot" / "ui" / _STATIC_REL,
+        dist / _SHELL_REL,
+        dist / "_internal" / _SHELL_REL,
     ]
     if not any(p.is_file() for p in candidates):
         searched = ", ".join(str(p.relative_to(dist)) for p in candidates)

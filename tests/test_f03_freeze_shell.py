@@ -8,9 +8,8 @@ Behavior under test:
 
   1. ``scripts.freeze._build_args`` emits an ``--add-data`` entry whose
      source is ``frontend/dist`` and whose destination inside the
-     bundle is ``frontend/dist``. The legacy
-     ``src/krellbot/ui/static`` → ``krellbot/ui/static`` entry remains
-     (the brief explicitly forbids removing it).
+     bundle is ``frontend/dist``. No legacy dashboard static entry
+     is bundled; the legacy dashboard was deleted.
 
   2. ``_build_args`` is pure: calling it does not invoke PyInstaller
      and does not start a subprocess.
@@ -146,24 +145,22 @@ def test_build_args_includes_frontend_dist_data_entry() -> None:
     assert src_path == expected_src, (src_path, expected_src)
 
 
-def test_build_args_keeps_legacy_static_data_entry() -> None:
-    """The brief forbids removing the legacy ``src/krellbot/ui/static`` → ``krellbot/ui/static``
-    entry. We assert the pair is still present so the legacy wizard /
-    dashboard path keeps working in the bundle.
+def test_build_args_bundles_no_legacy_dashboard_static() -> None:
+    """The legacy dashboard is deleted, so the bundle carries no
+    ``krellbot/ui/static`` data entry and no hidden import of the
+    removed dashboard package. Every ``--add-data`` source must exist.
     """
 
     freeze = _load_freeze_module()
     args = freeze._build_args(**_build_args_kwargs())
 
     pairs = _add_data_entries(args)
-    legacy = [pair for pair in pairs if Path(pair[1]).parts == ("krellbot", "ui", "static")]
-    assert legacy, (
-        "_build_args must keep the legacy src/krellbot/ui/static -> "
-        f"krellbot/ui/static --add-data entry; got pairs={pairs!r}"
-    )
-    src_path = Path(legacy[0][0]).resolve()
-    expected_src = (REPO_ROOT / "src" / "krellbot" / "ui" / "static").resolve()
-    assert src_path == expected_src, (src_path, expected_src)
+    legacy = [pair for pair in pairs if Path(pair[1]).parts[:2] == ("krellbot", "ui")]
+    assert not legacy, f"_build_args still bundles the legacy dashboard static: {legacy!r}"
+    hidden = [args[i + 1] for i, flag in enumerate(args) if flag == "--hidden-import"]
+    assert not [name for name in hidden if name.split(".")[:2] == ["krellbot", "ui"]], hidden
+    src_dir = REPO_ROOT / "src" / "krellbot"
+    assert not (src_dir / "ui").exists(), "the legacy dashboard package must not exist"
 
 
 # ---------------------------------------------------------------------------
