@@ -8,3 +8,4 @@ One line per item. Nothing here is work until the owner moves it into a mileston
 - CLI commands with no web equivalent could be removed once the web app covers them.
 - Coinbase live path: same four obligations as M1, not started.
 - Paper pricing uses last-closed rather than forming candles (MEDIUM note on #197).
+- Strategies reopen: until the revision read resolves, the previous editor stays editable with no busy state, and edits made there are dropped on remount (`src/shell/WorkstationShell.tsx` `handleLibraryReopen`; found in M0.3).
