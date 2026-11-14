@@ -11,8 +11,8 @@ the brief's first required behavior:
 
 The test intentionally avoids a frozen binary or any real HTTP transport:
 the launcher is the same code path the CLI runs, just bound to a random
-loopback port. ``krellbot.ui.activate.refresh_license`` and
-``krellbot.ui.activate.install_catalog`` are monkeypatched everywhere so
+loopback port. ``krellbot.application.license_activation.refresh_license`` and
+``krellbot.application.license_activation.install_catalog`` are monkeypatched everywhere so
 no activation test reaches the network.
 
 Rewritten in M1R-FA: the fresh-install short-circuit
@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 from krellbot.api.serve import WorkstationServer
-from krellbot.ui.activate import SAFE_MESSAGES
+from krellbot.application.license_activation import SAFE_MESSAGES
 
 
 def _read_response(sock: socket.socket, n: int = 4096) -> bytes:
@@ -176,8 +176,8 @@ def test_fresh_install_runs_under_isolated_krellbot_home(
 
     refresh = _RefusingRefresh()
     install = _NeverInstall()
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", refresh)
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", install)
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", refresh)
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", install)
 
     # The fresh home never had a config or license cache written to it.
     assert not (fresh_home / "config.json").exists()
@@ -237,8 +237,8 @@ def _redeem_bootstrap(host: str, port: int, token: str) -> tuple[str, str]:
 def test_activation_response_does_not_echo_key(fresh_home: Path, monkeypatch, workstation: WorkstationServer) -> None:
     """The activation response body never echoes the submitted key."""
 
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", _RefusingRefresh())
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", _NeverInstall())
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", _RefusingRefresh())
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", _NeverInstall())
 
     host, port = workstation.bound_host, workstation.bound_port
     cookie, csrf = _redeem_bootstrap(host, port, workstation.bootstrap_token)
@@ -263,8 +263,8 @@ def test_activation_response_does_not_echo_key(fresh_home: Path, monkeypatch, wo
 def test_activation_message_is_in_safe_set(fresh_home: Path, monkeypatch, workstation: WorkstationServer) -> None:
     """The fresh-install refusal message is in the activate SAFE_MESSAGES set."""
 
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", _RefusingRefresh())
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", _NeverInstall())
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", _RefusingRefresh())
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", _NeverInstall())
 
     host, port = workstation.bound_host, workstation.bound_port
     cookie, csrf = _redeem_bootstrap(host, port, workstation.bootstrap_token)
@@ -286,8 +286,8 @@ def test_activation_message_is_in_safe_set(fresh_home: Path, monkeypatch, workst
 def test_fresh_install_with_no_key_body(fresh_home: Path, monkeypatch, workstation: WorkstationServer) -> None:
     """An empty key on a fresh install returns a closed refusal."""
 
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", _RefusingRefresh())
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", _NeverInstall())
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", _RefusingRefresh())
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", _NeverInstall())
 
     host, port = workstation.bound_host, workstation.bound_port
     cookie, csrf = _redeem_bootstrap(host, port, workstation.bootstrap_token)
@@ -313,8 +313,8 @@ def test_activation_without_session_is_403(fresh_home: Path, monkeypatch, workst
     license transport (M1R-FA F2)."""
 
     refresh = _RefusingRefresh()
-    monkeypatch.setattr("krellbot.ui.activate.refresh_license", refresh)
-    monkeypatch.setattr("krellbot.ui.activate.install_catalog", _NeverInstall())
+    monkeypatch.setattr("krellbot.application.license_activation.refresh_license", refresh)
+    monkeypatch.setattr("krellbot.application.license_activation.install_catalog", _NeverInstall())
 
     host, port = workstation.bound_host, workstation.bound_port
     code, body = _http_post_json(

@@ -385,7 +385,7 @@ def cmd_setup(license_key):
     """
     import time
 
-    from krellbot.ui.activate import redeem
+    from krellbot.application.license_activation import redeem
 
     outcome = redeem(str(license_key), home=kb_paths.home(), now=int(time.time()))
     print(outcome.message)

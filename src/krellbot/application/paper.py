@@ -118,6 +118,17 @@ class CommandResultV1:
         return out
 
 
+def read_paper_state(home: Path, venue: str) -> dict:
+    """Read the paper venue's state file, or return a blank state."""
+    path = Path(home) / "run" / f"paper-{venue}.json"
+    if not path.is_file():
+        return {"venue": venue, "balances": {}, "open_orders": [], "recent_fills": []}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"venue": venue, "balances": {}, "open_orders": [], "recent_fills": []}
+
+
 def _revision(home: Path) -> str | None:
     path = kb_config.config_path(home)
     if not path.exists():
