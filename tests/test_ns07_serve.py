@@ -17,8 +17,8 @@ Behavior under test:
   4. A missing ``frontend/dist/index.html`` causes ``GET /`` to return
      404 with the closed JSON shape ``{"code": "shell_not_built"}``.
      The static layer does not synthesize the file.
-  5. The legacy wizard/dashboard server (``krellbot.ui.server``) is
-     untouched by this leaf.
+  5. The loopback workstation server binds 127.0.0.1 and serves the
+     API over a real socket even when no shell is built.
 
 The ASGI client is reused from ``tests.test_ns06_api``. The frontend is
 builded when ``frontend/dist/index.html`` is absent so a cold checkout
@@ -389,25 +389,26 @@ def test_assets_still_404_when_index_missing(home: Path, tmp_path: Path, monkeyp
     assert status == 404, status
 
 
-# ---- 5. legacy dashboard server is untouched -----------------------------
+# ---- 5. loopback workstation server binds without a built shell -------
 
 
-def test_legacy_dashboard_server_remains_intact(home: Path) -> None:
-    """``krellbot.ui.server.DashboardServer`` still binds, exposes the
-    token-gated dashboard, and is not touched by this leaf.
+def test_loopback_workstation_server_serves_api_without_shell(home: Path) -> None:
+    """``krellbot.api.serve.WorkstationServer`` binds 127.0.0.1 only and the
+    static mount does not swallow ``/api`` even when no shell is built.
     """
 
-    from krellbot.ui.server import DashboardServer
+    from krellbot.api.serve import WorkstationServer
 
-    server = DashboardServer(home=home, port=0)
+    server = WorkstationServer(home, port=0, dist_dir=home / "no-dist")
     try:
         server.start()
         assert server.bound_host == "127.0.0.1"
+        assert server.url == f"http://127.0.0.1:{server.bound_port}/"
         import http.client
 
         conn = http.client.HTTPConnection("127.0.0.1", server.bound_port, timeout=2)
         try:
-            conn.request("GET", f"/{server.token}/")
+            conn.request("GET", "/api/v1/capabilities", headers={"Host": f"127.0.0.1:{server.bound_port}"})
             resp = conn.getresponse()
             resp.read()
             assert resp.status == 200

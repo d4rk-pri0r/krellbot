@@ -4,9 +4,8 @@ INT06 — smoke the workstation launcher. The release workflow runs
 ``scripts/ci_smoke_workstation.py`` against the frozen binary to
 prove the bundled ``krellbot workstation`` shell actually serves
 on the loopback, the printed URL carries no token, and the
-loopback-host gate accepts the smoke GET. The legacy
-``scripts/ci_smoke_ui.py`` is untouched; the workstation smoke
-runs alongside it.
+loopback-host gate accepts the smoke GET. It is the only UI smoke
+in the release workflow; the legacy dashboard smoke is gone.
 
 We can't run the real frozen binary in CI without doing the full
 PyInstaller build (too slow), so this test suite drives the new
@@ -28,8 +27,8 @@ binary path. The new helper is expected to:
   - terminate the child in a ``finally:`` block using
     ``send_signal`` + ``wait`` + ``kill()`` fallback — never
     ``pkill`` (Windows Git Bash has no ``procps``),
-  - not call ``ui`` anywhere — the dashboard CLI is forbidden
-    by the brief.
+  - not call ``ui`` anywhere — the legacy dashboard command no
+    longer exists.
 
 The workstation shell is reachable at ``/`` only; the bootstrap
 token is delivered through the served HTML's
@@ -40,12 +39,11 @@ The workflow-shape tests pin the new step:
 
   - ``scripts/ci_smoke_workstation.py`` is invoked in a step named
     ``Smoke test bundled workstation shell``,
-  - the legacy ``scripts/ci_smoke_ui.py`` step still exists,
+  - the legacy dashboard smoke step is gone,
   - the new step's bash run-block does not contain ``pkill``.
 
 Together with the existing CLI smoke tests, the release workflow
-proves both the token-gated dashboard shell AND the loopback
-workstation shell are bundled correctly.
+proves the loopback workstation shell is bundled correctly.
 """
 
 from __future__ import annotations
@@ -185,8 +183,7 @@ def test_workstation_smoke_succeeds_against_shim(tmp_path):
 def test_workstation_smoke_does_not_invoke_ui(tmp_path):
     """The new helper must never call ``ui`` — only ``workstation``.
 
-    The brief forbids touching ``krellbot ui`` from this smoke
-    step. The helper script's argv construction is the only place
+    The legacy dashboard subcommand no longer exists. The helper script's argv construction is the only place
     this contract lives, so we assert it on the source rather than
     a runtime trace.
     """
@@ -197,7 +194,7 @@ def test_workstation_smoke_does_not_invoke_ui(tmp_path):
     # ``"ui"``. The grep is narrow: only the literal quoted token.
     ui_token_re = re.compile(r"""(['"])ui\1""")
     assert not ui_token_re.search(src), (
-        "ci_smoke_workstation.py must not launch `krellbot ui`; the brief forbids replacing the dashboard smoke"
+        "ci_smoke_workstation.py must launch only the workstation subcommand, never the removed dashboard one"
     )
     workstation_token_re = re.compile(r"""(['"])workstation\1""")
     assert workstation_token_re.search(src), "ci_smoke_workstation.py must launch `krellbot workstation`"
@@ -460,7 +457,6 @@ def _step_run_block(step_name: str) -> str:
     """Return the body of the step whose ``- name:`` matches ``step_name``.
 
     Hand-rolled YAML extractor; PyYAML is not a dev dependency.
-    Mirrors ``_smoke_step_run_block`` in test_ci_smoke_ui.py.
     """
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -503,17 +499,14 @@ def _step_run_block(step_name: str) -> str:
     return "\n".join(body_lines)
 
 
-def test_workflow_has_workstation_smoke_step_after_dashboard_smoke():
-    """The release workflow must contain BOTH smoke steps.
+def test_workflow_has_workstation_smoke_step_and_no_dashboard_smoke():
+    """The release workflow smokes the workstation shell and nothing else.
 
-    The new step (``Smoke test bundled workstation shell``)
-    follows the legacy dashboard smoke step. The brief forbids
-    removing the legacy step.
+    The workstation step (``Smoke test bundled workstation shell``)
+    is present; the legacy dashboard smoke helper is not invoked.
     """
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "scripts/ci_smoke_ui.py" in text, (
-        "release-frozen.yml must still invoke scripts/ci_smoke_ui.py; the legacy dashboard smoke must not be removed"
-    )
+    assert "ci_smoke_ui" not in text, "release-frozen.yml must not invoke the removed legacy dashboard smoke helper"
     assert "scripts/ci_smoke_workstation.py" in text, "release-frozen.yml must invoke scripts/ci_smoke_workstation.py"
     assert "Smoke test bundled workstation shell" in text, (
         "release-frozen.yml must contain a step named 'Smoke test bundled workstation shell'"
@@ -547,35 +540,28 @@ def test_workflow_workstation_smoke_step_does_not_use_pkill():
     )
 
 
-def test_workflow_dashboard_smoke_step_still_present():
-    """The legacy dashboard smoke step must still be present.
-
-    Pins the contract from the brief: do not replace
-    ``krellbot ui``; add the workstation smoke beside it.
-    """
+def test_workflow_dashboard_smoke_step_is_gone():
+    """The legacy dashboard smoke step was deleted with the dashboard."""
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "Smoke test bundled token-gated dashboard" in text, (
-        "release-frozen.yml must still contain the legacy 'Smoke test bundled token-gated dashboard' step"
+    assert "Smoke test bundled token-gated dashboard" not in text, (
+        "release-frozen.yml still contains the legacy 'Smoke test bundled token-gated dashboard' step"
     )
 
 
 def test_workflow_workstation_smoke_step_uses_distinct_log_path():
-    """The new step must use a log path that does not collide with the
-    legacy dashboard smoke step's log path.
+    """The workstation step must use a log path no other step writes.
 
-    Both steps write to ``<temp>/...`` — if they used the same
-    path the second smoke would clobber the first's log and the
-    helper's diagnostics would be ambiguous.
+    Steps write to ``<temp>/...`` — if two used the same path the
+    later one would clobber the earlier log and the helper's
+    diagnostics would be ambiguous.
     """
-    dash_run = _step_run_block("Smoke test bundled token-gated dashboard")
     work_run = _step_run_block("Smoke test bundled workstation shell")
-    dash_log_match = re.search(r"--log\s+(\S+)", dash_run)
     work_log_match = re.search(r"--log\s+(\S+)", work_run)
-    assert dash_log_match and work_log_match, (
-        f"both steps must declare --log; dashboard={dash_log_match}, workstation={work_log_match}"
-    )
-    assert dash_log_match.group(1) != work_log_match.group(1), (
-        f"workstation smoke must use a distinct log path; both used {dash_log_match.group(1)!r}"
+    assert work_log_match, "workstation smoke step must declare --log"
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    all_logs = re.findall(r"--log\s+(\S+)", text)
+    assert all_logs.count(work_log_match.group(1)) == 1, (
+        f"workstation smoke must use a distinct log path; {work_log_match.group(1)!r} appears in {all_logs!r}"
     )
 
 

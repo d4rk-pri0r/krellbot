@@ -6,20 +6,14 @@ shell on a loopback socket, the printed URL carries no bootstrap
 token (the bootstrap meta tag is the only delivery channel), and
 the loopback-host middleware accepts the smoke GET.
 
-This script is the workstation-side counterpart to
-``scripts/ci_smoke_ui.py``. Both run in the same workflow step
-list; the legacy ``krellbot ui`` dashboard smoke is untouched and
-``ci_smoke_ui.py`` is not edited. The brief forbids replacing
-``krellbot ui``; this helper exists beside it.
-
 The CLI prints the URL with ``flush=True`` (see
 ``krellbot.cli.cmd_workstation``) so the URL reaches the child
 stdout pipe immediately — even on Windows where a tty is not
 available and ``winpty`` is not pre-installed on GitHub Actions
-Windows runners. We capture the printed URL via the same portable
+Windows runners. We capture the printed URL via a portable
 ``subprocess.PIPE`` + reader-thread + ``queue.Queue`` pattern
-``ci_smoke_ui.py`` already uses (``capture_url_from_subprocess``),
-so there is no tty, no winpty, no third-party dependency.
+(``capture_url_from_subprocess``), so there is no tty, no winpty,
+no third-party dependency.
 
 The URL is parsed from the captured output, then we:
 
@@ -73,11 +67,6 @@ except AttributeError:  # pragma: no cover — POSIX
 
 class _SubprocessUrlCapture:
     """Portable URL capture over ``subprocess.PIPE``.
-
-    Mirrors ``scripts.ci_smoke_ui._SubprocessUrlCapture`` so the
-    two helpers share the same Windows / POSIX portable pipe
-    capture. Re-using the implementation (rather than copy-pasting)
-    keeps the helper a single source of truth for child capture.
 
     The child writes its stdout into a pipe (``stderr`` merged
     into stdout). A daemon reader thread pulls lines off the pipe,
@@ -245,8 +234,7 @@ def capture_url_from_subprocess(
 def _resolve_binary_argv(binary: str) -> str | list[str]:
     """Return the first argv token(s) for launching ``binary``.
 
-    Mirrors ``scripts.ci_smoke_ui._resolve_binary_argv`` so the
-    production smoke runs a frozen ``.exe`` (or POSIX binary)
+    The production smoke runs a frozen ``.exe`` (or POSIX binary)
     verbatim while tests can pass a shebang Python script and
     have the interpreter launched directly (Windows
     ``CreateProcess`` cannot exec a shebang script — only a real
@@ -324,9 +312,8 @@ def main(argv: list[str] | None = None) -> int:
         "--port",
         str(args.port),
     ]
-    # Portable pipe-based URL capture: matches the
-    # ``ci_smoke_ui.py`` helper so the two smokes share the same
-    # Windows-friendly path. The CLI prints the URL with
+    # Portable pipe-based URL capture: a Windows-friendly path
+    # with no tty. The CLI prints the URL with
     # ``flush=True`` (see ``cmd_workstation``), so the bytes reach
     # the pipe immediately even on Windows.
     url, proc = capture_url_from_subprocess(cmd, env=env, log_path=log_path, deadline_s=10.0)

@@ -704,25 +704,25 @@ def test_openapi_schema_includes_session_and_commands_paths(home: Path) -> None:
     assert "/api/v1/capabilities" in paths, sorted(paths.keys())
 
 
-# ---- 8. existing wizard/dashboard server remains available ----------------
+# ---- 8. the loopback workstation server binds and serves the API --------
 
 
-def test_existing_dashboard_server_still_works(home: Path) -> None:
-    """`krellbot.ui.server.DashboardServer` continues to bind, expose the
-    dashboard, and host the wizard/dashboard routes the M1 contract
-    explicitly preserves."""
+def test_loopback_workstation_server_serves_the_api(home: Path) -> None:
+    """`krellbot.api.serve.WorkstationServer` binds 127.0.0.1 only, prints a
+    token-free URL, and serves the API over a real socket."""
 
-    from krellbot.ui.server import DashboardServer
+    from krellbot.api.serve import WorkstationServer
 
-    server = DashboardServer(home=home, port=0)
+    server = WorkstationServer(home, port=0, dist_dir=home / "no-dist")
     try:
         server.start()
         assert server.bound_host == "127.0.0.1"
+        assert server.url == f"http://127.0.0.1:{server.bound_port}/"
         import http.client
 
         conn = http.client.HTTPConnection("127.0.0.1", server.bound_port, timeout=2)
         try:
-            conn.request("GET", f"/{server.token}/")
+            conn.request("GET", "/api/v1/capabilities", headers={"Host": f"127.0.0.1:{server.bound_port}"})
             resp = conn.getresponse()
             resp.read()
             assert resp.status == 200

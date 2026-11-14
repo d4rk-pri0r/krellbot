@@ -123,7 +123,7 @@ On a headless machine without a persistent OS keychain, `krellbot doctor` can
 exit nonzero with keychain, missing-key, scheduler or stale-tick warnings and
 `install_ready=false` / `trading_ready=false`. These diagnostics do not require
 you to add keys for paper use. Verify paper readiness with the armed row and
-status above; do not use the Exchange wizard or load credentials for this path.
+status above; do not load credentials for this path.
 
 ## Private access from your Tailscale devices
 
@@ -156,18 +156,15 @@ krellbot keys add <venue> --file <key-file>   # store a key in the OS keychain
 krellbot backtest <pack.json> --venue kraken  # run a DSL pack over candle data, no orders
 krellbot arm <pack.json> --venue kraken --mode paper
 krellbot service install                      # schedule the hourly tick for this user
-krellbot ui                                   # serve a loopback dashboard at 127.0.0.1
-krellbot ui --open                            # same, plus open the URL in your default browser
-krellbot ui --port 8765                       # serve on a fixed loopback port
 krellbot doctor                               # check install readiness and warnings
 krellbot doctor --json                        # machine-readable report
 krellbot community install <id>               # pull a pack from the community index
 krellbot telemetry enable                     # opt in to anonymous usage telemetry
 ```
 
-The dashboard, telemetry shape, and community library are documented in
-[docs/dashboard.md](docs/dashboard.md), [docs/telemetry.md](docs/telemetry.md),
-and [docs/community.md](docs/community.md). The readiness summary that
+The telemetry shape and community library are documented in
+[docs/telemetry.md](docs/telemetry.md) and
+[docs/community.md](docs/community.md). The readiness summary that
 `krellbot doctor` reports is documented in [docs/service.md](docs/service.md).
 
 ## Readiness
@@ -191,15 +188,12 @@ exit code) are documented in [docs/service.md](docs/service.md).
 
 ## Live and the UI gate
 
-- The dashboard is `127.0.0.1` only; it refuses non-loopback `Host`
-  headers and rejects live-arm POSTs. Live arm remains a CLI-only path
+- The workstation is `127.0.0.1` only; it refuses non-loopback `Host`
+  headers and rejects live orders. Live arm remains a CLI-only path
   that requires typing `LIVE` exactly.
-- GET status reads local metadata without probing an exchange. Submitting
-  the Exchange form makes an authenticated HTTPS permission request to
-  the selected Kraken or Coinbase venue before storing a trade-only key
-  in the native OS keychain. No exchange credentials go to `krellbot.dev`.
-- See [docs/live.md](docs/live.md) for the live arm flow and
-  [docs/dashboard.md](docs/dashboard.md) for the dashboard.
+- Exchange keys are stored in the native OS keychain with
+  `krellbot keys add`. No exchange credentials go to `krellbot.dev`.
+- See [docs/live.md](docs/live.md) for the live arm flow.
 
 ## Working on the engine
 
@@ -253,8 +247,6 @@ Save, then Validate. Research accepts a local candle CSV; paper mode needs no
 exchange keys. New research jobs retain their status and completed results under
 `$KRELLBOT_HOME/research-jobs/`. After a restart, unfinished jobs appear as
 `interrupted`; they never resume automatically. Submit a new run to retry.
-The older `krellbot ui` command serves the legacy dashboard, not the
-workstation.
 
 Run the tests:
 

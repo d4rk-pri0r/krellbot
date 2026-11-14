@@ -23,7 +23,7 @@ The rewrite happens here — never inside `krellbot.cli` — so the
 developer CLI keeps its byte-compatible semantics (`python -m
 krellbot.cli` with no arguments still prints usage and exits 2).
 Explicit arguments are never rewritten: `krellbot.exe --version`,
-`krellbot ui`, `krellbot workstation ...` reach the CLI untouched.
+`krellbot doctor`, `krellbot workstation ...` reach the CLI untouched.
 `argv[0]` (the path the bootloader chose) is preserved verbatim.
 """
 
