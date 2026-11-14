@@ -22,22 +22,13 @@ test("mixed raw JSON and readable edits persist together after reopening", async
   await clickNav(page, "Strategies");
   await openLibrary(page);
   await libraryRowFor(page, revision).getByRole("button", { name: /reopen/i }).click();
-  const reopenedJson = await openTechnicalJson(page);
-  // Reopen loads the saved revision asynchronously; the editor can still be
-  // empty at this instant. Wait for the document, then assert it unchanged.
-  await expect
-    .poll(
-      async () => {
-        try {
-          return JSON.parse(await reopenedJson.inputValue()).indicators?.ma?.len ?? null;
-        } catch {
-          return null;
-        }
-      },
-      { timeout: 15_000 },
-    )
-    .toBe(41);
-  const reopened = JSON.parse(await reopenedJson.inputValue());
+  // Reopen reads the revision asynchronously and only then remounts the
+  // editor with it; until that read resolves the blank post-reload editor
+  // (no revision, empty raw JSON) is still on screen. The reopened editor
+  // takes its revision id and bytes from the same mount, so wait for it to
+  // show this revision before reading the raw JSON.
+  await expect(page.getByTestId("editor-revision-id")).toContainText(`revision: ${revision} (`);
+  const reopened = JSON.parse(await (await openTechnicalJson(page)).inputValue());
   expect(reopened.indicators.ma.len).toBe(41);
   expect(reopened.risk.stop.pct).toBe(7);
 });
