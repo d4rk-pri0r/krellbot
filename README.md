@@ -113,17 +113,10 @@ Start the workstation with `krellbot` (or `krellbot workstation --open`), then:
    then click **Arm**. This is simulated cash, not an exchange deposit.
 3. Open **Operations**: the deployment must say `paper` and `active`, and live
    trading must remain disabled. **Workstation** also shows the armed paper row.
-4. In a terminal, verify with `krellbot status`.
 
 A research run is optional before arming. If you want an offline demonstration,
 [paper trading](docs/paper.md) documents the public repository pack/candle
 fixtures; demonstration fixture results are not market performance.
-
-On a headless machine without a persistent OS keychain, `krellbot doctor` can
-exit nonzero with keychain, missing-key, scheduler or stale-tick warnings and
-`install_ready=false` / `trading_ready=false`. These diagnostics do not require
-you to add keys for paper use. Verify paper readiness with the armed row and
-status above; do not load credentials for this path.
 
 ## Private access from your Tailscale devices
 
@@ -149,50 +142,20 @@ identity and cannot use this owner-login flow. Existing session, CSRF and
 live-order refusal checks still apply. Without these options, the workstation
 retains its original loopback-only bootstrap behavior.
 
-## Commands
+## Advanced and diagnostic commands
 
-```
-krellbot keys add <venue> --file <key-file>   # store a key in the OS keychain
-krellbot backtest <pack.json> --venue kraken  # run a DSL pack over candle data, no orders
-krellbot arm <pack.json> --venue kraken --mode paper
-krellbot service install                      # schedule the hourly tick for this user
-krellbot doctor                               # check install readiness and warnings
-krellbot doctor --json                        # machine-readable report
-krellbot community install <id>               # pull a pack from the community index
-krellbot telemetry enable                     # opt in to anonymous usage telemetry
-```
-
-The telemetry shape and community library are documented in
-[docs/telemetry.md](docs/telemetry.md) and
-[docs/community.md](docs/community.md). The readiness summary that
-`krellbot doctor` reports is documented in [docs/service.md](docs/service.md).
-
-## Readiness
-
-`krellbot doctor` reports two booleans that are the right thing for a
-first-run checklist:
-
-- `install_ready` is `True` when the runtime can serve the local UI:
-  home permissions are `0o700`, the keychain backend is a real
-  persistent one (not null/fail/fake), and a loopback bind probe
-  succeeds. It does **not** require keys, a tick, or the scheduler
-  unit.
-- `trading_ready` is `True` only when `install_ready` is `True`,
-  the journal has a tick in the last two hours, and at least one
-  stored key had its permissions probed with `trade=True` AND
-  `withdraw=False`. Without a permission probe, the key's permissions
-  are unknown and `trading_ready` stays `False`.
-
-The detailed fields and the existing warnings (which still drive the
-exit code) are documented in [docs/service.md](docs/service.md).
+You do not need the command line to install Krellbot or arm a paper strategy.
+The `krellbot` command is plumbing: the launcher, the scheduler entry point and
+diagnostics such as readiness checks. Those commands are documented in
+[docs/cli.md](docs/cli.md).
 
 ## Live and the UI gate
 
 - The workstation is `127.0.0.1` only; it refuses non-loopback `Host`
   headers and rejects live orders. Live arm remains a CLI-only path
   that requires typing `LIVE` exactly.
-- Exchange keys are stored in the native OS keychain with
-  `krellbot keys add`. No exchange credentials go to `krellbot.dev`.
+- Exchange keys are stored in the native OS keychain (see
+  [docs/cli.md](docs/cli.md)). No exchange credentials go to `krellbot.dev`.
 - See [docs/live.md](docs/live.md) for the live arm flow.
 
 ## Working on the engine
