@@ -11,6 +11,7 @@ import { PaperStatusCsvExport } from "./PaperStatusCsvExport";
 import { RehearsalPanel } from "./RehearsalPanel";
 import type { RehearsalClient } from "./rehearsalClient";
 import { summarizePaperCommandRefusal } from "./paperCommandRefusalSummary";
+import "./StatusPanel.position.css";
 
 export type {
   PaperArmDraftSummary,
@@ -22,6 +23,10 @@ export type {
 
 export type StatusPanelProps = {
   client: PaperClient;
+  /** Reports a position click to the shell inspector (toggle). */
+  onPositionSelect?: (position: PaperPosition | null) => void;
+  /** When true, the owned-position control shows as the inspector subject. */
+  positionSelected?: boolean;
 };
 
 type EntriesSentence = "Entries active" | "Entries paused";
@@ -668,7 +673,11 @@ function ArmForm({
   );
 }
 
-export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
+export function StatusPanel({
+  client,
+  onPositionSelect,
+  positionSelected = false,
+}: StatusPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   // Synchronous guard so a rapid double click cannot dispatch a duplicate
   // command before React re-renders the disabled buttons.
@@ -1034,12 +1043,32 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
                 Owned position unavailable: {state.positionError}
               </p>
             ) : state.position !== null ? (
-              <p
-                className="kbot-paper-status__position"
-                data-testid="paper-position"
-              >
-                {positionSentence(state.position)}
-              </p>
+              onPositionSelect ? (
+                <button
+                  type="button"
+                  className={`kbot-paper-status__position${
+                    positionSelected
+                      ? " kbot-paper-status__position--selected"
+                      : ""
+                  }`}
+                  data-testid="paper-position"
+                  aria-pressed={positionSelected}
+                  onClick={() => {
+                    onPositionSelect(
+                      positionSelected ? null : state.position,
+                    );
+                  }}
+                >
+                  {positionSentence(state.position)}
+                </button>
+              ) : (
+                <p
+                  className="kbot-paper-status__position"
+                  data-testid="paper-position"
+                >
+                  {positionSentence(state.position)}
+                </p>
+              )
             ) : positionReadable ? (
               <p
                 className="kbot-paper-status__empty"

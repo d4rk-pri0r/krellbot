@@ -6,6 +6,8 @@ export type { PaperArmedClient, PaperArmedRecord } from "./client";
 
 export type ArmedRecordsListProps = {
   client: PaperArmedClient;
+  /** Reports the current armed-row selection to the shell inspector. */
+  onSelectionChange?: (record: PaperArmedRecord | null) => void;
 };
 
 type LoadState =
@@ -36,6 +38,7 @@ function entriesChipTone(entries_paused: boolean): string {
 
 export function ArmedRecordsList({
   client,
+  onSelectionChange,
 }: ArmedRecordsListProps): JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [selected, setSelected] = useState<PaperArmedRecord | null>(null);
@@ -166,9 +169,10 @@ export function ArmedRecordsList({
 
   // Pointer and keyboard toggle the exact same selection state.
   const toggleRow = (row: PaperArmedRecord): void => {
-    setSelected(
-      selected !== null && rowKey(selected) === rowKey(row) ? null : row,
-    );
+    const next =
+      selected !== null && rowKey(selected) === rowKey(row) ? null : row;
+    setSelected(next);
+    onSelectionChange?.(next);
   };
 
   // Keyboard activation with native-button semantics: plain and Shift

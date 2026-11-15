@@ -163,6 +163,16 @@
   overflow-wrap: anywhere;
 }
 
+.kbot-shell__inspector-root .kbot-inspector__selected-facts {
+  margin: 0;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.55;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
 /* ============ any nested interactive control ============ */
 
 .kbot-shell__inspector-root button,

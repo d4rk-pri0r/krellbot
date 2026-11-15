@@ -1,0 +1,111 @@
+/*
+ * Workstation alerts peek — Signal (KRELL-SIGNAL-20261010).
+ * Compact selectable alert rows for the paper workstation inspector rail.
+ */
+
+.kbot-workstation-alerts {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  background: var(--surface, #14222e);
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-workstation-alerts__head {
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
+  padding-bottom: 6px;
+}
+
+.kbot-workstation-alerts__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-workstation-alerts__body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kbot-workstation-alerts__empty {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 30%, var(--surface, #14222e));
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+.kbot-workstation-alerts__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kbot-workstation-alerts__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 2px 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--panel, #18354a) 55%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kbot-workstation-alerts__row:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+.kbot-workstation-alerts__row--selected,
+.kbot-workstation-alerts__row[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 10%, var(--surface, #14222e));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--sage, #b3dda8) 65%, var(--seafoam, #a8d8d1));
+}
+
+.kbot-workstation-alerts__kind {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kbot-workstation-alerts__severity {
+  font-size: 11px;
+  color: var(--caution-text, #e2c193);
+  justify-self: end;
+}
+
+.kbot-workstation-alerts__id {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .kbot-workstation-alerts__row {
+    min-height: 44px;
+  }
+}
