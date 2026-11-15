@@ -1,0 +1,183 @@
+/*
+ * Live authorization — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted LiveAuthorizationPanel on the
+ * Operations surface. Namespaced under `.kbot-ops__live-auth`. Live activation
+ * uses caution/coral semantics — never sage success coloring.
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ */
+
+.kbot-ops__live-auth {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-ops__live-auth *,
+.kbot-ops__live-auth *::before,
+.kbot-ops__live-auth *::after {
+  box-sizing: border-box;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops__live-auth .kbot-ops__panel-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-refresh {
+  margin: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-status,
+.kbot-ops__live-auth .kbot-ops__live-auth-helper,
+.kbot-ops__live-auth .kbot-ops__live-auth-feedback,
+.kbot-ops__live-auth .kbot-ops__live-auth-error,
+.kbot-ops__live-auth .kbot-ops__live-auth-paper-only {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-helper {
+  color: var(--muted, #abc4d8);
+  font-size: 12px;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-paper-only {
+  padding: 10px 12px;
+  border: 1px solid var(--caution-border, #8a5f55);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 14%, var(--surface, #14222e));
+  color: var(--caution-text, #e8c4bb);
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-error {
+  color: var(--caution-text, #e8c4bb);
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-form {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-label {
+  font-size: 12.5px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__live-auth input[type="text"],
+.kbot-ops__live-auth input[type="number"] {
+  min-width: 0;
+  min-height: 40px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+.kbot-ops__live-auth input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-ops__live-auth input:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 1px;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-grant,
+.kbot-ops__live-auth .kbot-ops__live-auth-revoke {
+  margin: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-grant {
+  border: 1px solid var(--caution-border, #8a5f55);
+  background: color-mix(in srgb, var(--coral, #cc9689) 22%, var(--panel, #18354a));
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-revoke {
+  border: 1px solid var(--line, #22465d);
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__live-auth .kbot-ops__live-auth-grant:disabled,
+.kbot-ops__live-auth .kbot-ops__live-auth-revoke:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .kbot-ops__live-auth .kbot-ops__live-auth-row {
+    grid-template-columns: 1fr;
+  }
+
+  .kbot-ops__live-auth .kbot-ops__live-auth-grant,
+  .kbot-ops__live-auth .kbot-ops__live-auth-revoke,
+  .kbot-ops__live-auth .kbot-ops__live-auth-refresh {
+    min-height: 44px;
+  }
+}

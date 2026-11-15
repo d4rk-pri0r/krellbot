@@ -4,7 +4,7 @@ import { defineConfig } from "@playwright/test";
 /**
  * Phase 2 (public) journey Playwright config.
  *
- * One spec file per journey (J1-J7); every scenario owns a fresh
+ * One spec file per journey (J1-J8); every scenario owns a fresh
  * workstation, home and Chromium profile. Two workers run isolated
  * spec files concurrently; scenarios within each file stay sequential.
  *
@@ -17,7 +17,7 @@ export default defineConfig({
   testDir: "journeys",
   // Custom suffix avoids Vitest's existing *.spec.ts collection without
   // changing its configuration or excluding any existing unit/e2e test.
-  testMatch: /j[1-7]-.*\.journey\.ts/,
+  testMatch: /j[1-8]-.*\.journey\.ts/,
   fullyParallel: false,
   workers: 2,
   retries: 0,
