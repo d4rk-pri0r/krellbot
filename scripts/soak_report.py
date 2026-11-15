@@ -6,8 +6,11 @@ Owner run (M1.12)::
 
 Prints ``PASS`` only when every hour in the window has a ``kind=tick``
 journal record, consecutive ticks never gap by more than two hours, no
-unresolved ``needs_reconcile`` row remains, and no stale-data alert falls
-in the window. Otherwise prints each failing hour (UTC, one per line).
+unresolved ``needs_reconcile`` row remains, no stale-data alert falls in
+the window, and at least one journalled evaluated entry decision exists
+in the window (a pack-evaluator ``reason`` that is not a pure
+``metadata_refusal``). Coverage-only journals without entry evaluation
+fail. Otherwise prints each failing hour (UTC, one per line).
 """
 
 from __future__ import annotations
@@ -29,6 +32,8 @@ MAX_GAP_SECONDS = TICK_STALE_SECONDS
 STALE_DATA_REASON = "stale_data"
 WAKE_GAP_EVENT = "wake_gap"
 OPS_DB_FILENAME = "ops.sqlite"
+# Pack-evaluator outcomes journalled on a successful tick (see pack.evaluate).
+EVALUATED_ENTRY_REASONS = frozenset({"entry", "exit", "flat", "warmup"})
 
 
 def hour_floor(ts: int) -> int:
@@ -141,6 +146,40 @@ def _has_unresolved_reconcile(home: Path) -> bool:
     return False
 
 
+def _is_evaluated_entry_decision(rec: dict) -> bool:
+    """True when ``rec`` is a journalled pack evaluation, not a metadata refusal.
+
+    Engine ticks write ``detail.reason`` from ``pack.evaluate`` (``entry`` /
+    ``exit`` / ``flat`` / ``warmup``). A tick whose only outcome is a
+    ``metadata_refusal`` (or a coverage-only tick with no evaluator reason)
+    does not count.
+    """
+    if rec.get("kind") != "tick":
+        return False
+    detail = rec.get("detail")
+    if not isinstance(detail, dict):
+        return False
+    refusal = detail.get("metadata_refusal")
+    if isinstance(refusal, str) and refusal:
+        return False
+    reason = detail.get("reason")
+    return isinstance(reason, str) and reason in EVALUATED_ENTRY_REASONS
+
+
+def _has_evaluated_entry_decision(records: list[dict], *, start: int, end: int) -> bool:
+    """True when the window contains ≥1 evaluated entry decision."""
+    for rec in records:
+        try:
+            ts = int(rec.get("ts", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if ts <= 0 or ts < start or ts >= end:
+            continue
+        if _is_evaluated_entry_decision(rec):
+            return True
+    return False
+
+
 def _hours_in_gap(prev_ts: int, next_ts: int, hour_starts: list[int]) -> set[int]:
     """Window hours that overlap the open gap interval ``(prev_ts, next_ts)``."""
     out: set[int] = set()
@@ -182,6 +221,11 @@ def failing_hours(
 
     # Unresolved reconcile is a global soak failure: every hour fails.
     if _has_unresolved_reconcile(Path(home)):
+        failing.update(hour_starts)
+
+    # No evaluated entry decision in the window is a global soak failure:
+    # coverage-only ticks (or only metadata_refusal) must not PASS.
+    if not _has_evaluated_entry_decision(records, start=start, end=end):
         failing.update(hour_starts)
 
     failing.update(_stale_alert_hours(records, start=start, end=end))
