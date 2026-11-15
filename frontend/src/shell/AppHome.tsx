@@ -248,12 +248,19 @@ export function AppHome({
                       onNavigate(card.view);
                     }}
                   >
-                    <span className="app-home__card-mark" aria-hidden="true" />
-                    <span className="app-home__card-action">{card.action}</span>
-                    <span className="app-home__card-detail">{card.detail}</span>
-                    <span className="app-home__card-footer">
-                      <span className="app-home__card-meta">{card.meta}</span>
-                      <span className="app-home__card-link">Open →</span>
+                    {/*
+                      Single stacked body: shell buttons are inline-flex,
+                      which otherwise lays mark/action/detail/footer in a
+                      row and squeezes descriptions into ~51–77px columns.
+                    */}
+                    <span className="app-home__card-body">
+                      <span className="app-home__card-mark" aria-hidden="true" />
+                      <span className="app-home__card-action">{card.action}</span>
+                      <span className="app-home__card-detail">{card.detail}</span>
+                      <span className="app-home__card-footer">
+                        <span className="app-home__card-meta">{card.meta}</span>
+                        <span className="app-home__card-link">Open →</span>
+                      </span>
                     </span>
                   </button>
                 </li>
