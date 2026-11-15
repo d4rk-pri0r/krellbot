@@ -14,4 +14,4 @@ One line per item. Nothing here is work until the owner moves it into a mileston
 - Signal concept artboard shows a Learn top-nav and sample portfolio equity/bot cards; no Learn view or portfolio-history API exists yet — do not invent those in the cockpit.
 - Packs remain under Strategies (toggle), not a top-level nav item matching the marketing concept strip.
 - CI frontend flake: `Editor.ownedSeedIdentity.test.tsx` intermittently misses `[data-testid="editor-revision-id"]` under full suite load (seen on #426; passes alone locally; main tip green).
-- CI `build windows-latest x86_64` flake: `ci_smoke_installed_preview.mjs` times out waiting for Home nav after freeze (seen on #426; ubuntu/mac builds green on same SHA).
+- CI `build windows-latest x86_64` flake: `ci_smoke_installed_preview.mjs` times out waiting for Home nav after freeze (seen on #426, #428; ubuntu/mac builds green on same SHA; not a required check).
