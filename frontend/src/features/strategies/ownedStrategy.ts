@@ -13,7 +13,7 @@ import type { Pack } from "./client";
 import {
   KRAKEN_BTC_USD_VENUE_SYMBOL,
   isKrakenWavePairSymbol,
-} from "../../markets/krakenBtcUsd";
+} from "../../markets/krakenBtcUsd.ts";
 
 export const INDICATOR_NAME = "ma";
 export const FAST_INDICATOR_NAME = "fast";
