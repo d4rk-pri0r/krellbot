@@ -34,6 +34,80 @@ export async function redeemBootstrap(token: string): Promise<void> {
   csrfToken = body.csrf_token;
 }
 
+export type ReconnectIssue = {
+  token: string;
+  expiresAt: number;
+  expiresIn: number;
+  redeemPath: string;
+  qrPayload: string;
+};
+
+/**
+ * Ask the authenticated session to mint a short-lived reconnect token
+ * for a second browser/profile. Requires the in-memory CSRF + cookie.
+ */
+export async function issueReconnectToken(): Promise<ReconnectIssue> {
+  const response = await fetch("/api/v1/session/reconnect/issue", {
+    method: "POST",
+    credentials: "include",
+    redirect: "error",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: "{}",
+  });
+  if (!response.ok) {
+    throw new Error(`reconnect issue failed: ${response.status}`);
+  }
+  const body = (await response.json()) as {
+    token?: unknown;
+    expires_at?: unknown;
+    expires_in?: unknown;
+    redeem_path?: unknown;
+    qr_payload?: unknown;
+  };
+  if (
+    typeof body.token !== "string" ||
+    !body.token ||
+    typeof body.expires_at !== "number" ||
+    typeof body.expires_in !== "number" ||
+    typeof body.redeem_path !== "string" ||
+    typeof body.qr_payload !== "string"
+  ) {
+    throw new Error("reconnect issue response malformed");
+  }
+  return {
+    token: body.token,
+    expiresAt: body.expires_at,
+    expiresIn: body.expires_in,
+    redeemPath: body.redeem_path,
+    qrPayload: body.qr_payload,
+  };
+}
+
+/**
+ * Redeem a reconnect token into a new session (second browser / cleared
+ * cookie). Same CSRF storage rules as bootstrap; never writes storage.
+ */
+export async function redeemReconnectToken(token: string): Promise<void> {
+  const response = await fetch("/api/v1/session/reconnect/redeem", {
+    method: "POST",
+    credentials: "include",
+    redirect: "error",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!response.ok) {
+    throw new Error(`reconnect redeem failed: ${response.status}`);
+  }
+  const body = (await response.json()) as { csrf_token?: unknown };
+  if (typeof body.csrf_token !== "string" || body.csrf_token.length === 0) {
+    throw new Error("reconnect redeem response missing csrf_token");
+  }
+  csrfToken = body.csrf_token;
+}
+
 export function getCsrf(): string {
   return csrfToken ?? "";
 }

@@ -45,6 +45,8 @@ beforeAll(() => {
 vi.mock("../session", () => ({
   redeemBootstrap: (): Promise<void> => Promise.resolve(),
   recoverCsrf: (): Promise<boolean> => Promise.resolve(false),
+  issueReconnectToken: (): Promise<never> => Promise.reject(new Error("not stubbed")),
+  redeemReconnectToken: (): Promise<void> => Promise.resolve(),
   getCsrf: (): string => "",
 }));
 

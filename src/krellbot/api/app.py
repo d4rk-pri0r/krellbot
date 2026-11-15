@@ -26,10 +26,14 @@ from krellbot.api.jobs import (
     QueueFull,
 )
 from krellbot.api.security import (
+    ReconnectOffer,
     generate_csrf_token,
     generate_session_token,
     is_loopback_host,
     is_loopback_origin,
+    issue_reconnect_offer,
+    reconnect_offer_valid,
+    reconnect_redeem_path,
 )
 from krellbot.api.tailnet import TailnetAccess
 from krellbot.application import alerts as alerts_app
@@ -75,6 +79,10 @@ class _AppState:
     bootstrap_token: str
     bootstrap_used: bool = False
     sessions: dict[str, str] = field(default_factory=dict)
+    # At most one outstanding short-lived reconnect offer (second browser).
+    reconnect_offer: ReconnectOffer | None = None
+    # Tests inject a fake clock; production uses wall time via `_now_seconds`.
+    clock: Callable[[], int] | None = None
     jobs: JobManager = field(default=None)  # type: ignore[assignment]
     draft_service: object = field(default=None)  # StrategyDraftService singleton per home
     paper_service: object = field(default=None)  # PaperService singleton per home
@@ -85,6 +93,14 @@ class _AppState:
     scheduler_supervisor: object = None  # PlatformSupervisor; tests inject FakeSupervisor
     scheduler_write_root: Path | None = None  # defaults to Path.home()
     scheduler_executable: str | None = None  # defaults to sys.executable
+
+
+def _app_now(s: _AppState) -> int:
+    """Return the app clock in unix seconds (injectable for reconnect TTL tests)."""
+
+    if s.clock is not None:
+        return int(s.clock())
+    return _now_seconds()
 
 
 def _state(app: FastAPI) -> _AppState:
@@ -695,6 +711,91 @@ def create_app(
             status_code=200,
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post("/api/v1/session/reconnect/issue")
+    async def reconnect_issue(request: Request) -> Response:
+        """Issue a short-lived reconnect token for a second browser/profile.
+
+        Local re-pair: an already-authenticated session (cookie + CSRF +
+        loopback Origin) mints a one-time token the primary UI (or a
+        terminal that holds the same session) can show as text or QR.
+        The outstanding offer is replaced on each successful issue.
+        Host middleware still refuses non-loopback Host headers.
+        """
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        now = _app_now(s)
+        offer = issue_reconnect_offer(now=now)
+        s.reconnect_offer = offer
+        path = reconnect_redeem_path(offer.token)
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "token": offer.token,
+                "expires_at": offer.expires_at,
+                "expires_in": max(0, offer.expires_at - now),
+                "redeem_path": path,
+                "qr_payload": f"http://127.0.0.1:{s.port}{path}",
+            },
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/v1/session/reconnect/redeem")
+    async def reconnect_redeem(request: Request) -> Response:
+        """Redeem a reconnect token into a new authenticated session.
+
+        Same loopback-Origin gate as bootstrap (no prior session required).
+        A matching unexpired token is single-use: the offer is cleared
+        before the new session cookie is set. Expired, wrong, or already-
+        spent tokens are 403. Does not revive the one-time bootstrap
+        token and does not weaken Host/Origin/CSRF checks for later
+        state changes.
+        """
+
+        s = _state(request.app)
+        origin = request.headers.get("origin", "")
+        if not is_loopback_origin(origin, port=s.port):
+            return JSONResponse({"detail": "origin not loopback"}, status_code=403)
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        submitted = payload.get("token", "")
+        now = _app_now(s)
+        offer = s.reconnect_offer
+        if not reconnect_offer_valid(offer, submitted=submitted if isinstance(submitted, str) else "", now=now):
+            detail = "token expired" if offer is not None and int(now) >= int(offer.expires_at) else "wrong token"
+            # Clear a spent/expired offer so a stale QR cannot be retried
+            # after the clock advances past expiry (wrong token leaves a
+            # still-valid offer for the rightful redeem).
+            if offer is not None and int(now) >= int(offer.expires_at):
+                s.reconnect_offer = None
+            return JSONResponse({"detail": detail}, status_code=403)
+
+        s.reconnect_offer = None
+        session_id = generate_session_token()
+        csrf_token = generate_csrf_token()
+        s.sessions[session_id] = csrf_token
+
+        body = {"schema_version": SCHEMA_VERSION, "csrf_token": csrf_token}
+        response = JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+        response.set_cookie(
+            key=SESSION_COOKIE,
+            value=session_id,
+            httponly=True,
+            samesite="strict",
+            path="/",
+        )
+        return response
 
     @app.post("/api/v1/commands")
     async def commands(request: Request) -> Response:

@@ -466,6 +466,82 @@
   color: var(--text) !important;
 }
 
+.app-home__rail-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---- local reconnect (M8.1) ---- */
+
+.app-home__reconnect,
+.app-home__reconnect-offer,
+.app-home__reconnect-paste {
+  display: grid;
+  gap: 8px;
+}
+
+.app-home__reconnect-offer {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.app-home__reconnect-qr {
+  display: block;
+  width: 128px;
+  height: 128px;
+  border-radius: var(--radius-control, 7px);
+}
+
+.app-home__reconnect-token-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.app-home__reconnect-token,
+.app-home__reconnect-url {
+  display: block;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--navy);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control, 7px);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.app-home__reconnect-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.app-home__reconnect-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  background: var(--navy);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control, 7px);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.app-home__reconnect-input:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 /* ---- narrow / mobile ---- */
 
 @media (max-width: 920px) {
