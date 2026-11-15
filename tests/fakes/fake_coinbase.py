@@ -39,12 +39,16 @@ class FakeCoinbaseTransport:
         key_permissions: dict | list | None = None,
         product: dict | None = None,
         orders: dict | None = None,
+        accounts: dict | None = None,
+        fills: dict | None = None,
     ) -> None:
         self._post_responses = list(post_responses or [])
         self._get_responses = list(get_responses or [])
         self._key_permissions = key_permissions
         self._product = product
         self._orders = orders
+        self._accounts = accounts
+        self._fills = fills
         self.calls: list[RecordedCall] = []
 
     def post(self, url: str, body: dict, headers: dict[str, str]) -> dict:
@@ -61,6 +65,14 @@ class FakeCoinbaseTransport:
             return self._key_permissions
         if "market/products" in url:
             return self._product or dict(_DEFAULT_PRODUCT)
+        if "/brokerage/accounts" in url:
+            if self._accounts is not None:
+                return self._accounts
+            return {"accounts": []}
+        if "orders/historical/fills" in url:
+            if self._fills is not None:
+                return self._fills
+            return {"fills": []}
         if "orders/historical/batch" in url:
             if self._orders is not None:
                 return self._orders

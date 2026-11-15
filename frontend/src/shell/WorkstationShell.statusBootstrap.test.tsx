@@ -34,10 +34,11 @@ it.each(["bootstrap", "csrf"])(
         await sessionReady;
         return new Response(JSON.stringify({ csrf_token: "fixture-csrf" }), { status: 200 });
       }
-      if (url === "/api/v1/keys/kraken") {
+      if (url === "/api/v1/keys/kraken" || url === "/api/v1/keys/coinbase") {
+        const venue = url.endsWith("coinbase") ? "coinbase" : "kraken";
         return new Response(JSON.stringify({
           schema_version: "1",
-          venue: "kraken",
+          venue,
           present: false,
           corrupt: false,
           message: "no key stored",
@@ -82,6 +83,7 @@ it.each(["bootstrap", "csrf"])(
     expect(requests).toEqual([
       `/api/v1/session/${sessionRoute}`,
       "/api/v1/keys/kraken",
+      "/api/v1/keys/coinbase",
       "/api/v1/operations",
     ]);
     expect(screen.getByTestId("live-orders-status").textContent).toBe("No live venues authorized");

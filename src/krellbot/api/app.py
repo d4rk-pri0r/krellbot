@@ -1662,9 +1662,9 @@ def create_app(
         }
         return JSONResponse(body, status_code=200)
 
-    # ---- keys onboarding (M3.1, Kraken) --------------------------------
+    # ---- keys onboarding (M3.1 Kraken + M11.1 Coinbase) ----------------
 
-    KEYS_VENUES = frozenset({"kraken"})
+    KEYS_VENUES = frozenset({"kraken", "coinbase"})
 
     def _keys_keyring():
         import keyring as _keyring
@@ -1678,7 +1678,7 @@ def create_app(
 
     @app.post("/api/v1/keys/{venue}")
     async def keys_probe_and_store(venue: str, request: Request) -> Response:
-        """Probe then store a trade-only key for ``venue`` (Kraken).
+        """Probe then store a trade-only key for ``venue`` (Kraken or Coinbase).
 
         Same state-change gate as ``POST /api/v1/commands``
         (``_gate_state_change``): session cookie + CSRF + loopback Origin.
@@ -1734,7 +1734,7 @@ def create_app(
 
     @app.get("/api/v1/keys/{venue}")
     async def keys_status(venue: str, request: Request) -> Response:
-        """Return connection status and balances for ``venue`` (Kraken).
+        """Return connection status and balances for ``venue`` (Kraken or Coinbase).
 
         Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
         session cookie + loopback Origin + loopback Host, no CSRF. Balances
@@ -1778,7 +1778,7 @@ def create_app(
 
     @app.delete("/api/v1/keys/{venue}")
     async def keys_remove(venue: str, request: Request) -> Response:
-        """Remove the stored key pair for ``venue`` (Kraken).
+        """Remove the stored key pair for ``venue`` (Kraken or Coinbase).
 
         Same state-change gate as ``POST /api/v1/commands``
         (``_gate_state_change``): session cookie + CSRF + loopback Origin.

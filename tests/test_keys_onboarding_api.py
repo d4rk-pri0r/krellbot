@@ -394,7 +394,7 @@ def test_keys_unknown_venue_is_not_found(home: Path, fresh_keyring) -> None:
     _enable_keys(app, _trade_only_transport())
     session = _bootstrap(app)
 
-    status, _h, body, _c = _get(app, "/api/v1/keys/coinbase", headers=session)
+    status, _h, body, _c = _get(app, "/api/v1/keys/binance", headers=session)
     assert status == 404, body
     assert json.loads(body.decode("utf-8"))["detail"] == "not found"
 

@@ -332,17 +332,23 @@ export function AppHome({
             </p>
             <p className="app-home__rail-copy">
               Live trading stays unavailable in this paper-only release. Link a
-              trade-only Kraken key below when you are ready.
+              trade-only Kraken or Coinbase key below when you are ready.
             </p>
           </section>
 
           <section
             className="app-home__rail app-home__rail--emphasis"
-            aria-labelledby="keys-onboarding-title"
+            aria-label="Exchange keys"
             data-testid="app-home-keys-rail"
           >
             <KeysOnboardingPanel
               client={keys}
+              venue="kraken"
+              enabled={!sessionPending && !sessionFailed}
+            />
+            <KeysOnboardingPanel
+              client={keys}
+              venue="coinbase"
               enabled={!sessionPending && !sessionFailed}
             />
           </section>

@@ -1,63 +1,69 @@
 /**
- * Kraken keys onboarding panel — Workspace form (KRELL-SIGNAL-20261010).
+ * Exchange keys onboarding panel — Workspace form (KRELL-SIGNAL-20261010).
  *
  * Happy path and honest keyring errors use injectable fake clients only.
- * No real credentials, keyring, or exchange network.
+ * No real credentials, keyring, or exchange network. Covers Kraken and
+ * Coinbase via the shared panel.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeysOnboardingPanel } from "./KeysOnboardingPanel";
-import type { KeysClient, KeysMutationResult, KeysStatus } from "./client";
+import type { KeysClient, KeysMutationResult, KeysStatus, KeysVenue } from "./client";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
-const ABSENT: KeysStatus = {
-  schema_version: "1",
-  venue: "kraken",
-  present: false,
-  corrupt: false,
-  message: "no key stored",
-  backend_label: null,
-  balances: null,
-  balances_available: false,
-};
+function absent(venue: KeysVenue): KeysStatus {
+  return {
+    schema_version: "1",
+    venue,
+    present: false,
+    corrupt: false,
+    message: "no key stored",
+    backend_label: null,
+    balances: null,
+    balances_available: false,
+  };
+}
 
-const PRESENT: KeysStatus = {
-  schema_version: "1",
-  venue: "kraken",
-  present: true,
-  corrupt: false,
-  message: "key present",
-  backend_label: "FakeKeyring",
-  balances: [
-    { asset: "ZUSD", free: "100.5" },
-    { asset: "XXBT", free: "0.01" },
-  ],
-  balances_available: true,
-};
+function present(venue: KeysVenue, balances: KeysStatus["balances"]): KeysStatus {
+  return {
+    schema_version: "1",
+    venue,
+    present: true,
+    corrupt: false,
+    message: "key present",
+    backend_label: "FakeKeyring",
+    balances,
+    balances_available: true,
+  };
+}
 
-const STORED: KeysMutationResult = {
-  schema_version: "1",
-  venue: "kraken",
-  status: "stored",
-  ok: true,
-  message: "stored in native OS keychain",
-  effect: "changed",
-  backend_label: "FakeKeyring",
-};
+function stored(venue: KeysVenue): KeysMutationResult {
+  return {
+    schema_version: "1",
+    venue,
+    status: "stored",
+    ok: true,
+    message: "stored in native OS keychain",
+    effect: "changed",
+    backend_label: "FakeKeyring",
+  };
+}
 
-const REMOVED: KeysMutationResult = {
-  schema_version: "1",
-  venue: "kraken",
-  status: "removed",
-  ok: true,
-  message: "removed from keychain",
-  effect: "changed",
-  backend_label: "FakeKeyring",
-};
+function removed(venue: KeysVenue): KeysMutationResult {
+  return {
+    schema_version: "1",
+    venue,
+    status: "removed",
+    ok: true,
+    message: "removed from keychain",
+    effect: "changed",
+    backend_label: "FakeKeyring",
+  };
+}
 
 const KEYRING_REFUSED: KeysMutationResult = {
   schema_version: "1",
@@ -71,112 +77,160 @@ const KEYRING_REFUSED: KeysMutationResult = {
 
 function makeClient(over: Partial<KeysClient> = {}): KeysClient {
   return {
-    getStatus: vi.fn().mockResolvedValue(ABSENT),
-    probeAndStore: vi.fn().mockResolvedValue(STORED),
-    remove: vi.fn().mockResolvedValue(REMOVED),
+    getStatus: vi.fn().mockResolvedValue(absent("kraken")),
+    probeAndStore: vi.fn().mockResolvedValue(stored("kraken")),
+    remove: vi.fn().mockResolvedValue(removed("kraken")),
     ...over,
   };
 }
 
-describe("KeysOnboardingPanel", () => {
+describe.each([
+  {
+    venue: "kraken" as const,
+    title: /Kraken exchange key/i,
+    balances: [
+      { asset: "ZUSD", free: "100.5" },
+      { asset: "XXBT", free: "0.01" },
+    ],
+    publicValue: "fake-public-key",
+    privateValue: "fake-private-key",
+  },
+  {
+    venue: "coinbase" as const,
+    title: /Coinbase exchange key/i,
+    balances: [
+      { asset: "USD", free: "250.75" },
+      { asset: "BTC", free: "0.002" },
+    ],
+    publicValue: "organizations/fake/apiKeys/fake",
+    privateValue: "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----",
+  },
+])("KeysOnboardingPanel ($venue)", ({ venue, title, balances, publicValue, privateValue }) => {
   it("loads absent status and shows the probe-and-store form", async () => {
-    const client = makeClient();
-    render(<KeysOnboardingPanel client={client} />);
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(absent(venue)),
+    });
+    render(<KeysOnboardingPanel client={client} venue={venue} />);
 
-    expect(await screen.findByTestId("keys-onboarding")).toBeTruthy();
-    expect((await screen.findByTestId("keys-status")).textContent).toMatch(/no key stored/i);
-    expect(screen.getByTestId("keys-form")).toBeTruthy();
-    expect(screen.getByTestId("keys-paper-only").textContent).toMatch(/paper-only/i);
+    expect(await screen.findByTestId(`keys-onboarding-${venue}`)).toBeTruthy();
+    expect(screen.getByTestId(`keys-onboarding-${venue}`).textContent).toMatch(title);
+    expect((await screen.findByTestId(`keys-status-${venue}`)).textContent).toMatch(
+      /no key stored/i,
+    );
+    expect(screen.getByTestId(`keys-form-${venue}`)).toBeTruthy();
+    expect(screen.getByTestId(`keys-paper-only-${venue}`).textContent).toMatch(/paper-only/i);
     await waitFor(() => {
-      expect(client.getStatus).toHaveBeenCalled();
+      expect(client.getStatus).toHaveBeenCalledWith(venue);
     });
   });
 
   it("probes and stores then shows holdings from the refreshed status", async () => {
     const client = makeClient({
-      getStatus: vi.fn().mockResolvedValueOnce(ABSENT).mockResolvedValueOnce(PRESENT),
-      probeAndStore: vi.fn().mockResolvedValue(STORED),
+      getStatus: vi
+        .fn()
+        .mockResolvedValueOnce(absent(venue))
+        .mockResolvedValueOnce(present(venue, balances)),
+      probeAndStore: vi.fn().mockResolvedValue(stored(venue)),
     });
-    render(<KeysOnboardingPanel client={client} />);
-    await screen.findByTestId("keys-form");
+    render(<KeysOnboardingPanel client={client} venue={venue} />);
+    await screen.findByTestId(`keys-form-${venue}`);
 
-    fireEvent.change(screen.getByTestId("keys-public"), {
-      target: { value: "fake-public-key" },
+    fireEvent.change(screen.getByTestId(`keys-public-${venue}`), {
+      target: { value: publicValue },
     });
-    fireEvent.change(screen.getByTestId("keys-private"), {
-      target: { value: "fake-private-key" },
+    fireEvent.change(screen.getByTestId(`keys-private-${venue}`), {
+      target: { value: privateValue },
     });
-    fireEvent.click(screen.getByTestId("keys-store"));
+    fireEvent.click(screen.getByTestId(`keys-store-${venue}`));
 
     await waitFor(() => {
-      expect(client.probeAndStore).toHaveBeenCalledWith(
-        "fake-public-key",
-        "fake-private-key",
-        "kraken",
-      );
+      expect(client.probeAndStore).toHaveBeenCalledWith(publicValue, privateValue, venue);
     });
-    expect((await screen.findByTestId("keys-feedback")).textContent).toMatch(
+    expect((await screen.findByTestId(`keys-feedback-${venue}`)).textContent).toMatch(
       /stored in native OS keychain/i,
     );
-    expect(await screen.findByTestId("keys-connected")).toBeTruthy();
-    expect(screen.getByTestId("keys-balance-ZUSD").textContent).toMatch(/100\.5/);
-    expect(screen.getByTestId("keys-balance-XXBT").textContent).toMatch(/0\.01/);
-    expect(screen.queryByTestId("keys-public")).toBeNull();
+    expect(await screen.findByTestId(`keys-connected-${venue}`)).toBeTruthy();
+    for (const row of balances) {
+      expect(screen.getByTestId(`keys-balance-${venue}-${row.asset}`).textContent).toMatch(
+        new RegExp(row.free.replace(".", "\\.")),
+      );
+    }
+    expect(screen.queryByTestId(`keys-public-${venue}`)).toBeNull();
   });
 
   it("shows the honest keyring-backend refusal from probe-and-store", async () => {
     const client = makeClient({
-      probeAndStore: vi.fn().mockResolvedValue(KEYRING_REFUSED),
+      getStatus: vi.fn().mockResolvedValue(absent(venue)),
+      probeAndStore: vi.fn().mockResolvedValue({ ...KEYRING_REFUSED, venue }),
     });
-    render(<KeysOnboardingPanel client={client} />);
-    await screen.findByTestId("keys-form");
+    render(<KeysOnboardingPanel client={client} venue={venue} />);
+    await screen.findByTestId(`keys-form-${venue}`);
 
-    fireEvent.change(screen.getByTestId("keys-public"), {
-      target: { value: "fake-public-key" },
+    fireEvent.change(screen.getByTestId(`keys-public-${venue}`), {
+      target: { value: publicValue },
     });
-    fireEvent.change(screen.getByTestId("keys-private"), {
-      target: { value: "fake-private-key" },
+    fireEvent.change(screen.getByTestId(`keys-private-${venue}`), {
+      target: { value: privateValue },
     });
-    fireEvent.click(screen.getByTestId("keys-store"));
+    fireEvent.click(screen.getByTestId(`keys-store-${venue}`));
 
-    expect((await screen.findByTestId("keys-feedback")).textContent).toMatch(
+    expect((await screen.findByTestId(`keys-feedback-${venue}`)).textContent).toMatch(
       /keyring backend is not a native OS keychain/i,
     );
-    expect(screen.getByTestId("keys-form")).toBeTruthy();
+    expect(screen.getByTestId(`keys-form-${venue}`)).toBeTruthy();
   });
 
   it("removes a stored key and returns to the form", async () => {
     const client = makeClient({
-      getStatus: vi.fn().mockResolvedValueOnce(PRESENT).mockResolvedValueOnce(ABSENT),
-      remove: vi.fn().mockResolvedValue(REMOVED),
+      getStatus: vi
+        .fn()
+        .mockResolvedValueOnce(present(venue, balances))
+        .mockResolvedValueOnce(absent(venue)),
+      remove: vi.fn().mockResolvedValue(removed(venue)),
     });
-    render(<KeysOnboardingPanel client={client} />);
-    expect(await screen.findByTestId("keys-connected")).toBeTruthy();
+    render(<KeysOnboardingPanel client={client} venue={venue} />);
+    expect(await screen.findByTestId(`keys-connected-${venue}`)).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId("keys-remove"));
+    fireEvent.click(screen.getByTestId(`keys-remove-${venue}`));
     await waitFor(() => {
-      expect(client.remove).toHaveBeenCalledWith("kraken");
+      expect(client.remove).toHaveBeenCalledWith(venue);
     });
-    expect((await screen.findByTestId("keys-feedback")).textContent).toMatch(
+    expect((await screen.findByTestId(`keys-feedback-${venue}`)).textContent).toMatch(
       /removed from keychain/i,
     );
-    expect(await screen.findByTestId("keys-form")).toBeTruthy();
+    expect(await screen.findByTestId(`keys-form-${venue}`)).toBeTruthy();
   });
 
   it("surfaces load failures without inventing holdings", async () => {
     const client = makeClient({
       getStatus: vi.fn().mockRejectedValue(new Error("csrf required")),
     });
-    render(<KeysOnboardingPanel client={client} />);
-    expect((await screen.findByTestId("keys-error")).textContent).toMatch(/csrf required/);
-    expect(screen.queryByTestId("keys-balances")).toBeNull();
-    expect(screen.queryByTestId("keys-connected")).toBeNull();
+    render(<KeysOnboardingPanel client={client} venue={venue} />);
+    expect((await screen.findByTestId(`keys-error-${venue}`)).textContent).toMatch(
+      /csrf required/,
+    );
+    expect(screen.queryByTestId(`keys-balances-${venue}`)).toBeNull();
+    expect(screen.queryByTestId(`keys-connected-${venue}`)).toBeNull();
   });
 
   it("waits for the session when disabled", () => {
     const client = makeClient();
-    render(<KeysOnboardingPanel client={client} enabled={false} />);
-    expect(screen.getByTestId("keys-waiting-session")).toBeTruthy();
+    render(<KeysOnboardingPanel client={client} venue={venue} enabled={false} />);
+    expect(screen.getByTestId(`keys-waiting-session-${venue}`)).toBeTruthy();
     expect(client.getStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("KeysOnboardingPanel Coinbase PEM field", () => {
+  it("uses a multiline private-key field for Coinbase", async () => {
+    const client = makeClient({
+      getStatus: vi.fn().mockResolvedValue(absent("coinbase")),
+    });
+    render(<KeysOnboardingPanel client={client} venue="coinbase" />);
+    await screen.findByTestId("keys-form-coinbase");
+    const secret = screen.getByTestId("keys-private-coinbase");
+    expect(secret.tagName).toBe("TEXTAREA");
+    expect(screen.getByLabelText(/Private key \(PEM\)/i)).toBeTruthy();
+    expect(screen.getByLabelText(/API key name/i)).toBeTruthy();
   });
 });

@@ -42,6 +42,30 @@ describe("keys HTTP client", () => {
     csrf.mockRestore();
   });
 
+  it("GETs /api/v1/keys/coinbase when the Coinbase venue is requested", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        venue: "coinbase",
+        present: false,
+        corrupt: false,
+        message: "no key stored",
+        backend_label: null,
+        balances: null,
+        balances_available: false,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const status = await createHttpClient().getStatus("coinbase");
+    expect(status.venue).toBe("coinbase");
+    expect(status.present).toBe(false);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/keys/coinbase");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+  });
+
   it("POSTs probe-and-store without echoing secrets in thrown errors", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({

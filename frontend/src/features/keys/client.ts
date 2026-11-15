@@ -1,6 +1,11 @@
 import { getCsrf } from "../../session";
 
-export const KEYS_VENUE = "kraken";
+export type KeysVenue = "kraken" | "coinbase";
+
+/** Default venue for single-panel callers (Kraken remains the primary path). */
+export const KEYS_VENUE: KeysVenue = "kraken";
+
+export const KEYS_VENUES: ReadonlyArray<KeysVenue> = ["kraken", "coinbase"];
 
 export type KeysBalanceRow = {
   asset: string;
@@ -29,9 +34,13 @@ export type KeysMutationResult = {
 };
 
 export type KeysClient = {
-  getStatus(venue?: string): Promise<KeysStatus>;
-  probeAndStore(key: string, secret: string, venue?: string): Promise<KeysMutationResult>;
-  remove(venue?: string): Promise<KeysMutationResult>;
+  getStatus(venue?: KeysVenue): Promise<KeysStatus>;
+  probeAndStore(
+    key: string,
+    secret: string,
+    venue?: KeysVenue,
+  ): Promise<KeysMutationResult>;
+  remove(venue?: KeysVenue): Promise<KeysMutationResult>;
 };
 
 function keysPath(venue: string): string {
@@ -95,7 +104,7 @@ async function readErrorDetail(response: Response, fallback: string): Promise<st
   return `${fallback}: ${response.status}`;
 }
 
-async function fetchStatus(venue: string): Promise<KeysStatus> {
+async function fetchStatus(venue: KeysVenue): Promise<KeysStatus> {
   const response = await fetch(keysPath(venue), {
     method: "GET",
     credentials: "include",
@@ -110,7 +119,7 @@ async function fetchStatus(venue: string): Promise<KeysStatus> {
 }
 
 async function postProbeAndStore(
-  venue: string,
+  venue: KeysVenue,
   key: string,
   secret: string,
 ): Promise<KeysMutationResult> {
@@ -129,7 +138,7 @@ async function postProbeAndStore(
   return adaptMutation(await response.json());
 }
 
-async function deleteStored(venue: string): Promise<KeysMutationResult> {
+async function deleteStored(venue: KeysVenue): Promise<KeysMutationResult> {
   const response = await fetch(keysPath(venue), {
     method: "DELETE",
     credentials: "include",
