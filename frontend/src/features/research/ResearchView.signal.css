@@ -499,11 +499,6 @@
   font-size: 10px;
 }
 
-  fill: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
 /* ============ trace ============ */
 
 .kbot-research__trace {
