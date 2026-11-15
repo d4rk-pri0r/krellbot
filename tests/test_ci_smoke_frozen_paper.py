@@ -482,11 +482,11 @@ def test_workflow_version_env_is_096():
     text = _workflow_text()
     match = re.search(r'^\s*KRELLBOT_VERSION:\s*"([^"]+)"', text, re.MULTILINE)
     assert match is not None
-    assert match.group(1) == "0.9.6", f"release workflow KRELLBOT_VERSION must be 0.9.6; got {match.group(1)!r}"
+    assert match.group(1) == "0.9.7", f"release workflow KRELLBOT_VERSION must be 0.9.7; got {match.group(1)!r}"
 
 
 def test_pyproject_version_is_096():
     text = PYPROJECT.read_text(encoding="utf-8")
     match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
     assert match is not None
-    assert match.group(1) == "0.9.6"
+    assert match.group(1) == "0.9.7"

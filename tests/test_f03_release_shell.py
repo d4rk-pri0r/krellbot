@@ -293,18 +293,18 @@ def test_freeze_cleanup_preserves_frontend_dist(tmp_path: Path, monkeypatch: pyt
 
 
 def test_freeze_refusal_does_not_change_version_pin() -> None:
-    """The freeze refusal guard must not touch the release version pin 0.9.6.
+    """The freeze refusal guard must not touch the release version pin 0.9.7.
 
     The refusal path is a guard at the top of ``freeze()``; it must not
     rewrite ``pyproject.toml`` or the workflow version env.
     """
 
     text_pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version = "0.9.6"' in text_pyproject, "pyproject.toml must keep the version pin 0.9.6 unchanged"
+    assert 'version = "0.9.7"' in text_pyproject, "pyproject.toml must keep the version pin 0.9.7 unchanged"
 
     text_workflow = _workflow_text()
-    assert 'KRELLBOT_VERSION: "0.9.6"' in text_workflow, (
-        "release-frozen.yml must keep KRELLBOT_VERSION: 0.9.6 unchanged"
+    assert 'KRELLBOT_VERSION: "0.9.7"' in text_workflow, (
+        "release-frozen.yml must keep KRELLBOT_VERSION: 0.9.7 unchanged"
     )
 
 
