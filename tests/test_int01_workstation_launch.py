@@ -13,8 +13,9 @@ inspect the loopback HTTP server the launcher binds. Required behavior:
      bootstrap token must not appear in stdout or the response body.
   3. ``krellbot workstation --host 0.0.0.0`` exits 2 and stderr contains
      ``Unknown argument: --host``. No server is started.
-  4. The legacy dashboard command is gone: ``krellbot.cli`` has no
-     ``cmd_ui`` and ``ui`` falls through to usage (exit 2).
+  4. The legacy dashboard entry point is gone: ``krellbot.cli`` has no
+     ``cmd_ui`` and no ``DashboardServer``. ``ui`` is a workstation alias
+     (see ``tests/test_ui_alias.py``), not the deleted dashboard.
 
 The launcher must use a fresh ``KRELLBOT_HOME`` directory and strip
 venue key / secret / keyfile env vars so no real credential reaches
@@ -364,12 +365,14 @@ def test_workstation_rejects_non_integer_port(tmp_path):
     assert "invalid --port" in r.stderr, r.stderr
 
 
-# ----- 4. the legacy dashboard command is gone -----------------------------
+# ----- 4. the legacy dashboard entry point is gone -------------------------
 
 
-def test_legacy_dashboard_command_is_gone(tmp_path):
-    """``krellbot.cli`` no longer defines ``cmd_ui``, and ``ui`` is not a
-    subcommand: it prints usage and exits 2 without starting a server.
+def test_legacy_dashboard_command_is_gone():
+    """``krellbot.cli`` no longer defines ``cmd_ui`` or ``DashboardServer``.
+
+    ``ui`` is now a workstation alias (pinned in ``tests/test_ui_alias.py``);
+    this test only keeps the legacy-dashboard removal invariant.
     """
 
     from krellbot import cli
@@ -377,26 +380,13 @@ def test_legacy_dashboard_command_is_gone(tmp_path):
     assert not hasattr(cli, "cmd_ui"), "krellbot.cli still defines the legacy cmd_ui"
     assert "DashboardServer" not in inspect.getsource(cli)
 
-    home = tmp_path / "home"
-    r = subprocess.run(
-        [sys.executable, "-m", "krellbot.cli", "ui"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=_sanitized_env(home),
-        timeout=10,
-        check=False,
-    )
-    assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
-    assert "Usage:" in r.stderr, r.stderr
 
-
-# ----- 5. usage line advertises the new subcommand -------------------------
+# ----- 5. usage line advertises the workstation launcher --------------------
 
 
 def test_usage_advertises_workstation_subcommand():
-    """The usage line must mention ``workstation [--port N] [--dist PATH] [--open]``.
-    The removed legacy ``ui [--port N]`` token must not be advertised.
+    """The usage line must mention ``workstation|ui`` with the shared flags.
+    The removed legacy standalone ``| ui [--port N]`` token must not appear.
     """
 
     import io
@@ -409,5 +399,5 @@ def test_usage_advertises_workstation_subcommand():
         rc = usage()
     assert rc == 2
     rendered = buf.getvalue()
-    assert "workstation [--port N] [--dist PATH] [--open]" in rendered, rendered
+    assert "workstation|ui [--port N] [--dist PATH] [--open]" in rendered, rendered
     assert "| ui [--port N]" not in rendered, rendered

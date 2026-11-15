@@ -43,17 +43,16 @@ treat the key's permissions as unknown and refuse to mark
 configured legacy keyfile; its presence alone cannot satisfy a green
 readiness light until the probe runs.
 
-## Where the dashboard talks
+## Where the workstation talks
 
-The dashboard (`krellbot ui`, `krellbot ui --open`, `krellbot ui
---port N`) binds `127.0.0.1` only, refuses non-loopback `Host`
-headers. GET status reads local, nonsecret metadata under `$KRELLBOT_HOME`;
-it does not probe a venue or read the exchange key. The Exchange form posts
-over loopback, then the handler sends an authenticated HTTPS permission
-request to the selected Kraken or Coinbase venue before a native-keychain
-store. No dashboard path sends exchange credentials to `krellbot.dev`.
-The gate token is 32 bytes from `secrets.token_hex(32)` and lives in the URL the CLI prints
-and the matching `krellbot_session` cookie.
+The workstation (`krellbot workstation`, `krellbot ui --open`, or bare
+`krellbot` on a frozen install — `ui` is an alias for `workstation`)
+binds `127.0.0.1` only and refuses non-loopback `Host` headers. Status
+reads are local, nonsecret metadata under `$KRELLBOT_HOME`; they do not
+probe a venue or read the exchange key. No workstation path sends
+exchange credentials to `krellbot.dev`. The bootstrap token is 32 bytes
+from `secrets.token_hex(32)` and is delivered via the served HTML meta
+tag and the matching session cookie — never in the printed URL.
 
 ## First-run wizard and trust screen
 
