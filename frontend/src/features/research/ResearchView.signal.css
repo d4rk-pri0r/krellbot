@@ -410,6 +410,100 @@
   font-size: 10px;
 }
 
+/* ============ price with trades (trace closes + markers) ============ */
+
+.kbot-research__price-trades {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  background: color-mix(in srgb, var(--navy) 45%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 14px 16px 16px;
+  min-width: 0;
+}
+
+.kbot-research__price-trades-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kbot-research__price-trades-title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kbot-research__price-trades-source {
+  margin: 0;
+  font-size: 9.5px;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+}
+
+.kbot-research__price-trades-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kbot-research__price-trades-svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 160px;
+}
+
+.kbot-research__price-trades-plot {
+  fill: color-mix(in srgb, var(--navy) 70%, var(--surface));
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.kbot-research__price-trades-grid {
+  stroke: color-mix(in srgb, var(--line) 55%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.kbot-research__price-trades-line {
+  stroke: var(--seafoam);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.kbot-research__price-trades-marker--buy {
+  fill: var(--seafoam);
+  stroke: color-mix(in srgb, var(--navy) 35%, var(--seafoam));
+  stroke-width: 1;
+}
+
+.kbot-research__price-trades-marker--sell {
+  fill: var(--coral);
+  stroke: color-mix(in srgb, var(--navy) 35%, var(--coral));
+  stroke-width: 1;
+}
+
+.kbot-research__price-trades-tick,
+.kbot-research__price-trades-axis {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
 /* ============ trace ============ */
 
 .kbot-research__trace {

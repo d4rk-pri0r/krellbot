@@ -12,6 +12,11 @@ import {
   EquityCurveChart,
   readEquityCurve,
 } from "./EquityCurveChart";
+import {
+  PriceWithTradesChart,
+  readPriceSeries,
+  readTradeMarkers,
+} from "./PriceWithTradesChart";
 import { ResearchDateWindow, utcFieldValueToMs } from "./ResearchDateWindow";
 import { TraceCsvExport } from "./TraceCsvExport";
 import { summarizeResearchJobError } from "./researchJobErrorLabel";
@@ -1213,6 +1218,11 @@ function ResultPanel({
 }: ResultPanelProps): JSX.Element {
   const metrics = buildMetricCells(receipt);
   const equitySeries = readEquityCurve(receipt);
+  const priceSeries = readPriceSeries(trace as Array<Record<string, unknown>>);
+  const tradeMarkers = readTradeMarkers(
+    receipt,
+    trace as Array<Record<string, unknown>>,
+  );
   // Result provenance: only what the stored receipt itself carries plus the
   // job identity it was loaded under — never the (editable) setup fields.
   const provenance: Array<{ label: string; value: string; testId: string }> = [
@@ -1276,6 +1286,7 @@ function ResultPanel({
         ))}
       </dl>
       <EquityCurveChart series={equitySeries} />
+      <PriceWithTradesChart series={priceSeries} markers={tradeMarkers} />
       <div className="kbot-research__trace" data-testid="research-trace">
         <div className="kbot-research__trace-head">
           <h2 className="kbot-research__trace-title">Trace</h2>
