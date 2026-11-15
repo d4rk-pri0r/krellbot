@@ -1,7 +1,7 @@
 """Shared ephemeral probe-and-store for venue API keys.
 
-``probe_and_store`` is the single internal entry point the future wizard
-key-add POST will use to (1) validate the inputs, (2) register redaction
+``probe_and_store`` is the single internal entry point the wizard
+key-add POST uses to (1) validate the inputs, (2) register redaction
 for the secrets immediately, (3) classify the keyring backend and refuse
 anything but a native OS keychain (unless tests opt in), (4) re-probe
 with the venue — only a genuine, validated ``KeyProbeResult`` from the
@@ -11,6 +11,10 @@ result, and (6) compensate on ANY partial write — including a
 first-slot write-then-raise — restoring the prior pair or deleting the
 partial new key, with the outcome PROVEN by a readback before it is
 reported.
+
+``connection_status`` and ``remove_stored`` are the matching read and
+DELETE helpers: they never echo raw credentials, never import
+``secrets.py``, and report only closed safe messages.
 
 The operation returns a ``KeyOnboardingResult`` whose payload is closed:
 a fixed enum status, a fixed safe message from a closed set, and the
@@ -152,6 +156,16 @@ SAFE_MESSAGES: frozenset[str] = frozenset(
         "keyring write failed; prior pair restored",
         "keyring write failed; no prior pair was present",
         "prior keyring state could not be read; nothing was written",
+        # Connection status / balances
+        "no key stored",
+        "key present",
+        "keyring pair is corrupt; refused",
+        "keyring state could not be read",
+        "venue unreachable; cannot read balances",
+        # Removal
+        "removed from keychain",
+        "no key was stored",
+        "keyring remove failed and outcome is uncertain",
     }
 )
 
@@ -167,6 +181,25 @@ _MSG_FOR: dict[Status, str] = {
 }
 
 
+class RemovalStatus(str, Enum):
+    """Closed status enum for ``remove_stored``."""
+
+    REMOVED = "removed"
+    ABSENT = "absent"
+    INVALID_ARGUMENT = "invalid_argument"
+    UNSUPPORTED_BACKEND = "unsupported_backend"
+    REMOVE_FAILED = "remove_failed"
+
+
+_REMOVAL_MSG_FOR: dict[RemovalStatus, str] = {
+    RemovalStatus.REMOVED: "removed from keychain",
+    RemovalStatus.ABSENT: "no key was stored",
+    RemovalStatus.INVALID_ARGUMENT: "input rejected; refused",
+    RemovalStatus.UNSUPPORTED_BACKEND: "keyring backend is not a native OS keychain; refused",
+    RemovalStatus.REMOVE_FAILED: "keyring remove failed and outcome is uncertain",
+}
+
+
 @dataclasses.dataclass(frozen=True)
 class KeyOnboardingResult:
     """Closed, secret-free outcome of a ``probe_and_store`` call."""
@@ -178,6 +211,44 @@ class KeyOnboardingResult:
     def __post_init__(self) -> None:
         if self.message not in SAFE_MESSAGES:
             raise ValueError(f"KeyOnboardingResult.message must be in SAFE_MESSAGES; got {self.message!r}")
+
+
+@dataclasses.dataclass(frozen=True)
+class KeyRemovalResult:
+    """Closed, secret-free outcome of a ``remove_stored`` call."""
+
+    status: RemovalStatus
+    message: str
+    backend_label: str | None
+
+    def __post_init__(self) -> None:
+        if self.message not in SAFE_MESSAGES:
+            raise ValueError(f"KeyRemovalResult.message must be in SAFE_MESSAGES; got {self.message!r}")
+
+
+@dataclasses.dataclass(frozen=True)
+class BalanceRow:
+    """One asset balance rendered as a finite decimal string."""
+
+    asset: str
+    free: str
+
+
+@dataclasses.dataclass(frozen=True)
+class KeyConnectionStatus:
+    """Closed, secret-free connection snapshot for one venue."""
+
+    venue: str
+    present: bool
+    corrupt: bool
+    message: str
+    backend_label: str | None
+    balances: tuple[BalanceRow, ...] | None
+    balances_available: bool
+
+    def __post_init__(self) -> None:
+        if self.message not in SAFE_MESSAGES:
+            raise ValueError(f"KeyConnectionStatus.message must be in SAFE_MESSAGES; got {self.message!r}")
 
 
 # Probe + keyring backend injection ---------------------------------------------
@@ -629,4 +700,265 @@ def probe_and_store(
         status=Status.STORED,
         message=_MSG_FOR[Status.STORED],
         backend_label=_backend_label(keyring_backend),
+    )
+
+
+def _validate_venue_only(venue: str) -> Status | None:
+    """Reject unsupported venues before any keyring work."""
+    if venue not in ("kraken", "coinbase"):
+        return Status.INVALID_ARGUMENT
+    return None
+
+
+def _soft_read_pair(keyring_backend: Any, venue: str) -> tuple[str, str | None, str | None]:
+    """Return ``(state, key, secret)`` without raising.
+
+    ``state`` is one of ``present``, ``absent``, ``corrupt``, ``unreadable``.
+    """
+    try:
+        from keyring.errors import KeyringError
+    except ImportError:  # pragma: no cover - keyring is a hard dependency
+        KeyringError = RuntimeError  # type: ignore[misc,assignment]
+    try:
+        k = keyring_backend.get_password(_service(venue), "key")
+        s = keyring_backend.get_password(_service(venue), "secret")
+    except (KeyringError, OSError, RuntimeError, ValueError, TypeError, AttributeError):
+        return "unreadable", None, None
+    if k is None and s is None:
+        return "absent", None, None
+    if k is None or s is None:
+        return "corrupt", None, None
+    if not isinstance(k, str) or not isinstance(s, str) or not k or not s:
+        return "corrupt", None, None
+    return "present", k, s
+
+
+def _format_balance_free(value: Any) -> str | None:
+    """Render a finite Decimal without exponent or trailing zeros."""
+    from decimal import Decimal, InvalidOperation
+
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        return None
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    if not number.is_finite():
+        return None
+    if number.is_zero():
+        return "0"
+    text = format(number, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _read_balances(
+    venue: str,
+    key: str,
+    secret: str,
+    transport: Transport | None,
+) -> tuple[BalanceRow, ...] | None:
+    """Fetch spot balances via the venue adapter. Returns None on failure.
+
+    Only a genuine venue snapshot may populate balances. Exception text is
+    never surfaced — the caller maps failure to a fixed safe message.
+    """
+    try:
+        if venue == "kraken":
+            from krellbot.venues.kraken import HttpTransport, KrakenVenue
+
+            venue_obj = KrakenVenue(
+                key,
+                secret,
+                transport or HttpTransport(),
+                min_interval_ms=0,
+            )
+        elif venue == "coinbase":
+            from krellbot.venues.coinbase import CoinbaseVenue
+            from krellbot.venues.coinbase import HttpTransport as CoinbaseHttp
+
+            venue_obj = CoinbaseVenue(
+                key,
+                secret,
+                transport or CoinbaseHttp(),
+            )
+        else:
+            return None
+        truth = venue_obj.snapshot()
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+    rows: list[BalanceRow] = []
+    for bal in getattr(truth, "balances", ()) or ():
+        asset = getattr(bal, "asset", None)
+        free = _format_balance_free(getattr(bal, "free", None))
+        if not isinstance(asset, str) or not asset or free is None:
+            continue
+        rows.append(BalanceRow(asset=asset, free=free))
+    return tuple(rows)
+
+
+def connection_status(
+    venue: str,
+    *,
+    keyring_backend: Any,
+    transport: Transport | None = None,
+    allow_injected_fake_backend: bool = False,
+    include_balances: bool = True,
+) -> KeyConnectionStatus:
+    """Return a secret-free connection snapshot for ``venue``.
+
+    When a full pair is present and ``include_balances`` is True, balances
+    are read through the venue adapter (injectable transport for tests).
+    A balance fetch failure leaves ``present=True`` and reports that
+    balances are unavailable — it never echoes venue or keyring errors.
+    """
+    if _validate_venue_only(venue) is not None:
+        return KeyConnectionStatus(
+            venue=venue if isinstance(venue, str) else "",
+            present=False,
+            corrupt=False,
+            message=_MSG_FOR[Status.INVALID_ARGUMENT],
+            backend_label=None,
+            balances=None,
+            balances_available=False,
+        )
+
+    label = _backend_label(keyring_backend) if _classify_backend(keyring_backend, allow_injected_fake_backend) else None
+    # Presence reads soft-fail even on unrecognized backends so a doctor-
+    # style status view can still report absent vs present when the OS
+    # keychain is temporarily unclassifiable. Store/remove stay strict.
+    state, key, secret = _soft_read_pair(keyring_backend, venue)
+    if state == "absent":
+        return KeyConnectionStatus(
+            venue=venue,
+            present=False,
+            corrupt=False,
+            message="no key stored",
+            backend_label=label,
+            balances=None,
+            balances_available=False,
+        )
+    if state == "corrupt":
+        return KeyConnectionStatus(
+            venue=venue,
+            present=False,
+            corrupt=True,
+            message="keyring pair is corrupt; refused",
+            backend_label=label,
+            balances=None,
+            balances_available=False,
+        )
+    if state == "unreadable" or key is None or secret is None:
+        return KeyConnectionStatus(
+            venue=venue,
+            present=False,
+            corrupt=False,
+            message="keyring state could not be read",
+            backend_label=label,
+            balances=None,
+            balances_available=False,
+        )
+
+    _register_secret_guarded((key, MAX_KEY_LEN), (secret, MAX_SECRET_LEN))
+    balances: tuple[BalanceRow, ...] | None = None
+    balances_available = False
+    if include_balances:
+        balances = _read_balances(venue, key, secret, transport)
+        if balances is None:
+            return KeyConnectionStatus(
+                venue=venue,
+                present=True,
+                corrupt=False,
+                message="venue unreachable; cannot read balances",
+                backend_label=label,
+                balances=None,
+                balances_available=False,
+            )
+        balances_available = True
+
+    return KeyConnectionStatus(
+        venue=venue,
+        present=True,
+        corrupt=False,
+        message="key present",
+        backend_label=label,
+        balances=balances,
+        balances_available=balances_available,
+    )
+
+
+def remove_stored(
+    venue: str,
+    *,
+    keyring_backend: Any,
+    allow_injected_fake_backend: bool = False,
+) -> KeyRemovalResult:
+    """Delete the two-slot keyring pair for ``venue`` and prove absence.
+
+    Both slots are deleted; the outcome is proven by a re-read. A half-
+    present prior pair is still cleared when possible. Never echoes
+    credential material or backend exception text.
+    """
+    if _validate_venue_only(venue) is not None:
+        return KeyRemovalResult(
+            status=RemovalStatus.INVALID_ARGUMENT,
+            message=_REMOVAL_MSG_FOR[RemovalStatus.INVALID_ARGUMENT],
+            backend_label=None,
+        )
+
+    if not _classify_backend(keyring_backend, allow_injected_fake_backend):
+        return KeyRemovalResult(
+            status=RemovalStatus.UNSUPPORTED_BACKEND,
+            message=_REMOVAL_MSG_FOR[RemovalStatus.UNSUPPORTED_BACKEND],
+            backend_label=_backend_label(keyring_backend),
+        )
+
+    label = _backend_label(keyring_backend)
+    state, prior_k, prior_s = _soft_read_pair(keyring_backend, venue)
+    if state == "absent":
+        return KeyRemovalResult(
+            status=RemovalStatus.ABSENT,
+            message=_REMOVAL_MSG_FOR[RemovalStatus.ABSENT],
+            backend_label=label,
+        )
+    if state == "unreadable":
+        return KeyRemovalResult(
+            status=RemovalStatus.REMOVE_FAILED,
+            message=_REMOVAL_MSG_FOR[RemovalStatus.REMOVE_FAILED],
+            backend_label=label,
+        )
+
+    # Register any prior material we could see so logs stay redacted.
+    if isinstance(prior_k, str):
+        _register_secret_guarded((prior_k, MAX_KEY_LEN))
+    if isinstance(prior_s, str):
+        _register_secret_guarded((prior_s, MAX_SECRET_LEN))
+
+    try:
+        for username in ("key", "secret"):
+            try:
+                _delete_slot(keyring_backend, venue, username)
+            except _KeyringFailureError:
+                # Slot may already be absent on a corrupt half-pair; prove
+                # final state below rather than failing on the first miss.
+                # Re-read after both attempts.
+                pass
+        now_k = _read_slot(keyring_backend, venue, "key")
+        now_s = _read_slot(keyring_backend, venue, "secret")
+    except _KeyringFailureError:
+        return KeyRemovalResult(
+            status=RemovalStatus.REMOVE_FAILED,
+            message=_REMOVAL_MSG_FOR[RemovalStatus.REMOVE_FAILED],
+            backend_label=label,
+        )
+
+    if now_k is not None or now_s is not None:
+        return KeyRemovalResult(
+            status=RemovalStatus.REMOVE_FAILED,
+            message=_REMOVAL_MSG_FOR[RemovalStatus.REMOVE_FAILED],
+            backend_label=label,
+        )
+    return KeyRemovalResult(
+        status=RemovalStatus.REMOVED,
+        message=_REMOVAL_MSG_FOR[RemovalStatus.REMOVED],
+        backend_label=label,
     )

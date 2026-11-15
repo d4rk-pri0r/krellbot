@@ -77,6 +77,8 @@ class _AppState:
     paper_service: object = field(default=None)  # PaperService singleton per home
     rehearsal_service: object = field(default=None)
     live_transport: object = field(default=None)  # SandboxTransport or test spy for live.preflight
+    keys_transport: object = field(default=None)  # injectable venue transport for keys routes
+    keys_allow_fake_backend: bool = False  # tests-only FakeKeyring opt-in
 
 
 def _state(app: FastAPI) -> _AppState:
@@ -1557,6 +1559,159 @@ def create_app(
             "live_orders": False,
         }
         return JSONResponse(body, status_code=200)
+
+    # ---- keys onboarding (M3.1, Kraken) --------------------------------
+
+    KEYS_VENUES = frozenset({"kraken"})
+
+    def _keys_keyring():
+        import keyring as _keyring
+
+        return _keyring.get_keyring()
+
+    def _keys_venue_or_404(venue: str) -> Response | None:
+        if venue not in KEYS_VENUES:
+            return JSONResponse({"detail": "not found"}, status_code=404)
+        return None
+
+    @app.post("/api/v1/keys/{venue}")
+    async def keys_probe_and_store(venue: str, request: Request) -> Response:
+        """Probe then store a trade-only key for ``venue`` (Kraken).
+
+        Same state-change gate as ``POST /api/v1/commands``
+        (``_gate_state_change``): session cookie + CSRF + loopback Origin.
+        Persistence is owned by ``keys_onboarding.probe_and_store``; trade-
+        only enforcement is unchanged. The response never carries the raw
+        key, secret, or venue error text.
+        """
+
+        from krellbot import keys_onboarding
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+        missing = _keys_venue_or_404(venue)
+        if missing is not None:
+            return missing
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        key = payload.get("key")
+        secret = payload.get("secret")
+        if not isinstance(key, str) or not isinstance(secret, str):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        result = keys_onboarding.probe_and_store(
+            venue,
+            key,
+            secret,
+            keyring_backend=_keys_keyring(),
+            probe=s.keys_transport,
+            allow_injected_fake_backend=s.keys_allow_fake_backend,
+        )
+        ok = result.status == keys_onboarding.Status.STORED
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "venue": venue,
+                "status": result.status.value,
+                "ok": ok,
+                "message": result.message,
+                "effect": "changed" if ok else "refused",
+                "backend_label": result.backend_label,
+            },
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/keys/{venue}")
+    async def keys_status(venue: str, request: Request) -> Response:
+        """Return connection status and balances for ``venue`` (Kraken).
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF. Balances
+        are read through an injectable venue transport (tests use a fake).
+        """
+
+        from krellbot import keys_onboarding
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+        missing = _keys_venue_or_404(venue)
+        if missing is not None:
+            return missing
+
+        snap = keys_onboarding.connection_status(
+            venue,
+            keyring_backend=_keys_keyring(),
+            transport=s.keys_transport,
+            allow_injected_fake_backend=s.keys_allow_fake_backend,
+            include_balances=True,
+        )
+        balances = None
+        if snap.balances is not None:
+            balances = [{"asset": row.asset, "free": row.free} for row in snap.balances]
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "venue": snap.venue,
+                "present": snap.present,
+                "corrupt": snap.corrupt,
+                "message": snap.message,
+                "backend_label": snap.backend_label,
+                "balances": balances,
+                "balances_available": snap.balances_available,
+            },
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.delete("/api/v1/keys/{venue}")
+    async def keys_remove(venue: str, request: Request) -> Response:
+        """Remove the stored key pair for ``venue`` (Kraken).
+
+        Same state-change gate as ``POST /api/v1/commands``
+        (``_gate_state_change``): session cookie + CSRF + loopback Origin.
+        """
+
+        from krellbot import keys_onboarding
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+        missing = _keys_venue_or_404(venue)
+        if missing is not None:
+            return missing
+
+        result = keys_onboarding.remove_stored(
+            venue,
+            keyring_backend=_keys_keyring(),
+            allow_injected_fake_backend=s.keys_allow_fake_backend,
+        )
+        ok = result.status == keys_onboarding.RemovalStatus.REMOVED
+        absent = result.status == keys_onboarding.RemovalStatus.ABSENT
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "venue": venue,
+                "status": result.status.value,
+                "ok": ok or absent,
+                "message": result.message,
+                "effect": "changed" if ok else ("unchanged" if absent else "refused"),
+                "backend_label": result.backend_label,
+            },
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
 
     # ---- strategy drafts (NS08a) --------------------------------------
 
