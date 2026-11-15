@@ -56,6 +56,7 @@ from krellbot.storage.outbox import (
     dispatched_coids,
 )
 from krellbot.venues.base import OrderRef, PairRules
+from krellbot.venues.paper import SLIPPAGE_BPS
 
 from .lock import TickLock
 
@@ -700,8 +701,11 @@ def tick(
                     close_price = Decimal(str(candles[-1].close))
                     cash_for_cap = cash * armed.cap / Decimal(100)
                     if cash_for_cap >= rules.costmin and close_price > 0:
-                        qty = (cash_for_cap / close_price).quantize(
-                            Decimal(1).scaleb(-rules.lot_decimals), rounding=ROUND_DOWN
+                        qty = _fundable_entry_qty(
+                            cash_for_cap,
+                            close_price=close_price,
+                            rules=rules,
+                            fee_bps=_fee_bps_for_venue(venue),
                         )
                         if qty >= rules.ordermin and qty * close_price >= rules.costmin:
                             entry_body = json.dumps(
@@ -981,6 +985,40 @@ def _fee_bps_for_venue(venue: str) -> int:
     if venue == "coinbase":
         return 120
     return 0
+
+
+def _fundable_entry_qty(
+    budget: Decimal,
+    *,
+    close_price: Decimal,
+    rules: PairRules,
+    fee_bps: int,
+) -> Decimal:
+    """Size a paper entry so notional plus fee fit the budget.
+
+    Uses the same buy slippage and fee quantization as ``PaperVenue`` so a
+    full-cap order does not request more quote cash than the venue will debit.
+    """
+    if budget <= 0 or close_price <= 0:
+        return Decimal(0)
+    slip = Decimal(SLIPPAGE_BPS) / Decimal(10_000)
+    buy_price = (close_price * (Decimal(1) + slip)).quantize(
+        Decimal(1).scaleb(-rules.price_decimals), rounding=ROUND_DOWN
+    )
+    if buy_price <= 0:
+        return Decimal(0)
+    fee_mult = Decimal(1) + Decimal(fee_bps) / Decimal(10_000)
+    lot = Decimal(1).scaleb(-rules.lot_decimals)
+    qty = (budget / (buy_price * fee_mult)).quantize(lot, rounding=ROUND_DOWN)
+    while qty > 0:
+        notional = qty * buy_price
+        fee = (notional * Decimal(fee_bps) / Decimal(10_000)).quantize(
+            Decimal(1).scaleb(-rules.price_decimals), rounding=ROUND_DOWN
+        )
+        if notional + fee <= budget:
+            return qty
+        qty -= lot
+    return Decimal(0)
 
 
 def _emit_telemetry(

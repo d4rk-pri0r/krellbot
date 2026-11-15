@@ -45,6 +45,10 @@ COINBASE_TAKER_BPS = 120
 SLIPPAGE_BPS = 5
 
 
+class InsufficientQuoteCash(ValueError):
+    """Typed refusal: quote cash cannot fund execution price plus fees."""
+
+
 def _fee_bps_for(venue: str) -> int:
     return KRAKEN_TAKER_BPS if venue == "kraken" else COINBASE_TAKER_BPS
 
@@ -171,7 +175,10 @@ class PaperVenue:
             Decimal(1).scaleb(-rules.price_decimals), rounding=ROUND_DOWN
         )
         base, quote = _base_quote(pair)
-        self._state["balances"][quote] = self._state["balances"].get(quote, Decimal(0)) - notional - fee
+        available = self._state["balances"].get(quote, Decimal(0))
+        if notional + fee > available:
+            raise InsufficientQuoteCash("paper: insufficient quote cash for execution price and fee")
+        self._state["balances"][quote] = available - notional - fee
         self._state["balances"][base] = self._state["balances"].get(base, Decimal(0)) + qty
 
         ts_ms = int((self._clock() if self._clock else _now_seconds()) * 1000)
