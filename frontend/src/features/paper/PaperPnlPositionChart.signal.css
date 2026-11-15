@@ -1,0 +1,100 @@
+/*
+ * Paper P&L + position charts — Signal (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the armed-paper chart surface on the
+ * Workstation. Namespaced under `.kbot-paper-chart`. Every color and
+ * typography value comes from the shared tokens
+ * (`frontend/src/styles/tokens.css`).
+ */
+
+.kbot-paper-chart {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-paper-chart__panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 45%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 8px);
+  padding: 14px 16px 16px;
+  min-width: 0;
+}
+
+.kbot-paper-chart__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kbot-paper-chart__title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+  font-family: var(--font-ui, "Manrope", sans-serif);
+}
+
+.kbot-paper-chart__source {
+  margin: 0;
+  font-size: 9.5px;
+  color: var(--muted, #abc4d8);
+  letter-spacing: 0.4px;
+  font-family: var(--font-ui, "Manrope", sans-serif);
+}
+
+.kbot-paper-chart__empty {
+  margin: 0;
+  color: var(--muted, #abc4d8);
+  font-size: 13px;
+  font-family: var(--font-ui, "Manrope", sans-serif);
+}
+
+.kbot-paper-chart__svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 160px;
+}
+
+.kbot-paper-chart__plot {
+  fill: color-mix(in srgb, var(--navy, #0e1c29) 70%, var(--surface, #14222e));
+  stroke: var(--line, #22465d);
+  stroke-width: 1;
+}
+
+.kbot-paper-chart__grid {
+  stroke: color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.kbot-paper-chart__zero {
+  stroke: var(--line, #22465d);
+  stroke-width: 1;
+}
+
+.kbot-paper-chart__line {
+  stroke: var(--seafoam, #a8d8d1);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.kbot-paper-chart__tick,
+.kbot-paper-chart__axis {
+  fill: var(--muted, #abc4d8);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 10px;
+}

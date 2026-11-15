@@ -196,6 +196,224 @@ def project_owned_position(
     }
 
 
+# Cap for workstation chart series. Journal and fill evidence can grow
+# without bound; the UI needs a bounded polyline, so we keep the first
+# and last points and downsample the middle evenly when over the cap.
+PAPER_CHART_MAX_POINTS = 256
+
+# Taker fees match ``krellbot.venues.paper`` Phase-3 costs so fill replay
+# for the P&L series uses the same bps the paper venue applied. Duplicated
+# here so the chart projection never imports the venue risk path.
+_PAPER_TAKER_BPS = {"kraken": 40, "coinbase": 120}
+
+
+def _chart_decimal(value: object) -> str | None:
+    """Finite Decimal as a plain string (no exponent / trailing zeros)."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        return None
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError, ArithmeticError):
+        return None
+    if not number.is_finite():
+        return None
+    if number.is_zero():
+        return "0"
+    text = format(number, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _downsample_points(points: list[dict], *, max_points: int = PAPER_CHART_MAX_POINTS) -> list[dict]:
+    """Keep first and last; evenly sample the middle when over the cap."""
+    if len(points) <= max_points or max_points < 2:
+        return points
+    last_index = len(points) - 1
+    # Always include endpoints; sample the remaining slots across the span.
+    inner_slots = max_points - 2
+    chosen = {0, last_index}
+    for slot in range(inner_slots):
+        # Map slot onto (1 .. last_index-1) inclusive.
+        idx = 1 + round(slot * (last_index - 2) / max(inner_slots - 1, 1))
+        chosen.add(min(max(idx, 1), last_index - 1))
+    return [points[i] for i in sorted(chosen)]
+
+
+def _read_journal_dicts(home: Path) -> list[dict]:
+    """Return every parseable journal object under ``<home>/journal/*.jsonl``.
+
+    Malformed lines and unreadable files are skipped: the chart is
+    read-only evidence over an append-only journal.
+    """
+    journal_dir = Path(home) / "journal"
+    if not journal_dir.is_dir():
+        return []
+    records: list[dict] = []
+    for path in sorted(journal_dir.glob("*.jsonl")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if isinstance(record, dict):
+                records.append(record)
+    return records
+
+
+def _position_series_from_journal(
+    records: list[dict],
+    *,
+    venue: str,
+    pair: str,
+) -> list[dict]:
+    """Build ``[{ts_ms, qty}, …]`` from tick ``owned_qty_after`` for one market."""
+    points: list[dict] = []
+    for record in records:
+        if record.get("kind") != "tick":
+            continue
+        if record.get("venue") != venue:
+            continue
+        detail = record.get("detail")
+        if not isinstance(detail, dict) or detail.get("pair") != pair:
+            continue
+        qty = _chart_decimal(detail.get("owned_qty_after"))
+        if qty is None:
+            continue
+        ts = record.get("ts")
+        if not isinstance(ts, (int, float)):
+            continue
+        points.append({"ts_ms": int(ts) * 1000, "qty": qty})
+    return _downsample_points(points)
+
+
+def _fills_for_pair(state: dict, pair: str) -> list[dict]:
+    """Return fill rows for ``pair`` with finite qty/price/ts_ms, sorted."""
+    raw = state.get("recent_fills")
+    if not isinstance(raw, list):
+        return []
+    fills: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        if item.get("pair") != pair:
+            continue
+        side = item.get("side")
+        if side not in ("buy", "sell"):
+            continue
+        qty = _chart_decimal(item.get("qty"))
+        price = _chart_decimal(item.get("price"))
+        ts_ms = item.get("ts_ms")
+        if qty is None or price is None or not isinstance(ts_ms, (int, float)):
+            continue
+        fills.append(
+            {
+                "side": side,
+                "qty": Decimal(qty),
+                "price": Decimal(price),
+                "ts_ms": int(ts_ms),
+            }
+        )
+    fills.sort(key=lambda row: row["ts_ms"])
+    return fills
+
+
+def _pnl_and_mark_series(
+    *,
+    venue: str,
+    starting_cash: Decimal,
+    fills: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Replay fills into P&L + mark series (Decimal-as-string wire points).
+
+    P&L at each fill is ``cash + qty * fill_price − starting_cash`` after
+    applying that fill with the paper venue's taker fee bps. Marks are the
+    fill prices themselves — evidence, never a fabricated candle series.
+    """
+    fee_bps = Decimal(_PAPER_TAKER_BPS.get(venue, 40))
+    cash = starting_cash
+    qty = Decimal(0)
+    pnl_points: list[dict] = []
+    mark_points: list[dict] = []
+
+    for fill in fills:
+        notional = fill["qty"] * fill["price"]
+        fee = notional * fee_bps / Decimal(10_000)
+        if fill["side"] == "buy":
+            cash -= notional + fee
+            qty += fill["qty"]
+        else:
+            cash += notional - fee
+            qty -= fill["qty"]
+        equity = cash + qty * fill["price"]
+        pnl = equity - starting_cash
+        pnl_text = _chart_decimal(pnl)
+        price_text = _chart_decimal(fill["price"])
+        if pnl_text is None or price_text is None:
+            continue
+        pnl_points.append({"ts_ms": fill["ts_ms"], "value": pnl_text})
+        mark_points.append({"ts_ms": fill["ts_ms"], "price": price_text})
+
+    return _downsample_points(pnl_points), _downsample_points(mark_points)
+
+
+def project_paper_pnl_position_chart(home: Path) -> dict:
+    """Closed-shape P&L + position (or mark) series for the armed paper market.
+
+    * ``position`` — journal tick ``owned_qty_after`` over time for the
+      armed ``(venue, pair)``.
+    * ``pnl`` — fill-replay equity minus ``starting_cash`` (paper-state
+      ``recent_fills`` for the armed pair).
+    * ``marks`` — fill prices for the same pair (the mark series the
+      milestone allows when position evidence is thin).
+
+    When no pack is armed the body is ``{"schema_version", "armed": false}``.
+    Series stay empty rather than fabricated when journal/fills are absent.
+    Uses the first armed record, matching ``/api/v1/paper/position``.
+    """
+    home = Path(home)
+    try:
+        config = kb_config.load_config(home)
+    except (OSError, ValueError):
+        return {"schema_version": SCHEMA_VERSION, "armed": False}
+    if not config.armed:
+        return {"schema_version": SCHEMA_VERSION, "armed": False}
+
+    armed = config.armed[0]
+    starting_raw = armed.starting_cash
+    starting_cash = Decimal(str(starting_raw)) if starting_raw is not None else Decimal(0)
+    starting_text = _chart_decimal(starting_cash) or "0"
+
+    records = _read_journal_dicts(home)
+    position = _position_series_from_journal(records, venue=armed.venue, pair=armed.pair)
+
+    state = read_paper_state(home, armed.venue)
+    fills = _fills_for_pair(state, armed.pair)
+    pnl, marks = _pnl_and_mark_series(
+        venue=armed.venue,
+        starting_cash=starting_cash,
+        fills=fills,
+    )
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "armed": True,
+        "venue": armed.venue,
+        "pair": armed.pair,
+        "mode": armed.mode,
+        "pack_id": armed.pack_id,
+        "starting_cash": starting_text,
+        "pnl": pnl,
+        "position": position,
+        "marks": marks,
+    }
+
+
 def _revision(home: Path) -> str | None:
     path = kb_config.config_path(home)
     if not path.exists():
