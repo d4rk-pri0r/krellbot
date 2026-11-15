@@ -45,7 +45,13 @@ import type { OperationsClient } from "../features/operations/client";
 import { PackLibrary } from "../features/packs/PackLibrary";
 import { createPacksHttpClient } from "../features/packs/client";
 import type { PackLibraryClient } from "../features/packs/client";
-import { recoverCsrf, redeemBootstrap } from "../session";
+import {
+  issueReconnectToken,
+  recoverCsrf,
+  redeemBootstrap,
+  redeemReconnectToken,
+  type ReconnectIssue,
+} from "../session";
 import { Wordmark } from "../components/brand/Wordmark";
 import { AppHome } from "./AppHome";
 import { CommandPalette } from "./CommandPalette";
@@ -129,6 +135,22 @@ function consumeBootstrapToken(): string | null {
   const token = meta.getAttribute("content") ?? "";
   meta.remove();
   return token;
+}
+
+/** Read and strip `?reconnect=` from the URL (second-browser local re-pair). */
+function consumeReconnectToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get("reconnect");
+  if (token === null || !token.trim()) {
+    return null;
+  }
+  url.searchParams.delete("reconnect");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState(window.history.state, "", next);
+  return token.trim();
 }
 
 export type WorkstationShellProps = {
@@ -491,7 +513,49 @@ export function WorkstationShell({
     }
   }, []);
 
+  const handleIssueReconnect = useCallback(async (): Promise<ReconnectIssue> => {
+    return issueReconnectToken();
+  }, []);
+
+  const handleRedeemReconnect = useCallback(
+    async (token: string): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        await redeemReconnectToken(token);
+        setBootstrapFailed(false);
+        setBootstrapDone(true);
+        return { ok: true };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
+    const reconnect = consumeReconnectToken();
+    if (reconnect) {
+      let cancelled = false;
+      void redeemReconnectToken(reconnect)
+        .then(() => {
+          if (!cancelled) {
+            setBootstrapDone(true);
+            setBootstrapFailed(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setBootstrapDone(true);
+            setBootstrapFailed(true);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const token = consumeBootstrapToken();
     if (!token) {
       // Reload with a redeemed (or absent) bootstrap token: the
@@ -719,6 +783,12 @@ export function WorkstationShell({
             sessionPending={!bootstrapDone}
             sessionFailed={bootstrapFailed}
             onRecoverSession={handleRecoverSession}
+            onIssueReconnect={
+              bootstrapDone && !bootstrapFailed ? handleIssueReconnect : undefined
+            }
+            onRedeemReconnect={
+              bootstrapFailed ? handleRedeemReconnect : undefined
+            }
           />
         ) : null}
         {active === "workstation" ? (

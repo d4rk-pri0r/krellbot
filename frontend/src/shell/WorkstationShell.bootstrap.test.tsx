@@ -42,6 +42,8 @@ vi.mock("../session", () => ({
       resolveBootstrapRef = () => resolve();
     }),
   recoverCsrf: (): Promise<boolean> => Promise.resolve(false),
+  issueReconnectToken: (): Promise<never> => Promise.reject(new Error("not stubbed")),
+  redeemReconnectToken: (): Promise<void> => Promise.resolve(),
 }));
 
 function makePaperClient(): PaperClient {

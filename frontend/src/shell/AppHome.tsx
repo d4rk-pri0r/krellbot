@@ -5,7 +5,9 @@ import {
   createKeysHttpClient,
   type KeysClient,
 } from "../features/keys/client";
+import type { ReconnectIssue } from "../session";
 import type { View } from "./Navigation";
+import { ReconnectQr } from "./ReconnectQr";
 import "./AppHome.signal.css";
 
 /**
@@ -100,6 +102,15 @@ type AppHomeProps = {
   onRecoverSession?: () => Promise<{ ok: boolean; error?: string }>;
   /** Injectable keys client; defaults to the loopback HTTP client. */
   keysClient?: KeysClient;
+  /**
+   * Primary session: mint a short-lived reconnect token/QR for a second
+   * browser. Absent when the local session is not ready.
+   */
+  onIssueReconnect?: () => Promise<ReconnectIssue>;
+  /**
+   * Second browser / failed session: redeem a pasted reconnect token.
+   */
+  onRedeemReconnect?: (token: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
 export function AppHome({
@@ -108,6 +119,8 @@ export function AppHome({
   sessionFailed = false,
   onRecoverSession,
   keysClient,
+  onIssueReconnect,
+  onRedeemReconnect,
 }: AppHomeProps): JSX.Element {
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const recoveryAttempt = useRef(0);
@@ -116,6 +129,12 @@ export function AppHome({
     fallbackKeysRef.current = createKeysHttpClient();
   }
   const keys = keysClient ?? fallbackKeysRef.current!;
+  const [reconnectOffer, setReconnectOffer] = useState<ReconnectIssue | null>(null);
+  const [reconnectBusy, setReconnectBusy] = useState(false);
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
+  const [pasteToken, setPasteToken] = useState("");
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteBusy, setPasteBusy] = useState(false);
 
   async function recoverSession(): Promise<void> {
     const attempt = ++recoveryAttempt.current;
@@ -129,6 +148,42 @@ export function AppHome({
       if (attempt === recoveryAttempt.current) {
         setRecoverError(error instanceof Error ? error.message : String(error));
       }
+    }
+  }
+
+  async function issueReconnect(): Promise<void> {
+    if (!onIssueReconnect || reconnectBusy) return;
+    setReconnectBusy(true);
+    setReconnectError(null);
+    try {
+      const offer = await onIssueReconnect();
+      setReconnectOffer(offer);
+    } catch (error) {
+      setReconnectOffer(null);
+      setReconnectError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReconnectBusy(false);
+    }
+  }
+
+  async function redeemPasted(): Promise<void> {
+    if (!onRedeemReconnect || pasteBusy) return;
+    const token = pasteToken.trim();
+    if (!token) {
+      setPasteError("Enter the reconnect token from the other browser");
+      return;
+    }
+    setPasteBusy(true);
+    setPasteError(null);
+    try {
+      const result = await onRedeemReconnect(token);
+      if (!result.ok) {
+        setPasteError(result.error || "reconnect refused");
+      }
+    } catch (error) {
+      setPasteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPasteBusy(false);
     }
   }
 
@@ -234,6 +289,49 @@ export function AppHome({
                     Recovery failed: {recoverError}
                   </p>
                 ) : null}
+                {onRedeemReconnect ? (
+                  <div
+                    className="app-home__reconnect-paste"
+                    data-testid="app-home-reconnect-paste"
+                  >
+                    <p className="app-home__note-copy">
+                      Or paste a short-lived reconnect token from a browser that
+                      already has a local session — no process restart needed.
+                    </p>
+                    <label className="app-home__reconnect-label" htmlFor="app-home-reconnect-token">
+                      Reconnect token
+                    </label>
+                    <input
+                      id="app-home-reconnect-token"
+                      className="app-home__reconnect-input"
+                      data-testid="app-home-reconnect-token-input"
+                      type="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={pasteToken}
+                      disabled={pasteBusy}
+                      onChange={(event) => {
+                        setPasteToken(event.target.value);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="app-home__recover"
+                      data-testid="app-home-reconnect-redeem"
+                      disabled={pasteBusy}
+                      onClick={() => {
+                        void redeemPasted();
+                      }}
+                    >
+                      Join with reconnect token
+                    </button>
+                    {pasteError !== null ? (
+                      <p data-testid="app-home-reconnect-paste-error" role="alert">
+                        {pasteError}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </section>
@@ -334,6 +432,67 @@ export function AppHome({
               Live trading stays unavailable in this paper-only release. Link a
               trade-only Kraken key below when you are ready.
             </p>
+            {!sessionPending && !sessionFailed && onIssueReconnect ? (
+              <div
+                className="app-home__reconnect"
+                data-testid="app-home-reconnect"
+              >
+                <p className="app-home__rail-copy">
+                  Invite another browser on this machine with a short-lived
+                  token or QR. The one-time bootstrap stays spent.
+                </p>
+                <button
+                  type="button"
+                  className="app-home__rail-link"
+                  data-testid="app-home-reconnect-issue"
+                  disabled={reconnectBusy}
+                  onClick={() => {
+                    void issueReconnect();
+                  }}
+                >
+                  {reconnectBusy ? "Creating reconnect code…" : "Show reconnect code →"}
+                </button>
+                {reconnectError !== null ? (
+                  <p
+                    className="app-home__rail-copy"
+                    data-testid="app-home-reconnect-error"
+                    role="alert"
+                  >
+                    {reconnectError}
+                  </p>
+                ) : null}
+                {reconnectOffer !== null ? (
+                  <div
+                    className="app-home__reconnect-offer"
+                    data-testid="app-home-reconnect-offer"
+                  >
+                    <ReconnectQr
+                      payload={reconnectOffer.token}
+                      label="Reconnect token QR code"
+                    />
+                    <p className="app-home__reconnect-token-label">Token</p>
+                    <code
+                      className="app-home__reconnect-token"
+                      data-testid="app-home-reconnect-token"
+                    >
+                      {reconnectOffer.token}
+                    </code>
+                    <p className="app-home__rail-copy">
+                      Open in the other browser, or paste the token there:
+                    </p>
+                    <code
+                      className="app-home__reconnect-url"
+                      data-testid="app-home-reconnect-url"
+                    >
+                      {reconnectOffer.qrPayload}
+                    </code>
+                    <p className="app-home__rail-copy">
+                      Expires in {reconnectOffer.expiresIn}s.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <section

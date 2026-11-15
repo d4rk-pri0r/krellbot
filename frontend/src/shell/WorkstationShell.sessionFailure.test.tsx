@@ -49,6 +49,8 @@ vi.mock("../session", () => ({
     (): Promise<void> => Promise.reject(new Error("bootstrap failed: 401")),
   ),
   recoverCsrf: vi.fn((): Promise<boolean> => Promise.resolve(false)),
+  issueReconnectToken: vi.fn((): Promise<never> => Promise.reject(new Error("not stubbed"))),
+  redeemReconnectToken: vi.fn((): Promise<void> => Promise.resolve()),
 }));
 
 function makePaperClient(): PaperClient {

@@ -8,6 +8,8 @@ import type { KeysClient } from "../features/keys/client";
 // Exercise defensive caller failures without changing recoverCsrf's boolean contract.
 vi.mock("../session", () => ({
   recoverCsrf: vi.fn(),
+  issueReconnectToken: vi.fn(),
+  redeemReconnectToken: vi.fn(),
   redeemBootstrap: vi.fn(),
 }));
 
