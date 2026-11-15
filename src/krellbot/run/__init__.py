@@ -696,10 +696,16 @@ def tick(
                     intent="entry",
                 )
                 if venue_obj.order_by_coid(entry_coid_for_signal) is None:
-                    cash = _cash_for(venue_obj, armed.pair)
                     assert rules is not None
                     close_price = Decimal(str(candles[-1].close))
-                    cash_for_cap = cash * armed.cap / Decimal(100)
+                    # Live packs with a recorded reservation size against that
+                    # reserved cash, never the venue account balance. Paper and
+                    # unreserved live arms keep the balance * cap rule.
+                    if armed.mode == "live" and armed.starting_cash is not None:
+                        cash_for_cap = Decimal(str(armed.starting_cash)) * armed.cap / Decimal(100)
+                    else:
+                        cash = _cash_for(venue_obj, armed.pair)
+                        cash_for_cap = cash * armed.cap / Decimal(100)
                     if cash_for_cap >= rules.costmin and close_price > 0:
                         qty = _fundable_entry_qty(
                             cash_for_cap,
