@@ -283,7 +283,29 @@ describe("ResearchView Signal layout: result presentation", () => {
       screen.getByTestId("research-equity-curve-unavailable").textContent,
     ).toBe("unavailable");
     const result = screen.getByTestId("research-result");
-    expect(result.querySelectorAll("svg, canvas").length).toBe(0);
+    expect(result.querySelectorAll("canvas").length).toBe(0);
+  });
+
+  it("renders price-with-trades from trace closes, not a fabricated empty curve", async () => {
+    await runAndLoad(
+      makeClient({ getResult: vi.fn().mockResolvedValue(stored) }),
+    );
+    expect(screen.getByTestId("research-price-with-trades")).toBeDefined();
+    expect(screen.getByTestId("research-price-with-trades-svg")).toBeDefined();
+    const points =
+      screen.getByTestId("research-price-with-trades-line").getAttribute(
+        "points",
+      ) ?? "";
+    expect(points.split(" ").filter(Boolean).length).toBe(trace.length);
+    // Fixture has closes but no entry/exit target reasons — price line only.
+    expect(screen.queryAllByTestId("research-price-trade-marker-buy")).toEqual(
+      [],
+    );
+    expect(screen.queryAllByTestId("research-price-trade-marker-sell")).toEqual(
+      [],
+    );
+    const result = screen.getByTestId("research-result");
+    expect(result.querySelectorAll("canvas").length).toBe(0);
   });
 
   it("exposes the raw stored result byte-identically under an explicit expandable detail", async () => {
