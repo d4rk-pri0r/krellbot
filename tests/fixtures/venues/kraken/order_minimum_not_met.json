@@ -1,0 +1,5 @@
+# Derived from Kraken's REST documentation, not recorded from a real account.
+{
+  "error": ["EOrder:Order minimum not met"],
+  "result": {}
+}
