@@ -306,7 +306,9 @@ describe("LastRunsPanel — filter selections vs history refresh", () => {
 
     refresh();
     await waitFor(() => {
-      expect(screen.getByTestId("paper-last-runs-empty").textContent).toBe("No paper runs yet");
+      expect(screen.getByTestId("paper-last-runs-empty").textContent).toBe(
+        "No journalled paper runs yet — an armed pack waits for its first tick.",
+      );
     });
     expect(screen.queryByTestId("paper-last-runs-table")).toBeNull();
     expect(screen.queryByTestId("paper-last-runs-filter-empty")).toBeNull();

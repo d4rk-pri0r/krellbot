@@ -151,13 +151,17 @@ def project_owned_position(
     pair: str,
     mode: str,
     as_of_run: str | None,
+    starting_cash: Decimal | str | float | None = None,
 ) -> dict:
     """Project the owned position for one armed market from persisted state.
 
     Holdings are scoped to this market's base asset only. A shared venue
     wallet may hold balances for other pairs; those are never presented as
     this market's owned position. ``free_cash`` is the quote-asset balance
-    string exactly as the state file persists it (or ``\"0\"`` when absent).
+    string exactly as the state file persists it. When the quote balance
+    is absent (just-armed, engine has not materialised ``paper-<venue>.json``
+    yet), ``starting_cash`` from the armed record is projected instead of a
+    false ``\"0\"``. An explicit persisted ``\"0\"`` stays ``\"0\"``.
     """
     state = read_paper_state(home, venue)
     balances = state.get("balances") or {}
@@ -165,7 +169,12 @@ def project_owned_position(
         balances = {}
     base, quote = base_quote(pair)
     free_cash_raw = balances.get(quote) if quote else None
-    free_cash = str(free_cash_raw) if isinstance(free_cash_raw, (str, int, float)) and str(free_cash_raw) != "" else "0"
+    if isinstance(free_cash_raw, (str, int, float)) and str(free_cash_raw) != "":
+        free_cash = str(free_cash_raw)
+    elif starting_cash is not None and str(starting_cash) != "":
+        free_cash = format(Decimal(str(starting_cash)), "f")
+    else:
+        free_cash = "0"
     holdings: list[dict] = []
     if base:
         raw = balances.get(base)

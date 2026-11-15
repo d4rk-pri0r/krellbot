@@ -115,7 +115,9 @@ describe("LastRunsPanel read-only filters", () => {
   it("preserves the original zero-runs sentence, not the filtered-empty sentence", async () => {
     await mount([]);
     change(query(), "anything");
-    expect(screen.getByTestId("paper-last-runs-empty").textContent).toBe("No paper runs yet");
+    expect(screen.getByTestId("paper-last-runs-empty").textContent).toBe(
+      "No journalled paper runs yet — an armed pack waits for its first tick.",
+    );
     expect(screen.queryByTestId("paper-last-runs-filter-empty")).toBeNull();
     expect(options(venue())).toEqual([""]);
     expect(options(status())).toEqual([""]);

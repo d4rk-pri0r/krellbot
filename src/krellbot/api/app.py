@@ -270,6 +270,44 @@ def _paper_details_decimal(value: object) -> str | None:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
+def _select_armed_for_request(
+    config: kb_config.Config,
+    request: Request,
+) -> tuple[kb_config.ArmedPack | None, int]:
+    """Pick the armed record a paper GET should project, with multi-deploy clarity.
+
+    Without ``venue``+``pair`` query params, returns the first armed record
+    (legacy single-projection behaviour) together with ``armed_count`` so
+    the workstation can say when several deployments are armed. With both
+    params, returns that exact record or ``None`` when it is not armed.
+    A partial selector (only one of venue/pair) never guesses — returns
+    ``None`` with the real count.
+    """
+
+    count = len(config.armed)
+    if count == 0:
+        return None, 0
+    venue = (request.query_params.get("venue") or "").strip()
+    pair = (request.query_params.get("pair") or "").strip()
+    if venue and pair:
+        return kb_config.find_armed(config, venue, pair), count
+    if venue or pair:
+        return None, count
+    return config.armed[0], count
+
+
+def _with_armed_count(body: dict, armed_count: int) -> dict:
+    """Attach ``armed_count`` only when more than one pack is armed.
+
+    Single-armed and unarmed closed shapes stay byte-compatible with
+    existing clients; multi-deploy clarity appears only when it matters.
+    """
+
+    if armed_count > 1:
+        body["armed_count"] = armed_count
+    return body
+
+
 # ---- paper history projection (read-only) ---------------------------------
 
 PAPER_HISTORY_MAX_RUNS = 20
@@ -1364,6 +1402,11 @@ def create_app(
         cap, or the pack path. ``mode`` is always ``"paper"`` for an
         armed record; the brief forbids a live-order control and
         forbids ``mode: live`` over the wire.
+
+        Multi-deploy: optional ``venue``+``pair`` query params select one
+        armed record. Without them the first record is projected, and
+        ``armed_count`` always reports how many packs are armed so the
+        UI is not silently limited to ``config.armed[0]``.
         """
 
         s = _state(request.app)
@@ -1372,27 +1415,29 @@ def create_app(
             return denied
 
         config = kb_config.load_config(s.home)
-        if not config.armed:
+        armed, armed_count = _select_armed_for_request(config, request)
+        if armed is None:
             return JSONResponse(
-                {"schema_version": SCHEMA_VERSION, "armed": False},
+                _with_armed_count(
+                    {"schema_version": SCHEMA_VERSION, "armed": False},
+                    armed_count,
+                ),
                 status_code=200,
                 headers={"Cache-Control": "no-store"},
             )
 
-        # The brief spells out a single armed-pack projection; the
-        # service guarantees one armed record per (venue, pair) but a
-        # workstation view reads one record. Take the first armed
-        # record for the closed-shape body.
-        armed = config.armed[0]
-        body = {
-            "schema_version": SCHEMA_VERSION,
-            "armed": True,
-            "venue": armed.venue,
-            "pair": armed.pair,
-            "entries_paused": bool(armed.entries_paused),
-            "mode": armed.mode,
-            "pack_id": armed.pack_id,
-        }
+        body = _with_armed_count(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "armed": True,
+                "venue": armed.venue,
+                "pair": armed.pair,
+                "entries_paused": bool(armed.entries_paused),
+                "mode": armed.mode,
+                "pack_id": armed.pack_id,
+            },
+            armed_count,
+        )
         return JSONResponse(body, status_code=200)
 
     @app.get("/api/v1/paper/details")
@@ -1400,9 +1445,10 @@ def create_app(
         """Read configured paper deposit/percent and this pair's durable stop.
 
         The deposit is not free cash, and the cap is not a currency amount.
-        Only the first armed record is projected, and only in paper mode.
-        Reading raw state never constructs a venue, seeds balances, evaluates
-        stops, or infers a fill. Existing status/position contracts stay closed.
+        Only a paper-mode armed record is projected (first by default, or
+        the ``venue``+``pair`` query selection). Reading raw state never
+        constructs a venue, seeds balances, evaluates stops, or infers a
+        fill. Existing status/position contracts stay closed.
         """
         s = _state(request.app)
         denied = _gate_get(request, s)
@@ -1410,13 +1456,13 @@ def create_app(
             return denied
 
         config = kb_config.load_config(s.home)
-        if not config.armed or config.armed[0].mode != "paper":
+        armed, _armed_count = _select_armed_for_request(config, request)
+        if armed is None or armed.mode != "paper":
             return JSONResponse(
                 {"schema_version": SCHEMA_VERSION, "armed": False},
                 headers={"Cache-Control": "no-store"},
             )
 
-        armed = config.armed[0]
         try:
             # Unlike the legacy display reader, preserve raw JSON fractions
             # as Decimal: binary floats can round a price or underflow to zero.
@@ -1460,9 +1506,9 @@ def create_app(
 
         * ``free_cash`` — the quote-asset balance string exactly as
           ``<home>/run/paper-<venue>.json`` persists it (Decimal-as-string,
-          never re-formatted). ``"0"`` when no state file exists yet,
-          because the engine materialises the seeded balance into the
-          state file only on its first tick.
+          never re-formatted). When no state file exists yet (just-armed,
+          before the first tick), the armed record's ``starting_cash`` is
+          projected instead of a false ``\"0\"``.
         * ``holdings`` — at most one ``{"symbol", "qty"}`` row for this
           armed pair's base asset when its balance is above zero, qty
           verbatim from the state file. Other base assets in the same
@@ -1472,6 +1518,9 @@ def create_app(
         * ``as_of_run`` — ``"<venue>:<pack>:<pair>"`` of the most recent
           journal tick run for the armed pair, or ``null`` when the
           journal has no tick record for it (the engine has never run).
+        * ``armed_count`` — present only when more than one pack is armed;
+          optional ``venue``+``pair`` query params select which record to
+          project.
 
         The route never writes, arms, or flattens anything, and the
         closed-shape ``/api/v1/paper/status`` contract is untouched:
@@ -1486,22 +1535,30 @@ def create_app(
             return denied
 
         config = kb_config.load_config(s.home)
-        if not config.armed:
+        armed, armed_count = _select_armed_for_request(config, request)
+        if armed is None:
             return JSONResponse(
-                {"schema_version": SCHEMA_VERSION, "armed": False},
+                _with_armed_count(
+                    {"schema_version": SCHEMA_VERSION, "armed": False},
+                    armed_count,
+                ),
                 status_code=200,
                 headers={"Cache-Control": "no-store"},
             )
 
-        armed = config.armed[0]
         body = project_owned_position(
             s.home,
             venue=armed.venue,
             pair=armed.pair,
             mode=armed.mode,
             as_of_run=_paper_position_run_id(s.home, armed.venue, armed.pair),
+            starting_cash=armed.starting_cash,
         )
-        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+        return JSONResponse(
+            _with_armed_count(body, armed_count),
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/v1/paper/history")
     async def paper_history(request: Request) -> Response:

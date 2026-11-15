@@ -19,8 +19,9 @@ sentence:
      values are re-read from the state file.
   6. After disarm the body is the unarmed closed shape again; after a
      re-arm over the preserved state file the position is back.
-  7. With no state file yet the armed body carries ``free_cash: "0"``
-     and no holdings, never a malformed projection.
+  7. With no state file yet the armed body carries ``free_cash`` equal
+     to the armed record's ``starting_cash`` (not a false ``"0"``) and
+     no holdings, never a malformed projection.
 
 All data lives under an isolated ``KRELLBOT_HOME`` (``tmp_path``). No
 live venue, key, or order is touched; the state file is seeded exactly
@@ -308,8 +309,8 @@ def test_paper_position_after_disarm_then_rearm_over_preserved_state(home: Path)
 
 
 def test_paper_position_armed_with_no_state_file_is_zero_cash(home: Path) -> None:
-    """Armed but the engine has not ticked yet (no state file): the body
-    is a well-formed zero projection, never a malformed one."""
+    """Armed but the engine has not ticked yet (no state file): free cash
+    is the configured paper deposit, never a false zero."""
 
     _run_paper_arm(home)
     token = "boot-position-no-state"
@@ -319,7 +320,7 @@ def test_paper_position_armed_with_no_state_file_is_zero_cash(home: Path) -> Non
     assert status == 200, (status, body)
     decoded = _read_json(body)
     assert decoded["armed"] is True, decoded
-    assert decoded["free_cash"] == "0", decoded
+    assert decoded["free_cash"] == "1000", decoded
     assert decoded["holdings"] == [], decoded
 
 
