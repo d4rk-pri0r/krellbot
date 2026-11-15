@@ -78,6 +78,7 @@ class _AppState:
     rehearsal_service: object = field(default=None)
     live_transport: object = field(default=None)  # SandboxTransport or test spy for live.preflight
     keys_transport: object = field(default=None)  # injectable venue transport for keys routes
+    catalogue_transport: object = field(default=None)  # injectable signed-catalogue fetch
     keys_allow_fake_backend: bool = False  # tests-only FakeKeyring opt-in
     scheduler_supervisor: object = None  # PlatformSupervisor; tests inject FakeSupervisor
     scheduler_write_root: Path | None = None  # defaults to Path.home()
@@ -1647,6 +1648,55 @@ def create_app(
                 status_code=500,
             )
         return JSONResponse(body, status_code=200)
+
+    @app.get("/api/v1/catalogue")
+    async def catalogue_list(request: Request) -> Response:
+        """Fetch and verify the signed Strategy Pack catalogue (free + paid).
+
+        Same session gate as ``GET /api/v1/packs`` (``_gate_get``): session
+        cookie + loopback Origin + loopback Host, no CSRF required. The
+        route asks ``pack_library.refresh_catalogue`` to pull the signed
+        envelope through the injectable ``catalogue_transport`` (production
+        uses the HTTPS JSON transport in ``license_activation``), verify
+        the ed25519 signature, and rewrite the local catalogue cache.
+        Tampered or malformed envelopes are refused with 502 and never
+        rewrite the cache. The body is the closed catalogue document:
+        ``schema_version``, ``catalogue_version``, optional ``updated``,
+        and ``packs`` rows each carrying ``id``, ``tier`` (``free`` or
+        ``paid``), and optional label/description/version/permissions.
+        """
+
+        from krellbot.application import pack_library as pack_library_app
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            document = pack_library_app.refresh_catalogue(
+                s.home,
+                transport=s.catalogue_transport,
+            )
+        except OSError:
+            return JSONResponse(
+                {"detail": "catalogue unreachable"},
+                status_code=502,
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return JSONResponse(
+                {"detail": "catalogue signature rejected"},
+                status_code=502,
+            )
+
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "catalogue_version": document["catalogue_version"],
+            "packs": document["packs"],
+        }
+        if isinstance(document.get("updated"), str):
+            body["updated"] = document["updated"]
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/capabilities")
     async def capabilities(request: Request) -> Response:

@@ -9,7 +9,14 @@ record's ``revision_id`` differs from the installed record's
 carrying a stable ``code`` and the two revision ids; no byte on disk is
 changed when the refusal fires.
 
-Both read local metadata only; no network call is made.
+``list_catalogue(home)`` returns the last verified signed catalogue
+metadata (free + paid entries) from the local cache. ``refresh_catalogue``
+fetches and verifies a fresh signed envelope through the license
+activation transport before rewriting that cache.
+
+``list_installed`` / ``update_pack`` read local metadata only; no network
+call is made. ``refresh_catalogue`` is the network path and always takes
+an injectable transport in tests.
 """
 
 from __future__ import annotations
@@ -18,8 +25,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from krellbot import license as kb_license
 from krellbot import paths as kb_paths
 from krellbot.application import packs as app_packs
+
+_EMPTY_CATALOGUE: dict[str, Any] = {
+    "catalogue_version": "0",
+    "packs": [],
+}
 
 
 class UpdateRefused(Exception):
@@ -152,8 +165,40 @@ def update_pack(home: Path, pack_id: str, new_version: str) -> Path:
     return pack_path
 
 
+def list_catalogue(home: Path) -> dict[str, Any]:
+    """Return the cached verified signed catalogue, or an empty document.
+
+    Reads ``<home>/catalog/catalogue.json`` only. No network call. A
+    missing or unreadable cache returns
+    ``{"catalogue_version": "0", "packs": []}`` so the browse surface can
+    render an explicit empty state without inventing entries.
+    """
+    cached = kb_license.read_catalogue_cache(Path(home))
+    if cached is None:
+        return dict(_EMPTY_CATALOGUE)
+    return cached
+
+
+def refresh_catalogue(
+    home: Path,
+    *,
+    transport: Any = None,
+    url: str | None = None,
+) -> dict[str, Any]:
+    """Fetch, verify, cache, and return signed catalogue metadata.
+
+    Delegates to :func:`krellbot.application.license_activation.fetch_catalogue`.
+    Tampered envelopes raise ``ValueError`` without rewriting the cache.
+    """
+    from krellbot.application.license_activation import fetch_catalogue
+
+    return fetch_catalogue(Path(home), transport=transport, url=url)
+
+
 __all__ = [
     "UpdateRefused",
+    "list_catalogue",
     "list_installed",
+    "refresh_catalogue",
     "update_pack",
 ]

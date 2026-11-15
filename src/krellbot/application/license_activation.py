@@ -65,7 +65,7 @@ class ActivateOutcome:
 
 
 class UrllibJsonTransport:
-    """POST JSON. The key must already be in the body, never in the URL."""
+    """HTTPS JSON transport. Keys go in POST bodies only, never in a URL."""
 
     def post(self, url: str, body: dict, headers: dict) -> dict:
         if not isinstance(url, str) or not url.startswith("https://"):
@@ -81,6 +81,20 @@ class UrllibJsonTransport:
             },
             method="POST",
         )
+        return self._read_json(req)
+
+    def get(self, url: str, headers: dict | None = None) -> dict:
+        """GET a JSON object. Used for the public signed catalogue list."""
+        if not isinstance(url, str) or not url.startswith("https://"):
+            raise OSError("license check unreachable")
+        hdrs = {"user-agent": "krellbot/0.1"}
+        if headers:
+            hdrs.update({k: v for k, v in headers.items() if k.lower() != "user-agent"})
+        req = urllib.request.Request(url, headers=hdrs, method="GET")
+        return self._read_json(req)
+
+    @staticmethod
+    def _read_json(req: urllib.request.Request) -> dict:
         try:
             with urlopen(req, timeout=20) as res:
                 parsed = json.loads(res.read().decode("utf-8"))
@@ -109,6 +123,11 @@ def license_url() -> str:
 
 def catalog_url() -> str:
     return _origin() + "/api/catalog"
+
+
+def catalogue_list_url() -> str:
+    """Public signed catalogue metadata endpoint (free + paid entries)."""
+    return _origin() + "/api/catalogue"
 
 
 def refresh_license(
@@ -189,6 +208,44 @@ def install_catalog(
     return wrote
 
 
+def fetch_catalogue(
+    home: Path,
+    *,
+    transport: Any = None,
+    url: str | None = None,
+) -> dict:
+    """Fetch, verify, and cache signed catalogue metadata (free + paid).
+
+    No activation key is required — browsing is public. The remote body
+    must be ``{"payload": "<canonical json>", "sig": "<base64url>"}``.
+    A verified document is written under
+    ``$KRELLBOT_HOME/catalog/catalogue.json`` and returned with a closed
+    shape (``catalogue_version``, ``packs`` with ``tier`` in
+    ``free``/``paid``). Tampered or malformed envelopes raise
+    ``ValueError`` and leave any prior cache untouched. Transport
+    failures raise ``OSError``.
+    """
+    target = url or catalogue_list_url()
+    if not isinstance(target, str) or not target:
+        raise ValueError("license signature rejected")
+    client = transport or UrllibJsonTransport()
+    if hasattr(client, "get"):
+        response = client.get(target, {})
+    else:
+        # Test doubles that only implement ``post`` still work when the
+        # catalogue list is served as a no-body POST envelope.
+        response = client.post(target, {}, {"Content-Type": "application/json"})
+    if not isinstance(response, dict):
+        raise TypeError("license signature rejected")
+    payload = response.get("payload")
+    sig = response.get("sig")
+    if not isinstance(payload, str) or not isinstance(sig, str):
+        raise TypeError("license signature rejected")
+    document = kb_license.verify_catalogue(payload.encode("utf-8"), sig)
+    kb_license.write_catalogue_cache(Path(home), document)
+    return document
+
+
 def _ui_status(verified: dict, *, now: int) -> str:
     status = verified.get("status")
     try:
@@ -244,6 +301,8 @@ __all__ = [
     "ActivateOutcome",
     "UrllibJsonTransport",
     "catalog_url",
+    "catalogue_list_url",
+    "fetch_catalogue",
     "install_catalog",
     "license_url",
     "redeem",
