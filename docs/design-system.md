@@ -87,6 +87,25 @@ Rules:
 - Focus: 2px seafoam `--focus-ring` outline with 2px offset, everywhere,
   keyboard-visible only.
 
+## Motion
+
+Intentional motion is sparse and shell-scoped. Durations and easing live in
+`frontend/src/styles/tokens.css` (`--motion-duration-fast`,
+`--motion-duration-enter`, `--motion-ease-standard`) and are consumed by
+`frontend/src/styles/shell.css` plus primary journey surfaces:
+
+1. **Command palette enter** — scrim fade + panel rise (`kbot-shell-fade-in`,
+   `kbot-shell-palette-enter`).
+2. **Jobs drawer enter** — scrim fade + panel slide from the trailing edge
+   (`kbot-shell-jobs-enter`).
+3. **Home orientation** — App Home hero fade-in on first paint
+   (`kbot-shell-home-enter`).
+
+Hover/focus transitions on nav tabs and home cards use
+`--motion-duration-fast` only. Every animation and transition above is
+disabled under `prefers-reduced-motion: reduce`. Do not add looping chrome
+motion, parallax, or decorative particle effects in the cockpit.
+
 ## Brand assets
 
 Selected supplied vector assets live in `frontend/src/assets/brand/` with

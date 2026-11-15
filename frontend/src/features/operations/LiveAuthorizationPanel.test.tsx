@@ -14,7 +14,7 @@ const PAPER_ONLY_VIEW: LiveAuthorizationView = {
   release_policy: "paper_only",
   release_policy_code: "live_disabled_paper_only_release",
   release_policy_message:
-    "v0.9.6 is a paper-only release: live order send is disabled regardless of environment, stored keys, or authorization.",
+    "v0.9.7 is a paper-only release: live order send is disabled regardless of environment, stored keys, or authorization.",
   confirmation_required: "LIVE",
 };
 

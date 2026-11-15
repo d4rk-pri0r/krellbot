@@ -40,11 +40,14 @@ HELPER = SCRIPTS_DIR / "ci_smoke_frozen_paper.py"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-frozen.yml"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
-PAPER_ONLY_MESSAGE = (
-    "v0.9.6 is a paper-only release: live order send is disabled regardless of "
-    "environment, stored keys, or authorization. This is temporary; an "
-    "owner-approved code change can re-enable live trading."
-)
+
+def _paper_only_message() -> str:
+    from krellbot.release_policy import paper_only_message
+
+    return paper_only_message()
+
+
+PAPER_ONLY_MESSAGE = _paper_only_message()
 
 
 def _load_helper():

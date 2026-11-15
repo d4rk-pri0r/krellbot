@@ -1,6 +1,6 @@
 # Live trading
 
-## v0.9.6 is paper-only
+## This release is paper-only
 
 This release refuses every live order send regardless of environment,
 stored keys, authorization files, or live state armed before an upgrade.

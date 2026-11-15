@@ -68,4 +68,12 @@ describe("Signal tokens (KRELL-SIGNAL-20261010)", () => {
     expect(shell).toMatch(/var\(--font-mono\)/);
     expect(shell).not.toMatch(/font-family:\s*ui-monospace/);
   });
+
+  it("declares intentional motion duration and easing tokens", () => {
+    expect(tokens).toMatch(/--motion-duration-fast\s*:\s*120ms/);
+    expect(tokens).toMatch(/--motion-duration-enter\s*:\s*180ms/);
+    expect(tokens).toMatch(
+      /--motion-ease-standard\s*:\s*cubic-bezier\(0\.2,\s*0,\s*0,\s*1\)/,
+    );
+  });
 });
