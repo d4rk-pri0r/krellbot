@@ -11,9 +11,11 @@ Sources (all read-only):
      the database.
   3. Journal tick records whose ``detail.reason`` is
      ``live_refused`` or ``store_refused``, or whose ``detail`` carries
-     an ``intent_refused`` key — one warning alert per
-     ``(kind, code, venue, pair)`` triple, deduped with a count and
-     ``first_ts`` / ``last_ts``.
+     an ``intent_refused`` or ``metadata_refusal`` key — one warning
+     alert per ``(kind, code, venue, pair)`` triple, deduped with a
+     count and ``first_ts`` / ``last_ts``. A ``metadata_refusal`` tick
+     must never be a silent skip: it surfaces as an unacknowledged
+     Operations alert.
 
 Alerts are deduped, severity-sorted (critical first), and ordered by
 ``last_ts`` descending inside each severity band. Acknowledgements
@@ -40,6 +42,7 @@ ACK_FILE = "alerts-ack.json"
 REASON_LIVE_REFUSED = "live_refused"
 REASON_STORE_REFUSED = "store_refused"
 INTENT_REFUSED_KEY = "intent_refused"
+METADATA_REFUSAL_KEY = "metadata_refusal"
 
 SEVERITY_CRITICAL = "critical"
 SEVERITY_WARNING = "warning"
@@ -250,47 +253,86 @@ def _iter_journal_records(home: Path) -> list[tuple[int, str, dict]]:
     return out
 
 
+def _bucket_journal_refusal(
+    buckets: dict[tuple[str, str | None, str | None, str | None], dict[str, object]],
+    *,
+    kind: str,
+    code: str | None,
+    venue: str,
+    pair: str | None,
+    ts: int,
+) -> None:
+    key = (kind, code, venue, pair)
+    bucket = buckets.get(key)
+    if bucket is None:
+        bucket = {"count": 0, "first_ts": ts, "last_ts": ts}
+        buckets[key] = bucket
+    bucket["count"] = int(bucket["count"]) + 1
+    first_ts = int(bucket["first_ts"])
+    last_ts = int(bucket["last_ts"])
+    if ts < first_ts:
+        bucket["first_ts"] = ts
+    if ts > last_ts:
+        bucket["last_ts"] = ts
+
+
 def _collect_journal_refusals(home: Path) -> list[Alert]:
-    """Group ``live_refused`` / ``store_refused`` / ``intent_refused``
-    records by ``(kind, code, venue, pair)``."""
+    """Group ``live_refused`` / ``store_refused`` / ``intent_refused`` /
+    ``metadata_refusal`` records by ``(kind, code, venue, pair)``.
+
+    A tick may carry more than one refusal key (for example
+    ``intent_refused`` and ``metadata_refusal``); each non-null string
+    key produces its own alert so a ``metadata_refusal`` is never a
+    silent skip.
+    """
 
     buckets: dict[tuple[str, str | None, str | None, str | None], dict[str, object]] = {}
     for ts, venue, detail in _iter_journal_records(home):
         reason = detail.get("reason")
-        code: str | None = None
-        kind: str | None = None
-        pair: str | None = None
+        raw_pair = detail.get("pair")
+        pair = raw_pair if isinstance(raw_pair, str) else None
         if reason == REASON_LIVE_REFUSED:
-            kind = REASON_LIVE_REFUSED
             raw_code = detail.get("code")
             code = raw_code if isinstance(raw_code, str) else None
-            raw_pair = detail.get("pair")
-            pair = raw_pair if isinstance(raw_pair, str) else None
+            _bucket_journal_refusal(
+                buckets,
+                kind=REASON_LIVE_REFUSED,
+                code=code,
+                venue=venue,
+                pair=pair,
+                ts=ts,
+            )
         elif reason == REASON_STORE_REFUSED:
-            kind = REASON_STORE_REFUSED
             raw_code = detail.get("code")
             code = raw_code if isinstance(raw_code, str) else None
-            raw_pair = detail.get("pair")
-            pair = raw_pair if isinstance(raw_pair, str) else None
-        elif isinstance(detail.get(INTENT_REFUSED_KEY), str):
-            kind = INTENT_REFUSED_KEY
-            code = detail.get(INTENT_REFUSED_KEY)
-            raw_pair = detail.get("pair")
-            pair = raw_pair if isinstance(raw_pair, str) else None
-        else:
-            continue
-        key = (kind, code, venue, pair)
-        bucket = buckets.get(key)
-        if bucket is None:
-            bucket = {"count": 0, "first_ts": ts, "last_ts": ts}
-            buckets[key] = bucket
-        bucket["count"] = int(bucket["count"]) + 1
-        first_ts = int(bucket["first_ts"])
-        last_ts = int(bucket["last_ts"])
-        if ts < first_ts:
-            bucket["first_ts"] = ts
-        if ts > last_ts:
-            bucket["last_ts"] = ts
+            _bucket_journal_refusal(
+                buckets,
+                kind=REASON_STORE_REFUSED,
+                code=code,
+                venue=venue,
+                pair=pair,
+                ts=ts,
+            )
+        intent_code = detail.get(INTENT_REFUSED_KEY)
+        if isinstance(intent_code, str) and intent_code:
+            _bucket_journal_refusal(
+                buckets,
+                kind=INTENT_REFUSED_KEY,
+                code=intent_code,
+                venue=venue,
+                pair=pair,
+                ts=ts,
+            )
+        metadata_code = detail.get(METADATA_REFUSAL_KEY)
+        if isinstance(metadata_code, str) and metadata_code:
+            _bucket_journal_refusal(
+                buckets,
+                kind=METADATA_REFUSAL_KEY,
+                code=metadata_code,
+                venue=venue,
+                pair=pair,
+                ts=ts,
+            )
 
     out: list[Alert] = []
     for (kind, code, venue, pair), bucket in buckets.items():
@@ -363,6 +405,8 @@ def collect(home: Path, *, now: int) -> list[Alert]:
       * ``<home>/ops.sqlite`` ``needs_reconcile`` rows (and one
         ``store_fault`` alert on a read failure)
       * ``<home>/journal/*.jsonl`` tick records with a refusal reason
+        (``live_refused``, ``store_refused``, ``intent_refused``, or
+        ``metadata_refusal``)
 
     The function never creates any file. An empty home yields ``[]``
     and leaves the filesystem untouched.

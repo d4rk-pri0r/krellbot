@@ -37,6 +37,16 @@ describe("summarizeAlertKind", () => {
     expect(result.isKnown).toBe(true);
   });
 
+  it("labels metadata_refusal as a known kind", () => {
+    const result = summarizeAlertKind("metadata_refusal");
+    expect(result).toEqual({
+      label: "Metadata refusal",
+      kind: "metadata_refusal",
+      isKnown: true,
+      isUnknown: false,
+    });
+  });
+
   it("title-cases unknown snake_case kinds and flags them unknown", () => {
     const result = summarizeAlertKind("unknown_kind_xyz");
     expect(result.label).toBe("Unknown kind xyz");

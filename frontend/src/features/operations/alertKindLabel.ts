@@ -18,6 +18,7 @@ const KNOWN_LABELS: Record<string, string> = {
   preflight_blocked: "Preflight blocked",
   rate_limited: "Rate limited",
   circuit_open: "Circuit open",
+  metadata_refusal: "Metadata refusal",
 };
 
 function fallbackLabel(value: string): string {
