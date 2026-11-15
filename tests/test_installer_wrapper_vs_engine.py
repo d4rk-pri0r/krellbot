@@ -14,6 +14,7 @@ from __future__ import annotations
 import http.client
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -285,8 +286,23 @@ def _stop(proc: subprocess.Popen[str]) -> None:
         proc.send_signal(signal.SIGINT)
 
 
+def _noop_browser(home: Path) -> Path:
+    """Write a no-op ``$BROWSER`` helper so ``--open`` stays hermetic in CI."""
+
+    helper = home / "noop-browser.py"
+    helper.write_text(
+        "import sys\nraise SystemExit(0)\n",
+        encoding="utf-8",
+    )
+    return helper
+
+
 def _spawn_engine(home: Path, argv_tail: list[str], *, dist: Path) -> subprocess.Popen[str]:
-    """Spawn the in-tree engine CLI with the wrapper's default argv plus bind flags."""
+    """Spawn the in-tree engine CLI with the wrapper's default argv plus bind flags.
+
+    ``BROWSER`` points at a no-op so ``--open`` (the site-wrapper default) cannot
+    launch a real browser helper on CI hosts.
+    """
 
     argv = [
         sys.executable,
@@ -298,12 +314,15 @@ def _spawn_engine(home: Path, argv_tail: list[str], *, dist: Path) -> subprocess
         "--dist",
         str(dist),
     ]
+    env = _sanitized_env(home)
+    # webbrowser appends/substitutes the URL; the helper ignores argv and exits 0.
+    env["BROWSER"] = f"{shlex.quote(sys.executable)} {shlex.quote(str(_noop_browser(home)))} %s"
     popen_kwargs: dict[str, object] = {
         "stdout": subprocess.PIPE,
         "stderr": subprocess.STDOUT,
         "text": True,
         "encoding": "utf-8",
-        "env": _sanitized_env(home),
+        "env": env,
         "bufsize": 1,
     }
     if sys.platform == "win32":
