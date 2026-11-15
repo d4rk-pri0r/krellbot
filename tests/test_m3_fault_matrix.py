@@ -1,12 +1,12 @@
 """M3-FM: product fault-matrix test harness.
 
-The harness runs eight named cases; each case spawns fresh subprocesses
+The harness runs nine named cases; each case spawns fresh subprocesses
 that drive ``krellbot.run.tick`` through the real ``tick -> outbox -> store``
 path with a scripted fake venue. This test module asserts the harness
 itself:
 
-  - reports rc 0 when all eight cases pass
-  - prints eight rows on stdout, in the exact order the brief specifies
+  - reports rc 0 when all nine cases pass
+  - prints nine rows on stdout, in the exact order the brief specifies
   - every row has ``pass is True``
   - ``observed`` is NOT the same object as ``expected`` (verified by a
     deliberate perturbation via ``KRELLBOT_FM_SABOTAGE``)
@@ -37,6 +37,7 @@ EXPECTED_CASE_ORDER = [
     "corrupt_or_busy_store",
     "live_refused_before_transport",
     "live_outbox_commit_before_send",
+    "live_unknown_outcome_no_resubmit",
 ]
 
 
@@ -103,13 +104,13 @@ def _row_for(rows: list[dict], case: str) -> dict:
 DOCUMENTED_DEFECTS = ()
 
 
-def test_harness_runs_eight_cases_with_only_documented_defects_failing():
-    """The harness runs all eight cases; every case that is not a
+def test_harness_runs_nine_cases_with_only_documented_defects_failing():
+    """The harness runs all nine cases; every case that is not a
     documented product defect must pass. Documented defects must be
     reported as failing by name, so the harness keeps surfacing them.
 
     As of M3-REPAIR-ENOSPC (2026-09-30), no product defects are
-    documented. All eight cases must pass; any new regression in any
+    documented. All nine cases must pass; any new regression in any
     case/sub-probe will fail this test.
     """
     if not shutil.which("uv"):
@@ -125,7 +126,7 @@ def test_harness_runs_eight_cases_with_only_documented_defects_failing():
         assert case_names == EXPECTED_CASE_ORDER, (
             f"case order mismatch: got {case_names}, expected {EXPECTED_CASE_ORDER}"
         )
-        assert len(rows) == 8
+        assert len(rows) == 9
 
         failing_rows = [r for r in rows if r["pass"] is False]
         documented_failing = []
@@ -164,12 +165,12 @@ def test_harness_runs_eight_cases_with_only_documented_defects_failing():
         summary = _last_json_line(proc.stdout)
         # The summary's passed/failed counts must match the documented
         # defect set: with D1 fixed on the m3/repair-ospc leaf, all
-        # eight cases pass (8 passed, 0 failed). If a new defect
+        # nine cases pass (9 passed, 0 failed). If a new defect
         # appears in product src/, this assertion will fail loudly and
         # the DOCUMENTED_DEFECTS list should be reviewed.
         n_defects = len({(c, s) for c, s, _d, _x in DOCUMENTED_DEFECTS})
-        expected_passed = 8 - n_defects
-        assert summary["summary"]["total"] == 8
+        expected_passed = 9 - n_defects
+        assert summary["summary"]["total"] == 9
         assert summary["summary"]["failed"] == n_defects
         assert summary["summary"]["passed"] == expected_passed, summary
 

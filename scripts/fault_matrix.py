@@ -837,6 +837,49 @@ def _child_live_outbox_commit_before_send(home: Path) -> int:
     return rc
 
 
+def _child_live_unknown_outcome_kill(home: Path) -> int:
+    """Live: commit intent, then ``os._exit(137)`` before venue ack (M1.4)."""
+    from krellbot import release_policy
+    from krellbot.storage import outbox as outbox_mod
+    from krellbot.storage.outbox import Outbox
+
+    release_policy.PAPER_ONLY_RELEASE = False
+    os.environ["KRELLBOT_ENABLE_LIVE"] = "1"
+
+    spy = Spy(home / SPY_FILENAME)
+    pack_path = _write_pack(home)
+    _arm_live(home, pack_path)
+    _write_live_grant(home)
+    venue = FakeVenue(spy=spy, initial_balances={"USD": Decimal(1000)})
+
+    original_commit = Outbox._commit
+
+    def wrapped_commit(self, client_order_id, body, *, mode=None, venue=None):
+        original_commit(self, client_order_id, body, mode=mode, venue=venue)
+        os._exit(137)
+
+    outbox_mod.Outbox._commit = wrapped_commit  # type: ignore[method-assign]
+
+    try:
+        rc, _out = _run_child_tick(home=home, venue_obj=venue, mode="live")
+    except SystemExit as exc:
+        rc = int(exc.code) if isinstance(exc.code, int) else 137
+    return rc
+
+
+def _child_live_unknown_outcome_restart(home: Path) -> int:
+    """Live restart: look up by coid, never place a second order."""
+    from krellbot import release_policy
+
+    release_policy.PAPER_ONLY_RELEASE = False
+    os.environ["KRELLBOT_ENABLE_LIVE"] = "1"
+
+    spy = Spy(home / SPY_FILENAME)
+    venue = FakeVenue(spy=spy, initial_balances={"USD": Decimal(1000)})
+    rc, _out = _run_child_tick(home=home, venue_obj=venue, mode="live")
+    return rc
+
+
 CHILD_DISPATCH: dict[str, callable] = {  # type: ignore[valid-type]
     "crash_before_send_kill": _child_crash_before_send_kill,
     "crash_before_send_restart": _child_crash_before_send_restart,
@@ -853,6 +896,8 @@ CHILD_DISPATCH: dict[str, callable] = {  # type: ignore[valid-type]
     "live_refused_env_unset": _child_live_refused_env_unset,
     "live_refused_env_one_no_grant": _child_live_refused_env_one_no_grant,
     "live_outbox_commit_before_send": _child_live_outbox_commit_before_send,
+    "live_unknown_outcome_kill": _child_live_unknown_outcome_kill,
+    "live_unknown_outcome_restart": _child_live_unknown_outcome_restart,
 }
 
 
@@ -1329,6 +1374,57 @@ def _case_live_outbox_commit_before_send() -> dict:
         return {"observed": observed, "expected": expected, "detail": detail}
 
 
+def _case_live_unknown_outcome_no_resubmit() -> dict:
+    """M1.4 live: kill between intent commit and venue ack; restart reconciles
+    without a second placement and blocks new entries until resolved."""
+    with _case_tempdir() as tmp:
+        home = Path(tmp) / "home"
+        home.mkdir()
+        (home / "journal").mkdir(parents=True, exist_ok=True)
+
+        r1 = _spawn_child("live_unknown_outcome_kill", home)
+        spy_after_kill = Spy.read(home / SPY_FILENAME)
+
+        r2 = _spawn_child("live_unknown_outcome_restart", home)
+        spy_after_restart = Spy.read(home / SPY_FILENAME)
+        outbox_after_restart = _read_outbox_rows(home)
+        kinds_after_restart = _read_kinds(home)
+
+        from krellbot.execution.reservations import should_block_for_reconcile
+
+        reconcile_blocked = should_block_for_reconcile(home)
+
+        sends_before_restart = sum(1 for e in spy_after_kill if str(e.get("method", "")).startswith("place_"))
+        sends_after_restart = (
+            sum(1 for e in spy_after_restart if str(e.get("method", "")).startswith("place_")) - sends_before_restart
+        )
+        intent_row = next((r for r in outbox_after_restart if r.get("coid") == ENTRY_COID_B), None)
+        intent_row_sent = bool(intent_row and intent_row.get("sent") is True)
+        intent_mode_live = bool(intent_row and intent_row.get("mode") == "live")
+
+        observed = {
+            "sends_before_restart": sends_before_restart,
+            "sends_after_restart": sends_after_restart,
+            "intent_row_sent": intent_row_sent,
+            "intent_mode_live": intent_mode_live,
+            "reconcile_blocked": bool(reconcile_blocked),
+        }
+        expected = {
+            "sends_before_restart": 0,
+            "sends_after_restart": 0,
+            "intent_row_sent": False,
+            "intent_mode_live": True,
+            "reconcile_blocked": True,
+        }
+        detail = {
+            "phase1_rc": r1.rc,
+            "phase2_rc": r2.rc,
+            "kinds_after_restart": kinds_after_restart,
+            "outbox_count_after_restart": len(outbox_after_restart),
+        }
+        return {"observed": observed, "expected": expected, "detail": detail}
+
+
 CASE_DISPATCH: dict[str, callable] = {  # type: ignore[valid-type]
     "crash_before_send": _case_crash_before_send,
     "crash_after_send_before_commit": _case_crash_after_send,
@@ -1338,6 +1434,7 @@ CASE_DISPATCH: dict[str, callable] = {  # type: ignore[valid-type]
     "corrupt_or_busy_store": _case_corrupt_or_busy_store,
     "live_refused_before_transport": _case_live_refused_before_transport,
     "live_outbox_commit_before_send": _case_live_outbox_commit_before_send,
+    "live_unknown_outcome_no_resubmit": _case_live_unknown_outcome_no_resubmit,
 }
 
 
@@ -1350,6 +1447,7 @@ CASE_NAMES = [
     "corrupt_or_busy_store",
     "live_refused_before_transport",
     "live_outbox_commit_before_send",
+    "live_unknown_outcome_no_resubmit",
 ]
 
 
@@ -1431,7 +1529,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         description="Product fault matrix for krellbot's run.tick.",
     )
     parser.add_argument("--json-out", default=None, help="Write the rows array to this path as JSON.")
-    parser.add_argument("--case", default=None, help="Run only this case (default: all 8).")
+    parser.add_argument("--case", default=None, help="Run only this case (default: all 9).")
     parser.add_argument(
         "--_run-case", dest="run_case", default=None, help="(internal) Run this named phase in the child subprocess."
     )
