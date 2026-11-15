@@ -34,6 +34,18 @@ it.each(["bootstrap", "csrf"])(
         await sessionReady;
         return new Response(JSON.stringify({ csrf_token: "fixture-csrf" }), { status: 200 });
       }
+      if (url === "/api/v1/keys/kraken") {
+        return new Response(JSON.stringify({
+          schema_version: "1",
+          venue: "kraken",
+          present: false,
+          corrupt: false,
+          message: "no key stored",
+          backend_label: null,
+          balances: null,
+          balances_available: false,
+        }), { status: 200 });
+      }
       if (url === "/api/v1/operations") {
         return new Response(JSON.stringify({
           live: {
@@ -63,11 +75,13 @@ it.each(["bootstrap", "csrf"])(
     });
     // React commits the settled session before the strip schedules its
     // existing deferred read; advance that timer in the next act boundary.
+    // Workspace keys status may read in the same commit as session-ready.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(requests).toEqual([
       `/api/v1/session/${sessionRoute}`,
+      "/api/v1/keys/kraken",
       "/api/v1/operations",
     ]);
     expect(screen.getByTestId("live-orders-status").textContent).toBe("No live venues authorized");

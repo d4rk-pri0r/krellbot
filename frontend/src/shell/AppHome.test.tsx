@@ -4,18 +4,39 @@
  * These tests pin the mounted application Home as a real, welcoming
  * workspace overview: readable purpose, conspicuous local-preview /
  * live-unavailable copy, five state-driven navigation cards bound to
- * the existing views, keyboard activation, and no fabricated
- * connection, account, license or market state.
+ * the existing views, keyboard activation, and a Kraken keys rail that
+ * uses an injectable fake client (no fabricated market state).
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppHome } from "./AppHome";
 import type { View } from "./Navigation";
+import type { KeysClient, KeysStatus } from "../features/keys/client";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+
+const ABSENT_KEYS: KeysStatus = {
+  schema_version: "1",
+  venue: "kraken",
+  present: false,
+  corrupt: false,
+  message: "no key stored",
+  backend_label: null,
+  balances: null,
+  balances_available: false,
+};
+
+function fakeKeysClient(over: Partial<KeysClient> = {}): KeysClient {
+  return {
+    getStatus: vi.fn().mockResolvedValue(ABSENT_KEYS),
+    probeAndStore: vi.fn(),
+    remove: vi.fn(),
+    ...over,
+  };
+}
 
 const CARD_DESTINATIONS: ReadonlyArray<{
   testid: string;
@@ -49,16 +70,28 @@ const CARD_DESTINATIONS: ReadonlyArray<{
   },
 ];
 
-function renderHome(props: { onNavigate?: (view: View) => void } = {}): void {
+function renderHome(
+  props: {
+    onNavigate?: (view: View) => void;
+    keysClient?: KeysClient;
+    sessionPending?: boolean;
+    sessionFailed?: boolean;
+  } = {},
+): KeysClient {
+  const keysClient = props.keysClient ?? fakeKeysClient();
   render(
     <AppHome
       onNavigate={props.onNavigate ?? (() => {})}
+      keysClient={keysClient}
+      sessionPending={props.sessionPending}
+      sessionFailed={props.sessionFailed}
     />,
   );
+  return keysClient;
 }
 
 describe("AppHome — application overview", () => {
-  it("renders a welcoming heading and a readable application purpose", () => {
+  it("renders a welcoming heading and a readable application purpose", async () => {
     renderHome();
     const region = screen.getByTestId("app-home");
     expect(region.tagName).toBe("SECTION");
@@ -73,6 +106,7 @@ describe("AppHome — application overview", () => {
     expect(
       screen.getByText(/Build, inspect and paper-test/i),
     ).toBeDefined();
+    await screen.findByTestId("keys-onboarding");
   });
 
   it("offers a primary CTA into the paper workstation", () => {
@@ -132,30 +166,31 @@ describe("AppHome — application overview", () => {
     expect(onNavigate).toHaveBeenLastCalledWith("operations");
   });
 
-  it("exposes the What works here and Not connected yet explanations", () => {
+  it("replaces the old not-connected copy with the Kraken keys form", async () => {
     renderHome();
     const works = screen.getByRole("region", { name: /what works here/i });
     expect(works.textContent).toMatch(/strategy/i);
     expect(works.textContent).toMatch(/research/i);
-    const notConnected = screen.getByRole("region", {
-      name: /not connected yet/i,
-    });
-    expect(notConnected.textContent).toMatch(/no exchange/i);
-    expect(notConnected.textContent).toMatch(/unavailable/i);
+    expect(screen.queryByText(/No exchange is connected in this build/i)).toBeNull();
+    const keys = await screen.findByTestId("keys-onboarding");
+    expect(keys.textContent).toMatch(/Kraken exchange key/i);
+    expect(await screen.findByTestId("keys-form")).toBeTruthy();
+    expect((await screen.findByTestId("keys-status")).textContent).toMatch(
+      /no key stored/i,
+    );
   });
 
-  it("never claims a connection, live readiness, profit or credentials", () => {
-    const { container } = render(<AppHome onNavigate={() => {}} />);
+  it("never fabricates live readiness, profit or sign-in marketing", async () => {
+    const { container } = render(
+      <AppHome onNavigate={() => {}} keysClient={fakeKeysClient()} />,
+    );
+    await screen.findByTestId("keys-form");
     const html = container.innerHTML;
     for (const fabricated of [
-      "Connected",
-      "connected to",
       "live ready",
       "Live ready",
       "profitable",
       "Profit",
-      "api key",
-      "API key",
       "sign in",
       "Sign in",
       "checkout",
@@ -166,8 +201,11 @@ describe("AppHome — application overview", () => {
     }
   });
 
-  it("does not fabricate financial or market data", () => {
-    const { container } = render(<AppHome onNavigate={() => {}} />);
+  it("does not fabricate financial or market data when no key is stored", async () => {
+    const { container } = render(
+      <AppHome onNavigate={() => {}} keysClient={fakeKeysClient()} />,
+    );
+    await screen.findByTestId("keys-form");
     const html = container.innerHTML;
     for (const fabricated of [
       "$",
@@ -177,23 +215,37 @@ describe("AppHome — application overview", () => {
       "returns",
       "Returns",
       "drawdown",
-      "balance",
-      "Balance",
       "position open",
       "%",
     ]) {
       expect(html.includes(fabricated)).toBe(false);
     }
+    expect(screen.queryByTestId("keys-balances")).toBeNull();
   });
 
-  it("shows the session note only while the local session is starting", () => {
-    const { rerender } = render(<AppHome onNavigate={() => {}} />);
+  it("shows the session note only while the local session is starting", async () => {
+    const keysClient = fakeKeysClient();
+    const { rerender } = render(
+      <AppHome onNavigate={() => {}} keysClient={keysClient} />,
+    );
     expect(screen.queryByTestId("app-home-session")).toBeNull();
-    rerender(<AppHome onNavigate={() => {}} sessionPending />);
+    rerender(
+      <AppHome onNavigate={() => {}} keysClient={keysClient} sessionPending />,
+    );
     expect(screen.getByTestId("app-home-session").textContent).toMatch(
       /starting the local session/i,
     );
-    rerender(<AppHome onNavigate={() => {}} sessionPending={false} />);
+    expect(screen.getByTestId("keys-waiting-session")).toBeTruthy();
+    rerender(
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={keysClient}
+        sessionPending={false}
+      />,
+    );
     expect(screen.queryByTestId("app-home-session")).toBeNull();
+    await waitFor(() => {
+      expect(keysClient.getStatus).toHaveBeenCalled();
+    });
   });
 });

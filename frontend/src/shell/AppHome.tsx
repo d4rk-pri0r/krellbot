@@ -1,5 +1,10 @@
 import { useRef, useState, type JSX } from "react";
 import { BrandMark } from "../components/brand/BrandMark";
+import { KeysOnboardingPanel } from "../features/keys/KeysOnboardingPanel";
+import {
+  createKeysHttpClient,
+  type KeysClient,
+} from "../features/keys/client";
 import type { View } from "./Navigation";
 import "./AppHome.signal.css";
 
@@ -93,6 +98,8 @@ type AppHomeProps = {
   sessionFailed?: boolean;
   /** Offered only on failure; re-reads the CSRF for the existing session. */
   onRecoverSession?: () => Promise<{ ok: boolean; error?: string }>;
+  /** Injectable keys client; defaults to the loopback HTTP client. */
+  keysClient?: KeysClient;
 };
 
 export function AppHome({
@@ -100,9 +107,15 @@ export function AppHome({
   sessionPending = false,
   sessionFailed = false,
   onRecoverSession,
+  keysClient,
 }: AppHomeProps): JSX.Element {
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const recoveryAttempt = useRef(0);
+  const fallbackKeysRef = useRef<KeysClient | null>(null);
+  if (fallbackKeysRef.current === null && keysClient === undefined) {
+    fallbackKeysRef.current = createKeysHttpClient();
+  }
+  const keys = keysClient ?? fallbackKeysRef.current!;
 
   async function recoverSession(): Promise<void> {
     const attempt = ++recoveryAttempt.current;
@@ -318,8 +331,20 @@ export function AppHome({
               {sessionLabel}
             </p>
             <p className="app-home__rail-copy">
-              Live trading unavailable. No exchange is linked from this overview.
+              Live trading stays unavailable in this paper-only release. Link a
+              trade-only Kraken key below when you are ready.
             </p>
+          </section>
+
+          <section
+            className="app-home__rail app-home__rail--emphasis"
+            aria-labelledby="keys-onboarding-title"
+            data-testid="app-home-keys-rail"
+          >
+            <KeysOnboardingPanel
+              client={keys}
+              enabled={!sessionPending && !sessionFailed}
+            />
           </section>
 
           <section
@@ -344,26 +369,14 @@ export function AppHome({
             </button>
           </section>
 
-          <section
-            className="app-home__rail app-home__rail--emphasis"
-            aria-labelledby="app-home-unfinished-title"
-          >
-            <h2
-              className="app-home__rail-title"
-              id="app-home-unfinished-title"
-            >
-              Not connected yet
+          <section className="app-home__rail" aria-labelledby="app-home-ops-rail-title">
+            <h2 className="app-home__rail-title" id="app-home-ops-rail-title">
+              Operations
             </h2>
             <p className="app-home__note-copy">
-              No exchange is connected in this build and live trading is
-              unavailable. Nothing here places real orders, requests credentials,
-              or reports account state. Engine work is still in progress: when an
-              area cannot reach the local service it shows its own unavailable or
-              error state instead of example results.
-            </p>
-            <p className="app-home__note-copy">
-              Navigation works without the engine: you can move between these
-              areas at any time.
+              Nothing here places real orders. When an area cannot reach the
+              local service it shows its own unavailable or error state instead
+              of example results. Navigation still works offline.
             </p>
             <button
               type="button"
