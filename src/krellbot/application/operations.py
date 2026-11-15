@@ -198,4 +198,177 @@ def get_deployment_record(home: Path, deployment_id: str) -> dict | None:
     return None
 
 
-__all__ = ["get_deployment_record", "list_deployment_records", "operations_view"]
+# ---- Unresolved orders (M1.9) ---------------------------------------------
+
+_LOOKUP_KIND_TO_RESULT = {
+    "reconcile_filled": "filled",
+    "reconcile_open": "open",
+    "reconcile_absent": "absent",
+}
+_LOOKUP_KINDS = frozenset(_LOOKUP_KIND_TO_RESULT)
+_OPS_DB_FILENAME = "ops.sqlite"
+
+
+def _payload_coid(payload: object) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    coid = payload.get("coid")
+    if isinstance(coid, str) and coid:
+        return coid
+    return None
+
+
+def _payload_ts_seconds(payload: object) -> int | None:
+    """Return a unix-seconds stamp from a ledger payload, when present."""
+
+    if not isinstance(payload, dict):
+        return None
+    for key in ("ts", "since_ts", "first_ts"):
+        raw = payload.get(key)
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, (int, float)):
+            value = int(raw)
+            # Accept ms stamps written into the payload by mistake.
+            if value > 10_000_000_000:
+                value //= 1000
+            if value > 0:
+                return value
+        elif isinstance(raw, str) and raw.strip().isdigit():
+            value = int(raw.strip())
+            if value > 10_000_000_000:
+                value //= 1000
+            if value > 0:
+                return value
+    return None
+
+
+def _journal_coid_first_ts(home: Path) -> dict[str, int]:
+    """Earliest journal ``ts`` that mentions each client order id."""
+
+    journal_dir = Path(home) / "journal"
+    if not journal_dir.is_dir():
+        return {}
+    first: dict[str, int] = {}
+    for path in sorted(journal_dir.glob("*.jsonl")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            try:
+                ts = int(record.get("ts", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if ts <= 0:
+                continue
+            detail = record.get("detail")
+            candidates: list[object] = [record.get("coid"), detail]
+            if isinstance(detail, dict):
+                candidates.append(detail.get("coid"))
+            for candidate in candidates:
+                if isinstance(candidate, str) and candidate:
+                    prev = first.get(candidate)
+                    if prev is None or ts < prev:
+                        first[candidate] = ts
+    return first
+
+
+def list_unresolved_orders(home: Path, *, now: int) -> list[dict]:
+    """Return closed-shape rows for every order awaiting reconcile.
+
+    An order is unresolved when the operational ledger has either a
+    ``needs_reconcile`` audit for its client order id or an ``outbox``
+    row still marked ``sent: false`` (committed, ack unknown). Each row
+    carries ``client_order_id``, ``age_seconds`` (null when no stamp is
+    available), and ``last_lookup_result`` (``filled`` / ``open`` /
+    ``absent`` / ``none``). The home directory is read, never created
+    or written. Rows are oldest-first; ids with unknown age sort last.
+    """
+
+    home = Path(home)
+    path = home / _OPS_DB_FILENAME
+    if not path.exists():
+        return []
+
+    from krellbot.storage.database import (
+        OperationalStore,
+        StoreBusy,
+        StoreCorrupt,
+        StoreError,
+    )
+
+    store = OperationalStore(path)
+    try:
+        rows = store.read_ledger()
+    except (StoreBusy, StoreCorrupt, StoreError, OSError):
+        return []
+
+    awaiting: dict[str, int | None] = {}
+    last_lookup: dict[str, str] = {}
+
+    for _row_id, kind, payload_raw in rows:
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            continue
+        coid = _payload_coid(payload)
+        if coid is None:
+            continue
+        awaiting_row = kind == "needs_reconcile" or (
+            kind == "outbox" and isinstance(payload, dict) and payload.get("sent") is False
+        )
+        if awaiting_row:
+            stamp = _payload_ts_seconds(payload)
+            prev = awaiting.get(coid)
+            if coid not in awaiting or (stamp is not None and (prev is None or stamp < prev)):
+                awaiting[coid] = stamp
+        elif kind in _LOOKUP_KINDS:
+            last_lookup[coid] = _LOOKUP_KIND_TO_RESULT[kind]
+
+    if not awaiting:
+        return []
+
+    journal_first = _journal_coid_first_ts(home)
+    out: list[dict] = []
+    for coid, stamp in awaiting.items():
+        since = stamp if stamp is not None else journal_first.get(coid)
+        age_seconds: int | None
+        if since is None:
+            age_seconds = None
+        else:
+            age_seconds = max(0, int(now) - int(since))
+        out.append(
+            {
+                "client_order_id": coid,
+                "age_seconds": age_seconds,
+                "last_lookup_result": last_lookup.get(coid, "none"),
+            }
+        )
+
+    def _sort_key(row: dict) -> tuple[int, int, str]:
+        age = row["age_seconds"]
+        if age is None:
+            return (1, 0, row["client_order_id"])
+        # Oldest outstanding first.
+        return (0, -int(age), row["client_order_id"])
+
+    out.sort(key=_sort_key)
+    return out
+
+
+__all__ = [
+    "get_deployment_record",
+    "list_deployment_records",
+    "list_unresolved_orders",
+    "operations_view",
+]

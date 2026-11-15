@@ -1,0 +1,152 @@
+/*
+ * Unresolved orders — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted UnresolvedOrdersList on the
+ * Operations surface. Namespaced under `.kbot-ops__unresolved` with nested
+ * prefixes so shared shell / OperationsView rules cannot flatten hierarchy.
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ */
+
+.kbot-ops__unresolved {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-ops__unresolved *,
+.kbot-ops__unresolved *::before,
+.kbot-ops__unresolved *::after {
+  box-sizing: border-box;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops__unresolved .kbot-ops__panel-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-refresh {
+  margin: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-refresh:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-refresh:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-helper {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted, #abc4d8);
+  max-width: 72ch;
+}
+
+.kbot-ops__unresolved .kbot-ops__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__unresolved .kbot-ops__row-result {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--caution-text, var(--coral, #cc9689));
+}
+
+.kbot-ops__unresolved .kbot-ops__row-result button {
+  margin-left: 8px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 0;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-table th,
+.kbot-ops__unresolved .kbot-ops__unresolved-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line, #22465d);
+  vertical-align: top;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-table th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-coid {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops__unresolved .kbot-ops__unresolved-age,
+.kbot-ops__unresolved .kbot-ops__unresolved-lookup {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--muted, #abc4d8);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .kbot-ops__unresolved .kbot-ops__unresolved-refresh,
+  .kbot-ops__unresolved .kbot-ops__row-result button {
+    min-height: 44px;
+  }
+}
