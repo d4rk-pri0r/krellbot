@@ -174,6 +174,89 @@
   letter-spacing: 0.02em;
 }
 
+/* Action list: dense, operational rows — not marketing cards. */
+.kbot-shell__palette-root .kbot-shell__palette-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(
+    in srgb,
+    var(--surface, #14222e) 88%,
+    var(--navy, #0e1c29)
+  );
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-results > li {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-empty {
+  margin: 0;
+  padding: 12px 13px;
+  color: var(--muted, #abc4d8);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 13px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-action:hover,
+.kbot-shell__palette-root .kbot-shell__palette-action--active {
+  background: color-mix(
+    in srgb,
+    var(--seafoam, #a8d8d1) 16%,
+    var(--surface, #14222e)
+  );
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-action:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: -2px;
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-action-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kbot-shell__palette-root .kbot-shell__palette-action-group {
+  flex: 0 0 auto;
+  color: var(--muted, #abc4d8);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 /* Small viewports: keep the modal inside the viewport and the input at a
  * comfortable >=44px target. */
 @media (max-width: 640px) {
@@ -204,5 +287,9 @@
 
   .kbot-shell__palette-root .kbot-shell__palette-hint {
     font-size: 11px;
+  }
+
+  .kbot-shell__palette-root .kbot-shell__palette-action {
+    min-height: 44px;
   }
 }

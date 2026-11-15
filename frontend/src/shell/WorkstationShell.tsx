@@ -930,6 +930,10 @@ export function WorkstationShell({
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
+        onNavigate={(view) => {
+          setActive(view);
+          setPaletteOpen(false);
+        }}
       />
       {hasEverVisitedEditor && editorDetachedRef.current
         ? createPortal(
