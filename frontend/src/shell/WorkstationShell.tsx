@@ -665,16 +665,16 @@ export function WorkstationShell({
     () => Object.assign({}, paper, createLastRunsHttpClient()),
     [paper],
   );
-  const paperFleet = useMemo((): FleetArmedClient => {
+  const paperFleet = useMemo((): PaperClient & FleetArmedClient => {
     const candidate = paper as PaperClient & Partial<FleetArmedClient>;
     if (
       typeof candidate === "object" &&
       candidate !== null &&
       typeof candidate.listFleet === "function"
     ) {
-      return candidate as FleetArmedClient;
+      return candidate as PaperClient & FleetArmedClient;
     }
-    return createFleetHttpClient();
+    return Object.assign({}, paper, createFleetHttpClient());
   }, [paper]);
   const handleFleetOpenDetail = useCallback(
     (href: string, nextVenue: string, nextPair: string): void => {
@@ -1049,6 +1049,7 @@ export function WorkstationShell({
                     <FleetArmedList
                       client={paperFleet}
                       onOpenDetail={handleFleetOpenDetail}
+                      unresolvedClient={operations}
                     />
                     <LastRunsPanel client={paperRuns} />
                     {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
