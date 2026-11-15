@@ -316,6 +316,10 @@ export function WorkstationShell({
     [libraryClient],
   );
   const [libraryOpen, setLibraryOpen] = useState(false);
+  // True while Library Reopen/Copy is fetching revision bytes. The open
+  // editor stays mounted but inert so mid-wait edits cannot be made and
+  // then silently dropped when handleLibraryReopen remounts it.
+  const [editorReplaceBusy, setEditorReplaceBusy] = useState(false);
   // The Editor reads ``initial`` at mount only and keeps its own save
   // outcome across its own ``onRevision`` saves, so a reopen remounts
   // it under a fresh key (the ResearchView portal pattern) instead of
@@ -749,9 +753,24 @@ export function WorkstationShell({
                 onReopen={handleLibraryReopen}
                 onNewStrategy={handleLibraryNewStrategy}
                 onCopyAsNew={handleLibraryCopyAsNew}
+                onEditorReplaceBusyChange={setEditorReplaceBusy}
               />
             ) : null}
-            <div ref={editorHostRef} data-testid="editor-host" />
+            <div
+              ref={editorHostRef}
+              data-testid="editor-host"
+              aria-busy={editorReplaceBusy || undefined}
+            />
+            {editorReplaceBusy ? (
+              <p
+                className="kbot-shell__hint"
+                data-testid="editor-reopen-busy"
+                role="status"
+                aria-live="polite"
+              >
+                Loading saved revision…
+              </p>
+            ) : null}
             <StrategyExplanation
               bytes={savedRevision?.bytes ?? ""}
               revisionId={savedRevision?.revision_id ?? null}
@@ -937,21 +956,30 @@ export function WorkstationShell({
       />
       {hasEverVisitedEditor && editorDetachedRef.current
         ? createPortal(
-            <Editor
-              key={`editor-${editorEpoch}`}
-              client={client}
-              paperClient={defaultWorkstationPaperClient}
-              initial={savedRevision ?? undefined}
-              copiedDraft={copiedDraft ?? undefined}
-              onRevision={(summary, bytes) => {
-                setSavedRevision({
-                  revision_id: summary.revision_id,
-                  state: summary.state,
-                  bytes,
-                });
-                setEditedPack(null);
-              }}
-            />,
+            <div
+              data-testid="editor-portal-root"
+              // Freeze the previous draft for the whole Library revision
+              // read: inert blocks focus and edits so they cannot be made
+              // and then silently dropped when editorEpoch remounts.
+              inert={editorReplaceBusy || undefined}
+              aria-hidden={editorReplaceBusy || undefined}
+            >
+              <Editor
+                key={`editor-${editorEpoch}`}
+                client={client}
+                paperClient={defaultWorkstationPaperClient}
+                initial={savedRevision ?? undefined}
+                copiedDraft={copiedDraft ?? undefined}
+                onRevision={(summary, bytes) => {
+                  setSavedRevision({
+                    revision_id: summary.revision_id,
+                    state: summary.state,
+                    bytes,
+                  });
+                  setEditedPack(null);
+                }}
+              />
+            </div>,
             editorDetachedRef.current,
           )
         : null}
