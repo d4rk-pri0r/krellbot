@@ -257,7 +257,8 @@ export function LastRunsPanel({ client }: LastRunsPanelProps): JSX.Element {
             </p>
           ) : runs !== null && runs.length === 0 ? (
             <p className="kbot-paper-runs__empty" data-testid="paper-last-runs-empty">
-              No paper runs yet
+              No journalled paper runs yet — an armed pack waits for its first
+              tick.
             </p>
           ) : runs !== null && filteredRuns.length === 0 ? (
             <p className="kbot-paper-runs__empty" data-testid="paper-last-runs-filter-empty">

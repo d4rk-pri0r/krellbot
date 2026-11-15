@@ -9,7 +9,8 @@ afterEach(() => {
 });
 
 const LOADING_TEXT = "Loading deployments…";
-const EMPTY_TEXT = "No deployments yet. Local preview only — live trading unavailable.";
+const EMPTY_TEXT =
+  "No deployment history yet. Active Deployments above are current; this list is past records only. Local preview only — live trading unavailable.";
 const READ_ONLY_HELPER =
   "Read-only: historical records can be inspected but not edited, started, or promoted.";
 const LIST_ERROR_PREFIX = "Could not load deployments — check the workstation is running.";

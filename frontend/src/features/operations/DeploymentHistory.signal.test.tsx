@@ -28,7 +28,8 @@ const cssSource = readFileSync(
  */
 
 const LOADING_TEXT = "Loading deployments…";
-const EMPTY_TEXT = "No deployments yet. Local preview only — live trading unavailable.";
+const EMPTY_TEXT =
+  "No deployment history yet. Active Deployments above are current; this list is past records only. Local preview only — live trading unavailable.";
 const LIST_ERROR_PREFIX = "Could not load deployments — check the workstation is running.";
 const LOCAL_PREVIEW_BADGE = "Local preview";
 const TITLE_TEXT = "Deployment history";

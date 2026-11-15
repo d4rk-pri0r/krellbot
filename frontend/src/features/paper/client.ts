@@ -10,6 +10,8 @@ export type PaperStatus = {
   entries_paused?: boolean;
   mode?: string;
   pack_id?: string;
+  /** How many packs are armed; status projects one of them. */
+  armed_count?: number;
 };
 
 export type PaperCommandResult = {
@@ -58,9 +60,14 @@ export type PaperArmDraftSummary = {
   pair: string;
 };
 
+export type PaperStatusSelect = {
+  venue: string;
+  pair: string;
+};
+
 export type PaperClient = {
-  getStatus(): Promise<PaperStatus>;
-  getPosition?(): Promise<PaperPosition>;
+  getStatus(select?: PaperStatusSelect): Promise<PaperStatus>;
+  getPosition?(select?: PaperStatusSelect): Promise<PaperPosition>;
   pauseEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   resumeEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   disarm(venue: string, pair: string): Promise<PaperCommandResult>;
@@ -145,7 +152,35 @@ export type PaperPosition = {
   free_cash?: string;
   holdings?: PaperPositionHolding[];
   as_of_run?: string | null;
+  /** How many packs are armed; position projects one of them. */
+  armed_count?: number;
 };
+
+function paperStatusUrl(select?: PaperStatusSelect): string {
+  if (select === undefined) {
+    return "/api/v1/paper/status";
+  }
+  const params = new URLSearchParams({
+    venue: select.venue,
+    pair: select.pair,
+  });
+  return `/api/v1/paper/status?${params.toString()}`;
+}
+
+function paperPositionUrl(select?: PaperStatusSelect): string {
+  if (select === undefined) {
+    return "/api/v1/paper/position";
+  }
+  const params = new URLSearchParams({
+    venue: select.venue,
+    pair: select.pair,
+  });
+  return `/api/v1/paper/position?${params.toString()}`;
+}
+
+function isPaperStatusUrl(url: string): boolean {
+  return url === "/api/v1/paper/status" || url.startsWith("/api/v1/paper/status?");
+}
 
 async function getJson(url: string): Promise<PaperStatus> {
   const read = () => fetch(url, {
@@ -159,7 +194,7 @@ async function getJson(url: string): Promise<PaperStatus> {
   // Only this safe status read can recover and retry, once. Commands and
   // other client families deliberately retain their existing no-retry paths.
   if (
-    url === "/api/v1/paper/status" &&
+    isPaperStatusUrl(url) &&
     response.status === 403 &&
     await recoverPaperStatusSession()
   ) {
@@ -366,12 +401,17 @@ function adaptStatus(raw: Record<string, unknown>): PaperStatus {
   const pack_id = typeof raw.pack_id === "string" ? raw.pack_id : undefined;
   const schema_version =
     typeof raw.schema_version === "string" ? raw.schema_version : "1";
+  const armed_count =
+    typeof raw.armed_count === "number" && Number.isFinite(raw.armed_count)
+      ? raw.armed_count
+      : undefined;
   const out: PaperStatus = { schema_version, armed };
   if (venue !== undefined) out.venue = venue;
   if (pair !== undefined) out.pair = pair;
   if (entries_paused !== undefined) out.entries_paused = entries_paused;
   if (mode !== undefined) out.mode = mode;
   if (pack_id !== undefined) out.pack_id = pack_id;
+  if (armed_count !== undefined) out.armed_count = armed_count;
   return out;
 }
 
@@ -533,6 +573,9 @@ function adaptPosition(raw: Record<string, unknown>): PaperPosition {
   if (typeof raw.venue === "string") out.venue = raw.venue;
   if (typeof raw.mode === "string") out.mode = raw.mode;
   out.as_of_run = typeof raw.as_of_run === "string" ? raw.as_of_run : null;
+  if (typeof raw.armed_count === "number" && Number.isFinite(raw.armed_count)) {
+    out.armed_count = raw.armed_count;
+  }
   return out;
 }
 
@@ -541,8 +584,8 @@ function adaptPosition(raw: Record<string, unknown>): PaperPosition {
  * holdings) read from the persisted ``paper-<venue>.json`` state. Same
  * authenticated GET envelope as the other paper reads; no retry.
  */
-async function getPaperPosition(): Promise<PaperPosition> {
-  const response = await fetch("/api/v1/paper/position", {
+async function getPaperPosition(select?: PaperStatusSelect): Promise<PaperPosition> {
+  const response = await fetch(paperPositionUrl(select), {
     method: "GET",
     credentials: "include",
     headers: {
@@ -558,11 +601,11 @@ async function getPaperPosition(): Promise<PaperPosition> {
 
 export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedClient & Required<Pick<PaperClient, "raiseStop">> {
   return {
-    getStatus(): Promise<PaperStatus> {
-      return getJson("/api/v1/paper/status");
+    getStatus(select?: PaperStatusSelect): Promise<PaperStatus> {
+      return getJson(paperStatusUrl(select));
     },
-    getPosition(): Promise<PaperPosition> {
-      return getPaperPosition();
+    getPosition(select?: PaperStatusSelect): Promise<PaperPosition> {
+      return getPaperPosition(select);
     },
     listArmed(): Promise<PaperArmedView> {
       return getArmedJson("/api/v1/paper/armed");

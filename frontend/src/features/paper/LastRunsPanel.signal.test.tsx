@@ -503,7 +503,7 @@ describe("LastRunsPanel Signal layout — loading and error indicators", () => {
     expect(error.textContent).toBe("paper history refused: session required");
     expect(screen.queryByTestId("paper-last-runs-table")).toBeNull();
     expect(screen.getByTestId("paper-last-runs-empty").textContent).toBe(
-      "No paper runs yet",
+      "No journalled paper runs yet — an armed pack waits for its first tick.",
     );
   });
 

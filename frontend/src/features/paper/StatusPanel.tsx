@@ -1020,6 +1020,16 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
               {state.status?.pack_id} on {state.status?.venue}{" "}
               {state.status?.pair}
             </p>
+            {typeof state.status?.armed_count === "number" &&
+            state.status.armed_count > 1 ? (
+              <p
+                className="kbot-paper-status__multi"
+                data-testid="paper-status-multi-deploy"
+              >
+                Showing 1 of {state.status.armed_count} armed deployments —
+                see Armed paper runs for the full list.
+              </p>
+            ) : null}
             {/* The owned position + free cash, read verbatim from the
                 persisted paper state via `GET /api/v1/paper/position`.
                 Quoted, never computed: a refused wire variant or a failed

@@ -14,7 +14,8 @@ const HISTORY_REFRESHING_LABEL = "Refreshing history…";
 const HISTORY_REFRESH_COMPLETE_LABEL = "Refresh complete";
 const LOADING_TEXT = "Loading deployments…";
 const DETAIL_LOADING_TEXT = "Loading deployment…";
-const EMPTY_TEXT = "No deployments yet. Local preview only — live trading unavailable.";
+const EMPTY_TEXT =
+  "No deployment history yet. Active Deployments above are current; this list is past records only. Local preview only — live trading unavailable.";
 const LIST_ERROR_PREFIX = "Could not load deployments — check the workstation is running.";
 const DETAIL_ERROR_PREFIX = "Could not load deployment — check the workstation is running.";
 const RETRY_TEXT = "Retry";

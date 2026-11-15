@@ -117,7 +117,7 @@ def test_fresh_arm_reports_deposit_and_percent_without_materialising_state(home:
         "venue": "kraken",
         "pair": "SUIUSD",
         "mode": "paper",
-        "free_cash": "0",
+        "free_cash": "2500",
         "holdings": [],
         "as_of_run": None,
     }
