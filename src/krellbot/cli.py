@@ -1478,7 +1478,10 @@ def _tick_one_venue(
     if offline is not None:
         reader = _build_offline_reader(offline)
         if armed.mode == "paper":
-            _ensure_paper_instrument_rules(home, armed_list, transport=transport)
+            # `--offline-candles` must not contact public metadata endpoints.
+            # Journey harnesses refuse off-loopback DNS; SUIUSD still falls
+            # back to labeled `default_rules`. Online ticks (no offline CSV)
+            # call `_ensure_paper_instrument_rules` via `venue_for_tick`.
             has_key = _key_present(armed.venue)
             venue_obj = PaperVenue(
                 armed.venue,

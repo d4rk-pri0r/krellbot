@@ -193,3 +193,50 @@ def test_paper_tick_wave_btc_usd_without_asset_pairs_still_refuses_missing_rules
     detail = pair_records[-1].get("detail") or {}
     assert detail.get("metadata_refusal") == METADATA_UNAVAILABLE, detail
     assert not (home / "run" / SNAPSHOT_FILENAME).exists()
+
+
+def test_offline_candles_paper_tick_does_not_fetch_asset_pairs(home, fresh_keyring) -> None:
+    """``--offline-candles`` must not contact public AssetPairs.
+
+    Journey harnesses refuse off-loopback DNS; offline paper ticks therefore
+    must not call ``ensure_instrument_rules`` / AssetPairs. SUIUSD still
+    evaluates via the labeled ``default_rules`` fallback.
+    """
+    from krellbot.cli import cmd_tick
+
+    pack_body = {
+        "schema_version": 1,
+        "id": "offline-sui",
+        "version": "1.0.0",
+        "label": "Offline SUI",
+        "author": "krellbot tests",
+        "timeframe": "1h",
+        "indicators": {"sma2": {"fn": "sma", "src": "close", "len": 2}},
+        "entry": ["close", "crosses_above", "sma2"],
+        "exit": ["close", "crosses_below", "sma2"],
+        "risk": {"max_account_pct": 25, "stop": {"type": "pct", "pct": 5}},
+        "markets": [{"venue": "kraken", "pair": "SUIUSD"}],
+    }
+    pack_path = home / "offline-sui.json"
+    pack_path.write_text(json.dumps(pack_body), encoding="utf-8")
+    _arm_paper(home, pack_path)
+
+    csv_path = home / "candles.csv"
+    csv_path.write_text(
+        "ts_ms,open,high,low,close,volume\n0,11,12,10,11,100\n3600000,10,11,9,10,100\n7200000,13,14,12,13,100\n",
+        encoding="utf-8",
+    )
+
+    transport = _KrakenBtcAssetPairsTransport()
+
+    def fetch(_venue, _pair, _tf, _transport):
+        raise AssertionError("fetch must not run under --offline-candles")
+
+    rc = cmd_tick(
+        ["--venue", "kraken", "--offline-candles", str(csv_path)],
+        fetch=fetch,
+        transport=transport,
+    )
+    assert rc == 0
+    assert transport.calls == [], f"offline tick must not hit AssetPairs; calls={transport.calls!r}"
+    assert not (home / "run" / SNAPSHOT_FILENAME).exists()
