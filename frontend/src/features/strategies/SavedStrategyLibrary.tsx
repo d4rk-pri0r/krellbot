@@ -28,6 +28,11 @@ export type SavedStrategyLibraryProps = {
   onNewStrategy?: () => void;
   /** Host seeds a new draft from a copy of this owned revision's bytes. */
   onCopyAsNew?: (summary: OwnedDraftSummary, bytes: string) => void;
+  /**
+   * Host freezes the open editor while a Reopen/Copy read is in flight so
+   * edits cannot be made and then silently dropped on remount.
+   */
+  onEditorReplaceBusyChange?: (busy: boolean) => void;
 };
 
 type LoadPhase = "loading" | "ready" | "error";
@@ -85,6 +90,7 @@ export function SavedStrategyLibrary({
   onReopen,
   onNewStrategy,
   onCopyAsNew,
+  onEditorReplaceBusyChange,
 }: SavedStrategyLibraryProps): JSX.Element {
   const [rows, setRows] = useState<ReadonlyArray<OwnedDraftSummary>>([]);
   const [phase, setPhase] = useState<LoadPhase>("loading");
@@ -106,6 +112,11 @@ export function SavedStrategyLibrary({
   // this library's busy/error state. Reads started inside the current
   // generation (including parallel Copies) settle normally.
   const readGenerationRef = useRef(0);
+  const editorReplaceBusyChangeRef = useRef(onEditorReplaceBusyChange);
+  editorReplaceBusyChangeRef.current = onEditorReplaceBusyChange;
+  const notifyEditorReplaceBusy = (busy: boolean): void => {
+    editorReplaceBusyChangeRef.current?.(busy);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -116,6 +127,7 @@ export function SavedStrategyLibrary({
     // are invalidated below and would otherwise never clear them.
     setOpeningRevision(null);
     setCopyingRevisions([]);
+    notifyEditorReplaceBusy(false);
     client
       .listOwned()
       .then((owned) => {
@@ -139,6 +151,7 @@ export function SavedStrategyLibrary({
       // Client replacement and unmount both retire every still-pending
       // revision read of the old generation.
       readGenerationRef.current += 1;
+      notifyEditorReplaceBusy(false);
     };
   }, [client]);
 
@@ -160,6 +173,9 @@ export function SavedStrategyLibrary({
     }
     setReopenError(null);
     setOpeningRevision(summary.revision_id);
+    // Freeze the open editor for the whole revision read so mid-wait
+    // edits cannot land and then vanish when the remount applies.
+    notifyEditorReplaceBusy(true);
     const generation = readGenerationRef.current;
     client
       .getJson(summary.revision_id)
@@ -186,6 +202,7 @@ export function SavedStrategyLibrary({
           return;
         }
         setOpeningRevision(null);
+        notifyEditorReplaceBusy(false);
       });
   };
 
@@ -195,6 +212,7 @@ export function SavedStrategyLibrary({
     }
     setCopyError(null);
     setCopyingRevisions((pending) => [...pending, summary.revision_id]);
+    notifyEditorReplaceBusy(true);
     const generation = readGenerationRef.current;
     client
       .getJson(summary.revision_id)
@@ -221,9 +239,17 @@ export function SavedStrategyLibrary({
         if (readGenerationRef.current !== generation) {
           return;
         }
-        setCopyingRevisions((pending) =>
-          pending.filter((revisionId) => revisionId !== summary.revision_id),
-        );
+        // Keep the host editor frozen while any same-generation Copy
+        // read is still outstanding.
+        setCopyingRevisions((pending) => {
+          const next = pending.filter(
+            (revisionId) => revisionId !== summary.revision_id,
+          );
+          if (next.length === 0) {
+            notifyEditorReplaceBusy(false);
+          }
+          return next;
+        });
       });
   };
 
@@ -234,6 +260,7 @@ export function SavedStrategyLibrary({
     readGenerationRef.current += 1;
     setOpeningRevision(null);
     setCopyingRevisions([]);
+    notifyEditorReplaceBusy(false);
     onNewStrategy?.();
   };
 
