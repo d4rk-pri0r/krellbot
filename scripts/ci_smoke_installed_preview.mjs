@@ -120,9 +120,19 @@ try {
   await expect(page.getByTestId('app-home')).toBeVisible();
   await expect(page.getByTestId('app-home-card-strategies')).toBeVisible();
   check('Home clearly labels local preview and disabled live', (await page.getByTestId('app-home-availability').innerText()).includes('Live trading unavailable'));
+  // Labels must match frontend/src/shell/Navigation.tsx VIEWS (Signal rename:
+  // home tab is "Workspace", studio tab is "Strategy studio").
+  const homeTab = 'Workspace';
   const navigation = page.getByTestId('kbot-nav');
-  for (const [view, label] of [['strategies', 'Strategies'], ['research', 'Research'], ['studio', 'Studio'], ['workstation', 'Workstation'], ['operations', 'Operations']]) {
-    await navigation.getByRole('button', {name: 'Home', exact: true}).click();
+  await expect(navigation.getByRole('button', {name: homeTab, exact: true})).toBeVisible();
+  for (const [view, label] of [
+    ['strategies', 'Strategies'],
+    ['research', 'Research'],
+    ['studio', 'Strategy studio'],
+    ['workstation', 'Workstation'],
+    ['operations', 'Operations'],
+  ]) {
+    await navigation.getByRole('button', {name: homeTab, exact: true}).click();
     await page.getByTestId(`app-home-card-${view}`).click();
     await expect(navigation.getByRole('button', {name: label, exact: true})).toHaveAttribute('aria-pressed', 'true');
     check(`Home card opens ${label}`, true);
@@ -130,7 +140,7 @@ try {
   await navigation.getByRole('button', {name: 'Deploy', exact: true}).click();
   await expect(navigation.getByRole('button', {name: 'Deploy', exact: true})).toHaveAttribute('aria-pressed', 'true');
   check('Deploy navigation reachable', true);
-  await navigation.getByRole('button', {name: 'Home', exact: true}).click();
+  await navigation.getByRole('button', {name: homeTab, exact: true}).click();
   await page.screenshot({path: path.join(evidence, 'installed-home-desktop.png'), fullPage: true});
   report.screenshots.push('installed-home-desktop.png');
   await page.setViewportSize({width: 390, height: 844});
@@ -139,7 +149,7 @@ try {
   await page.keyboard.press('Enter');
   await expect(navigation.getByRole('button', {name: 'Strategies', exact: true})).toHaveAttribute('aria-pressed', 'true');
   check('Mobile keyboard navigation works', true);
-  await navigation.getByRole('button', {name: 'Home', exact: true}).click();
+  await navigation.getByRole('button', {name: homeTab, exact: true}).click();
   await page.screenshot({path: path.join(evidence, 'installed-home-mobile.png'), fullPage: true});
   report.screenshots.push('installed-home-mobile.png');
   check('No uncaught JavaScript errors', report.pageErrors.length === 0);

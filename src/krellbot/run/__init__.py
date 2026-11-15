@@ -480,12 +480,16 @@ def tick(
             return 0
 
         # A1: live gate comes BEFORE any venue_obj attribute access.
+        # Kill alone still hard-refuses (rc=1). Kill + entries_paused is the
+        # restore fence: nothing sends, tick succeeds (rc=0).
+        fenced_live = False
         for live_armed in armed_for_venue:
             if live_armed.mode != "live":
                 continue
             gate_result = live_gate.check_live_send(home, venue=venue, pair=live_armed.pair)
-            if not gate_result.ok:
-                print(f"live refused: {gate_result.code}", flush=True)
+            if gate_result.ok:
+                continue
+            if gate_result.code == live_gate.CODE_KILL_SWITCH and live_armed.entries_paused:
                 _record_tick(
                     journal,
                     now=int(now),
@@ -493,12 +497,29 @@ def tick(
                     pack=live_armed.pack_id,
                     bar_ts=0,
                     detail={
-                        "reason": "live_refused",
+                        "reason": "live_fenced",
                         "code": gate_result.code,
                         "pair": live_armed.pair,
                     },
                 )
-                return 1
+                fenced_live = True
+                continue
+            print(f"live refused: {gate_result.code}", flush=True)
+            _record_tick(
+                journal,
+                now=int(now),
+                venue=venue,
+                pack=live_armed.pack_id,
+                bar_ts=0,
+                detail={
+                    "reason": "live_refused",
+                    "code": gate_result.code,
+                    "pair": live_armed.pair,
+                },
+            )
+            return 1
+        if fenced_live:
+            return 0
 
         # C3: store open BEFORE any venue call.
         try:

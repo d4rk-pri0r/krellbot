@@ -28,6 +28,9 @@ Restore is fail-closed:
   a ``kb_live_<20+alnum>`` token (``secret_detected``)
 - after restore, verifies the ledger rows sha matches the manifest,
   removing the restored home on mismatch (``archive_corrupt``).
+- after a successful restore, every live arm is marked ``entries_paused``
+  and the kill switch is engaged so nothing sends until the operator
+  releases both.
 
 The returned manifest is::
 
@@ -314,10 +317,36 @@ def _safe_member_name(name: str) -> str:
     return name
 
 
+def _fence_restored_home(home: Path, *, now: int) -> None:
+    """Pause every live arm and engage the kill switch on a restored home.
+
+    Restored archives must not resume live sends. The operator releases
+    entry pause and the kill switch explicitly before anything can place.
+    """
+    from krellbot.application.live_gate import engage_kill
+    from krellbot.config import load_config, save_config
+
+    cfg = load_config(home)
+    changed = False
+    for armed in cfg.armed:
+        if armed.mode == "live" and not armed.entries_paused:
+            armed.entries_paused = True
+            changed = True
+    if changed:
+        save_config(home, cfg)
+    engage_kill(
+        home,
+        reason="home restored; release entries pause and kill switch before live sends",
+        now=int(now),
+    )
+
+
 def restore(archive: Path, home: Path) -> dict:
     """Restore ``archive`` into ``home``. Returns the manifest.
 
     Raises ``BackupError`` and leaves ``home`` untouched on any refusal.
+    On success, fences the restored home: every live arm is
+    ``entries_paused`` and the kill switch is engaged.
     """
     if home.exists():
         if home.is_dir():
@@ -455,6 +484,13 @@ def restore(archive: Path, home: Path) -> dict:
                     out.write((staged / rel / f).read_bytes())
                 if not _IS_WINDOWS:
                     os.chmod(f_target, 0o600)
+
+        fence_now = manifest.get("created_at")
+        if type(fence_now) is not int:
+            import time as _time
+
+            fence_now = int(_time.time())
+        _fence_restored_home(home, now=fence_now)
 
     return manifest
 
