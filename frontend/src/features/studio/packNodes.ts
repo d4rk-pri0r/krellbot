@@ -1,4 +1,5 @@
 import type { GraphCanvasNode } from "./GraphCanvas";
+import { studioNodeLabel } from "./studioNodeLabel";
 
 export type LayoutPoint = {
   x: number;
@@ -43,7 +44,7 @@ export function nodesFromPack(
       id: spec.id,
       type: "default",
       position: placed ?? { x: index * 180, y: 0 },
-      data: { timeframe },
+      data: { timeframe, label: studioNodeLabel(spec.id) },
     };
   });
 }
