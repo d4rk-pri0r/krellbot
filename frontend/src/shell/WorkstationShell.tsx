@@ -659,6 +659,7 @@ export function WorkstationShell({
           >
             <Wordmark />
           </button>
+          <Navigation active={active} onChange={setActive} />
           <div className="kbot-shell__head-utils">
             <StatusStrip live={bootstrapDone ? undefined : null} />
             <JobsDrawer onOpenResult={(id) => {
@@ -680,7 +681,6 @@ export function WorkstationShell({
             </button>
           </div>
         </div>
-        <Navigation active={active} onChange={setActive} />
       </header>
       <main className="kbot-shell__main">
         {active === "home" ? (
@@ -693,27 +693,41 @@ export function WorkstationShell({
         ) : null}
         {active === "workstation" ? (
           <>
-            <h1 className="kbot-shell__heading">Paper workstation</h1>
-            {bootstrapDone ? (
-              <>
-                <StatusPanel client={paper} />
-                <LastRunsPanel client={paperRuns} />
-                {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
-                    an injected legacy client without listArmed renders the
-                    truthful unavailable state instead of crashing. */}
-                <ArmedRecordsList
-                  client={paper as PaperClient & PaperRunsClient & PaperArmedClient}
-                />
-              </>
-            ) : (
-              <p
-                className="kbot-paper-status__empty"
-                data-testid="status-panel-pending"
-              >
-                Connecting…
-              </p>
-            )}
-            <Inspector />
+            <div className="kbot-shell__pagehead">
+              <div className="kbot-shell__pagehead-copy">
+                <h1 className="kbot-shell__heading">Paper workstation</h1>
+                <p className="kbot-shell__pagesub">
+                  Arm a paper bot, watch last runs, and pause entries without
+                  leaving this machine.
+                </p>
+              </div>
+            </div>
+            <div className="kbot-shell__workstation">
+              <div className="kbot-shell__workstation-main">
+                {bootstrapDone ? (
+                  <>
+                    <StatusPanel client={paper} />
+                    <LastRunsPanel client={paperRuns} />
+                    {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
+                        an injected legacy client without listArmed renders the
+                        truthful unavailable state instead of crashing. */}
+                    <ArmedRecordsList
+                      client={paper as PaperClient & PaperRunsClient & PaperArmedClient}
+                    />
+                  </>
+                ) : (
+                  <p
+                    className="kbot-paper-status__empty"
+                    data-testid="status-panel-pending"
+                  >
+                    Connecting…
+                  </p>
+                )}
+              </div>
+              <aside className="kbot-shell__workstation-aside">
+                <Inspector />
+              </aside>
+            </div>
           </>
         ) : null}
         {active === "strategies" ? (

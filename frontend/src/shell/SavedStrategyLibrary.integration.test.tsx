@@ -122,7 +122,7 @@ async function flushEffects(): Promise<void> {
 }
 
 describe("WorkstationShell — saved strategy library", () => {
-  it.each(["Home", "Research"])("retains unsaved label edits across %s navigation without saving", async (destination) => {
+  it.each(["Workspace", "Research"])("retains unsaved label edits across %s navigation without saving", async (destination) => {
     const strategy = makeStrategyClient();
     render(<WorkstationShell strategyClient={strategy} paperClient={makePaperClient()} researchClient={makeResearchClient()} />);
     expect(screen.queryByLabelText(/^label$/i)).toBeNull();
@@ -144,7 +144,7 @@ describe("WorkstationShell — saved strategy library", () => {
     openStrategiesView();
     const bytes = '  {"label": "unfinished",\n "entry": [';
     fireEvent.change(rawJsonTextarea(), { target: { value: bytes } });
-    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     expect(screen.queryByLabelText(/raw json/i)).toBeNull();
     openStrategiesView();
     expect(rawJsonTextarea().value).toBe(bytes);

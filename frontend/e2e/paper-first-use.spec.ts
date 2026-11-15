@@ -14,7 +14,7 @@ test("paper first use: save, validate, research synthetic data, arm, inspect and
   await page.getByRole("button", { name: /^save$/i }).click();
   await expect(page.getByTestId("editor-revision-id")).toBeVisible();
   await validateRevision(page, "validated");
-  await clickNav(page, "Studio");
+  await clickNav(page, "Strategy studio");
   await expect(page.getByTestId("graph-canvas")).toBeVisible();
   await clickNav(page, "Research");
   await runResearch(page, { dataset: journey.workstation.editCsv, feeBps: "10", from: "1700000000000", to: "1701436400000" });

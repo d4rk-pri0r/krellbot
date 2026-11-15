@@ -14,15 +14,13 @@
  *   sage        #B3DDA8 (affirmative)   coral #CC9689 (caution/kill)
  *
  * Composition contract:
- *   - the strip reads as a panel surface with restrained borders, sitting
- *     beneath the brand bar as the approved compact horizontal nav;
+ *   - the strip sits inline in the brand bar as compact horizontal nav;
  *   - the active tab carries a seafoam selection underline (selection /
  *     focus semantics) with sage reinforcing the active label — never
  *     color alone, aria-current/aria-pressed stay on the buttons;
- *   - the honest "Local preview" badge below the tab row uses the same
- *     seafoam badge vocabulary as StatusStrip / AppHome / JobsDrawer /
- *     CommandPalette, paired with the truthful "Live trading unavailable"
- *     caption;
+ *   - the honest "Local preview" badge uses the same seafoam badge
+ *     vocabulary as StatusStrip / AppHome / JobsDrawer / CommandPalette,
+ *     paired with the truthful "Live trading unavailable" caption;
  *   - labels wrap or ellipsize instead of widening the shell at 1600px or
  *     overflowing it at 390px; and
  *   - each tab keeps a >=44px tap target on small viewports (<=640px).
@@ -36,19 +34,19 @@
 .kbot-shell__nav-root {
   min-width: 0;
   max-width: 100%;
-  padding: 4px 6px 8px;
-  border: 1px solid var(--line, #22465d);
-  border-radius: var(--radius-panel, 11px);
-  background: color-mix(in srgb, var(--surface, #14222e) 60%, var(--navy, #0e1c29));
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
-  row-gap: 6px;
+  row-gap: 4px;
 }
 
 /* ============ tabs ============ */
 
 .kbot-shell__nav-root .kbot-shell__nav-item {
   min-width: 0;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: var(--radius-control, 7px);
   font-family: inherit;
   font-size: 13px;
@@ -72,7 +70,8 @@
  * label. The shared strip's own inset shadow stays available beneath. */
 .kbot-shell__nav-root .kbot-shell__nav-item--active {
   color: var(--sage, #b3dda8);
-  background: color-mix(in srgb, var(--panel, #18354a) 80%, var(--navy, #0e1c29));
+  background: transparent !important;
+  border: 0 !important;
   box-shadow: inset 0 -2px 0 var(--seafoam, #a8d8d1);
 }
 
@@ -87,7 +86,7 @@
   margin: 0;
   padding: 0 4px;
   min-height: 0;
-  border-top: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
+  border-top: 0;
   font-size: 11px;
 }
 
@@ -113,11 +112,27 @@
   overflow-wrap: anywhere;
 }
 
+/* On wide brand bars, tuck the preview note after the tabs instead of
+ * forcing a full-width second row when space allows. */
+@media (min-width: 1100px) {
+  .kbot-shell__nav-root {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .kbot-shell__nav-root .kbot-shell__nav-note {
+    width: auto;
+    margin-left: 6px;
+    padding-left: 10px;
+    border-left: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
+  }
+}
+
 /* ============ narrow layouts (<=640px) ============ */
 
 @media (max-width: 640px) {
   .kbot-shell__nav-root {
-    padding: 3px 4px 6px;
+    padding: 0;
   }
 
   /* Reachable tabs with >=44px touch targets; labels ellipsize inside
