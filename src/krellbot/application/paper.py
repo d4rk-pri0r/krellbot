@@ -43,7 +43,7 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from krellbot import config as kb_config
@@ -127,6 +127,64 @@ def read_paper_state(home: Path, venue: str) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {"venue": venue, "balances": {}, "open_orders": [], "recent_fills": []}
+
+
+def base_quote(pair: str) -> tuple[str, str]:
+    """Split a Kraken-style pair like ``SUIUSD`` into ``(base, quote)``.
+
+    Mirrors the paper venue's pair split so the owned-position projection
+    and the engine agree on which balance is this market's holding.
+    """
+    if not pair:
+        return ("", "")
+    if pair.endswith("USD"):
+        return pair[: -len("USD")], "USD"
+    if len(pair) >= 6:
+        return pair[:-3], pair[-3:]
+    return pair, ""
+
+
+def project_owned_position(
+    home: Path,
+    *,
+    venue: str,
+    pair: str,
+    mode: str,
+    as_of_run: str | None,
+) -> dict:
+    """Project the owned position for one armed market from persisted state.
+
+    Holdings are scoped to this market's base asset only. A shared venue
+    wallet may hold balances for other pairs; those are never presented as
+    this market's owned position. ``free_cash`` is the quote-asset balance
+    string exactly as the state file persists it (or ``\"0\"`` when absent).
+    """
+    state = read_paper_state(home, venue)
+    balances = state.get("balances") or {}
+    if not isinstance(balances, dict):
+        balances = {}
+    base, quote = base_quote(pair)
+    free_cash_raw = balances.get(quote) if quote else None
+    free_cash = str(free_cash_raw) if isinstance(free_cash_raw, (str, int, float)) and str(free_cash_raw) != "" else "0"
+    holdings: list[dict] = []
+    if base:
+        raw = balances.get(base)
+        if raw is not None:
+            try:
+                if Decimal(str(raw)) > 0:
+                    holdings.append({"symbol": base, "qty": str(raw)})
+            except (InvalidOperation, ValueError, ArithmeticError):
+                pass
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "armed": True,
+        "venue": venue,
+        "pair": pair,
+        "mode": mode,
+        "free_cash": free_cash,
+        "holdings": holdings,
+        "as_of_run": as_of_run,
+    }
 
 
 def _revision(home: Path) -> str | None:

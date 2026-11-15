@@ -131,6 +131,41 @@ function sentenceFor(entries_paused: boolean | undefined): EntriesSentence {
   return entries_paused ? "Entries paused" : "Entries active";
 }
 
+/**
+ * Confirmed market identity for an armed status or position body.
+ * Venue, pair and mode must all agree before a position may be shown
+ * under a status heading — never another market's cached holdings.
+ */
+function marketIdentity(
+  row: Pick<PaperStatus, "venue" | "pair" | "mode"> | Pick<PaperPosition, "venue" | "pair" | "mode"> | null | undefined,
+): string | null {
+  if (
+    row === null ||
+    row === undefined ||
+    typeof row.venue !== "string" ||
+    row.venue === "" ||
+    typeof row.pair !== "string" ||
+    row.pair === "" ||
+    typeof row.mode !== "string" ||
+    row.mode === ""
+  ) {
+    return null;
+  }
+  return `${row.venue}\0${row.pair}\0${row.mode}`;
+}
+
+function sameArmedMarket(
+  status: PaperStatus | null | undefined,
+  position: PaperPosition | null | undefined,
+): boolean {
+  if (status?.armed !== true || position?.armed !== true) {
+    return false;
+  }
+  const left = marketIdentity(status);
+  const right = marketIdentity(position);
+  return left !== null && right !== null && left === right;
+}
+
 function commandLabel(command: CommandName | "arm"): string {
   if (command === "pause") return "Pause";
   if (command === "resume") return "Resume";
@@ -233,17 +268,26 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
   switch (action.type) {
     case "status": {
       const next = action.status;
+      // Keep a cached owned position only when the confirmed status still
+      // names the same venue/pair/mode. A market change (or disarm)
+      // invalidates the sentence immediately — never show another
+      // market's holdings under the new heading while a fresh read is
+      // in flight.
+      const keepPosition =
+        next.armed === true && sameArmedMarket(next, state.position);
+      const keepError =
+        next.armed === true &&
+        state.positionError !== null &&
+        marketIdentity(next) !== null &&
+        marketIdentity(state.status) === marketIdentity(next);
       return {
         ...state,
         status: next,
         unavailable: false,
         unknownOutcome: null,
         sentence: next.armed ? sentenceFor(next.entries_paused) : state.sentence,
-        // A confirmed disarm/unarmed read invalidates the cached owned
-        // position: the armed branch that renders it is gone, and the
-        // next arm must re-read rather than reuse a stale sentence.
-        position: next.armed ? state.position : null,
-        positionError: next.armed ? state.positionError : null,
+        position: keepPosition ? state.position : null,
+        positionError: keepError ? state.positionError : null,
       };
     }
     case "unavailable": {
@@ -277,6 +321,18 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
       return { ...state, pending: null, unknownOutcome: action.message };
     }
     case "position": {
+      // An independent position read is accepted only when its
+      // venue/pair/mode agrees with the current confirmed status.
+      // Otherwise surface a mismatch — never another market's cash or
+      // holdings, and never a manufactured zero position.
+      if (!sameArmedMarket(state.status, action.position)) {
+        return {
+          ...state,
+          position: null,
+          positionError:
+            "Owned position does not match the current armed market",
+        };
+      }
       return { ...state, position: action.position, positionError: null };
     }
     case "position-failed": {
@@ -285,16 +341,25 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
       return { ...state, position: null, positionError: action.message };
     }
     case "command-ok": {
+      const nextStatus = action.status;
+      const keepPosition =
+        nextStatus?.armed === true &&
+        sameArmedMarket(nextStatus, state.position);
+      const keepError =
+        nextStatus?.armed === true &&
+        state.positionError !== null &&
+        marketIdentity(nextStatus) !== null &&
+        marketIdentity(state.status) === marketIdentity(nextStatus);
       return {
         ...state,
         pending: null,
         errorMessage: null,
         unknownOutcome: null,
-        status: action.status,
+        status: nextStatus,
         sentence: action.sentence ?? state.sentence,
         raiseStopEcho: action.raiseStopEcho ?? state.raiseStopEcho,
-        position: action.status?.armed ? state.position : null,
-        positionError: action.status?.armed ? state.positionError : null,
+        position: keepPosition ? state.position : null,
+        positionError: keepError ? state.positionError : null,
       };
     }
   }
@@ -710,10 +775,25 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
     if (read === undefined) {
       return;
     }
+    // Capture the status identity this read was started for. A late
+    // response that names a different market must not update the panel
+    // even if the request epoch is still current.
+    const expectedIdentity = marketIdentity(state.status);
     read
       .call(client)
       .then((position) => {
         if (epoch !== positionEpochRef.current) {
+          return;
+        }
+        if (
+          expectedIdentity === null ||
+          marketIdentity(position) !== expectedIdentity
+        ) {
+          dispatch({
+            type: "position-failed",
+            message:
+              "Owned position does not match the current armed market",
+          });
           return;
         }
         dispatch({ type: "position", position });
