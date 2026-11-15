@@ -21,6 +21,13 @@ record refuses with `metadata_unavailable`; a record whose `usable_until`
 is in the past refuses with `metadata_stale`. A persisted snapshot is a
 labeled cache, not production truth.
 
+Production paper ticks call `ensure_instrument_rules` before evaluating
+entries so armed pairs (including the wave Kraken BTC/USD spelling
+``XXBTZUSD`` used by the owned-strategy paper arm default) are fetched
+from public AssetPairs / product metadata and written into that snapshot.
+Without that write, a non-SUI paper arm journals ``metadata_refusal`` for
+missing rules forever.
+
 Stable refusal codes:
 
     metadata_unavailable, metadata_stale, metadata_symbol_mismatch,
@@ -34,7 +41,7 @@ import hashlib
 import json
 import time
 import urllib.parse
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -42,6 +49,10 @@ from pathlib import Path
 
 from krellbot import paths as kb_paths
 from krellbot.venues.base import PairRules
+
+# Wave Kraken BTC/USD spelling used by the owned-strategy paper arm default
+# (`frontend` `DEFAULT_PAIR`). AssetPairs also accepts altname ``XBTUSD``.
+PAPER_WAVE_KRAKEN_BTC_USD = "XXBTZUSD"
 
 SCHEMA_VERSION = "1"
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h
@@ -499,6 +510,60 @@ class InstrumentRulesSnapshot:
             if venue_map:
                 out[venue] = venue_map
         return out
+
+
+def ensure_instrument_rules(
+    home: Path,
+    *,
+    venue: str,
+    pairs: Sequence[str],
+    transport,
+    clock: Callable[[], float] | None = None,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+) -> Path | None:
+    """Fetch and persist public instrument rules for each ``(venue, pair)``.
+
+    Writes (or merges into) ``$KRELLBOT_HOME/run/instrument-rules.json``.
+    Fresh existing records are left alone. Missing or stale records are
+    refreshed via ``InstrumentMetadataClient``. Fetch failures leave that
+    pair unchanged so a later paper tick can still surface
+    ``metadata_unavailable`` / ``metadata_stale`` through the rules
+    provider — this helper never invents minima.
+
+    Returns the snapshot path when at least one record was written or the
+    file already existed after a no-op refresh; ``None`` when nothing was
+    persisted (empty ``pairs``, or every fetch failed with no prior file).
+    """
+    home = Path(home)
+    unique_pairs = [p for p in dict.fromkeys(pairs) if isinstance(p, str) and p]
+    if not unique_pairs or not isinstance(venue, str) or not venue:
+        path = home / "run" / SNAPSHOT_FILENAME
+        return path if path.exists() else None
+
+    snap = InstrumentRulesSnapshot(home=home, clock=clock)
+    client = InstrumentMetadataClient(
+        transport=transport,
+        clock=clock,
+        ttl_seconds=ttl_seconds,
+    )
+    now = (clock or _default_now)()
+    records = snap._load()
+    venue_map = dict(records.get(venue) or {})
+    dirty = False
+    for pair in unique_pairs:
+        existing = venue_map.get(pair)
+        if existing is not None and _iso_to_unix(existing.usable_until) > now:
+            continue
+        try:
+            venue_map[pair] = client.fetch_rules(venue, pair)
+        except (InstrumentMetadataError, TypeError, ValueError, OSError, RuntimeError, KeyError):
+            continue
+        dirty = True
+    if dirty:
+        records[venue] = venue_map
+        snap.write(records)
+    path = home / "run" / SNAPSHOT_FILENAME
+    return path if path.exists() else None
 
 
 # ---- derivation helpers -------------------------------------------------
