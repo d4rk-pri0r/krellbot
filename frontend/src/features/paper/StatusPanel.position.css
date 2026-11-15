@@ -1,0 +1,41 @@
+/*
+ * Owned-position inspector affordance on Paper status (KRELL-SIGNAL-20261010).
+ * Only the selectable position control is styled here; the rest of the panel
+ * keeps its existing presentation.
+ */
+
+button.kbot-paper-status__position {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--panel, #18354a) 55%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  min-height: 34px;
+}
+
+button.kbot-paper-status__position:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+button.kbot-paper-status__position--selected,
+button.kbot-paper-status__position[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 10%, var(--surface, #14222e));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--sage, #b3dda8) 65%, var(--seafoam, #a8d8d1));
+}
+
+@media (max-width: 640px) {
+  button.kbot-paper-status__position {
+    min-height: 44px;
+  }
+}

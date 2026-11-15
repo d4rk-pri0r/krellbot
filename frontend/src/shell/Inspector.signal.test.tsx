@@ -30,7 +30,7 @@ describe("Inspector Signal presentation", () => {
     render(<Inspector />);
     const empty = screen.getByTestId("inspector-empty");
     expect(empty.textContent).toBe(
-      "Nothing selected — pick a revision on Strategies or a node in Studio to inspect it here.",
+      "Nothing selected — pick a deployment, position, or alert on this page to inspect it here.",
     );
     expect(screen.queryByTestId("inspector-selection")).toBeNull();
     expect(screen.queryByTestId("inspector-loading")).toBeNull();

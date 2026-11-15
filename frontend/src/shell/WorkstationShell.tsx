@@ -8,7 +8,13 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { Connection } from "@xyflow/react";
-import type { PaperClient, PaperRunsClient, PaperArmedClient } from "../features/paper/client";
+import type {
+  PaperArmedRecord,
+  PaperClient,
+  PaperPosition,
+  PaperRunsClient,
+  PaperArmedClient,
+} from "../features/paper/client";
 import { StatusPanel } from "../features/paper/StatusPanel";
 import { createHttpClient as createPaperHttpClient } from "../features/paper/client";
 import { LastRunsPanel } from "../features/paper/LastRunsPanel";
@@ -41,7 +47,10 @@ import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
 import { OperationsView } from "../features/operations/OperationsView";
 import { LivePreflight } from "../features/deployments/LivePreflight";
 import { createHttpClient as createOperationsHttpClient } from "../features/operations/client";
-import type { OperationsClient } from "../features/operations/client";
+import type {
+  AlertRow,
+  OperationsClient,
+} from "../features/operations/client";
 import { PackLibrary } from "../features/packs/PackLibrary";
 import { createPacksHttpClient } from "../features/packs/client";
 import type { PackLibraryClient } from "../features/packs/client";
@@ -49,7 +58,13 @@ import { recoverCsrf, redeemBootstrap } from "../session";
 import { Wordmark } from "../components/brand/Wordmark";
 import { AppHome } from "./AppHome";
 import { CommandPalette } from "./CommandPalette";
-import { Inspector } from "./Inspector";
+import {
+  Inspector,
+  selectionFromAlert,
+  selectionFromDeployment,
+  selectionFromPosition,
+  type InspectorSelection,
+} from "./Inspector";
 import { JobsDrawer } from "./JobsDrawer";
 import { Navigation, type View } from "./Navigation";
 import {
@@ -57,6 +72,7 @@ import {
   syncViewToHistory,
 } from "./route";
 import { StatusStrip } from "./StatusStrip";
+import { WorkstationAlerts } from "./WorkstationAlerts";
 
 const BOOTSTRAP_META = "krellbot-bootstrap";
 const WORKLOAD_NODE_COUNT = 200;
@@ -471,6 +487,30 @@ export function WorkstationShell({
 
   const [bootstrapDone, setBootstrapDone] = useState(false);
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
+  const [inspectorSelection, setInspectorSelection] =
+    useState<InspectorSelection | null>(null);
+
+  const handleDeploymentSelection = useCallback(
+    (record: PaperArmedRecord | null): void => {
+      setInspectorSelection(
+        record === null ? null : selectionFromDeployment(record),
+      );
+    },
+    [],
+  );
+
+  const handlePositionSelect = useCallback(
+    (position: PaperPosition | null): void => {
+      setInspectorSelection(
+        position === null ? null : selectionFromPosition(position),
+      );
+    },
+    [],
+  );
+
+  const handleAlertSelect = useCallback((alert: AlertRow | null): void => {
+    setInspectorSelection(alert === null ? null : selectionFromAlert(alert));
+  }, []);
 
   const handleRecoverSession = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
     // Only existing-session recovery: never replay the consumed bootstrap token.
@@ -736,13 +776,33 @@ export function WorkstationShell({
               <div className="kbot-shell__workstation-main">
                 {bootstrapDone ? (
                   <>
-                    <StatusPanel client={paper} />
+                    <StatusPanel
+                      client={paper}
+                      onPositionSelect={handlePositionSelect}
+                      positionSelected={
+                        inspectorSelection?.kind === "position"
+                      }
+                    />
                     <LastRunsPanel client={paperRuns} />
                     {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
                         an injected legacy client without listArmed renders the
                         truthful unavailable state instead of crashing. */}
                     <ArmedRecordsList
-                      client={paper as PaperClient & PaperRunsClient & PaperArmedClient}
+                      client={
+                        paper as PaperClient &
+                          PaperRunsClient &
+                          PaperArmedClient
+                      }
+                      onSelectionChange={handleDeploymentSelection}
+                    />
+                    <WorkstationAlerts
+                      client={operations}
+                      selectedId={
+                        inspectorSelection?.kind === "alert"
+                          ? inspectorSelection.id
+                          : null
+                      }
+                      onSelect={handleAlertSelect}
                     />
                   </>
                 ) : (
@@ -755,7 +815,7 @@ export function WorkstationShell({
                 )}
               </div>
               <aside className="kbot-shell__workstation-aside">
-                <Inspector />
+                <Inspector selection={inspectorSelection} />
               </aside>
             </div>
           </>
