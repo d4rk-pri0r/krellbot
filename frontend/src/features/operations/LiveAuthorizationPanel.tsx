@@ -5,6 +5,11 @@ import type {
   LiveAuthorizationView,
   OperationsClient,
 } from "./client";
+import {
+  KRAKEN_BTC_USD_VENUE_SYMBOL,
+  KRAKEN_WAVE_PAIR_OPTIONS,
+  krakenWavePairLabel,
+} from "../../markets/krakenBtcUsd";
 
 const PANEL_TITLE = "Live authorization";
 const LOADING_TEXT = "Loading live authorization…";
@@ -19,9 +24,9 @@ const GRANT_LABEL = "Grant authorization";
 const REVOKE_LABEL = "Revoke authorization";
 const PAPER_ONLY_HEADING = "Live authorization is disabled in this paper-only release.";
 const HELPER_TEXT =
-  "Authorizes one exact venue and pair until expiry. Replaces the CLI typed LIVE prompt.";
+  "Authorizes one exact venue and pair until expiry. Replaces the CLI typed LIVE prompt. Grant the stored Kraken venue symbol XXBTZUSD for BTC/USD — not BTC/USD, BTCUSD, or XBTUSD.";
 const DEFAULT_VENUE = "kraken";
-const DEFAULT_PAIR = "BTC/USD";
+const DEFAULT_PAIR = KRAKEN_BTC_USD_VENUE_SYMBOL;
 const DEFAULT_HOURS = "24";
 
 export type LiveAuthorizationPanelProps = {
@@ -233,14 +238,19 @@ export function LiveAuthorizationPanel({ client }: LiveAuthorizationPanelProps):
               <label className="kbot-ops__live-auth-label" htmlFor="ops-live-auth-pair">
                 {PAIR_LABEL}
               </label>
-              <input
+              <select
                 id="ops-live-auth-pair"
                 data-testid="ops-live-auth-pair"
-                type="text"
                 value={pair}
                 disabled={controlsDisabled}
                 onChange={(event) => setPair(event.target.value)}
-              />
+              >
+                {KRAKEN_WAVE_PAIR_OPTIONS.map((option) => (
+                  <option key={option.venueSymbol} value={option.venueSymbol}>
+                    {krakenWavePairLabel(option.venueSymbol)}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="kbot-ops__live-auth-row">
               <label className="kbot-ops__live-auth-label" htmlFor="ops-live-auth-hours">

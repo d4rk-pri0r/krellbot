@@ -24,7 +24,7 @@ const rehearsalPack: Pack = {
   entry: ["close", ">", "sma3"],
   exit: ["close", "<", "sma3"],
   risk: { max_account_pct: 25, stop: { type: "pct", pct: 5 } },
-  markets: [{ venue: "kraken", pair: "SUIUSD" }],
+  markets: [{ venue: "kraken", pair: "XXBTZUSD" }],
 };
 
 describe("seedOwnedStrategyPack", () => {
@@ -62,7 +62,7 @@ describe("readOwnedStrategy", () => {
     expect(state).toEqual<OwnedStrategyFormState>({
       name: "Synthetic rehearsal trend follow",
       id: "rehearsal-trend",
-      pair: "SUIUSD",
+      pair: "XXBTZUSD",
       timeframe: "1h",
       recipe: "close_vs_ma",
       kind: "sma",
@@ -73,6 +73,15 @@ describe("readOwnedStrategy", () => {
       maxAccountPct: "25",
       stopPct: "5",
     });
+  });
+
+  it("returns null for a non-wave Kraken pair (guided form is XXBTZUSD only)", () => {
+    expect(
+      readOwnedStrategy({
+        ...rehearsalPack,
+        markets: [{ venue: "kraken", pair: "SUIUSD" }],
+      }),
+    ).toBeNull();
   });
 
   it("round-trips an ema pack with a crosses comparison", () => {
@@ -322,7 +331,7 @@ describe("buildOwnedStrategyPack", () => {
       entryComparison: "crosses_above",
       maxAccountPct: "40",
       stopPct: "2.5",
-      pair: "XETHZUSD",
+      pair: "XXBTZUSD",
     };
     const pack = buildOwnedStrategyPack(edited, seeded) as Pack;
     expect(pack.indicators).toEqual({
@@ -333,7 +342,7 @@ describe("buildOwnedStrategyPack", () => {
       max_account_pct: 40,
       stop: { type: "pct", pct: 2.5 },
     });
-    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XETHZUSD" }]);
+    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XXBTZUSD" }]);
   });
 
   it("rejects an out-of-range length instead of generating an invalid pack", () => {
@@ -363,6 +372,12 @@ describe("buildOwnedStrategyPack", () => {
     expect(
       buildOwnedStrategyPack({ ...state, pair: "btc-usd!!" }, seeded),
     ).toBeNull();
+    expect(
+      buildOwnedStrategyPack({ ...state, pair: "BTC/USD" }, seeded),
+    ).toBeNull();
+    expect(
+      buildOwnedStrategyPack({ ...state, pair: "BTCUSD" }, seeded),
+    ).toBeNull();
   });
 
   it("rejects an empty label", () => {
@@ -383,7 +398,8 @@ describe("validateOwnedStrategyField", () => {
     expect(validateOwnedStrategyField("maxAccountPct", "0")).toMatch(/1/);
     expect(validateOwnedStrategyField("stopPct", "0")).toMatch(/0/);
     expect(validateOwnedStrategyField("id", "NO")).toMatch(/lowercase/);
-    expect(validateOwnedStrategyField("pair", "nope!")).toMatch(/pair/i);
+    expect(validateOwnedStrategyField("pair", "nope!")).toMatch(/XXBTZUSD/);
+    expect(validateOwnedStrategyField("pair", "XETHZUSD")).toMatch(/XXBTZUSD/);
   });
 });
 

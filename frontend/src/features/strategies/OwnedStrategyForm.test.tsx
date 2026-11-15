@@ -70,7 +70,6 @@ describe("OwnedStrategyForm", () => {
       /recipe/i,
       /strategy name/i,
       /strategy id/i,
-      /kraken pair/i,
       /average length/i,
       /max account percent/i,
       /protective stop percent/i,
@@ -81,6 +80,9 @@ describe("OwnedStrategyForm", () => {
     ]) {
       expect(screen.getByLabelText(label)).toBeDefined();
     }
+    expect(screen.getByLabelText("Kraken pair")).toBe(
+      screen.getByTestId("owned-strategy-pair"),
+    );
   });
 
   it("reports which pack fields each control owns", () => {
@@ -216,20 +218,24 @@ describe("OwnedStrategyForm", () => {
     });
   });
 
-  it("changing timeframe and pair changes the pack payload", () => {
+  it("changing timeframe keeps the canonical wave pair in the pack payload", () => {
     const { onApply } = setup();
     fireEvent.change(screen.getByLabelText(/timeframe/i), {
       target: { value: "1d" },
     });
-    fireEvent.change(screen.getByLabelText(/kraken pair/i), {
-      target: { value: "XETHZUSD" },
-    });
+    const pairSelect = screen.getByTestId("owned-strategy-pair") as HTMLSelectElement;
+    expect(pairSelect.tagName).toBe("SELECT");
+    expect(pairSelect.value).toBe("XXBTZUSD");
+    expect(
+      Array.from(pairSelect.options).map((option) => option.value),
+    ).toEqual(["XXBTZUSD"]);
+    expect(screen.getByLabelText("Kraken pair")).toBe(pairSelect);
     const [pack] = onApply.mock.calls.at(-1) as unknown as [
       Record<string, unknown>,
       string[],
     ];
     expect(pack.timeframe).toBe("1d");
-    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XETHZUSD" }]);
+    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XXBTZUSD" }]);
   });
 
   it("refuses to emit a pack for an invalid length and keeps reporting the problem", () => {

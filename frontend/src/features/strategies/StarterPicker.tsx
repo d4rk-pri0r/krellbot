@@ -117,7 +117,9 @@ export function StarterPicker({
       <p className="kbot-starter-picker__hint">
         Free, read-only educational example packs. Picking one seeds the raw JSON
         below as a fresh editable copy — it is not a reopen of any saved revision.
-        Save, Validate, and Arm behave exactly as before.
+        Save, Validate, and Arm behave exactly as before. Teaching packs still use
+        SUIUSD; the paper wave market is Kraken BTC/USD stored as XXBTZUSD (pick it
+        from the owned-strategy or live-authorization pair controls).
       </p>
       {state.kind === "error" ? (
         <div className="kbot-starter-picker__error-row">

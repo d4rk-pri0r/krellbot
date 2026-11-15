@@ -39,7 +39,7 @@ def seed(home: Path, *, now: int | None = None) -> None:
                 {
                     "coid": coid,
                     "body": json.dumps(
-                        {"kind": "entry", "qty": "1", "stop": "1", "pair": "BTCUSD"},
+                        {"kind": "entry", "qty": "1", "stop": "1", "pair": "XXBTZUSD"},
                         separators=(",", ":"),
                         sort_keys=True,
                     ),
