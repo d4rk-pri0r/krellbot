@@ -86,6 +86,23 @@ export type UnresolvedOrderRow = {
   last_lookup_result: string;
 };
 
+/** One raw journal record from GET /api/v1/journal (CLI journal parity). */
+export type JournalRecordRow = {
+  ts: number;
+  kind: string;
+  venue: string;
+  pack: string;
+  bar_ts: number;
+  detail: unknown;
+};
+
+export type JournalBrowseQuery = {
+  /** Positive integer; omitted when using ``since``. Default server-side is 5. */
+  tail?: number;
+  /** CLI windows only: ``24h`` or ``14d``. Wins over ``tail`` when both set. */
+  since?: "24h" | "14d";
+};
+
 /** Closed-shape scheduler status from GET/POST /api/v1/scheduler* (M2.7). */
 export type SchedulerStatus = {
   schema_version: string;
@@ -117,6 +134,7 @@ export type OperationsClient = {
   listDeploymentRecords?(): Promise<DeploymentRecordRow[]>;
   getDeploymentRecord?(deploymentId: string): Promise<DeploymentRecordRow>;
   listUnresolvedOrders?(): Promise<UnresolvedOrderRow[]>;
+  listJournal?(query?: JournalBrowseQuery): Promise<JournalRecordRow[]>;
   getLiveAuthorization?(): Promise<LiveAuthorizationView>;
   grantLiveAuthorization?(
     venue: string,
@@ -353,6 +371,42 @@ function adaptDeploymentRecord(raw: unknown): DeploymentRecordRow | null {
   };
 }
 
+function adaptJournalRecord(raw: unknown): JournalRecordRow | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.ts !== "number" || !Number.isFinite(obj.ts)) {
+    return null;
+  }
+  if (typeof obj.kind !== "string" || typeof obj.venue !== "string") {
+    return null;
+  }
+  if (typeof obj.pack !== "string") {
+    return null;
+  }
+  const barTs = typeof obj.bar_ts === "number" && Number.isFinite(obj.bar_ts) ? obj.bar_ts : 0;
+  return {
+    ts: obj.ts,
+    kind: obj.kind,
+    venue: obj.venue,
+    pack: obj.pack,
+    bar_ts: barTs,
+    detail: obj.detail,
+  };
+}
+
+function journalBrowseUrl(query?: JournalBrowseQuery): string {
+  const params = new URLSearchParams();
+  if (query?.since === "24h" || query?.since === "14d") {
+    params.set("since", query.since);
+  } else if (typeof query?.tail === "number" && Number.isFinite(query.tail)) {
+    params.set("tail", String(Math.trunc(query.tail)));
+  }
+  const encoded = params.toString();
+  return encoded ? `/api/v1/journal?${encoded}` : "/api/v1/journal";
+}
+
 function adaptUnresolvedOrder(raw: unknown): UnresolvedOrderRow | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -477,6 +531,15 @@ export function createHttpClient(): OperationsClient {
         return rows
           .map(adaptUnresolvedOrder)
           .filter((row): row is UnresolvedOrderRow => row !== null);
+      });
+    },
+    listJournal(query?: JournalBrowseQuery): Promise<JournalRecordRow[]> {
+      return getOperationsReadJson(journalBrowseUrl(query), "journal").then((raw) => {
+        const body = (raw ?? {}) as Record<string, unknown>;
+        const rows = Array.isArray(body.records) ? body.records : [];
+        return rows
+          .map(adaptJournalRecord)
+          .filter((row): row is JournalRecordRow => row !== null);
       });
     },
     getLiveAuthorization(): Promise<LiveAuthorizationView> {
