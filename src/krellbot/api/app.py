@@ -79,6 +79,9 @@ class _AppState:
     live_transport: object = field(default=None)  # SandboxTransport or test spy for live.preflight
     keys_transport: object = field(default=None)  # injectable venue transport for keys routes
     keys_allow_fake_backend: bool = False  # tests-only FakeKeyring opt-in
+    scheduler_supervisor: object = None  # PlatformSupervisor; tests inject FakeSupervisor
+    scheduler_write_root: Path | None = None  # defaults to Path.home()
+    scheduler_executable: str | None = None  # defaults to sys.executable
 
 
 def _state(app: FastAPI) -> _AppState:
@@ -135,6 +138,36 @@ def _live_transport(s: _AppState):
     if s.live_transport is None:
         s.live_transport = SandboxTransport(account="sandbox-default")
     return s.live_transport
+
+
+def _scheduler_supervisor(s: _AppState):
+    """Return the platform supervisor, creating the production default.
+
+    Tests pre-set ``s.scheduler_supervisor`` to a ``FakeSupervisor`` so
+    no ``systemctl`` / ``launchctl`` / ``schtasks`` process is spawned.
+    """
+
+    if s.scheduler_supervisor is None:
+        from krellbot.service import supervise as kb_supervise
+
+        s.scheduler_supervisor = kb_supervise.platform_supervisor()
+    return s.scheduler_supervisor
+
+
+def _scheduler_write_root(s: _AppState) -> Path:
+    """Where unit files are written; defaults to the process user home."""
+
+    if s.scheduler_write_root is None:
+        return Path.home()
+    return Path(s.scheduler_write_root)
+
+
+def _scheduler_executable(s: _AppState) -> str:
+    """Executable path baked into rendered unit files."""
+
+    if s.scheduler_executable:
+        return s.scheduler_executable
+    return sys.executable
 
 
 def _stored_deployment_mode(home: Path) -> str | None:
@@ -1251,6 +1284,75 @@ def create_app(
             status_code=200,
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/api/v1/scheduler")
+    async def scheduler_status_get(request: Request) -> Response:
+        """Return closed-shape scheduler status (M2.7).
+
+        Same session gate as ``GET /api/v1/operations`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF.
+        Body keys: ``installed``, ``enabled``, ``last_error``.
+        """
+
+        from krellbot.service import supervise as kb_supervise
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = kb_supervise.scheduler_status(
+            s.home,
+            write_root=_scheduler_write_root(s),
+            supervisor=_scheduler_supervisor(s),
+        )
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/scheduler/install")
+    async def scheduler_install(request: Request) -> Response:
+        """Install OS scheduler unit files via existing service renderers.
+
+        Same state-change gate as ``POST /api/v1/commands``
+        (``_gate_state_change``): session cookie + CSRF + loopback Origin.
+        Already-installed units are reported as success without rewrite.
+        """
+
+        from krellbot.service import supervise as kb_supervise
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        body = kb_supervise.install_scheduler(
+            s.home,
+            write_root=_scheduler_write_root(s),
+            supervisor=_scheduler_supervisor(s),
+            executable=_scheduler_executable(s),
+        )
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/scheduler/enable")
+    async def scheduler_enable(request: Request) -> Response:
+        """Enable the installed scheduler unit via the platform supervisor.
+
+        Same state-change gate as ``POST /api/v1/commands``. Platform
+        calls go through ``s.scheduler_supervisor`` (fake in tests).
+        """
+
+        from krellbot.service import supervise as kb_supervise
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        body = kb_supervise.enable_scheduler(
+            s.home,
+            write_root=_scheduler_write_root(s),
+            supervisor=_scheduler_supervisor(s),
+        )
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/paper/status")
     async def paper_status(request: Request) -> Response:
