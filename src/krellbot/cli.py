@@ -1130,6 +1130,11 @@ def _build_paper_rules_provider(home, venue: str):
          catches it and skips the new entry while letting ownership
          protection run, so a non-SUI pair never silently inherits the
          SUIUSD minima.
+
+    Paper ticks call `_ensure_paper_instrument_rules` first so the wave
+    Kraken BTC/USD pair (and any other armed pair) is written into
+    `$KRELLBOT_HOME/run/instrument-rules.json` from public metadata
+    before this provider runs.
     """
     from krellbot.data.instruments import (
         InstrumentMetadataError,
@@ -1150,6 +1155,26 @@ def _build_paper_rules_provider(home, venue: str):
         return pairrules_from_instrument(record)
 
     return provider
+
+
+def _ensure_paper_instrument_rules(home, armed_list, *, transport) -> None:
+    """Persist public instrument rules for paper-armed pairs before a tick.
+
+    Production path for `$KRELLBOT_HOME/run/instrument-rules.json`. A
+    missing write left non-SUI paper arms (including wave ``XXBTZUSD``)
+    journaling ``metadata_refusal`` solely for missing rules. Failures
+    are swallowed; the rules provider still refuses typed codes.
+    """
+    from krellbot.data.instruments import ensure_instrument_rules
+
+    paper = [a for a in armed_list if getattr(a, "mode", None) == "paper"]
+    if not paper:
+        return
+    by_venue: dict[str, list[str]] = {}
+    for armed in paper:
+        by_venue.setdefault(armed.venue, []).append(armed.pair)
+    for venue, pairs in by_venue.items():
+        ensure_instrument_rules(home, venue=venue, pairs=pairs, transport=transport)
 
 
 def _build_fetch_reader(armed_list, *, fetch, transport):
@@ -1234,6 +1259,7 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
         return "mixed paper and live arms; tick refused"
 
     if armed.mode == "paper":
+        _ensure_paper_instrument_rules(home, armed_list, transport=transport)
         has_key = _key_present(armed.venue)
         venue_obj = PaperVenue(
             armed.venue,
@@ -1452,6 +1478,7 @@ def _tick_one_venue(
     if offline is not None:
         reader = _build_offline_reader(offline)
         if armed.mode == "paper":
+            _ensure_paper_instrument_rules(home, armed_list, transport=transport)
             has_key = _key_present(armed.venue)
             venue_obj = PaperVenue(
                 armed.venue,
