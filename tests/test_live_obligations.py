@@ -432,10 +432,6 @@ def test_unknown_outcome_reconciles_without_resubmit(home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="M1.5: restore must fence live arms (entries paused + kill switch engaged)",
-)
 def test_restored_home_is_fenced(home, monkeypatch, tmp_path):
     """After restore, every live arm has entries paused and the kill switch
     engaged; tick sends nothing until the operator releases both.
