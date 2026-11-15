@@ -43,6 +43,25 @@ def test_installed_preview_smoke_expects_current_release_version():
     assert expected_version_check in smoke
 
 
+def test_installed_preview_smoke_uses_current_navigation_labels():
+    """Windows installed-preview smoke must click the live Signal nav labels.
+
+    Navigation.tsx renamed the home tab to Workspace and the studio tab to
+    Strategy studio. Looking for the old Home/Studio names fails every
+    Windows release-frozen run (that OS is the only one that executes this
+    smoke).
+    """
+    repo = FROZEN_MAIN.parent.parent
+    smoke = (repo / "scripts" / "ci_smoke_installed_preview.mjs").read_text(encoding="utf-8")
+    navigation = (repo / "frontend" / "src" / "shell" / "Navigation.tsx").read_text(encoding="utf-8")
+    assert '{ id: "home", label: "Workspace" }' in navigation
+    assert '{ id: "studio", label: "Strategy studio" }' in navigation
+    assert "const homeTab = 'Workspace';" in smoke
+    assert "['studio', 'Strategy studio']" in smoke
+    assert "name: 'Home'" not in smoke
+    assert "['studio', 'Studio']" not in smoke
+
+
 def test_frozen_main_module_imports_entry_from_krellbot_cli():
     """Static check: the module wires `from krellbot.cli import entry` directly."""
     module = _load_frozen_main_module()
