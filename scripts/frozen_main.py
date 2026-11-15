@@ -17,13 +17,15 @@ No-argument launch (installed-app behaviour):
 When the PyInstaller bootloader runs us (`sys.frozen` is truthy) and
 the user supplied no CLI arguments, the binary behaves like a
 double-clicked app: it fills in the argument tail
-`["workstation", "--open"]` so the existing launcher starts the
+`["ui", "--open"]` so the existing launcher starts the
 loopback workstation shell and hands its URL to the default browser.
-The rewrite happens here — never inside `krellbot.cli` — so the
-developer CLI keeps its byte-compatible semantics (`python -m
-krellbot.cli` with no arguments still prints usage and exits 2).
-Explicit arguments are never rewritten: `krellbot.exe --version`,
-`krellbot doctor`, `krellbot workstation ...` reach the CLI untouched.
+``ui`` is an engine-side alias for ``workstation`` (site wrappers and
+older installers already invoke ``ui --open``). The rewrite happens
+here — never inside `krellbot.cli` — so the developer CLI keeps its
+byte-compatible semantics (`python -m krellbot.cli` with no arguments
+still prints usage and exits 2). Explicit arguments are never
+rewritten: `krellbot.exe --version`, `krellbot doctor`,
+`krellbot workstation ...`, `krellbot ui ...` reach the CLI untouched.
 `argv[0]` (the path the bootloader chose) is preserved verbatim.
 """
 
@@ -33,11 +35,11 @@ import sys
 
 from krellbot.cli import entry
 
-_FROZEN_DEFAULT_ARGS = ["workstation", "--open"]
+_FROZEN_DEFAULT_ARGS = ["ui", "--open"]
 
 
 def _apply_frozen_default_launch(argv: list[str]) -> list[str]:
-    """Return the argv to run: frozen + no user arguments -> workstation --open.
+    """Return the argv to run: frozen + no user arguments -> ui --open.
 
     Pure helper (no import of krellbot.cli, no I/O) so tests can pin the
     routing without touching a server. Only the argument tail is filled

@@ -6,7 +6,9 @@ research and watch paper deployments in the browser.
 
 The `krellbot` command is plumbing: the launcher, the scheduler entry point
 and diagnostics. Running `krellbot` with no arguments starts the workstation.
-New user features land in the web app, not here.
+`krellbot ui --open` is an alias for `krellbot workstation --open` (site
+install wrappers use that shape). New user features land in the web app, not
+here.
 
 ## Advanced and diagnostic commands
 

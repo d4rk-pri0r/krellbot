@@ -148,10 +148,11 @@ def test_frozen_main_subprocess_runs_entry(tmp_path):
 # App-bones installers (W1) — frozen no-argument launch
 #
 # The frozen binary must behave like a double-clickable app: with no CLI
-# arguments it launches the existing workstation shell with ``--open``
-# (loopback only). Explicit arguments stay byte-compatible, and the
+# arguments it launches ``ui --open`` (``ui`` aliases ``workstation``;
+# loopback only). Explicit arguments stay byte-compatible, and the
 # developer (non-frozen) CLI keeps its usage behaviour. All of this is
-# routed inside scripts/frozen_main.py — krellbot.cli is not edited.
+# routed inside scripts/frozen_main.py — krellbot.cli is not edited for
+# the no-arg rewrite (the ``ui`` alias itself lives in krellbot.cli).
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = FROZEN_MAIN.parent.parent
@@ -222,11 +223,13 @@ atexit.register(_dump)
 """
 
 
-def test_frozen_no_args_routes_to_workstation_open(tmp_path):
-    """RED: frozen + zero CLI args must run main with argv[1:] == ['workstation','--open'].
+def test_frozen_no_args_routes_to_ui_open(tmp_path):
+    """Frozen + zero CLI args must run main with argv[1:] == ['ui','--open'].
 
-    argv[0] (the executable path the bootloader chose) is preserved
-    byte-identically; only the missing argument tail is filled in.
+    ``ui`` is the engine-side alias for ``workstation`` (site wrappers
+    already invoke that shape). argv[0] (the executable path the
+    bootloader chose) is preserved byte-identically; only the missing
+    argument tail is filled in.
     """
     marker = tmp_path / "recorded_frozen_noargs.txt"
     shim_dir = _routing_shim_dir(tmp_path, "shim_frozen_noargs", marker, frozen=True)
@@ -236,7 +239,7 @@ def test_frozen_no_args_routes_to_workstation_open(tmp_path):
     lines = marker.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1, f"main called exactly once; got {lines!r}"
     argv0, tail = _split_recorded(lines[0])
-    assert tail == ["workstation", "--open"], lines
+    assert tail == ["ui", "--open"], lines
     assert argv0, "argv[0] must stay the original program path"
 
 

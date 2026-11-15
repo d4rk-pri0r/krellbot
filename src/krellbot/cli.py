@@ -794,7 +794,7 @@ def cmd_backtest(args):
 
 def usage():
     print(
-        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick [--venue NAME] [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall|status [--dry-run] [--root PATH] | backup create --out PATH | backup restore --from PATH | doctor [--json] | workstation [--port N] [--dist PATH] [--open] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
+        "Usage: krellbot list | show <plan> | search <text> | setup <license-key> | setup-kraken <key-file> | keys add <venue> --file <path> | run <plan> | lint <pack.json> | backtest <pack.json> [--venue kraken|coinbase] [--data csv] [--json] | data import kraken-ohlcvt <zip> --pair PAIR --timeframe TF | arm <pack.json> --venue kraken|coinbase --mode paper|live [--paper-balance USD] | disarm --venue NAME --pair PAIR | stop --venue NAME --pair PAIR --price N | tick [--venue NAME] [--offline-candles csv] | status [--venue NAME] | journal --tail N | service install|uninstall|status [--dry-run] [--root PATH] | backup create --out PATH | backup restore --from PATH | doctor [--json] | workstation|ui [--port N] [--dist PATH] [--open] | community list | community install <id> | telemetry enable | telemetry disable | telemetry show",
         file=sys.stderr,
     )
     return 2
@@ -2185,7 +2185,11 @@ def main(argv):
         return cmd_service(argv[2:])
     if cmd == "doctor" and len(argv) >= 2:
         return cmd_doctor(argv[2:])
-    if cmd == "workstation" and len(argv) >= 2:
+    if cmd in {"workstation", "ui"} and len(argv) >= 2:
+        # ``ui`` is a stable alias for ``workstation`` so site-install
+        # wrappers that still invoke ``krellbot ui --open`` open the
+        # loopback shell. There is no separate ``cmd_ui`` and no
+        # legacy dashboard path.
         return cmd_workstation(argv[2:])
     if cmd == "community" and len(argv) >= 2:
         return cmd_community(argv[2:])

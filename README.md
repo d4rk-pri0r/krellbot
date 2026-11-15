@@ -38,8 +38,9 @@ The site installer downloads a per-user, one-directory frozen release
 `%LOCALAPPDATA%\Krellbot\versions\<version>\` (Windows), and creates a
 `krellbot` launcher at `~/.local/bin/krellbot` (POSIX) or
 `%LOCALAPPDATA%\Krellbot\bin\krellbot.cmd` (Windows). Running `krellbot`
-with no arguments starts the workstation on loopback and opens it in your
-default browser. Then [arm your first paper strategy](#arm-your-first-paper-strategy).
+with no arguments (or `krellbot ui --open` / `krellbot workstation --open`)
+starts the workstation on loopback and opens it in your default browser.
+Then [arm your first paper strategy](#arm-your-first-paper-strategy).
 
 **Signing status (this release):** the downloaded artifact is verified
 against an HTTPS-pinned SHA-256 manifest, but the artifact itself is
@@ -80,7 +81,7 @@ place keys, paper state, the journal, and receipts live.
 ## Arm your first paper strategy
 
 Start the workstation (the installer leaves a `krellbot` launcher that
-opens it with no arguments), then:
+opens it with no arguments; `krellbot ui --open` is the same command), then:
 
 1. Open **Strategies**, choose a free starter example, then **Save** and
    **Validate**. The starter examples ship with the release.

@@ -52,7 +52,8 @@ irm https://krellbot.dev/api/install?os=win | iex
 ```
 
 Running `krellbot` with no arguments starts the workstation on loopback
-and opens it in your default browser.
+and opens it in your default browser. `krellbot ui --open` and
+`krellbot workstation --open` do the same.
 
 Credential-source precedence when the engine later loads a key is a complete
 `KRELLBOT_<VEN>_KEY` and `KRELLBOT_<VEN>_SECRET` environment pair, then
