@@ -106,7 +106,11 @@ describe("StatusPanel owned position market scope (#173)", () => {
   it("invalidates the cached SUI position when refresh confirms ETHUSD", async () => {
     let statusReads = 0;
     let positionReads = 0;
-    let releaseEthPosition: ((position: PaperPosition) => void) | null = null;
+    // Object holder so tsc does not narrow the deferred resolve to `never`
+    // after the assignment only happens inside a Promise executor.
+    const ethPositionGate: {
+      resolve: ((position: PaperPosition) => void) | null;
+    } = { resolve: null };
 
     const client = makeClient({
       getStatus: vi.fn().mockImplementation(async () => {
@@ -127,7 +131,7 @@ describe("StatusPanel owned position market scope (#173)", () => {
           });
         }
         return await new Promise<PaperPosition>((resolve) => {
-          releaseEthPosition = resolve;
+          ethPositionGate.resolve = resolve;
         });
       }),
     });
@@ -157,7 +161,10 @@ describe("StatusPanel owned position market scope (#173)", () => {
       (await screen.findByTestId("paper-position-pending")).textContent,
     ).toMatch(/Reading owned position/);
 
-    releaseEthPosition?.(
+    await waitFor(() => {
+      expect(ethPositionGate.resolve).not.toBeNull();
+    });
+    ethPositionGate.resolve!(
       filledPosition({
         pair: "ETHUSD",
         free_cash: "900.000000",
