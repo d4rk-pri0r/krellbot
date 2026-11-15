@@ -1,0 +1,12 @@
+/src/krellbot/run/                           @d4rk-pri0r
+/src/krellbot/venues/                        @d4rk-pri0r
+/src/krellbot/execution/                     @d4rk-pri0r
+/src/krellbot/storage/outbox.py              @d4rk-pri0r
+/src/krellbot/application/live_gate.py       @d4rk-pri0r
+/src/krellbot/application/live_preflight.py  @d4rk-pri0r
+/src/krellbot/release_policy.py              @d4rk-pri0r
+/src/krellbot/license.py                     @d4rk-pri0r
+/src/krellbot/secrets.py                     @d4rk-pri0r
+/src/krellbot/keys/                          @d4rk-pri0r
+/AGENTS.md                                   @d4rk-pri0r
+/.github/                                    @d4rk-pri0r

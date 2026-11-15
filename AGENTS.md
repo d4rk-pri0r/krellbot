@@ -7,6 +7,9 @@ Krellbot is an open-source local crypto workstation: a Python engine plus a loca
 - Work only on the lowest-numbered unchecked task in the current file under `docs/milestones/`. One task, one branch from `main`, one PR.
 - You may not create tasks, issues, milestones, queues, review records, or verification scripts. If you notice a problem outside your task, append one line to `docs/milestones/PARKING.md` in the same PR and keep going. Parked items are not work.
 - Tasks marked `[owner]` are for the human. Skip them.
+- Work on the lowest-numbered unchecked task that has no open PR and does not depend on an unmerged task. Skip [owner] tasks. Do not start a new task while three agent PRs are awaiting the owner.
+- To propose a new milestone file, open a PR that adds it and request the owner's review. Never enable auto-merge on a PR that adds or edits milestone tasks, other than ticking the checkbox of the task that PR completes.
+- After CI is green, enable auto-merge (squash) only on PRs that touch no risk path, nothing under .github/, and not AGENTS.md.
 
 ## Done
 
