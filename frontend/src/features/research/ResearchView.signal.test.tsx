@@ -274,10 +274,14 @@ describe("ResearchView Signal layout: result presentation", () => {
     expect(screen.getByTestId("research-result-data-manifest-sha256").textContent).toBe("unavailable");
   });
 
-  it("renders no synthetic chart or curve in the result section", async () => {
+  it("renders no synthetic chart when equity_curve is absent", async () => {
     await runAndLoad(
       makeClient({ getResult: vi.fn().mockResolvedValue(stored) }),
     );
+    expect(screen.getByTestId("research-equity-curve")).toBeDefined();
+    expect(
+      screen.getByTestId("research-equity-curve-unavailable").textContent,
+    ).toBe("unavailable");
     const result = screen.getByTestId("research-result");
     expect(result.querySelectorAll("svg, canvas").length).toBe(0);
   });

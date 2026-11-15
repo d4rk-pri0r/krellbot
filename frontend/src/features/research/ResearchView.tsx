@@ -8,6 +8,10 @@ import {
   type JSX,
 } from "react";
 import type { ResearchClient, StoredResult } from "./client";
+import {
+  EquityCurveChart,
+  readEquityCurve,
+} from "./EquityCurveChart";
 import { ResearchDateWindow, utcFieldValueToMs } from "./ResearchDateWindow";
 import { TraceCsvExport } from "./TraceCsvExport";
 import { summarizeResearchJobError } from "./researchJobErrorLabel";
@@ -1208,6 +1212,7 @@ function ResultPanel({
   selectedBar,
 }: ResultPanelProps): JSX.Element {
   const metrics = buildMetricCells(receipt);
+  const equitySeries = readEquityCurve(receipt);
   // Result provenance: only what the stored receipt itself carries plus the
   // job identity it was loaded under — never the (editable) setup fields.
   const provenance: Array<{ label: string; value: string; testId: string }> = [
@@ -1270,6 +1275,7 @@ function ResultPanel({
           </div>
         ))}
       </dl>
+      <EquityCurveChart series={equitySeries} />
       <div className="kbot-research__trace" data-testid="research-trace">
         <div className="kbot-research__trace-head">
           <h2 className="kbot-research__trace-title">Trace</h2>
