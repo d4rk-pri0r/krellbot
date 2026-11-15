@@ -1,26 +1,58 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import "./KeysOnboardingPanel.signal.css";
-import type { KeysClient, KeysStatus } from "./client";
+import type { KeysClient, KeysStatus, KeysVenue } from "./client";
 import { KEYS_VENUE } from "./client";
 
-const PANEL_TITLE = "Kraken exchange key";
-const HELPER_TEXT =
-  "Probe a trade-only Kraken key, store it in this machine’s OS keychain, then review status and free holdings. Live order send stays disabled in this paper-only release.";
-const LOADING_TEXT = "Reading Kraken key status…";
-const LOAD_ERROR_PREFIX =
-  "Could not read Kraken key status — check the workstation is running.";
-const KEY_LABEL = "Public key";
-const SECRET_LABEL = "Private key";
+type VenueCopy = {
+  title: string;
+  helper: string;
+  loading: string;
+  loadErrorPrefix: string;
+  keyLabel: string;
+  secretLabel: string;
+  absent: string;
+  secretMultiline: boolean;
+};
+
+const VENUE_COPY: Record<KeysVenue, VenueCopy> = {
+  kraken: {
+    title: "Kraken exchange key",
+    helper:
+      "Probe a trade-only Kraken key, store it in this machine’s OS keychain, then review status and free holdings. Live order send stays disabled in this paper-only release.",
+    loading: "Reading Kraken key status…",
+    loadErrorPrefix:
+      "Could not read Kraken key status — check the workstation is running.",
+    keyLabel: "Public key",
+    secretLabel: "Private key",
+    absent:
+      "No Kraken key is stored on this machine yet. Enter trade-only key material below.",
+    secretMultiline: false,
+  },
+  coinbase: {
+    title: "Coinbase exchange key",
+    helper:
+      "Probe a trade-only Coinbase Advanced Trade key, store it in this machine’s OS keychain, then review status and free holdings. Live order send stays disabled in this paper-only release.",
+    loading: "Reading Coinbase key status…",
+    loadErrorPrefix:
+      "Could not read Coinbase key status — check the workstation is running.",
+    keyLabel: "API key name",
+    secretLabel: "Private key (PEM)",
+    absent:
+      "No Coinbase key is stored on this machine yet. Enter trade-only key material below.",
+    secretMultiline: true,
+  },
+};
+
 const STORE_LABEL = "Probe and store";
 const REMOVE_LABEL = "Remove key";
 const REFRESH_LABEL = "Refresh";
-const ABSENT_COPY =
-  "No Kraken key is stored on this machine yet. Enter trade-only key material below.";
 const PAPER_ONLY_NOTE =
   "Storing a key does not enable live trading in this paper-only release.";
 
 export type KeysOnboardingPanelProps = {
   client: KeysClient;
+  /** Venue this panel manages. Defaults to Kraken for single-panel callers. */
+  venue?: KeysVenue;
   /** When false, skip network reads (session still starting or failed). */
   enabled?: boolean;
 };
@@ -37,8 +69,10 @@ function describeStatus(status: KeysStatus): string {
 
 export function KeysOnboardingPanel({
   client,
+  venue = KEYS_VENUE,
   enabled = true,
 }: KeysOnboardingPanelProps): JSX.Element {
+  const copy = VENUE_COPY[venue];
   const [status, setStatus] = useState<KeysStatus | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +83,10 @@ export function KeysOnboardingPanel({
   const requestRef = useRef(0);
   const inFlight = useRef(false);
 
+  const publicId = `keys-public-${venue}`;
+  const privateId = `keys-private-${venue}`;
+  const titleId = `keys-onboarding-title-${venue}`;
+
   const load = useCallback(async (): Promise<void> => {
     if (!enabled) {
       setLoading(false);
@@ -58,7 +96,7 @@ export function KeysOnboardingPanel({
     setLoading(true);
     setError(null);
     try {
-      const next = await client.getStatus(KEYS_VENUE);
+      const next = await client.getStatus(venue);
       if (requestId !== requestRef.current) {
         return;
       }
@@ -73,7 +111,7 @@ export function KeysOnboardingPanel({
         setLoading(false);
       }
     }
-  }, [client, enabled]);
+  }, [client, enabled, venue]);
 
   useEffect(() => {
     void load();
@@ -86,14 +124,18 @@ export function KeysOnboardingPanel({
     const trimmedKey = key.trim();
     const trimmedSecret = secret.trim();
     if (trimmedKey === "" || trimmedSecret === "") {
-      setFeedback("Enter both the public key and the private key.");
+      setFeedback(
+        venue === "coinbase"
+          ? "Enter both the API key name and the private key."
+          : "Enter both the public key and the private key.",
+      );
       return;
     }
     inFlight.current = true;
     setPending(true);
     setFeedback(null);
     try {
-      const result = await client.probeAndStore(trimmedKey, trimmedSecret, KEYS_VENUE);
+      const result = await client.probeAndStore(trimmedKey, trimmedSecret, venue);
       setFeedback(result.message);
       if (result.ok) {
         setKey("");
@@ -108,7 +150,7 @@ export function KeysOnboardingPanel({
       inFlight.current = false;
       setPending(false);
     }
-  }, [client, enabled, key, load, secret]);
+  }, [client, enabled, key, load, secret, venue]);
 
   const handleRemove = useCallback(async (): Promise<void> => {
     if (inFlight.current || !enabled) {
@@ -118,7 +160,7 @@ export function KeysOnboardingPanel({
     setPending(true);
     setFeedback(null);
     try {
-      const result = await client.remove(KEYS_VENUE);
+      const result = await client.remove(venue);
       setFeedback(result.message);
       await load();
     } catch (err) {
@@ -127,7 +169,7 @@ export function KeysOnboardingPanel({
       inFlight.current = false;
       setPending(false);
     }
-  }, [client, enabled, load]);
+  }, [client, enabled, load, venue]);
 
   const controlsDisabled = !enabled || pending || loading;
   const present = status?.present === true && status.corrupt !== true;
@@ -135,17 +177,18 @@ export function KeysOnboardingPanel({
   return (
     <section
       className="kbot-keys"
-      data-testid="keys-onboarding"
-      aria-labelledby="keys-onboarding-title"
+      data-testid={`keys-onboarding-${venue}`}
+      data-venue={venue}
+      aria-labelledby={titleId}
     >
       <div className="kbot-keys__head">
-        <h2 className="kbot-keys__title" id="keys-onboarding-title">
-          {PANEL_TITLE}
+        <h2 className="kbot-keys__title" id={titleId}>
+          {copy.title}
         </h2>
         <button
           type="button"
           className="kbot-keys__refresh"
-          data-testid="keys-refresh"
+          data-testid={`keys-refresh-${venue}`}
           disabled={controlsDisabled}
           aria-busy={loading || undefined}
           onClick={() => {
@@ -156,43 +199,50 @@ export function KeysOnboardingPanel({
         </button>
       </div>
 
-      <p className="kbot-keys__helper">{HELPER_TEXT}</p>
-      <p className="kbot-keys__paper-only" data-testid="keys-paper-only">
+      <p className="kbot-keys__helper">{copy.helper}</p>
+      <p className="kbot-keys__paper-only" data-testid={`keys-paper-only-${venue}`}>
         {PAPER_ONLY_NOTE}
       </p>
 
       {!enabled ? (
-        <p className="kbot-keys__status" data-testid="keys-waiting-session" role="status">
+        <p
+          className="kbot-keys__status"
+          data-testid={`keys-waiting-session-${venue}`}
+          role="status"
+        >
           Waiting for the local session before reading key status.
         </p>
       ) : null}
 
       {enabled && loading && status === null ? (
-        <p className="kbot-keys__status" data-testid="keys-loading" role="status">
-          {LOADING_TEXT}
+        <p className="kbot-keys__status" data-testid={`keys-loading-${venue}`} role="status">
+          {copy.loading}
         </p>
       ) : null}
 
       {error !== null ? (
-        <p className="kbot-keys__error" role="alert" data-testid="keys-error">
-          {LOAD_ERROR_PREFIX} ({error})
+        <p className="kbot-keys__error" role="alert" data-testid={`keys-error-${venue}`}>
+          {copy.loadErrorPrefix} ({error})
         </p>
       ) : null}
 
       {status !== null ? (
         <>
-          <p className="kbot-keys__status" data-testid="keys-status" role="status">
+          <p className="kbot-keys__status" data-testid={`keys-status-${venue}`} role="status">
             {describeStatus(status)}
             {status.backend_label ? ` · ${status.backend_label}` : ""}
           </p>
 
           {present ? (
-            <div className="kbot-keys__connected" data-testid="keys-connected">
+            <div className="kbot-keys__connected" data-testid={`keys-connected-${venue}`}>
               {status.balances_available && status.balances !== null ? (
-                <div data-testid="keys-balances">
+                <div data-testid={`keys-balances-${venue}`}>
                   <h3 className="kbot-keys__balances-title">Free holdings</h3>
                   {status.balances.length === 0 ? (
-                    <p className="kbot-keys__status" data-testid="keys-balances-empty">
+                    <p
+                      className="kbot-keys__status"
+                      data-testid={`keys-balances-empty-${venue}`}
+                    >
                       No free holdings reported.
                     </p>
                   ) : (
@@ -201,7 +251,7 @@ export function KeysOnboardingPanel({
                         <li
                           key={row.asset}
                           className="kbot-keys__balance-row"
-                          data-testid={`keys-balance-${row.asset}`}
+                          data-testid={`keys-balance-${venue}-${row.asset}`}
                         >
                           <span className="kbot-keys__balance-asset">{row.asset}</span>
                           <span className="kbot-keys__balance-free">{row.free}</span>
@@ -211,14 +261,17 @@ export function KeysOnboardingPanel({
                   )}
                 </div>
               ) : (
-                <p className="kbot-keys__status" data-testid="keys-balances-unavailable">
+                <p
+                  className="kbot-keys__status"
+                  data-testid={`keys-balances-unavailable-${venue}`}
+                >
                   Holdings are unavailable right now.
                 </p>
               )}
               <button
                 type="button"
                 className="kbot-keys__remove"
-                data-testid="keys-remove"
+                data-testid={`keys-remove-${venue}`}
                 disabled={controlsDisabled}
                 aria-busy={pending || undefined}
                 onClick={() => {
@@ -229,17 +282,17 @@ export function KeysOnboardingPanel({
               </button>
             </div>
           ) : (
-            <div className="kbot-keys__form" data-testid="keys-form">
-              <p className="kbot-keys__absent" data-testid="keys-absent">
-                {ABSENT_COPY}
+            <div className="kbot-keys__form" data-testid={`keys-form-${venue}`}>
+              <p className="kbot-keys__absent" data-testid={`keys-absent-${venue}`}>
+                {copy.absent}
               </p>
               <div className="kbot-keys__row">
-                <label className="kbot-keys__label" htmlFor="keys-public">
-                  {KEY_LABEL}
+                <label className="kbot-keys__label" htmlFor={publicId}>
+                  {copy.keyLabel}
                 </label>
                 <input
-                  id="keys-public"
-                  data-testid="keys-public"
+                  id={publicId}
+                  data-testid={`keys-public-${venue}`}
                   type="text"
                   autoComplete="off"
                   spellCheck={false}
@@ -249,24 +302,38 @@ export function KeysOnboardingPanel({
                 />
               </div>
               <div className="kbot-keys__row">
-                <label className="kbot-keys__label" htmlFor="keys-private">
-                  {SECRET_LABEL}
+                <label className="kbot-keys__label" htmlFor={privateId}>
+                  {copy.secretLabel}
                 </label>
-                <input
-                  id="keys-private"
-                  data-testid="keys-private"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={secret}
-                  disabled={controlsDisabled}
-                  onChange={(event) => setSecret(event.target.value)}
-                />
+                {copy.secretMultiline ? (
+                  <textarea
+                    id={privateId}
+                    data-testid={`keys-private-${venue}`}
+                    className="kbot-keys__secret-area"
+                    autoComplete="off"
+                    spellCheck={false}
+                    rows={4}
+                    value={secret}
+                    disabled={controlsDisabled}
+                    onChange={(event) => setSecret(event.target.value)}
+                  />
+                ) : (
+                  <input
+                    id={privateId}
+                    data-testid={`keys-private-${venue}`}
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={secret}
+                    disabled={controlsDisabled}
+                    onChange={(event) => setSecret(event.target.value)}
+                  />
+                )}
               </div>
               <button
                 type="button"
                 className="kbot-keys__store"
-                data-testid="keys-store"
+                data-testid={`keys-store-${venue}`}
                 disabled={controlsDisabled || key.trim() === "" || secret.trim() === ""}
                 aria-busy={pending || undefined}
                 onClick={() => {
@@ -281,7 +348,11 @@ export function KeysOnboardingPanel({
       ) : null}
 
       {feedback !== null ? (
-        <p className="kbot-keys__feedback" role="status" data-testid="keys-feedback">
+        <p
+          className="kbot-keys__feedback"
+          role="status"
+          data-testid={`keys-feedback-${venue}`}
+        >
           {feedback}
         </p>
       ) : null}

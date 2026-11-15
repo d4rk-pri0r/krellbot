@@ -1,8 +1,9 @@
 /*
- * Kraken keys onboarding — Signal (KRELL-SIGNAL-20261010).
+ * Exchange keys onboarding — Signal (KRELL-SIGNAL-20261010).
  *
- * Workspace rail form for probe/store/status/remove. Sage is the single
- * affirmative store action; caution/coral for load errors only.
+ * Workspace rail form for Kraken + Coinbase probe/store/status/remove.
+ * Sage is the single affirmative store action; caution/coral for load
+ * errors only.
  *
  *   navy #0E1C29  surface #14222E  panel #18354A  line #22465D
  *   text #E9F0F5  muted #ABC4D8  seafoam #A8D8D1  sage #B3DDA8
@@ -14,6 +15,12 @@
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+.kbot-keys + .kbot-keys {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line, #22465d);
 }
 
 .kbot-keys *,
@@ -119,7 +126,8 @@
 }
 
 .kbot-keys input[type="text"],
-.kbot-keys input[type="password"] {
+.kbot-keys input[type="password"],
+.kbot-keys__secret-area {
   min-width: 0;
   min-height: 40px;
   width: 100%;
@@ -132,12 +140,20 @@
   font-size: 12.5px;
 }
 
-.kbot-keys input:disabled {
+.kbot-keys__secret-area {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.kbot-keys input:disabled,
+.kbot-keys__secret-area:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
 .kbot-keys input:focus-visible,
+.kbot-keys__secret-area:focus-visible,
 .kbot-keys__refresh:focus-visible,
 .kbot-keys__remove:focus-visible,
 .kbot-keys__store:focus-visible {

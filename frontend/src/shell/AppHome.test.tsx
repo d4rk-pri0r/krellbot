@@ -4,8 +4,8 @@
  * These tests pin the mounted application Home as a real, welcoming
  * workspace overview: readable purpose, conspicuous local-preview /
  * live-unavailable copy, five state-driven navigation cards bound to
- * the existing views, keyboard activation, and a Kraken keys rail that
- * uses an injectable fake client (no fabricated market state).
+ * the existing views, keyboard activation, and a Kraken + Coinbase keys
+ * rail that uses an injectable fake client (no fabricated market state).
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -106,7 +106,8 @@ describe("AppHome — application overview", () => {
     expect(
       screen.getByText(/Build, inspect and paper-test/i),
     ).toBeDefined();
-    await screen.findByTestId("keys-onboarding");
+    await screen.findByTestId("keys-onboarding-kraken");
+    await screen.findByTestId("keys-onboarding-coinbase");
   });
 
   it("offers a primary CTA into the paper workstation", () => {
@@ -166,16 +167,22 @@ describe("AppHome — application overview", () => {
     expect(onNavigate).toHaveBeenLastCalledWith("operations");
   });
 
-  it("replaces the old not-connected copy with the Kraken keys form", async () => {
+  it("replaces the old not-connected copy with Kraken and Coinbase keys forms", async () => {
     renderHome();
     const works = screen.getByRole("region", { name: /what works here/i });
     expect(works.textContent).toMatch(/strategy/i);
     expect(works.textContent).toMatch(/research/i);
     expect(screen.queryByText(/No exchange is connected in this build/i)).toBeNull();
-    const keys = await screen.findByTestId("keys-onboarding");
-    expect(keys.textContent).toMatch(/Kraken exchange key/i);
-    expect(await screen.findByTestId("keys-form")).toBeTruthy();
-    expect((await screen.findByTestId("keys-status")).textContent).toMatch(
+    const kraken = await screen.findByTestId("keys-onboarding-kraken");
+    expect(kraken.textContent).toMatch(/Kraken exchange key/i);
+    const coinbase = await screen.findByTestId("keys-onboarding-coinbase");
+    expect(coinbase.textContent).toMatch(/Coinbase exchange key/i);
+    expect(await screen.findByTestId("keys-form-kraken")).toBeTruthy();
+    expect(await screen.findByTestId("keys-form-coinbase")).toBeTruthy();
+    expect((await screen.findByTestId("keys-status-kraken")).textContent).toMatch(
+      /no key stored/i,
+    );
+    expect((await screen.findByTestId("keys-status-coinbase")).textContent).toMatch(
       /no key stored/i,
     );
   });
@@ -184,7 +191,7 @@ describe("AppHome — application overview", () => {
     const { container } = render(
       <AppHome onNavigate={() => {}} keysClient={fakeKeysClient()} />,
     );
-    await screen.findByTestId("keys-form");
+    await screen.findByTestId("keys-form-kraken");
     const html = container.innerHTML;
     for (const fabricated of [
       "live ready",
@@ -205,7 +212,7 @@ describe("AppHome — application overview", () => {
     const { container } = render(
       <AppHome onNavigate={() => {}} keysClient={fakeKeysClient()} />,
     );
-    await screen.findByTestId("keys-form");
+    await screen.findByTestId("keys-form-kraken");
     const html = container.innerHTML;
     for (const fabricated of [
       "$",
@@ -220,7 +227,8 @@ describe("AppHome — application overview", () => {
     ]) {
       expect(html.includes(fabricated)).toBe(false);
     }
-    expect(screen.queryByTestId("keys-balances")).toBeNull();
+    expect(screen.queryByTestId("keys-balances-kraken")).toBeNull();
+    expect(screen.queryByTestId("keys-balances-coinbase")).toBeNull();
   });
 
   it("shows the session note only while the local session is starting", async () => {
@@ -235,7 +243,8 @@ describe("AppHome — application overview", () => {
     expect(screen.getByTestId("app-home-session").textContent).toMatch(
       /starting the local session/i,
     );
-    expect(screen.getByTestId("keys-waiting-session")).toBeTruthy();
+    expect(screen.getByTestId("keys-waiting-session-kraken")).toBeTruthy();
+    expect(screen.getByTestId("keys-waiting-session-coinbase")).toBeTruthy();
     rerender(
       <AppHome
         onNavigate={() => {}}
@@ -245,7 +254,8 @@ describe("AppHome — application overview", () => {
     );
     expect(screen.queryByTestId("app-home-session")).toBeNull();
     await waitFor(() => {
-      expect(keysClient.getStatus).toHaveBeenCalled();
+      expect(keysClient.getStatus).toHaveBeenCalledWith("kraken");
+      expect(keysClient.getStatus).toHaveBeenCalledWith("coinbase");
     });
   });
 });
