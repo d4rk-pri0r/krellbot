@@ -3,22 +3,24 @@ import "./OwnedStrategyForm.signal.css";
 import {
   COMPARISONS,
   MOVING_AVERAGE_KINDS,
+  NESTING_MODES,
   RECIPE_NAMES,
+  STOP_KINDS,
   TIMEFRAMES,
+  VENUES,
   buildOwnedStrategyPack,
   validateOwnedStrategyField,
   type Comparison,
   type MovingAverageKind,
+  type NestingMode,
   type OwnedStrategyField,
   type OwnedStrategyFormState,
   type RecipeName,
+  type StopKind,
   type Timeframe,
+  type Venue,
 } from "./ownedStrategy";
 import type { Pack } from "./client";
-import {
-  KRAKEN_WAVE_PAIR_OPTIONS,
-  krakenWavePairLabel,
-} from "../../markets/krakenBtcUsd";
 
 export type OwnedStrategyFormProps = {
   state: OwnedStrategyFormState;
@@ -45,9 +47,24 @@ const CROSS_COMPARISON_LABELS: Record<Comparison, string> = {
   crosses_below: "fast average crosses below slow",
 };
 
+const CONFIRM_COMPARISON_LABELS: Record<Comparison, string> = {
+  ">": "close above threshold",
+  "<": "close below threshold",
+  ">=": "close at or above threshold",
+  "<=": "close at or below threshold",
+  crosses_above: "close crosses above threshold",
+  crosses_below: "close crosses below threshold",
+};
+
 const KIND_LABELS: Record<MovingAverageKind, string> = {
   sma: "SMA (simple)",
   ema: "EMA (exponential)",
+  wma: "WMA (weighted)",
+  vwma: "VWMA (volume-weighted)",
+  stdev: "Stdev (standard deviation)",
+  roc: "ROC (rate of change)",
+  efficiency_ratio: "Efficiency ratio",
+  hma: "HMA (Hull)",
 };
 
 const RECIPE_LABELS: Record<RecipeName, string> = {
@@ -55,47 +72,87 @@ const RECIPE_LABELS: Record<RecipeName, string> = {
   ma_cross: "Two-average crossover (fast vs slow)",
 };
 
+const VENUE_LABELS: Record<Venue, string> = {
+  kraken: "Kraken",
+  coinbase: "Coinbase",
+};
+
+const STOP_KIND_LABELS: Record<StopKind, string> = {
+  pct: "Percentage stop",
+  atr: "ATR stop",
+};
+
+const NESTING_LABELS: Record<NestingMode, string> = {
+  leaf: "Single condition",
+  all: "All of (condition and confirm)",
+  any: "Any of (condition or confirm)",
+};
+
 type TextFieldName =
   | "name"
   | "id"
+  | "pair"
+  | "secondPair"
   | "fastLength"
   | "length"
   | "maxAccountPct"
-  | "stopPct";
+  | "stopPct"
+  | "atrLen"
+  | "atrMult"
+  | "entryConfirmThreshold"
+  | "exitConfirmThreshold";
 
-const TEXT_FIELD_LABELS: Record<TextFieldName | "pair", string> = {
+const TEXT_FIELD_LABELS: Record<TextFieldName, string> = {
   name: "Strategy name",
   id: "Strategy id",
-  pair: "Kraken pair",
+  pair: "Market pair",
+  secondPair: "Optional second pair",
   fastLength: "Fast average length (bars)",
   length: "Average length (bars)",
   maxAccountPct: "Max account percent",
   stopPct: "Protective stop percent",
+  atrLen: "ATR stop length (bars)",
+  atrMult: "ATR stop multiplier",
+  entryConfirmThreshold: "Entry confirm threshold",
+  exitConfirmThreshold: "Exit confirm threshold",
 };
 
 const TEXT_FIELD_HINTS: Partial<Record<TextFieldName, string>> = {
   id: "lowercase-with-hyphens, max 32 characters; editing it starts a different strategy",
+  pair: "uppercase like XXBTZUSD, XETHZUSD, or BTC-USD",
+  secondPair: "leave blank for one market; set to add a second paper market (max two)",
   fastLength: "must be shorter than the slow average length",
+  atrMult: "greater than 0 and at most 20",
+  entryConfirmThreshold: "numeric close threshold paired with the entry nesting",
+  exitConfirmThreshold: "numeric close threshold paired with the exit nesting",
 };
-
-const PAIR_FIELD_HINT =
-  "Wave market only: display BTC/USD, stored as the Kraken venue symbol XXBTZUSD";
 
 const VALIDATED_FIELDS: OwnedStrategyField[] = [
   "name",
   "id",
   "pair",
+  "secondPair",
   "length",
   "maxAccountPct",
-  "stopPct",
 ];
 
 function problemsFor(state: OwnedStrategyFormState): string[] {
   const problems: string[] = [];
   const fields: OwnedStrategyField[] =
     state.recipe === "ma_cross"
-      ? [...VALIDATED_FIELDS.slice(0, 3), "fastLength", ...VALIDATED_FIELDS.slice(3)]
+      ? [...VALIDATED_FIELDS.slice(0, 4), "fastLength", ...VALIDATED_FIELDS.slice(4)]
       : VALIDATED_FIELDS;
+  if (state.stopKind === "pct") {
+    fields.push("stopPct");
+  } else {
+    fields.push("atrLen", "atrMult");
+  }
+  if (state.entryNesting !== "leaf") {
+    fields.push("entryConfirmThreshold");
+  }
+  if (state.exitNesting !== "leaf") {
+    fields.push("exitConfirmThreshold");
+  }
   for (const field of fields) {
     const message = validateOwnedStrategyField(field, state[field]);
     if (message) {
@@ -161,24 +218,46 @@ export function OwnedStrategyForm({
             ? (raw as MovingAverageKind)
             : field === "recipe"
               ? (raw as RecipeName)
-              : field === "pair"
-                ? raw
-                : (raw as Comparison);
+              : field === "venue" || field === "secondVenue"
+                ? (raw as Venue)
+                : field === "stopKind"
+                  ? (raw as StopKind)
+                  : field === "entryNesting" || field === "exitNesting"
+                    ? (raw as NestingMode)
+                    : (raw as Comparison);
       update({ [field]: value } as Partial<OwnedStrategyFormState>);
     };
 
   const crossover = state.recipe === "ma_cross";
   const comparisonLabels = crossover ? CROSS_COMPARISON_LABELS : COMPARISON_LABELS;
-  const textFieldNames: TextFieldName[] = [
-    "name",
-    "id",
-    "fastLength",
-    "length",
-    "maxAccountPct",
-    "stopPct",
-  ];
-  const visibleTextFields = textFieldNames.filter(
-    (field) => field !== "fastLength" || crossover,
+  const atrStop = state.stopKind === "atr";
+  const showEntryConfirm = state.entryNesting !== "leaf";
+  const showExitConfirm = state.exitNesting !== "leaf";
+
+  const renderTextField = (field: TextFieldName): JSX.Element => (
+    <label
+      key={field}
+      className="kbot-owned-strategy-form__field"
+      htmlFor={`kbot-owned-strategy-${field}`}
+    >
+      <span className="kbot-owned-strategy-form__field-label">
+        {TEXT_FIELD_LABELS[field]}
+      </span>
+      <input
+        id={`kbot-owned-strategy-${field}`}
+        className="kbot-owned-strategy-form__input"
+        type="text"
+        value={state[field]}
+        onChange={handleTextChange(field)}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {TEXT_FIELD_HINTS[field] ? (
+        <span className="kbot-owned-strategy-form__field-hint">
+          {TEXT_FIELD_HINTS[field]}
+        </span>
+      ) : null}
+    </label>
   );
 
   return (
@@ -191,9 +270,10 @@ export function OwnedStrategyForm({
       >
         <h3 className="kbot-owned-strategy-form__title">Owned strategy</h3>
         <p className="kbot-owned-strategy-form__hint">
-          A supported subset of the pack DSL: close versus one moving average, or
-          a fast average crossing a slow average, plus a percentage protective
-          stop and one Kraken market. Advanced JSON stays available below.
+          Guided pack coverage: close versus one indicator or a fast/slow
+          crossover, optional all/any confirm nesting, percentage or ATR stop,
+          and one or two Kraken or Coinbase paper markets. Advanced JSON stays
+          available below; validate before arm is unchanged.
         </p>
         <div className="kbot-owned-strategy-form__grid">
           <label
@@ -226,59 +306,54 @@ export function OwnedStrategyForm({
               ? "Recipe: two-average crossover. Enter and exit comparisons now mean fast average versus slow average. A Fast average length field has appeared."
               : "Recipe: close versus one average. Enter and exit comparisons now mean close versus the single average. The Fast average length field is hidden."}
           </p>
-          {visibleTextFields.map((field) => (
-            <label
-              key={field}
-              className="kbot-owned-strategy-form__field"
-              htmlFor={`kbot-owned-strategy-${field}`}
-            >
-              <span className="kbot-owned-strategy-form__field-label">
-                {TEXT_FIELD_LABELS[field]}
-              </span>
-              <input
-                id={`kbot-owned-strategy-${field}`}
-                className="kbot-owned-strategy-form__input"
-                type="text"
-                value={state[field]}
-                onChange={handleTextChange(field)}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {TEXT_FIELD_HINTS[field] ? (
-                <span className="kbot-owned-strategy-form__field-hint">
-                  {TEXT_FIELD_HINTS[field]}
-                </span>
-              ) : null}
-            </label>
-          ))}
-          <div className="kbot-owned-strategy-form__field">
-            <label
-              className="kbot-owned-strategy-form__field-label"
-              htmlFor="kbot-owned-strategy-pair"
-            >
-              {TEXT_FIELD_LABELS.pair}
-            </label>
+          {renderTextField("name")}
+          {renderTextField("id")}
+          <label
+            className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-venue"
+          >
+            <span className="kbot-owned-strategy-form__field-label">
+              Market venue
+            </span>
             <select
-              id="kbot-owned-strategy-pair"
+              id="kbot-owned-strategy-venue"
               className="kbot-owned-strategy-form__select"
-              data-testid="owned-strategy-pair"
-              value={state.pair}
-              onChange={handleSelectChange("pair")}
-              aria-describedby="kbot-owned-strategy-pair-hint"
+              value={state.venue}
+              onChange={handleSelectChange("venue")}
             >
-              {KRAKEN_WAVE_PAIR_OPTIONS.map((option) => (
-                <option key={option.venueSymbol} value={option.venueSymbol}>
-                  {krakenWavePairLabel(option.venueSymbol)}
+              {VENUES.map((venue) => (
+                <option key={venue} value={venue}>
+                  {VENUE_LABELS[venue]}
                 </option>
               ))}
             </select>
-            <span
-              id="kbot-owned-strategy-pair-hint"
-              className="kbot-owned-strategy-form__field-hint"
-            >
-              {PAIR_FIELD_HINT}
+          </label>
+          {renderTextField("pair")}
+          {renderTextField("secondPair")}
+          <label
+            className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-secondVenue"
+          >
+            <span className="kbot-owned-strategy-form__field-label">
+              Second venue
             </span>
-          </div>
+            <select
+              id="kbot-owned-strategy-secondVenue"
+              className="kbot-owned-strategy-form__select"
+              value={state.secondVenue}
+              onChange={handleSelectChange("secondVenue")}
+              disabled={state.secondPair.trim() === ""}
+            >
+              {VENUES.map((venue) => (
+                <option key={venue} value={venue}>
+                  {VENUE_LABELS[venue]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {crossover ? renderTextField("fastLength") : null}
+          {renderTextField("length")}
+          {renderTextField("maxAccountPct")}
           <label
             className="kbot-owned-strategy-form__field"
             htmlFor="kbot-owned-strategy-timeframe"
@@ -302,7 +377,7 @@ export function OwnedStrategyForm({
             htmlFor="kbot-owned-strategy-kind"
           >
             <span className="kbot-owned-strategy-form__field-label">
-              {crossover ? "Average type (both averages)" : "Average type"}
+              {crossover ? "Indicator type (both averages)" : "Indicator type"}
             </span>
             <select
               id="kbot-owned-strategy-kind"
@@ -317,6 +392,34 @@ export function OwnedStrategyForm({
               ))}
             </select>
           </label>
+          <label
+            className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-stopKind"
+          >
+            <span className="kbot-owned-strategy-form__field-label">
+              Protective stop
+            </span>
+            <select
+              id="kbot-owned-strategy-stopKind"
+              className="kbot-owned-strategy-form__select"
+              value={state.stopKind}
+              onChange={handleSelectChange("stopKind")}
+            >
+              {STOP_KINDS.map((kind) => (
+                <option key={kind} value={kind}>
+                  {STOP_KIND_LABELS[kind]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {atrStop ? (
+            <>
+              {renderTextField("atrLen")}
+              {renderTextField("atrMult")}
+            </>
+          ) : (
+            renderTextField("stopPct")
+          )}
           <label
             className="kbot-owned-strategy-form__field"
             htmlFor="kbot-owned-strategy-entryComparison"
@@ -339,6 +442,51 @@ export function OwnedStrategyForm({
           </label>
           <label
             className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-entryNesting"
+          >
+            <span className="kbot-owned-strategy-form__field-label">
+              Entry nesting
+            </span>
+            <select
+              id="kbot-owned-strategy-entryNesting"
+              className="kbot-owned-strategy-form__select"
+              value={state.entryNesting}
+              onChange={handleSelectChange("entryNesting")}
+            >
+              {NESTING_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {NESTING_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {showEntryConfirm ? (
+            <>
+              <label
+                className="kbot-owned-strategy-form__field"
+                htmlFor="kbot-owned-strategy-entryConfirmComparison"
+              >
+                <span className="kbot-owned-strategy-form__field-label">
+                  Entry confirm when
+                </span>
+                <select
+                  id="kbot-owned-strategy-entryConfirmComparison"
+                  className="kbot-owned-strategy-form__select"
+                  value={state.entryConfirmComparison}
+                  onChange={handleSelectChange("entryConfirmComparison")}
+                >
+                  {COMPARISONS.map((comparison) => (
+                    <option key={comparison} value={comparison}>
+                      {CONFIRM_COMPARISON_LABELS[comparison]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {renderTextField("entryConfirmThreshold")}
+            </>
+          ) : null}
+          <label
+            className="kbot-owned-strategy-form__field"
             htmlFor="kbot-owned-strategy-exitComparison"
           >
             <span className="kbot-owned-strategy-form__field-label">Exit when</span>
@@ -355,6 +503,51 @@ export function OwnedStrategyForm({
               ))}
             </select>
           </label>
+          <label
+            className="kbot-owned-strategy-form__field"
+            htmlFor="kbot-owned-strategy-exitNesting"
+          >
+            <span className="kbot-owned-strategy-form__field-label">
+              Exit nesting
+            </span>
+            <select
+              id="kbot-owned-strategy-exitNesting"
+              className="kbot-owned-strategy-form__select"
+              value={state.exitNesting}
+              onChange={handleSelectChange("exitNesting")}
+            >
+              {NESTING_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {NESTING_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {showExitConfirm ? (
+            <>
+              <label
+                className="kbot-owned-strategy-form__field"
+                htmlFor="kbot-owned-strategy-exitConfirmComparison"
+              >
+                <span className="kbot-owned-strategy-form__field-label">
+                  Exit confirm when
+                </span>
+                <select
+                  id="kbot-owned-strategy-exitConfirmComparison"
+                  className="kbot-owned-strategy-form__select"
+                  value={state.exitConfirmComparison}
+                  onChange={handleSelectChange("exitConfirmComparison")}
+                >
+                  {COMPARISONS.map((comparison) => (
+                    <option key={comparison} value={comparison}>
+                      {CONFIRM_COMPARISON_LABELS[comparison]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {renderTextField("exitConfirmThreshold")}
+            </>
+          ) : null}
         </div>
         {problemList.length > 0 ? (
           <ul
@@ -368,6 +561,7 @@ export function OwnedStrategyForm({
         ) : null}
         <p className="kbot-owned-strategy-form__footnote">
           Paper-trading only; live execution stays disabled in this workstation.
+          Arm still requires a validated revision.
         </p>
       </section>
     </div>

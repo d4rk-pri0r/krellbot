@@ -1,35 +1,38 @@
 // Owned-strategy form model.
 //
-// This is a deliberately narrow, supported subset of the Pack DSL
-// (src/krellbot/pack/schema.json): a single-average recipe (close versus one
-// moving average) or a two-average crossover recipe (fast average crossing
-// slow average) over close, leaf entry and exit conditions, a percentage
-// protective stop, and a single Kraken market. Anything else — imported
-// packs with nested conditions, extra indicators, other venues or stop
-// kinds — is reported as unsupported (`readOwnedStrategy` returns null) so
-// the editor never silently rewrites or strips it.
+// Guided subset of the Pack DSL (src/krellbot/pack/schema.json): close versus
+// one indicator or a two-average crossover, optional single-level all/any
+// nesting with a close-vs-threshold confirm leaf, percentage or ATR protective
+// stops, and one or two kraken|coinbase markets (paper-capable). Anything else
+// — deeper nesting, extra indicator params (power_mean / roofing), more than
+// two markets, unknown keys — returns null from `readOwnedStrategy` so the
+// editor never silently rewrites or strips it.
 
 import type { Pack } from "./client";
-import {
-  KRAKEN_BTC_USD_VENUE_SYMBOL,
-  isKrakenWavePairSymbol,
-} from "../../markets/krakenBtcUsd.ts";
 
 export const INDICATOR_NAME = "ma";
 export const FAST_INDICATOR_NAME = "fast";
 export const SLOW_INDICATOR_NAME = "slow";
 
-/** Stored Kraken venue symbol for the BTC/USD wave (not a display label). */
-export const DEFAULT_PAIR = KRAKEN_BTC_USD_VENUE_SYMBOL;
-
 export const TIMEFRAMES = ["1h", "4h", "1d"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 
-export const MOVING_AVERAGE_KINDS = ["sma", "ema"] as const;
+/** Src+len indicator fns the guided form can author (ATR is a stop, not here). */
+export const MOVING_AVERAGE_KINDS = [
+  "sma",
+  "ema",
+  "wma",
+  "vwma",
+  "stdev",
+  "roc",
+  "efficiency_ratio",
+  "hma",
+] as const;
 export type MovingAverageKind = (typeof MOVING_AVERAGE_KINDS)[number];
 
 export const RECIPE_NAMES = ["close_vs_ma", "ma_cross"] as const;
 export type RecipeName = (typeof RECIPE_NAMES)[number];
+
 export const COMPARISONS = [
   ">",
   "<",
@@ -40,10 +43,20 @@ export const COMPARISONS = [
 ] as const;
 export type Comparison = (typeof COMPARISONS)[number];
 
+export const VENUES = ["kraken", "coinbase"] as const;
+export type Venue = (typeof VENUES)[number];
+
+export const STOP_KINDS = ["pct", "atr"] as const;
+export type StopKind = (typeof STOP_KINDS)[number];
+
+export const NESTING_MODES = ["leaf", "all", "any"] as const;
+export type NestingMode = (typeof NESTING_MODES)[number];
+
 export type OwnedStrategyField =
   | "name"
   | "id"
   | "pair"
+  | "secondPair"
   | "timeframe"
   | "recipe"
   | "kind"
@@ -52,12 +65,19 @@ export type OwnedStrategyField =
   | "entryComparison"
   | "exitComparison"
   | "maxAccountPct"
-  | "stopPct";
+  | "stopPct"
+  | "atrLen"
+  | "atrMult"
+  | "entryConfirmThreshold"
+  | "exitConfirmThreshold";
 
 export type OwnedStrategyFormState = {
   name: string;
   id: string;
+  venue: Venue;
   pair: string;
+  secondVenue: Venue;
+  secondPair: string;
   timeframe: Timeframe;
   recipe: RecipeName;
   kind: MovingAverageKind;
@@ -65,8 +85,17 @@ export type OwnedStrategyFormState = {
   length: string;
   entryComparison: Comparison;
   exitComparison: Comparison;
+  entryNesting: NestingMode;
+  exitNesting: NestingMode;
+  entryConfirmComparison: Comparison;
+  exitConfirmComparison: Comparison;
+  entryConfirmThreshold: string;
+  exitConfirmThreshold: string;
   maxAccountPct: string;
+  stopKind: StopKind;
   stopPct: string;
+  atrLen: string;
+  atrMult: string;
 };
 
 // Bounds mirror schema.json plus pack/lint.py's lookback budget
@@ -77,9 +106,12 @@ const LENGTH_MAX = 599;
 const NAME_MAX = 120;
 const AUTHOR_MAX = 120;
 const DEFAULT_AUTHOR = "local workstation";
+const DEFAULT_PAIR = "XXBTZUSD";
 const DEFAULT_TIMEFRAME: Timeframe = "1h";
+const ATR_MULT_MAX = 20;
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const PAIR_PATTERN = /^[A-Z0-9]{2,16}(-[A-Z0-9]{2,16})?$/;
 
 function isFiniteNumber(text: string): boolean {
   if (!/^-?\d+(\.\d+)?$/.test(text)) {
@@ -126,8 +158,12 @@ export function validateOwnedStrategyField(
       }
       return undefined;
     case "pair":
-      if (!isKrakenWavePairSymbol(value)) {
-        return `Pair must be the wave Kraken BTC/USD symbol ${KRAKEN_BTC_USD_VENUE_SYMBOL}`;
+    case "secondPair":
+      if (field === "secondPair" && value.trim() === "") {
+        return undefined;
+      }
+      if (!PAIR_PATTERN.test(value)) {
+        return "Pair must be uppercase like XXBTZUSD or BTC-USD";
       }
       return undefined;
     case "length":
@@ -138,6 +174,11 @@ export function validateOwnedStrategyField(
     case "fastLength":
       if (!integerIn(value, LENGTH_MIN, LENGTH_MAX)) {
         return `Fast length must be a whole number between ${LENGTH_MIN} and ${LENGTH_MAX}`;
+      }
+      return undefined;
+    case "atrLen":
+      if (!integerIn(value, LENGTH_MIN, LENGTH_MAX)) {
+        return `ATR length must be a whole number between ${LENGTH_MIN} and ${LENGTH_MAX}`;
       }
       return undefined;
     case "maxAccountPct":
@@ -152,6 +193,23 @@ export function validateOwnedStrategyField(
       const valueNumber = Number(value);
       if (valueNumber <= 0 || valueNumber > 100) {
         return "Stop percent must be greater than 0 and at most 100";
+      }
+      return undefined;
+    }
+    case "atrMult": {
+      if (!isFiniteNumber(value)) {
+        return `ATR multiplier must be a number greater than 0 and at most ${ATR_MULT_MAX}`;
+      }
+      const valueNumber = Number(value);
+      if (valueNumber <= 0 || valueNumber > ATR_MULT_MAX) {
+        return `ATR multiplier must be greater than 0 and at most ${ATR_MULT_MAX}`;
+      }
+      return undefined;
+    }
+    case "entryConfirmThreshold":
+    case "exitConfirmThreshold": {
+      if (!isFiniteNumber(value)) {
+        return "Confirm threshold must be a finite number";
       }
       return undefined;
     }
@@ -177,9 +235,17 @@ function isComparison(value: unknown): value is Comparison {
   );
 }
 
-function isRecipe(value: unknown): value is RecipeName {
+function isVenue(value: unknown): value is Venue {
+  return typeof value === "string" && (VENUES as readonly string[]).includes(value);
+}
+
+function isStopKind(value: unknown): value is StopKind {
+  return typeof value === "string" && (STOP_KINDS as readonly string[]).includes(value);
+}
+
+function isNestingMode(value: unknown): value is NestingMode {
   return (
-    typeof value === "string" && (RECIPE_NAMES as readonly string[]).includes(value)
+    typeof value === "string" && (NESTING_MODES as readonly string[]).includes(value)
   );
 }
 
@@ -187,7 +253,10 @@ export function seedOwnedStrategyForm(): OwnedStrategyFormState {
   return {
     name: "Moving average plan",
     id: slugify("moving-average-plan"),
+    venue: "kraken",
     pair: DEFAULT_PAIR,
+    secondVenue: "coinbase",
+    secondPair: "",
     timeframe: DEFAULT_TIMEFRAME,
     recipe: "close_vs_ma",
     kind: "sma",
@@ -195,8 +264,17 @@ export function seedOwnedStrategyForm(): OwnedStrategyFormState {
     length: "20",
     entryComparison: ">",
     exitComparison: "<",
+    entryNesting: "leaf",
+    exitNesting: "leaf",
+    entryConfirmComparison: ">",
+    exitConfirmComparison: "<",
+    entryConfirmThreshold: "0",
+    exitConfirmThreshold: "0",
     maxAccountPct: "25",
+    stopKind: "pct",
     stopPct: "5",
+    atrLen: "14",
+    atrMult: "2",
   };
 }
 
@@ -212,25 +290,98 @@ export function seedOwnedStrategyPack(name: string): Pack {
   return buildOwnedStrategyPack(form, {}) as Pack;
 }
 
-type LeafCondition = [string, Comparison, string];
+type LeafCondition = [string, Comparison, string | number];
 
 function isLeafCondition(value: unknown): value is LeafCondition {
   return (
     Array.isArray(value) &&
     value.length === 3 &&
     typeof value[0] === "string" &&
-    typeof value[2] === "string" &&
+    (typeof value[2] === "string" || typeof value[2] === "number") &&
     isComparison(value[1])
   );
 }
 
+type ParsedCondition = {
+  leaf: LeafCondition;
+  nesting: NestingMode;
+  confirmComparison: Comparison;
+  confirmThreshold: string;
+};
+
+function parseGuidedCondition(value: unknown): ParsedCondition | null {
+  if (isLeafCondition(value)) {
+    // Primary leaves always use string indicator/price operands in the
+    // guided recipes; a numeric right-hand side is confirm-only.
+    if (typeof value[2] !== "string") {
+      return null;
+    }
+    return {
+      leaf: value,
+      nesting: "leaf",
+      confirmComparison: ">",
+      confirmThreshold: "0",
+    };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  const keys = Object.keys(row);
+  if (keys.length !== 1) {
+    return null;
+  }
+  const nesting = keys[0];
+  if (nesting !== "all" && nesting !== "any") {
+    return null;
+  }
+  const children = row[nesting];
+  if (!Array.isArray(children) || children.length !== 2) {
+    return null;
+  }
+  if (!isLeafCondition(children[0]) || typeof children[0][2] !== "string") {
+    return null;
+  }
+  const confirm = children[1];
+  if (
+    !isLeafCondition(confirm) ||
+    confirm[0] !== "close" ||
+    typeof confirm[2] !== "number" ||
+    !Number.isFinite(confirm[2])
+  ) {
+    return null;
+  }
+  return {
+    leaf: children[0],
+    nesting,
+    confirmComparison: confirm[1],
+    confirmThreshold: String(confirm[2]),
+  };
+}
+
+function wrapGuidedCondition(
+  leaf: LeafCondition,
+  nesting: NestingMode,
+  confirmComparison: Comparison,
+  threshold: number,
+): LeafCondition | { all: LeafCondition[] } | { any: LeafCondition[] } {
+  if (nesting === "leaf") {
+    return leaf;
+  }
+  const confirm: LeafCondition = ["close", confirmComparison, threshold];
+  if (nesting === "all") {
+    return { all: [leaf, confirm] };
+  }
+  return { any: [leaf, confirm] };
+}
+
 /**
  * Read a pack into form state only when it is exactly the supported subset —
- * either the generated single-average shape (one `ma` indicator, close
- * compared to it) or the generated two-average crossover shape (`fast` and
- * `slow` indicators, fast compared to slow). Anything else returns null so
- * callers keep the original bytes untouched instead of guessing at a partial
- * edit.
+ * either the generated single-indicator shape (close compared to it) or the
+ * generated two-average crossover shape (`fast` and `slow`), with optional
+ * single-level all/any confirm nesting, pct or ATR stop, and one or two
+ * kraken|coinbase markets. Anything else returns null so callers keep the
+ * original bytes untouched instead of guessing at a partial edit.
  */
 export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | null {
   if (!pack || pack.schema_version !== 1) {
@@ -260,20 +411,24 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
     Array.isArray(indicators) ||
     (Object.keys(indicators).length !== 1 && Object.keys(indicators).length !== 2) ||
     !Array.isArray(markets) ||
-    markets.length !== 1 ||
-    !markets[0] ||
-    typeof markets[0] !== "object"
+    markets.length < 1 ||
+    markets.length > 2
   ) {
     return null;
   }
-  const market = markets[0] as { venue?: unknown; pair?: unknown };
-  // Guided form is wave-pair only; other Kraken pairs stay editable as raw JSON.
-  if (
-    market.venue !== "kraken" ||
-    typeof market.pair !== "string" ||
-    !isKrakenWavePairSymbol(market.pair)
-  ) {
-    return null;
+  const parsedMarkets: { venue: Venue; pair: string }[] = [];
+  for (const raw of markets) {
+    if (!raw || typeof raw !== "object") {
+      return null;
+    }
+    const market = raw as { venue?: unknown; pair?: unknown };
+    if (!isVenue(market.venue) || typeof market.pair !== "string") {
+      return null;
+    }
+    if (!PAIR_PATTERN.test(market.pair)) {
+      return null;
+    }
+    parsedMarkets.push({ venue: market.venue, pair: market.pair });
   }
   const indicatorEntries = Object.entries(indicators as Record<string, unknown>).map(
     ([indicatorName, indicator]) => {
@@ -302,7 +457,9 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
   if (indicatorEntries.some((entry) => entry === null)) {
     return null;
   }
-  if (!isLeafCondition(entry) || !isLeafCondition(exit)) {
+  const parsedEntry = parseGuidedCondition(entry);
+  const parsedExit = parseGuidedCondition(exit);
+  if (!parsedEntry || !parsedExit) {
     return null;
   }
   if (!risk || typeof risk !== "object" || Array.isArray(risk)) {
@@ -312,21 +469,58 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
     max_account_pct?: unknown;
     stop?: unknown;
   };
-  const stop = riskRow.stop as { type?: unknown; pct?: unknown } | undefined;
   if (
     typeof riskRow.max_account_pct !== "number" ||
     !Number.isInteger(riskRow.max_account_pct) ||
     riskRow.max_account_pct < 1 ||
     riskRow.max_account_pct > 100 ||
-    !stop ||
-    stop.type !== "pct" ||
-    typeof stop.pct !== "number" ||
-    !Number.isFinite(stop.pct) ||
-    stop.pct <= 0 ||
-    stop.pct > 100 ||
-    Object.keys(riskRow).length !== 2 ||
-    Object.keys(stop).length !== 2
+    !riskRow.stop ||
+    typeof riskRow.stop !== "object" ||
+    Array.isArray(riskRow.stop) ||
+    Object.keys(riskRow).length !== 2
   ) {
+    return null;
+  }
+  const stop = riskRow.stop as {
+    type?: unknown;
+    pct?: unknown;
+    len?: unknown;
+    mult?: unknown;
+  };
+  let stopKind: StopKind;
+  let stopPct = "5";
+  let atrLen = "14";
+  let atrMult = "2";
+  if (stop.type === "pct") {
+    if (
+      typeof stop.pct !== "number" ||
+      !Number.isFinite(stop.pct) ||
+      stop.pct <= 0 ||
+      stop.pct > 100 ||
+      Object.keys(stop).length !== 2
+    ) {
+      return null;
+    }
+    stopKind = "pct";
+    stopPct = String(stop.pct);
+  } else if (stop.type === "atr") {
+    if (
+      typeof stop.len !== "number" ||
+      !Number.isInteger(stop.len) ||
+      stop.len < LENGTH_MIN ||
+      stop.len > LENGTH_MAX ||
+      typeof stop.mult !== "number" ||
+      !Number.isFinite(stop.mult) ||
+      stop.mult <= 0 ||
+      stop.mult > ATR_MULT_MAX ||
+      Object.keys(stop).length !== 3
+    ) {
+      return null;
+    }
+    stopKind = "atr";
+    atrLen = String(stop.len);
+    atrMult = String(stop.mult);
+  } else {
     return null;
   }
   // Only the documented pack keys may be present; an imported pack with
@@ -350,24 +544,39 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
       return null;
     }
   }
+  const [primary, secondary] = parsedMarkets;
   const common = {
     name,
     id,
-    pair: market.pair,
+    venue: primary.venue,
+    pair: primary.pair,
+    secondVenue: secondary?.venue ?? "coinbase",
+    secondPair: secondary?.pair ?? "",
     timeframe,
+    entryNesting: parsedEntry.nesting,
+    exitNesting: parsedExit.nesting,
+    entryConfirmComparison: parsedEntry.confirmComparison,
+    exitConfirmComparison: parsedExit.confirmComparison,
+    entryConfirmThreshold: parsedEntry.confirmThreshold,
+    exitConfirmThreshold: parsedExit.confirmThreshold,
     maxAccountPct: String(riskRow.max_account_pct),
-    stopPct: String(stop.pct),
+    stopKind,
+    stopPct,
+    atrLen,
+    atrMult,
   };
+  const entryLeaf = parsedEntry.leaf;
+  const exitLeaf = parsedExit.leaf;
   if (indicatorEntries.length === 1) {
     const [single] = indicatorEntries as [{ name: string; kind: MovingAverageKind; len: number }];
-    // Single-average shape: one indicator under any schema-valid name, with
-    // close on the left of both leaves. The name is preserved as-is on
+    // Single-indicator shape: one indicator under any schema-valid name, with
+    // close on the left of both primary leaves. The name is preserved as-is on
     // rebuild, so an imported `sma3`-style pack keeps its indicator name.
     if (
-      entry[0] !== "close" ||
-      entry[2] !== single.name ||
-      exit[0] !== "close" ||
-      exit[2] !== single.name
+      entryLeaf[0] !== "close" ||
+      entryLeaf[2] !== single.name ||
+      exitLeaf[0] !== "close" ||
+      exitLeaf[2] !== single.name
     ) {
       return null;
     }
@@ -377,8 +586,8 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
       kind: single.kind,
       fastLength: "",
       length: String(single.len),
-      entryComparison: entry[1],
-      exitComparison: exit[1],
+      entryComparison: entryLeaf[1],
+      exitComparison: exitLeaf[1],
     };
   }
   const [fast, slow] = indicatorEntries as [
@@ -387,16 +596,16 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
   ];
   // Two-average crossover shape: the generated `fast`/`slow` names, one
   // shared average kind, fast strictly shorter than slow, and fast compared
-  // to slow in both leaves.
+  // to slow in both primary leaves.
   if (
     fast.name !== FAST_INDICATOR_NAME ||
     slow.name !== SLOW_INDICATOR_NAME ||
     fast.kind !== slow.kind ||
     fast.len >= slow.len ||
-    entry[0] !== FAST_INDICATOR_NAME ||
-    entry[2] !== SLOW_INDICATOR_NAME ||
-    exit[0] !== FAST_INDICATOR_NAME ||
-    exit[2] !== SLOW_INDICATOR_NAME
+    entryLeaf[0] !== FAST_INDICATOR_NAME ||
+    entryLeaf[2] !== SLOW_INDICATOR_NAME ||
+    exitLeaf[0] !== FAST_INDICATOR_NAME ||
+    exitLeaf[2] !== SLOW_INDICATOR_NAME
   ) {
     return null;
   }
@@ -406,8 +615,8 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
     kind: fast.kind,
     fastLength: String(fast.len),
     length: String(slow.len),
-    entryComparison: entry[1],
-    exitComparison: exit[1],
+    entryComparison: entryLeaf[1],
+    exitComparison: exitLeaf[1],
   };
 }
 
@@ -424,22 +633,49 @@ export function buildOwnedStrategyPack(
     "name",
     "id",
     "pair",
+    "secondPair",
     "length",
     "maxAccountPct",
-    "stopPct",
   ];
   if (state.recipe === "ma_cross") {
     fields.push("fastLength");
+  }
+  if (state.stopKind === "pct") {
+    fields.push("stopPct");
+  } else if (state.stopKind === "atr") {
+    fields.push("atrLen", "atrMult");
+  } else {
+    return null;
+  }
+  if (state.entryNesting !== "leaf") {
+    fields.push("entryConfirmThreshold");
+  }
+  if (state.exitNesting !== "leaf") {
+    fields.push("exitConfirmThreshold");
   }
   for (const field of fields) {
     if (validateOwnedStrategyField(field, state[field]) !== undefined) {
       return null;
     }
   }
-  if (!isTimeframe(state.timeframe) || !isKind(state.kind)) {
+  if (
+    !isTimeframe(state.timeframe) ||
+    !isKind(state.kind) ||
+    !isVenue(state.venue) ||
+    !isVenue(state.secondVenue) ||
+    !isStopKind(state.stopKind) ||
+    !isNestingMode(state.entryNesting) ||
+    !isNestingMode(state.exitNesting)
+  ) {
     return null;
   }
   if (!isComparison(state.entryComparison) || !isComparison(state.exitComparison)) {
+    return null;
+  }
+  if (
+    !isComparison(state.entryConfirmComparison) ||
+    !isComparison(state.exitConfirmComparison)
+  ) {
     return null;
   }
   if (typeof state.name !== "string" || typeof state.id !== "string") {
@@ -450,11 +686,58 @@ export function buildOwnedStrategyPack(
     typeof base.author === "string" && base.author.length > 0
       ? base.author.slice(0, AUTHOR_MAX)
       : DEFAULT_AUTHOR;
-  const risk = {
-    max_account_pct: Number(state.maxAccountPct),
-    stop: { type: "pct", pct: Number(state.stopPct) },
-  };
-  const markets = [{ venue: "kraken", pair: state.pair }];
+  const risk =
+    state.stopKind === "pct"
+      ? {
+          max_account_pct: Number(state.maxAccountPct),
+          stop: { type: "pct", pct: Number(state.stopPct) },
+        }
+      : {
+          max_account_pct: Number(state.maxAccountPct),
+          stop: {
+            type: "atr",
+            len: Number(state.atrLen),
+            mult: Number(state.atrMult),
+          },
+        };
+  const markets: { venue: Venue; pair: string }[] = [
+    { venue: state.venue, pair: state.pair },
+  ];
+  if (state.secondPair.trim() !== "") {
+    markets.push({ venue: state.secondVenue, pair: state.secondPair });
+  }
+  const entryThreshold = Number(state.entryConfirmThreshold);
+  const exitThreshold = Number(state.exitConfirmThreshold);
+
+  const finish = (
+    indicators: Record<string, { fn: MovingAverageKind; src: "close"; len: number }>,
+    entryLeaf: LeafCondition,
+    exitLeaf: LeafCondition,
+  ): Pack => ({
+    schema_version: 1,
+    id: state.id,
+    version,
+    label: state.name,
+    author,
+    ...(typeof base.origin === "string" ? { origin: base.origin } : {}),
+    timeframe: state.timeframe,
+    indicators,
+    entry: wrapGuidedCondition(
+      entryLeaf,
+      state.entryNesting,
+      state.entryConfirmComparison,
+      entryThreshold,
+    ),
+    exit: wrapGuidedCondition(
+      exitLeaf,
+      state.exitNesting,
+      state.exitConfirmComparison,
+      exitThreshold,
+    ),
+    risk,
+    markets,
+  });
+
   if (state.recipe === "ma_cross") {
     const fastLength = Number(state.fastLength);
     const slowLength = Number(state.length);
@@ -463,15 +746,8 @@ export function buildOwnedStrategyPack(
     if (fastLength >= slowLength) {
       return null;
     }
-    return {
-      schema_version: 1,
-      id: state.id,
-      version,
-      label: state.name,
-      author,
-      ...(typeof base.origin === "string" ? { origin: base.origin } : {}),
-      timeframe: state.timeframe,
-      indicators: {
+    return finish(
+      {
         [FAST_INDICATOR_NAME]: {
           fn: state.kind,
           src: "close",
@@ -483,33 +759,37 @@ export function buildOwnedStrategyPack(
           len: slowLength,
         },
       },
-      entry: [FAST_INDICATOR_NAME, state.entryComparison, SLOW_INDICATOR_NAME],
-      exit: [FAST_INDICATOR_NAME, state.exitComparison, SLOW_INDICATOR_NAME],
-      risk,
-      markets,
-    };
+      [FAST_INDICATOR_NAME, state.entryComparison, SLOW_INDICATOR_NAME],
+      [FAST_INDICATOR_NAME, state.exitComparison, SLOW_INDICATOR_NAME],
+    );
   }
   if (state.recipe !== "close_vs_ma") {
     return null;
   }
-  return {
-    schema_version: 1,
-    id: state.id,
-    version,
-    label: state.name,
-    author,
-    ...(typeof base.origin === "string" ? { origin: base.origin } : {}),
-    timeframe: state.timeframe,
-    indicators: {
-      [INDICATOR_NAME]: {
+  // Prefer preserving a single-indicator name from an imported pack when the
+  // base is still that same close-vs-one shape; otherwise use the generated
+  // `ma` name so fresh seeds stay stable.
+  let indicatorName = INDICATOR_NAME;
+  const baseIndicators = base.indicators;
+  if (
+    baseIndicators &&
+    typeof baseIndicators === "object" &&
+    !Array.isArray(baseIndicators)
+  ) {
+    const names = Object.keys(baseIndicators);
+    if (names.length === 1 && typeof names[0] === "string") {
+      indicatorName = names[0];
+    }
+  }
+  return finish(
+    {
+      [indicatorName]: {
         fn: state.kind,
         src: "close",
         len: Number(state.length),
       },
     },
-    entry: ["close", state.entryComparison, INDICATOR_NAME],
-    exit: ["close", state.exitComparison, INDICATOR_NAME],
-    risk,
-    markets,
-  };
+    ["close", state.entryComparison, indicatorName],
+    ["close", state.exitComparison, indicatorName],
+  );
 }

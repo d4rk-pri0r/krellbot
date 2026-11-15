@@ -56,6 +56,16 @@ long or flat, plus a stop price.
 Save that as `~/.krellbot/packs/trend-follow.json`, then run `krellbot lint
 ~/.krellbot/packs/trend-follow.json`.
 
+## In-app guided authoring
+
+The Strategies editor guided form authors a supported subset of this DSL
+without hand-writing JSON: `sma` / `ema` / `wma` / `vwma` / `stdev` / `roc` /
+`efficiency_ratio` / `hma` indicators, close-versus-one or fast/slow crossover
+recipes, optional single-level `{all|any}` nesting with a close-vs-threshold
+confirm leaf, percentage or ATR protective stops, and one or two
+`kraken` / `coinbase` markets (paper config). Packs outside that subset stay
+editable as JSON. Save still validates the revision before Arm is enabled.
+
 ## Legacy packs
 
 A file with `id` + `public_label` and no `schema_version` is a legacy pack.

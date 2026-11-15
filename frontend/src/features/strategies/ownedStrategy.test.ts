@@ -24,7 +24,7 @@ const rehearsalPack: Pack = {
   entry: ["close", ">", "sma3"],
   exit: ["close", "<", "sma3"],
   risk: { max_account_pct: 25, stop: { type: "pct", pct: 5 } },
-  markets: [{ venue: "kraken", pair: "XXBTZUSD" }],
+  markets: [{ venue: "kraken", pair: "SUIUSD" }],
 };
 
 describe("seedOwnedStrategyPack", () => {
@@ -62,7 +62,10 @@ describe("readOwnedStrategy", () => {
     expect(state).toEqual<OwnedStrategyFormState>({
       name: "Synthetic rehearsal trend follow",
       id: "rehearsal-trend",
-      pair: "XXBTZUSD",
+      venue: "kraken",
+      pair: "SUIUSD",
+      secondVenue: "coinbase",
+      secondPair: "",
       timeframe: "1h",
       recipe: "close_vs_ma",
       kind: "sma",
@@ -70,18 +73,18 @@ describe("readOwnedStrategy", () => {
       length: "3",
       entryComparison: ">",
       exitComparison: "<",
+      entryNesting: "leaf",
+      exitNesting: "leaf",
+      entryConfirmComparison: ">",
+      exitConfirmComparison: ">",
+      entryConfirmThreshold: "0",
+      exitConfirmThreshold: "0",
       maxAccountPct: "25",
+      stopKind: "pct",
       stopPct: "5",
+      atrLen: "14",
+      atrMult: "2",
     });
-  });
-
-  it("returns null for a non-wave Kraken pair (guided form is XXBTZUSD only)", () => {
-    expect(
-      readOwnedStrategy({
-        ...rehearsalPack,
-        markets: [{ venue: "kraken", pair: "SUIUSD" }],
-      }),
-    ).toBeNull();
   });
 
   it("round-trips an ema pack with a crosses comparison", () => {
@@ -103,7 +106,7 @@ describe("readOwnedStrategy", () => {
     expect(readOwnedStrategy(unsupported)).toBeNull();
   });
 
-  it("returns null for a nested all/any condition pack", () => {
+  it("returns null for single-child all/any nesting without a confirm leaf", () => {
     const unsupported: Pack = {
       ...rehearsalPack,
       entry: { all: [["close", ">", "sma3"]] },
@@ -112,7 +115,34 @@ describe("readOwnedStrategy", () => {
     expect(readOwnedStrategy(unsupported)).toBeNull();
   });
 
-  it("returns null for multiple indicators or multiple markets", () => {
+  it("round-trips single-level all/any nesting with a close-vs-threshold confirm", () => {
+    const nested: Pack = {
+      ...rehearsalPack,
+      entry: {
+        all: [
+          ["close", ">", "sma3"],
+          ["close", ">", 100],
+        ],
+      },
+      exit: {
+        any: [
+          ["close", "<", "sma3"],
+          ["close", "<", 50],
+        ],
+      },
+    };
+    const state = readOwnedStrategy(nested);
+    expect(state?.entryNesting).toBe("all");
+    expect(state?.exitNesting).toBe("any");
+    expect(state?.entryConfirmThreshold).toBe("100");
+    expect(state?.exitConfirmThreshold).toBe("50");
+    expect(state?.exitConfirmComparison).toBe("<");
+    const rebuilt = buildOwnedStrategyPack(state as OwnedStrategyFormState, nested);
+    expect(rebuilt?.entry).toEqual(nested.entry);
+    expect(rebuilt?.exit).toEqual(nested.exit);
+  });
+
+  it("returns null for non-crossover dual indicators or more than two markets", () => {
     expect(
       readOwnedStrategy({
         ...rehearsalPack,
@@ -130,9 +160,27 @@ describe("readOwnedStrategy", () => {
         markets: [
           { venue: "kraken", pair: "SUIUSD" },
           { venue: "coinbase", pair: "BTC-USD" },
+          { venue: "kraken", pair: "XETHZUSD" },
         ],
       }),
     ).toBeNull();
+  });
+
+  it("round-trips two paper markets including coinbase", () => {
+    const dual: Pack = {
+      ...rehearsalPack,
+      markets: [
+        { venue: "kraken", pair: "SUIUSD" },
+        { venue: "coinbase", pair: "BTC-USD" },
+      ],
+    };
+    const state = readOwnedStrategy(dual);
+    expect(state?.venue).toBe("kraken");
+    expect(state?.secondVenue).toBe("coinbase");
+    expect(state?.secondPair).toBe("BTC-USD");
+    expect(buildOwnedStrategyPack(state as OwnedStrategyFormState, dual)?.markets).toEqual(
+      dual.markets,
+    );
   });
 
   it("returns null for a two-average pack outside the generated crossover shape", () => {
@@ -186,34 +234,65 @@ describe("readOwnedStrategy", () => {
     ).toBeNull();
   });
 
-  it("returns null for an unsupported indicator fn (wma)", () => {
-    expect(
-      readOwnedStrategy({
-        ...rehearsalPack,
-        indicators: { wma5: { fn: "wma", src: "close", len: 5 } },
-        entry: ["close", ">", "wma5"],
-        exit: ["close", "<", "wma5"],
-      }),
-    ).toBeNull();
+  it("round-trips remaining guided indicator fns such as wma", () => {
+    const pack: Pack = {
+      ...rehearsalPack,
+      indicators: { wma5: { fn: "wma", src: "close", len: 5 } },
+      entry: ["close", ">", "wma5"],
+      exit: ["close", "<", "wma5"],
+    };
+    const state = readOwnedStrategy(pack);
+    expect(state?.kind).toBe("wma");
+    expect(state?.length).toBe("5");
+    const rebuilt = buildOwnedStrategyPack(state as OwnedStrategyFormState, pack);
+    expect(rebuilt?.indicators).toEqual(pack.indicators);
   });
 
-  it("returns null for an atr stop (not the pct subset)", () => {
-    expect(
-      readOwnedStrategy({
-        ...rehearsalPack,
-        risk: {
-          max_account_pct: 25,
-          stop: { type: "atr", len: 14, mult: 2 },
-        },
-      }),
-    ).toBeNull();
+  it("round-trips an ATR protective stop", () => {
+    const pack: Pack = {
+      ...rehearsalPack,
+      risk: {
+        max_account_pct: 25,
+        stop: { type: "atr", len: 14, mult: 2 },
+      },
+    };
+    const state = readOwnedStrategy(pack);
+    expect(state?.stopKind).toBe("atr");
+    expect(state?.atrLen).toBe("14");
+    expect(state?.atrMult).toBe("2");
+    expect(buildOwnedStrategyPack(state as OwnedStrategyFormState, pack)?.risk).toEqual(
+      pack.risk,
+    );
   });
 
-  it("returns null for an unsupported non-kraken venue", () => {
+  it("round-trips a coinbase-only paper market", () => {
+    const pack: Pack = {
+      ...rehearsalPack,
+      markets: [{ venue: "coinbase", pair: "BTC-USD" }],
+    };
+    const state = readOwnedStrategy(pack);
+    expect(state?.venue).toBe("coinbase");
+    expect(state?.pair).toBe("BTC-USD");
+    expect(buildOwnedStrategyPack(state as OwnedStrategyFormState, pack)?.markets).toEqual(
+      pack.markets,
+    );
+  });
+
+  it("returns null for indicator fns outside the guided src+len set", () => {
     expect(
       readOwnedStrategy({
         ...rehearsalPack,
-        markets: [{ venue: "coinbase", pair: "BTC-USD" }],
+        indicators: { atr14: { fn: "atr", len: 14 } },
+        entry: ["close", ">", "atr14"],
+        exit: ["close", "<", "atr14"],
+      }),
+    ).toBeNull();
+    expect(
+      readOwnedStrategy({
+        ...rehearsalPack,
+        indicators: { pm: { fn: "power_mean", src: "close", len: 5, p: 2 } },
+        entry: ["close", ">", "pm"],
+        exit: ["close", "<", "pm"],
       }),
     ).toBeNull();
   });
@@ -225,6 +304,8 @@ describe("readOwnedStrategy", () => {
         entry: ["high", ">", "sma3"],
       }),
     ).toBeNull();
+    // A bare leaf with a numeric right-hand side is confirm-only nesting, not
+    // a primary guided leaf.
     expect(
       readOwnedStrategy({
         ...rehearsalPack,
@@ -331,7 +412,7 @@ describe("buildOwnedStrategyPack", () => {
       entryComparison: "crosses_above",
       maxAccountPct: "40",
       stopPct: "2.5",
-      pair: "XXBTZUSD",
+      pair: "XETHZUSD",
     };
     const pack = buildOwnedStrategyPack(edited, seeded) as Pack;
     expect(pack.indicators).toEqual({
@@ -342,7 +423,7 @@ describe("buildOwnedStrategyPack", () => {
       max_account_pct: 40,
       stop: { type: "pct", pct: 2.5 },
     });
-    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XXBTZUSD" }]);
+    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XETHZUSD" }]);
   });
 
   it("rejects an out-of-range length instead of generating an invalid pack", () => {
@@ -372,12 +453,6 @@ describe("buildOwnedStrategyPack", () => {
     expect(
       buildOwnedStrategyPack({ ...state, pair: "btc-usd!!" }, seeded),
     ).toBeNull();
-    expect(
-      buildOwnedStrategyPack({ ...state, pair: "BTC/USD" }, seeded),
-    ).toBeNull();
-    expect(
-      buildOwnedStrategyPack({ ...state, pair: "BTCUSD" }, seeded),
-    ).toBeNull();
   });
 
   it("rejects an empty label", () => {
@@ -398,8 +473,7 @@ describe("validateOwnedStrategyField", () => {
     expect(validateOwnedStrategyField("maxAccountPct", "0")).toMatch(/1/);
     expect(validateOwnedStrategyField("stopPct", "0")).toMatch(/0/);
     expect(validateOwnedStrategyField("id", "NO")).toMatch(/lowercase/);
-    expect(validateOwnedStrategyField("pair", "nope!")).toMatch(/XXBTZUSD/);
-    expect(validateOwnedStrategyField("pair", "XETHZUSD")).toMatch(/XXBTZUSD/);
+    expect(validateOwnedStrategyField("pair", "nope!")).toMatch(/pair/i);
   });
 });
 
