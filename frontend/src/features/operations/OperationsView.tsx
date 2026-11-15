@@ -13,6 +13,7 @@ import { summarizeAlertCode } from "./alertCodeLabel";
 import type { AlertRow, OperationsClient, OperationsViewModel } from "./client";
 import { summarizeAlertSeverity } from "./alertSeverityLabel";
 import { LiveAuthorizationPanel } from "./LiveAuthorizationPanel";
+import { SchedulerPanel } from "./SchedulerPanel";
 import { UnresolvedOrdersList } from "./UnresolvedOrdersList";
 
 const DISABLED_BANNER =
@@ -699,6 +700,14 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
               )}
             </ul>
           </div>
+        </section>
+
+        <section
+          className="kbot-ops__panel"
+          aria-label="Scheduler"
+          data-testid="ops-scheduler-panel"
+        >
+          <SchedulerPanel client={client} />
         </section>
 
         <section

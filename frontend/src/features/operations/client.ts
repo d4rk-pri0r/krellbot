@@ -86,6 +86,14 @@ export type UnresolvedOrderRow = {
   last_lookup_result: string;
 };
 
+/** Closed-shape scheduler status from GET/POST /api/v1/scheduler* (M2.7). */
+export type SchedulerStatus = {
+  schema_version: string;
+  installed: boolean;
+  enabled: boolean;
+  last_error: string | null;
+};
+
 export type CommandResult = {
   schema_version?: string;
   code?: string;
@@ -117,6 +125,9 @@ export type OperationsClient = {
     confirmation: string,
   ): Promise<LiveAuthorizationCommandResult>;
   revokeLiveAuthorization?(): Promise<LiveAuthorizationCommandResult>;
+  getScheduler?(): Promise<SchedulerStatus>;
+  installScheduler?(): Promise<SchedulerStatus>;
+  enableScheduler?(): Promise<SchedulerStatus>;
 };
 
 async function getJson(url: string): Promise<OperationsViewModel> {
@@ -379,6 +390,32 @@ function adaptSubset(raw: unknown): Readonly<Record<string, string | number | bo
   return out;
 }
 
+export function adaptSchedulerStatus(raw: unknown): SchedulerStatus {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    schema_version: typeof obj.schema_version === "string" ? obj.schema_version : "1",
+    installed: obj.installed === true,
+    enabled: obj.enabled === true,
+    last_error: typeof obj.last_error === "string" ? obj.last_error : null,
+  };
+}
+
+async function postScheduler(url: string, label: string): Promise<SchedulerStatus> {
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: "{}",
+  });
+  if (!response.ok) {
+    throw new Error(`${label} failed: ${response.status}`);
+  }
+  return adaptSchedulerStatus(await response.json());
+}
+
 async function getOperationsReadJson(url: string, label: string): Promise<unknown> {
   const response = await fetch(url, {
     method: "GET",
@@ -501,6 +538,17 @@ export function createHttpClient(): OperationsClient {
         effect: typeof raw.effect === "string" ? raw.effect : undefined,
         authorization: adaptAuthorization(raw.authorization),
       };
+    },
+    getScheduler(): Promise<SchedulerStatus> {
+      return getOperationsReadJson("/api/v1/scheduler", "scheduler status").then((raw) =>
+        adaptSchedulerStatus(raw),
+      );
+    },
+    installScheduler(): Promise<SchedulerStatus> {
+      return postScheduler("/api/v1/scheduler/install", "scheduler install");
+    },
+    enableScheduler(): Promise<SchedulerStatus> {
+      return postScheduler("/api/v1/scheduler/enable", "scheduler enable");
     },
     promote(venue, pair, revisionId): Promise<CommandResult> {
       return postCommand("live.promote", { venue, pair, revision_id: revisionId });
