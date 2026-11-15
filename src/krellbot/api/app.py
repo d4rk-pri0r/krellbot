@@ -37,7 +37,7 @@ from krellbot.application import operations as operations_view_app
 from krellbot.application import packs as app_packs
 from krellbot.application.live_preflight import SandboxTransport
 from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
-from krellbot.application.paper import read_paper_state
+from krellbot.application.paper import project_owned_position
 from krellbot.application.strategy import (
     DraftNotRunnable,
     RevisionNotFound,
@@ -1216,10 +1216,12 @@ def create_app(
           never re-formatted). ``"0"`` when no state file exists yet,
           because the engine materialises the seeded balance into the
           state file only on its first tick.
-        * ``holdings`` — one ``{"symbol", "qty"}`` row per non-quote
-          balance above zero, qty verbatim from the state file. The quote
-          asset is the pair's USD-style suffix, the same base/quote split
-          ``krellbot.venues.paper`` uses.
+        * ``holdings`` — at most one ``{"symbol", "qty"}`` row for this
+          armed pair's base asset when its balance is above zero, qty
+          verbatim from the state file. Other base assets in the same
+          venue wallet are omitted so another market's position is never
+          presented here. The quote asset is the pair's USD-style suffix,
+          the same base/quote split ``krellbot.application.paper`` uses.
         * ``as_of_run`` — ``"<venue>:<pack>:<pair>"`` of the most recent
           journal tick run for the armed pair, or ``null`` when the
           journal has no tick record for it (the engine has never run).
@@ -1245,37 +1247,13 @@ def create_app(
             )
 
         armed = config.armed[0]
-        state = read_paper_state(s.home, armed.venue)
-        balances = state.get("balances") or {}
-        if not isinstance(balances, dict):
-            balances = {}
-        quote = armed.pair[-3:] if len(armed.pair) >= 3 else ""
-        free_cash_raw = balances.get(quote)
-        free_cash = (
-            str(free_cash_raw) if isinstance(free_cash_raw, (str, int, float)) and str(free_cash_raw) != "" else "0"
+        body = project_owned_position(
+            s.home,
+            venue=armed.venue,
+            pair=armed.pair,
+            mode=armed.mode,
+            as_of_run=_paper_position_run_id(s.home, armed.venue, armed.pair),
         )
-        holdings: list[dict] = []
-        for symbol in sorted(balances):
-            if symbol == quote:
-                continue
-            raw = balances[symbol]
-            try:
-                if Decimal(str(raw)) <= 0:
-                    continue
-            except (InvalidOperation, ValueError, ArithmeticError):
-                continue
-            holdings.append({"symbol": symbol, "qty": str(raw)})
-
-        body = {
-            "schema_version": SCHEMA_VERSION,
-            "armed": True,
-            "venue": armed.venue,
-            "pair": armed.pair,
-            "mode": armed.mode,
-            "free_cash": free_cash,
-            "holdings": holdings,
-            "as_of_run": _paper_position_run_id(s.home, armed.venue, armed.pair),
-        }
         return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/paper/history")
