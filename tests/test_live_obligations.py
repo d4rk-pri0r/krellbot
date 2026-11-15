@@ -262,10 +262,6 @@ def test_entry_pause_survives_restart(home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="M1.3: live entries must size against reserved cash, not account balance",
-)
 def test_pack_never_touches_external_inventory(home, monkeypatch):
     """Live entries size against the pack's reserved cash, not the account
     balance; exits never sell more base than the journal attributes to

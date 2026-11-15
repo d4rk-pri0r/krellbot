@@ -12,7 +12,7 @@ An `ArmedPack` record has:
     cap: percent (1..100)
     stop: Decimal stop price (resolved from the pack risk on arm)
     mode: "paper" | "live"
-    starting_cash: Decimal | None (paper only)
+    starting_cash: Decimal | None (paper deposit; live reserved cash when set)
     requires_license: bool
     armed_at_ts: int (unix seconds when armed)
     owned_qty: Decimal (per-pack filled - exited, from journal + paper state)
