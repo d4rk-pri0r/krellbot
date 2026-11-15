@@ -274,3 +274,58 @@ describe("createHttpClient unresolved orders", () => {
     await expect(createHttpClient().listUnresolvedOrders!()).rejects.toThrow(/403/);
   });
 });
+
+describe("createHttpClient scheduler", () => {
+  const closed = {
+    schema_version: "1",
+    installed: true,
+    enabled: false,
+    last_error: null,
+  };
+
+  it("getScheduler GETs /api/v1/scheduler with CSRF + credentials", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(closed));
+    vi.stubGlobal("fetch", fetchMock);
+    const status = await createHttpClient().getScheduler!();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/scheduler");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect("X-Krellbot-CSRF" in headers).toBe(true);
+    expect(status).toEqual(closed);
+  });
+
+  it("installScheduler POSTs /api/v1/scheduler/install with CSRF", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(closed));
+    vi.stubGlobal("fetch", fetchMock);
+    const status = await createHttpClient().installScheduler!();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/scheduler/install");
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Krellbot-CSRF"]).toBeDefined();
+    expect(headers["Content-Type"]).toBe("application/json");
+    expect(status.installed).toBe(true);
+  });
+
+  it("enableScheduler POSTs /api/v1/scheduler/enable with CSRF", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ...closed, enabled: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const status = await createHttpClient().enableScheduler!();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/scheduler/enable");
+    expect(init.method).toBe("POST");
+    expect(status.enabled).toBe(true);
+  });
+
+  it("getScheduler throws on non-2xx", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 403));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().getScheduler!()).rejects.toThrow(/403/);
+  });
+});

@@ -1,0 +1,172 @@
+/*
+ * Scheduler — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted SchedulerPanel on the
+ * Operations surface. Namespaced under `.kbot-ops__scheduler`.
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ */
+
+.kbot-ops__scheduler {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-ops__scheduler *,
+.kbot-ops__scheduler *::before,
+.kbot-ops__scheduler *::after {
+  box-sizing: border-box;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops__scheduler .kbot-ops__panel-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-refresh {
+  margin: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-status,
+.kbot-ops__scheduler .kbot-ops__scheduler-helper,
+.kbot-ops__scheduler .kbot-ops__scheduler-feedback,
+.kbot-ops__scheduler .kbot-ops__scheduler-error,
+.kbot-ops__scheduler .kbot-ops__scheduler-last-error,
+.kbot-ops__scheduler .kbot-ops__scheduler-unavailable {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-helper {
+  color: var(--muted, #abc4d8);
+  font-size: 12px;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-unavailable,
+.kbot-ops__scheduler .kbot-ops__scheduler-last-error {
+  padding: 10px 12px;
+  border: 1px solid var(--caution-border, #8a5f55);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 14%, var(--surface, #14222e));
+  color: var(--caution-text, #e8c4bb);
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-error {
+  color: var(--caution-text, #e8c4bb);
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-flags > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-flags dt {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-flags dd {
+  margin: 0;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-install,
+.kbot-ops__scheduler .kbot-ops__scheduler-enable {
+  margin: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-install {
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 22%, var(--panel, #18354a));
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-enable {
+  border: 1px solid var(--line, #22465d);
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-install:disabled,
+.kbot-ops__scheduler .kbot-ops__scheduler-enable:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kbot-ops__scheduler .kbot-ops__scheduler-refresh:focus-visible,
+.kbot-ops__scheduler .kbot-ops__scheduler-install:focus-visible,
+.kbot-ops__scheduler .kbot-ops__scheduler-enable:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .kbot-ops__scheduler .kbot-ops__scheduler-install,
+  .kbot-ops__scheduler .kbot-ops__scheduler-enable,
+  .kbot-ops__scheduler .kbot-ops__scheduler-refresh {
+    min-height: 44px;
+  }
+}
