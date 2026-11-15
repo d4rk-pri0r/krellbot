@@ -259,6 +259,41 @@ def coid_userref(coid: str) -> int:
     return value & 0x7FFFFFFF
 
 
+def build_entry_with_stop_form(
+    coid: str,
+    qty: Decimal,
+    stop: Decimal,
+    *,
+    pair: str,
+    lot_decimals: int,
+    price_decimals: int,
+) -> dict[str, str]:
+    """Build the AddOrder form for a market buy with an attached stop-loss.
+
+    Same field set the live engine posts via ``place_entry_with_stop``. Does
+    not include ``validate`` or ``nonce``; callers that must never place an
+    order set ``validate=true`` before send.
+    """
+    lot = _quantize_qty(qty, lot_decimals)
+    price = _quantize_price(stop, price_decimals)
+    return {
+        "pair": pair,
+        "ordertype": "market",
+        "type": "buy",
+        "volume": format(lot, "f"),
+        "cl_ord_id": coid,
+        "userref": str(coid_userref(coid)),
+        "close[ordertype]": "stop-loss",
+        "close[price]": format(price, "f"),
+    }
+
+
+def require_validate_true(body: dict[str, str]) -> None:
+    """Refuse any request body that is not explicitly validate-only."""
+    if body.get("validate") != "true":
+        raise ValueError("refusing to send request body without validate=true")
+
+
 def _quantize_qty(value: Decimal, lot_decimals: int) -> Decimal:
     """Round quantity DOWN to the venue's lot precision."""
     if value.is_nan() or not value.is_finite():
@@ -377,17 +412,40 @@ class KrakenVenue:
         lot = _quantize_qty(qty, rules.lot_decimals)
         price = _quantize_price(stop, rules.price_decimals)
         _reject_size(lot, rules, self._last_price(pair))
-        form = {
-            "pair": pair,
-            "ordertype": "market",
-            "type": "buy",
-            "volume": format(lot, "f"),
-            "cl_ord_id": coid,
-            "userref": str(coid_userref(coid)),
-            "close[ordertype]": "stop-loss",
-            "close[price]": format(price, "f"),
-        }
+        form = build_entry_with_stop_form(
+            coid,
+            lot,
+            price,
+            pair=pair,
+            lot_decimals=rules.lot_decimals,
+            price_decimals=rules.price_decimals,
+        )
         return self._place(ADD_ORDER, form, coid=coid, side="buy", qty=lot, stop=price)
+
+    def validate_entry_with_stop(self, coid: str, qty: Decimal, stop: Decimal, *, pair: str) -> Any:
+        """Post the engine's entry-with-stop AddOrder shape with ``validate=true``.
+
+        Kraken's validate flag checks inputs and never submits the order, so
+        this path does not call ``ensure_live_orders_allowed``. Callers must
+        still refuse any body that lacks ``validate=true`` before send.
+        """
+        if not pair:
+            raise ValueError("kraken validate requires a pair")
+        rules = self.rules(pair)
+        lot = _quantize_qty(qty, rules.lot_decimals)
+        price = _quantize_price(stop, rules.price_decimals)
+        _reject_size(lot, rules, self._last_price(pair))
+        form = build_entry_with_stop_form(
+            coid,
+            lot,
+            price,
+            pair=pair,
+            lot_decimals=rules.lot_decimals,
+            price_decimals=rules.price_decimals,
+        )
+        form["validate"] = "true"
+        require_validate_true(form)
+        return self._private(ADD_ORDER, form)
 
     def place_exit(self, coid: str, qty: Decimal, *, pair: str) -> OrderRef:
         release_policy.ensure_live_orders_allowed()
