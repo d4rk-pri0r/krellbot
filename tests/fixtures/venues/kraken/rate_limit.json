@@ -1,0 +1,5 @@
+# Derived from Kraken's REST documentation, not recorded from a real account.
+{
+  "error": ["EAPI:Rate limit exceeded"],
+  "result": {}
+}

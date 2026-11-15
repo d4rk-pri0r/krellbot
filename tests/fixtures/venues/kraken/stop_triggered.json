@@ -1,0 +1,30 @@
+# Derived from Kraken's REST documentation, not recorded from a real account.
+{
+  "error": [],
+  "result": {
+    "closed": {
+      "OUF4EM-FRGI2-STOP1": {
+        "refid": null,
+        "userref": 2,
+        "status": "closed",
+        "opentm": 1688672741.7587,
+        "closetm": 1688672800.1234,
+        "vol": "1.25000000",
+        "vol_exec": "1.25000000",
+        "cost": "27500.00000",
+        "fee": "71.50000",
+        "price": "22000.00000",
+        "stopprice": "22000.00000",
+        "misc": "stopped",
+        "oflags": "fciq",
+        "descr": {
+          "pair": "XBTUSD",
+          "type": "sell",
+          "ordertype": "stop-loss",
+          "price": "22000.0",
+          "order": "sell 1.25000000 XBTUSD @ stop loss 22000.0"
+        }
+      }
+    }
+  }
+}

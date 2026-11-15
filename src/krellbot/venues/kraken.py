@@ -107,6 +107,97 @@ DEFAULT_LOT_DECIMALS = 8
 DEFAULT_PRICE_DECIMALS = 5
 
 
+class KrakenDocumentedOutcome:
+    """Closed taxonomy for documented Kraken REST response shapes (M1.6).
+
+    Fixtures under ``tests/fixtures/venues/kraken/`` are derived from Kraken's
+    published REST docs, not recorded from a real account. Each fixture maps
+    to exactly one of these outcomes via ``classify_documented_response``.
+    """
+
+    ORDER_ACCEPTED = "order_accepted"
+    INSUFFICIENT_FUNDS = "insufficient_funds"
+    ORDER_MINIMUM_NOT_MET = "order_minimum_not_met"
+    RATE_LIMIT = "rate_limit"
+    INVALID_NONCE = "invalid_nonce"
+    NO_RESPONSE = "no_response"
+    PARTIALLY_FILLED = "partially_filled"
+    STOP_TRIGGERED = "stop_triggered"
+    CANCEL_ACCEPTED = "cancel_accepted"
+
+    _ALL = frozenset(
+        {
+            ORDER_ACCEPTED,
+            INSUFFICIENT_FUNDS,
+            ORDER_MINIMUM_NOT_MET,
+            RATE_LIMIT,
+            INVALID_NONCE,
+            NO_RESPONSE,
+            PARTIALLY_FILLED,
+            STOP_TRIGGERED,
+            CANCEL_ACCEPTED,
+        }
+    )
+
+    @classmethod
+    def values(cls) -> frozenset[str]:
+        return cls._ALL
+
+
+def classify_documented_response(payload: object) -> str:
+    """Map a documented Kraken REST body (or timeout) to one typed outcome.
+
+    ``None`` means the transport got no HTTP body (timeout / no response).
+    Error strings match the published error guide. Success shapes match
+    AddOrder / CancelOrder / OpenOrders / ClosedOrders examples.
+    """
+    if payload is None:
+        return KrakenDocumentedOutcome.NO_RESPONSE
+    if not isinstance(payload, dict):
+        raise TypeError("kraken documented response must be a dict or None")
+
+    errors = payload.get("error")
+    if isinstance(errors, list) and errors:
+        joined = " ".join(str(item) for item in errors)
+        if "Insufficient funds" in joined:
+            return KrakenDocumentedOutcome.INSUFFICIENT_FUNDS
+        if "Order minimum not met" in joined:
+            return KrakenDocumentedOutcome.ORDER_MINIMUM_NOT_MET
+        if "Rate limit exceeded" in joined:
+            return KrakenDocumentedOutcome.RATE_LIMIT
+        if "Invalid nonce" in joined:
+            return KrakenDocumentedOutcome.INVALID_NONCE
+        raise ValueError(f"unrecognized documented kraken error: {errors!r}")
+
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        raise TypeError("kraken documented response missing result object")
+
+    if "txid" in result:
+        return KrakenDocumentedOutcome.ORDER_ACCEPTED
+    if "count" in result:
+        return KrakenDocumentedOutcome.CANCEL_ACCEPTED
+
+    for bucket in ("open", "closed"):
+        book = result.get(bucket)
+        if not isinstance(book, dict) or not book:
+            continue
+        for raw in book.values():
+            if not isinstance(raw, dict):
+                continue
+            misc_tokens = {part.strip() for part in str(raw.get("misc") or "").split(",") if part.strip()}
+            if "stopped" in misc_tokens:
+                return KrakenDocumentedOutcome.STOP_TRIGGERED
+            if "partial" in misc_tokens:
+                return KrakenDocumentedOutcome.PARTIALLY_FILLED
+            vol = _optional_decimal(raw.get("vol"))
+            vol_exec = _optional_decimal(raw.get("vol_exec"))
+            if vol is not None and vol_exec is not None and Decimal(0) < vol_exec < vol:
+                return KrakenDocumentedOutcome.PARTIALLY_FILLED
+
+    raise ValueError("unrecognized documented kraken response shape")
+
+
 class Transport(Protocol):
     """Anything with a `post(url, form)` returning a parsed JSON dict."""
 

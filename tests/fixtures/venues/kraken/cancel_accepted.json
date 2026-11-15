@@ -1,0 +1,7 @@
+# Derived from Kraken's REST documentation, not recorded from a real account.
+{
+  "error": [],
+  "result": {
+    "count": 1
+  }
+}
