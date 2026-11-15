@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -544,6 +545,124 @@ def _paper_history_view(home: Path) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "runs": body_runs[:PAPER_HISTORY_MAX_RUNS],
+    }
+
+
+def _fleet_tick_index(home: Path) -> dict[tuple[str, str, str], dict]:
+    """Index the journal's latest tick evidence per ``(venue, pack, pair)``.
+
+    Used by the armed-fleet management view so each armed row can carry
+    last-tick time/result without inventing cash, quantity, stop, or cap.
+    Malformed journal lines are skipped the same way as paper history.
+    """
+
+    ticks: dict[tuple[str, str, str], dict] = {}
+    for record in _read_journal_records(home):
+        if record.get("kind") != "tick":
+            continue
+        venue = record.get("venue")
+        pack_id = record.get("pack")
+        if not isinstance(venue, str) or not isinstance(pack_id, str):
+            continue
+        detail = record.get("detail")
+        pair = detail.get("pair") if isinstance(detail, dict) else None
+        if not isinstance(pair, str) or not pair:
+            continue
+        ts = record.get("ts")
+        ts_ms = int(ts) * 1000 if isinstance(ts, (int, float)) else 0
+        key = (venue, pack_id, pair)
+        entry = ticks.setdefault(
+            key,
+            {
+                "last_tick_ts_ms": ts_ms,
+                "ticks_total": 0,
+                "_refusals": [],
+            },
+        )
+        entry["last_tick_ts_ms"] = max(entry["last_tick_ts_ms"], ts_ms)
+        entry["ticks_total"] += 1
+        refusal = _tick_refusal_code(record)
+        if refusal is not None:
+            entry["_refusals"].append((ts_ms, refusal))
+    return ticks
+
+
+def _fleet_last_tick_result(*, ticks_total: int, last_refusal_code: str | None) -> str:
+    """Closed last-tick result sentence for one armed fleet row."""
+
+    parts = [
+        f"{ticks_total} tick{'s' if ticks_total != 1 else ''}",
+    ]
+    if last_refusal_code is not None:
+        parts.append(f"last refusal {last_refusal_code}")
+    else:
+        parts.append("no refusal")
+    return ", ".join(parts)
+
+
+def _fleet_detail_href(*, venue: str, pair: str) -> str:
+    """Relative deep link into the Workstation status detail for one market."""
+
+    return "/?" + urlencode({"view": "workstation", "venue": venue, "pair": pair})
+
+
+def _fleet_armed_view(home: Path) -> dict:
+    """Build the closed-shape armed fleet list with last tick time/result.
+
+    Every armed config record becomes one row. Last-tick fields come from
+    the journal when evidence exists; an armed market that has never
+    ticked reports ``last_tick_ts_ms: null`` and
+    ``last_tick_result: "no tick yet"``. ``detail_href`` is the relative
+    deep link the workstation uses to open that market's status detail.
+    Cash, quantity, stop, cap, and pack path stay off the wire.
+    """
+
+    home = Path(home)
+    try:
+        config = kb_config.load_config(home)
+    except (OSError, ValueError):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "armed": False,
+            "deployments": [],
+        }
+
+    tick_index = _fleet_tick_index(home) if config.armed else {}
+    deployments: list[dict] = []
+    for record in config.armed:
+        key = (record.venue, record.pack_id, record.pair)
+        tick = tick_index.get(key)
+        if tick is None:
+            last_tick_ts_ms = None
+            last_refusal_code = None
+            last_tick_result = "no tick yet"
+        else:
+            last_tick_ts_ms = int(tick["last_tick_ts_ms"])
+            last_refusal_code = None
+            if tick["_refusals"]:
+                last_refusal_code = max(tick["_refusals"], key=lambda item: item[0])[1]
+            last_tick_result = _fleet_last_tick_result(
+                ticks_total=int(tick["ticks_total"]),
+                last_refusal_code=last_refusal_code,
+            )
+        deployments.append(
+            {
+                "venue": record.venue,
+                "pair": record.pair,
+                "mode": record.mode,
+                "pack_id": record.pack_id,
+                "entries_paused": bool(record.entries_paused),
+                "last_tick_ts_ms": last_tick_ts_ms,
+                "last_tick_result": last_tick_result,
+                "last_refusal_code": last_refusal_code,
+                "detail_href": _fleet_detail_href(venue=record.venue, pair=record.pair),
+            }
+        )
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "armed": bool(deployments),
+        "deployments": deployments,
     }
 
 
@@ -1624,6 +1743,31 @@ def create_app(
             "armed": bool(records),
             "records": records,
         }
+
+        return JSONResponse(
+            body,
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/paper/fleet")
+    async def paper_fleet(request: Request) -> Response:
+        """Return the armed fleet management list with last tick evidence.
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF. One
+        row per armed config record joins the closed armed identity with
+        journal last-tick time/result and a relative ``detail_href`` deep
+        link into the Workstation status surface. Cash, quantity, stop,
+        cap, and pack path never appear on the wire.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = _fleet_armed_view(s.home)
 
         return JSONResponse(
             body,

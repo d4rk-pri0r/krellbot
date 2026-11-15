@@ -6,6 +6,7 @@ import type {
   PaperCommandResult,
   PaperPosition,
   PaperStatus,
+  PaperStatusSelect,
 } from "./client";
 import { PaperStatusCsvExport } from "./PaperStatusCsvExport";
 import { RehearsalPanel } from "./RehearsalPanel";
@@ -19,6 +20,7 @@ export type {
   PaperCommandResult,
   PaperPosition,
   PaperStatus,
+  PaperStatusSelect,
 } from "./client";
 
 export type StatusPanelProps = {
@@ -27,6 +29,8 @@ export type StatusPanelProps = {
   onPositionSelect?: (position: PaperPosition | null) => void;
   /** When true, the owned-position control shows as the inspector subject. */
   positionSelected?: boolean;
+  /** Optional market selector from a fleet deep link. */
+  select?: PaperStatusSelect | null;
 };
 
 type EntriesSentence = "Entries active" | "Entries paused";
@@ -677,6 +681,7 @@ export function StatusPanel({
   client,
   onPositionSelect,
   positionSelected = false,
+  select = null,
 }: StatusPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   // Synchronous guard so a rapid double click cannot dispatch a duplicate
@@ -688,6 +693,15 @@ export function StatusPanel({
   // Same discipline for the owned-position read, which is a separate
   // request from the status read.
   const positionEpochRef = useRef(0);
+  const statusSelect =
+    select !== null &&
+    select !== undefined &&
+    typeof select.venue === "string" &&
+    select.venue !== "" &&
+    typeof select.pair === "string" &&
+    select.pair !== ""
+      ? select
+      : undefined;
 
   // The rehearsal surface is a separate client behind the same paper
   // panel: a legacy injected client without the factory renders the
@@ -705,7 +719,7 @@ export function StatusPanel({
   useEffect(() => {
     const epoch = ++epochRef.current;
     client
-      .getStatus()
+      .getStatus(statusSelect)
       .then((next) => {
         if (epoch !== epochRef.current) {
           return;
@@ -723,7 +737,7 @@ export function StatusPanel({
     return () => {
       epochRef.current += 1;
     };
-  }, [client]);
+  }, [client, statusSelect?.venue, statusSelect?.pair]);
 
   // Bumped exactly once per backend-confirmed arm (never on refusal or
   // unknown outcome): mirrors the epoch-guarded refreshSignal shape the
@@ -737,7 +751,7 @@ export function StatusPanel({
     const epoch = ++epochRef.current;
     let cancelled = false;
     client
-      .getStatus()
+      .getStatus(statusSelect)
       .then((next) => {
         if (cancelled || epoch !== epochRef.current) {
           return;
@@ -758,7 +772,7 @@ export function StatusPanel({
     };
     // `armEpoch` is the only automatic re-read trigger besides the client
     // itself: one bounded read per confirmed arm, no timer, no polling.
-  }, [client, armEpoch]);
+  }, [client, armEpoch, statusSelect?.venue, statusSelect?.pair]);
 
   const handleArmConfirmed = useCallback((): void => {
     setArmEpoch((current) => current + 1);
@@ -789,7 +803,7 @@ export function StatusPanel({
     // even if the request epoch is still current.
     const expectedIdentity = marketIdentity(state.status);
     read
-      .call(client)
+      .call(client, statusSelect)
       .then((position) => {
         if (epoch !== positionEpochRef.current) {
           return;
@@ -821,7 +835,7 @@ export function StatusPanel({
     return () => {
       positionEpochRef.current += 1;
     };
-  }, [client, positionReadable, state.status]);
+  }, [client, positionReadable, state.status, statusSelect]);
   const refreshStatus = async (): Promise<void> => {
     if (inFlightRef.current) {
       return;
@@ -829,7 +843,7 @@ export function StatusPanel({
     inFlightRef.current = true;
     const epoch = ++epochRef.current;
     try {
-      const next = await client.getStatus();
+      const next = await client.getStatus(statusSelect);
       if (epoch !== epochRef.current) {
         return;
       }
@@ -910,7 +924,7 @@ export function StatusPanel({
         // Reconcile the sentence with the server after a confirmed command:
         // a single follow-up read, not polling.
         try {
-          const next = await client.getStatus();
+          const next = await client.getStatus(statusSelect);
           if (epoch === epochRef.current) {
             dispatch({ type: "status", status: next });
           }
