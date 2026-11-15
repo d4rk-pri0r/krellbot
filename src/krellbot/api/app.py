@@ -38,7 +38,10 @@ from krellbot.application import operations as operations_view_app
 from krellbot.application import packs as app_packs
 from krellbot.application.live_preflight import SandboxTransport
 from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
-from krellbot.application.paper import project_owned_position
+from krellbot.application.paper import (
+    project_owned_position,
+    project_paper_pnl_position_chart,
+)
 from krellbot.application.strategy import (
     DraftNotRunnable,
     RevisionNotFound,
@@ -1559,6 +1562,33 @@ def create_app(
             status_code=200,
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/api/v1/paper/chart")
+    async def paper_chart(request: Request) -> Response:
+        """Return P&L + position (or mark) series for the armed paper market.
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF. The
+        body is the closed-shape chart projection from journal ticks and
+        paper-state fills:
+
+        * ``pnl`` — fill-replay equity minus ``starting_cash``
+        * ``position`` — journal ``owned_qty_after`` over time
+        * ``marks`` — fill prices (mark series when position is thin)
+
+        Series stay empty when evidence is missing; nothing is fabricated.
+        When no pack is armed the body is
+        ``{"schema_version": <v>, "armed": false}``. Read-only: never
+        writes, arms, or flattens.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = project_paper_pnl_position_chart(s.home)
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/paper/history")
     async def paper_history(request: Request) -> Response:

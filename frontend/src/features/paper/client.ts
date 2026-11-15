@@ -60,6 +60,43 @@ export type PaperArmDraftSummary = {
   pair: string;
 };
 
+export type PaperPnlPoint = {
+  ts_ms: number;
+  value: string;
+};
+
+export type PaperPositionPoint = {
+  ts_ms: number;
+  qty: string;
+};
+
+export type PaperMarkPoint = {
+  ts_ms: number;
+  price: string;
+};
+
+/**
+ * Closed-shape chart body from ``GET /api/v1/paper/chart``.
+ * Series quote journal ticks and paper-state fills; empty when
+ * evidence is missing.
+ */
+export type PaperChart = {
+  schema_version: string;
+  armed: boolean;
+  venue?: string;
+  pair?: string;
+  mode?: string;
+  pack_id?: string;
+  starting_cash?: string;
+  pnl: PaperPnlPoint[];
+  position: PaperPositionPoint[];
+  marks: PaperMarkPoint[];
+};
+
+export type PaperChartClient = {
+  getChart(): Promise<PaperChart>;
+};
+
 export type PaperStatusSelect = {
   venue: string;
   pair: string;
@@ -68,6 +105,7 @@ export type PaperStatusSelect = {
 export type PaperClient = {
   getStatus(select?: PaperStatusSelect): Promise<PaperStatus>;
   getPosition?(select?: PaperStatusSelect): Promise<PaperPosition>;
+  getChart?(): Promise<PaperChart>;
   pauseEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   resumeEntries(venue: string, pair: string): Promise<PaperCommandResult>;
   disarm(venue: string, pair: string): Promise<PaperCommandResult>;
@@ -599,13 +637,121 @@ async function getPaperPosition(select?: PaperStatusSelect): Promise<PaperPositi
   return adaptPosition(raw);
 }
 
-export function createHttpClient(): PaperClient & PaperRunsClient & PaperArmedClient & Required<Pick<PaperClient, "raiseStop">> {
+function adaptChartPoint(
+  raw: unknown,
+  valueKey: "value" | "qty" | "price",
+): { ts_ms: number; [key: string]: string | number } | null {
+  if (raw === null || typeof raw !== "object") {
+    return null;
+  }
+  const row = raw as Record<string, unknown>;
+  const ts =
+    typeof row.ts_ms === "number" && Number.isFinite(row.ts_ms)
+      ? row.ts_ms
+      : null;
+  const value = typeof row[valueKey] === "string" ? row[valueKey] : null;
+  if (ts === null || value === null) {
+    return null;
+  }
+  return { ts_ms: ts, [valueKey]: value };
+}
+
+/**
+ * Decode the closed-shape ``GET /api/v1/paper/chart`` body. An armed body
+ * missing series arrays is refused rather than repaired into empty
+ * charts — the workstation must quote the wire.
+ */
+function adaptChart(raw: Record<string, unknown>): PaperChart {
+  const armed = raw.armed === true;
+  const out: PaperChart = {
+    schema_version:
+      typeof raw.schema_version === "string" ? raw.schema_version : "1",
+    armed,
+    pnl: [],
+    position: [],
+    marks: [],
+  };
+  if (!armed) {
+    return out;
+  }
+  if (
+    !Array.isArray(raw.pnl) ||
+    !Array.isArray(raw.position) ||
+    !Array.isArray(raw.marks)
+  ) {
+    throw new Error("paper chart body missing series arrays");
+  }
+  const pnl: PaperPnlPoint[] = [];
+  for (const item of raw.pnl) {
+    const point = adaptChartPoint(item, "value");
+    if (point === null || typeof point.value !== "string") {
+      throw new Error("paper chart pnl point malformed");
+    }
+    pnl.push({ ts_ms: point.ts_ms, value: point.value });
+  }
+  const position: PaperPositionPoint[] = [];
+  for (const item of raw.position) {
+    const point = adaptChartPoint(item, "qty");
+    if (point === null || typeof point.qty !== "string") {
+      throw new Error("paper chart position point malformed");
+    }
+    position.push({ ts_ms: point.ts_ms, qty: point.qty });
+  }
+  const marks: PaperMarkPoint[] = [];
+  for (const item of raw.marks) {
+    const point = adaptChartPoint(item, "price");
+    if (point === null || typeof point.price !== "string") {
+      throw new Error("paper chart mark point malformed");
+    }
+    marks.push({ ts_ms: point.ts_ms, price: point.price });
+  }
+  out.pnl = pnl;
+  out.position = position;
+  out.marks = marks;
+  if (typeof raw.venue === "string") out.venue = raw.venue;
+  if (typeof raw.pair === "string") out.pair = raw.pair;
+  if (typeof raw.mode === "string") out.mode = raw.mode;
+  if (typeof raw.pack_id === "string") out.pack_id = raw.pack_id;
+  if (typeof raw.starting_cash === "string") {
+    out.starting_cash = raw.starting_cash;
+  }
+  return out;
+}
+
+/**
+ * GET ``/api/v1/paper/chart``: P&L + position (or mark) series from
+ * journal ticks and paper-state fills. Same authenticated GET envelope
+ * as the other paper reads; no retry.
+ */
+async function getPaperChart(): Promise<PaperChart> {
+  const response = await fetch("/api/v1/paper/chart", {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`paper chart failed: ${response.status}`);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  return adaptChart(raw);
+}
+
+export function createHttpClient(): PaperClient &
+  PaperRunsClient &
+  PaperArmedClient &
+  PaperChartClient &
+  Required<Pick<PaperClient, "raiseStop">> {
   return {
     getStatus(select?: PaperStatusSelect): Promise<PaperStatus> {
       return getJson(paperStatusUrl(select));
     },
     getPosition(select?: PaperStatusSelect): Promise<PaperPosition> {
       return getPaperPosition(select);
+    },
+    getChart(): Promise<PaperChart> {
+      return getPaperChart();
     },
     listArmed(): Promise<PaperArmedView> {
       return getArmedJson("/api/v1/paper/armed");

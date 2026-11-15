@@ -8,6 +8,7 @@ import type {
   PaperStatus,
 } from "./client";
 import { PaperStatusCsvExport } from "./PaperStatusCsvExport";
+import { PaperPnlPositionChart } from "./PaperPnlPositionChart";
 import { RehearsalPanel } from "./RehearsalPanel";
 import type { RehearsalClient } from "./rehearsalClient";
 import { summarizePaperCommandRefusal } from "./paperCommandRefusalSummary";
@@ -1065,6 +1066,13 @@ export function StatusPanel({ client }: StatusPanelProps): JSX.Element {
                 Owned position unavailable
               </p>
             )}
+            {/* P&L + position (or mark) series from journal/export APIs.
+                One read per armed mount / armEpoch bump; fakes in tests. */}
+            <PaperPnlPositionChart
+              client={client}
+              armed={true}
+              refreshKey={armEpoch}
+            />
             <div className="kbot-paper-status__actions">
               <button
                 type="button"
