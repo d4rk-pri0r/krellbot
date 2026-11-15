@@ -1,0 +1,195 @@
+/*
+ * Notifications settings — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for NotificationsPanel on Operations.
+ * Namespaced under `.kbot-ops__notifications`.
+ */
+
+.kbot-ops__notifications {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-ops__notifications *,
+.kbot-ops__notifications *::before,
+.kbot-ops__notifications *::after {
+  box-sizing: border-box;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops__notifications .kbot-ops__panel-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-refresh,
+.kbot-ops__notifications .kbot-ops__notifications-save {
+  margin: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-refresh {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #22465d);
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-save {
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--sage, #b3dda8) 22%, var(--panel, #18354a));
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-refresh:disabled,
+.kbot-ops__notifications .kbot-ops__notifications-save:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-helper,
+.kbot-ops__notifications .kbot-ops__notifications-status,
+.kbot-ops__notifications .kbot-ops__notifications-feedback,
+.kbot-ops__notifications .kbot-ops__notifications-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-helper {
+  color: var(--muted, #abc4d8);
+  font-size: 12px;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-error {
+  color: var(--caution-text, #e8c4bb);
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-toggle input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--seafoam, #a8d8d1);
+  flex: 0 0 auto;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-toggle-label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-toggle-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted, #abc4d8);
+  line-height: 1.45;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-env {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-email-fields {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 8px;
+  background: var(--surface, #14222e);
+  min-width: 0;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-field {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-field > span {
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-field input {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 13px;
+  width: 100%;
+  min-width: 0;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kbot-ops__notifications .kbot-ops__notifications-refresh:focus-visible,
+.kbot-ops__notifications .kbot-ops__notifications-save:focus-visible,
+.kbot-ops__notifications .kbot-ops__notifications-toggle input:focus-visible,
+.kbot-ops__notifications .kbot-ops__notifications-field input:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .kbot-ops__notifications .kbot-ops__notifications-refresh,
+  .kbot-ops__notifications .kbot-ops__notifications-save,
+  .kbot-ops__notifications .kbot-ops__notifications-field input {
+    min-height: 44px;
+  }
+}

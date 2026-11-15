@@ -82,6 +82,7 @@ class _AppState:
     scheduler_supervisor: object = None  # PlatformSupervisor; tests inject FakeSupervisor
     scheduler_write_root: Path | None = None  # defaults to Path.home()
     scheduler_executable: str | None = None  # defaults to sys.executable
+    alert_notifier: object = None  # Notifier; tests inject FakeNotifier
 
 
 def _state(app: FastAPI) -> _AppState:
@@ -1131,7 +1132,76 @@ def create_app(
             return denied
 
         body = operations_view_app.operations_view(s.home, now=_now_seconds())
+        # Opt-in alert notifications (desktop/email). Separate from telemetry.
+        # FakeNotifier is injected by tests; production builds the default.
+        from krellbot import notifications as kb_notifications
+
+        kb_notifications.maybe_notify(
+            s.home,
+            body.get("alerts") or [],
+            notifier=s.alert_notifier,
+        )
         return JSONResponse(body, status_code=200)
+
+    @app.get("/api/v1/notifications")
+    async def notifications_settings_get(request: Request) -> Response:
+        """Return closed-shape notification settings (M9.4).
+
+        Same session gate as ``GET /api/v1/operations`` (``_gate_get``).
+        The body never carries an SMTP password or any secret — password
+        is supplied only via ``KRELLBOT_SMTP_PASSWORD`` at send time.
+        Telemetry remains a separate opt-in.
+        """
+
+        from krellbot import notifications as kb_notifications
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = kb_notifications.get_settings(s.home)
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.put("/api/v1/notifications")
+    async def notifications_settings_put(request: Request) -> Response:
+        """Update opt-in desktop/email notification settings (M9.4).
+
+        Same state-change gate as ``POST /api/v1/commands``. Rejects any
+        attempt to persist an SMTP password in settings.
+        """
+
+        from krellbot import notifications as kb_notifications
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        try:
+            body = kb_notifications.update_settings(s.home, payload)
+        except (TypeError, ValueError) as exc:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "bad_input",
+                    "ok": False,
+                    "message": str(exc),
+                },
+                status_code=400,
+            )
+        return JSONResponse(
+            {**body, "ok": True, "code": "notifications_updated"},
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/v1/operations/deployments")
     async def operations_deployment_history(request: Request) -> Response:
