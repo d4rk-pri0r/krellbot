@@ -12,6 +12,7 @@ import { useOperationsRefresh } from "./useOperationsRefresh";
 import { summarizeAlertCode } from "./alertCodeLabel";
 import type { AlertRow, OperationsClient, OperationsViewModel } from "./client";
 import { summarizeAlertSeverity } from "./alertSeverityLabel";
+import { LiveAuthorizationPanel } from "./LiveAuthorizationPanel";
 import { UnresolvedOrdersList } from "./UnresolvedOrdersList";
 
 const DISABLED_BANNER =
@@ -698,6 +699,14 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
               )}
             </ul>
           </div>
+        </section>
+
+        <section
+          className="kbot-ops__panel"
+          aria-label="Live authorization"
+          data-testid="ops-live-authorization-panel"
+        >
+          <LiveAuthorizationPanel client={client} />
         </section>
 
         <section

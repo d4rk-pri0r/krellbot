@@ -15,9 +15,11 @@ When live is re-enabled, order paths require THREE things, all of them true:
 3. The kill switch file under ``<home>/run/kill-switch.json`` is not
    engaged.
 
-This module is the ONLY place that reads the authorization record, and it
-never writes it. Promotion to live is owner-deferred in this build, so
-``check_promotion`` always refuses with ``CODE_PROMOTION_DEFERRED`` even
+This module is the ONLY place that reads or writes the authorization
+record. The workstation grants and revokes it through
+:func:`grant_authorization` / :func:`revoke_authorization` behind a typed
+``LIVE`` confirmation. Promotion to live is owner-deferred in this build,
+so ``check_promotion`` always refuses with ``CODE_PROMOTION_DEFERRED`` even
 when the rest of the gate would let the send through.
 """
 
@@ -36,6 +38,8 @@ from krellbot.paths import atomic_write
 SCHEMA_VERSION = "1"
 AUTH_FILE = "live-authorization.json"
 KILL_FILE = "kill-switch.json"
+CONFIRMATION_TEXT = "LIVE"
+MAX_GRANT_TTL_SECONDS = 7 * 24 * 60 * 60  # seven days
 
 CODE_OK = "ok"
 CODE_KILL_SWITCH = "kill_switch_engaged"
@@ -43,6 +47,10 @@ CODE_LIVE_DISABLED = "live_disabled"
 CODE_LIVE_NOT_AUTHORIZED = "live_not_authorized"
 CODE_PROMOTION_DEFERRED = "live_promotion_owner_deferred"
 CODE_PAPER_ONLY_RELEASE = release_policy.CODE_PAPER_ONLY_RELEASE
+CODE_BAD_INPUT = "bad_input"
+CODE_CONFIRMATION_REQUIRED = "confirmation_required"
+CODE_AUTHORIZED = "live_authorized"
+CODE_REVOKED = "live_authorization_revoked"
 
 
 @dataclass(frozen=True)
@@ -78,6 +86,22 @@ class KillState:
         }
 
 
+@dataclass(frozen=True)
+class AuthorizationState:
+    """Closed-shape snapshot of the operator live authorization record."""
+
+    active: bool
+    expires_at: int | None
+    grants: tuple[tuple[str, str], ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "active": self.active,
+            "expires_at": self.expires_at,
+            "grants": [{"venue": v, "pair": p} for v, p in self.grants],
+        }
+
+
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
@@ -109,8 +133,38 @@ def _resolve_env(env: Mapping[str, str] | None, key: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Authorization record (product only reads)
+# Authorization record (product reads and writes via this module only)
 # ---------------------------------------------------------------------------
+
+
+def _parse_authorization_payload(data: object, *, now: int) -> AuthorizationState | None:
+    """Return an active authorization state, or ``None`` when inactive/invalid."""
+    if type(data) is not dict:
+        return None
+    if data.get("schema_version") != "1":
+        return None
+    if data.get("granted_by") != "operator":
+        return None
+    expires_at = data.get("expires_at")
+    if type(expires_at) is not int or expires_at <= now:
+        return None
+    grants_raw = data.get("grants")
+    if type(grants_raw) is not list:
+        return None
+    result: list[tuple[str, str]] = []
+    for entry in grants_raw:
+        if type(entry) is not dict:
+            continue
+        venue = entry.get("venue")
+        pair = entry.get("pair")
+        if type(venue) is not str or not venue:
+            continue
+        if type(pair) is not str or not pair:
+            continue
+        result.append((venue, pair))
+    if not result:
+        return None
+    return AuthorizationState(True, expires_at, tuple(result))
 
 
 def read_authorization(home: Path, *, now: int) -> list[tuple[str, str]]:
@@ -121,43 +175,124 @@ def read_authorization(home: Path, *, now: int) -> list[tuple[str, str]]:
     list contains only entries whose ``venue`` and ``pair`` are both
     non-empty ``str`` instances (exact ``type(x) is str``).
     """
+    state = authorization_state(home, now=now)
+    return list(state.grants)
+
+
+def authorization_state(home: Path, *, now: int) -> AuthorizationState:
+    """Return the closed-shape authorization snapshot (never raises)."""
     path = auth_path(home)
     try:
         raw = path.read_bytes()
     except OSError:
-        return []
+        return AuthorizationState(False, None, ())
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
-        return []
+        return AuthorizationState(False, None, ())
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return []
-    if type(data) is not dict:
-        return []
-    if data.get("schema_version") != "1":
-        return []
-    if data.get("granted_by") != "operator":
-        return []
-    expires_at = data.get("expires_at")
-    if type(expires_at) is not int or expires_at <= now:
-        return []
-    grants = data.get("grants")
-    if type(grants) is not list:
-        return []
-    result: list[tuple[str, str]] = []
-    for entry in grants:
-        if type(entry) is not dict:
-            continue
-        venue = entry.get("venue")
-        pair = entry.get("pair")
-        if type(venue) is not str or not venue:
-            continue
-        if type(pair) is not str or not pair:
-            continue
-        result.append((venue, pair))
-    return result
+        return AuthorizationState(False, None, ())
+    parsed = _parse_authorization_payload(data, now=now)
+    if parsed is None:
+        return AuthorizationState(False, None, ())
+    return parsed
+
+
+def _validate_confirmation(confirmation: object) -> LiveGateResult | None:
+    if type(confirmation) is not str or confirmation.strip() != CONFIRMATION_TEXT:
+        return _refusal(
+            CODE_CONFIRMATION_REQUIRED,
+            f"type {CONFIRMATION_TEXT} to confirm live authorization",
+        )
+    return None
+
+
+def _validate_venue_pair(venue: object, pair: object) -> tuple[str, str] | LiveGateResult:
+    if type(venue) is not str or not venue.strip():
+        return _refusal(CODE_BAD_INPUT, "venue must be a non-empty string")
+    if type(pair) is not str or not pair.strip():
+        return _refusal(CODE_BAD_INPUT, "pair must be a non-empty string")
+    return venue.strip(), pair.strip()
+
+
+def _validate_expires_at(expires_at: object, *, now: int) -> int | LiveGateResult:
+    if type(expires_at) is not int:
+        return _refusal(CODE_BAD_INPUT, "expires_at must be an int unix timestamp")
+    if expires_at <= now:
+        return _refusal(CODE_BAD_INPUT, "expires_at must be in the future")
+    if expires_at - now > MAX_GRANT_TTL_SECONDS:
+        return _refusal(
+            CODE_BAD_INPUT,
+            f"expires_at must be within {MAX_GRANT_TTL_SECONDS} seconds from now",
+        )
+    return expires_at
+
+
+def grant_authorization(
+    home: Path,
+    *,
+    venue: str,
+    pair: str,
+    expires_at: int,
+    confirmation: str,
+    now: int,
+) -> LiveGateResult:
+    """Write a single-venue/pair operator authorization behind typed confirmation.
+
+    While ``PAPER_ONLY_RELEASE`` is active the grant is refused and the file
+    is left untouched. A successful grant replaces any previous record.
+    """
+    if release_policy.paper_only_release_active():
+        return _refusal(CODE_PAPER_ONLY_RELEASE, release_policy.paper_only_message())
+    confirm_refusal = _validate_confirmation(confirmation)
+    if confirm_refusal is not None:
+        return confirm_refusal
+    venue_pair = _validate_venue_pair(venue, pair)
+    if isinstance(venue_pair, LiveGateResult):
+        return venue_pair
+    clean_venue, clean_pair = venue_pair
+    clean_expires = _validate_expires_at(expires_at, now=now)
+    if isinstance(clean_expires, LiveGateResult):
+        return clean_expires
+
+    payload = {
+        "schema_version": "1",
+        "granted_by": "operator",
+        "expires_at": clean_expires,
+        "grants": [{"venue": clean_venue, "pair": clean_pair}],
+    }
+    path = auth_path(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(
+        path,
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        mode=0o600,
+    )
+    return LiveGateResult(
+        CODE_AUTHORIZED,
+        True,
+        f"live authorization granted for {clean_venue} {clean_pair}",
+    )
+
+
+def revoke_authorization(home: Path, *, now: int | None = None) -> LiveGateResult:
+    """Remove the operator authorization record if present.
+
+    While ``PAPER_ONLY_RELEASE`` is active revocation is refused so the
+    Operations panel stays read-only for the paper-only release. ``now`` is
+    accepted for call-site symmetry and unused.
+    """
+    del now
+    if release_policy.paper_only_release_active():
+        return _refusal(CODE_PAPER_ONLY_RELEASE, release_policy.paper_only_message())
+    path = auth_path(home)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    return LiveGateResult(CODE_REVOKED, True, "live authorization revoked")
 
 
 # ---------------------------------------------------------------------------

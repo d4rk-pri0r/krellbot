@@ -1,12 +1,42 @@
 import { getCsrf } from "../../session";
 
+export type LiveAuthorizationGrant = { venue: string; pair: string };
+
+export type LiveAuthorizationState = {
+  active: boolean;
+  expires_at: number | null;
+  grants: ReadonlyArray<LiveAuthorizationGrant>;
+};
+
 export type LiveStatus = {
   schema_version: string;
   live_enabled: boolean;
-  authorized: ReadonlyArray<{ venue: string; pair: string }>;
+  authorized: ReadonlyArray<LiveAuthorizationGrant>;
+  authorization?: LiveAuthorizationState;
+  release_policy?: string;
+  release_policy_code?: string;
+  release_policy_message?: string | null;
   kill_switch: { engaged: boolean; reason: string | null; engaged_at: number | null };
   promotion_available: boolean;
   promotion_code: string;
+};
+
+export type LiveAuthorizationView = {
+  schema_version: string;
+  authorization: LiveAuthorizationState;
+  release_policy: string;
+  release_policy_code: string;
+  release_policy_message: string | null;
+  confirmation_required: string;
+};
+
+export type LiveAuthorizationCommandResult = {
+  schema_version?: string;
+  code?: string;
+  ok?: boolean;
+  message?: string;
+  effect?: string;
+  authorization?: LiveAuthorizationState;
 };
 
 export type DeploymentRow = {
@@ -79,6 +109,14 @@ export type OperationsClient = {
   listDeploymentRecords?(): Promise<DeploymentRecordRow[]>;
   getDeploymentRecord?(deploymentId: string): Promise<DeploymentRecordRow>;
   listUnresolvedOrders?(): Promise<UnresolvedOrderRow[]>;
+  getLiveAuthorization?(): Promise<LiveAuthorizationView>;
+  grantLiveAuthorization?(
+    venue: string,
+    pair: string,
+    expiresAt: number,
+    confirmation: string,
+  ): Promise<LiveAuthorizationCommandResult>;
+  revokeLiveAuthorization?(): Promise<LiveAuthorizationCommandResult>;
 };
 
 async function getJson(url: string): Promise<OperationsViewModel> {
@@ -130,25 +168,70 @@ function adaptKill(raw: unknown): LiveStatus["kill_switch"] {
   };
 }
 
+function adaptGrant(raw: unknown): LiveAuthorizationGrant | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const e = raw as { venue?: unknown; pair?: unknown };
+  if (typeof e.venue !== "string" || typeof e.pair !== "string") {
+    return null;
+  }
+  return { venue: e.venue, pair: e.pair };
+}
+
+function adaptAuthorization(raw: unknown): LiveAuthorizationState {
+  if (!raw || typeof raw !== "object") {
+    return { active: false, expires_at: null, grants: [] };
+  }
+  const obj = raw as { active?: unknown; expires_at?: unknown; grants?: unknown };
+  const grantsRaw = Array.isArray(obj.grants) ? obj.grants : [];
+  const grants = grantsRaw
+    .map(adaptGrant)
+    .filter((entry): entry is LiveAuthorizationGrant => entry !== null);
+  return {
+    active: obj.active === true,
+    expires_at: typeof obj.expires_at === "number" ? obj.expires_at : null,
+    grants,
+  };
+}
+
+function adaptLiveAuthorizationView(raw: unknown): LiveAuthorizationView {
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  return {
+    schema_version: typeof obj.schema_version === "string" ? obj.schema_version : "1",
+    authorization: adaptAuthorization(obj.authorization),
+    release_policy: typeof obj.release_policy === "string" ? obj.release_policy : "paper_only",
+    release_policy_code:
+      typeof obj.release_policy_code === "string"
+        ? obj.release_policy_code
+        : "live_disabled_paper_only_release",
+    release_policy_message:
+      typeof obj.release_policy_message === "string" ? obj.release_policy_message : null,
+    confirmation_required:
+      typeof obj.confirmation_required === "string" ? obj.confirmation_required : "LIVE",
+  };
+}
+
 function adaptLive(raw: unknown): LiveStatus {
   const obj = (raw ?? {}) as Record<string, unknown>;
   const authorizedRaw = Array.isArray(obj.authorized) ? obj.authorized : [];
   const authorized = authorizedRaw
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
-      const e = entry as { venue?: unknown; pair?: unknown };
-      if (typeof e.venue !== "string" || typeof e.pair !== "string") {
-        return null;
-      }
-      return { venue: e.venue, pair: e.pair };
-    })
-    .filter((entry): entry is { venue: string; pair: string } => entry !== null);
+    .map(adaptGrant)
+    .filter((entry): entry is LiveAuthorizationGrant => entry !== null);
   return {
     schema_version: typeof obj.schema_version === "string" ? obj.schema_version : "1",
     live_enabled: obj.live_enabled === true,
     authorized,
+    authorization: adaptAuthorization(obj.authorization),
+    release_policy: typeof obj.release_policy === "string" ? obj.release_policy : undefined,
+    release_policy_code:
+      typeof obj.release_policy_code === "string" ? obj.release_policy_code : undefined,
+    release_policy_message:
+      typeof obj.release_policy_message === "string"
+        ? obj.release_policy_message
+        : obj.release_policy_message === null
+          ? null
+          : undefined,
     kill_switch: adaptKill(obj.kill_switch),
     promotion_available: obj.promotion_available === true,
     promotion_code:
@@ -358,6 +441,66 @@ export function createHttpClient(): OperationsClient {
           .map(adaptUnresolvedOrder)
           .filter((row): row is UnresolvedOrderRow => row !== null);
       });
+    },
+    getLiveAuthorization(): Promise<LiveAuthorizationView> {
+      return getOperationsReadJson(
+        "/api/v1/operations/live-authorization",
+        "live authorization",
+      ).then((raw) => adaptLiveAuthorizationView(raw));
+    },
+    async grantLiveAuthorization(
+      venue: string,
+      pair: string,
+      expiresAt: number,
+      confirmation: string,
+    ): Promise<LiveAuthorizationCommandResult> {
+      const response = await fetch("/api/v1/operations/live-authorization", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Krellbot-CSRF": getCsrf(),
+        },
+        body: JSON.stringify({
+          venue,
+          pair,
+          expires_at: expiresAt,
+          confirmation,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`live authorization grant failed: ${response.status}`);
+      }
+      const raw = (await response.json()) as Record<string, unknown>;
+      return {
+        schema_version: typeof raw.schema_version === "string" ? raw.schema_version : "1",
+        code: typeof raw.code === "string" ? raw.code : undefined,
+        ok: raw.ok === true,
+        message: typeof raw.message === "string" ? raw.message : undefined,
+        effect: typeof raw.effect === "string" ? raw.effect : undefined,
+        authorization: adaptAuthorization(raw.authorization),
+      };
+    },
+    async revokeLiveAuthorization(): Promise<LiveAuthorizationCommandResult> {
+      const response = await fetch("/api/v1/operations/live-authorization", {
+        method: "DELETE",
+        credentials: "include",
+        headers: {
+          "X-Krellbot-CSRF": getCsrf(),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`live authorization revoke failed: ${response.status}`);
+      }
+      const raw = (await response.json()) as Record<string, unknown>;
+      return {
+        schema_version: typeof raw.schema_version === "string" ? raw.schema_version : "1",
+        code: typeof raw.code === "string" ? raw.code : undefined,
+        ok: raw.ok === true,
+        message: typeof raw.message === "string" ? raw.message : undefined,
+        effect: typeof raw.effect === "string" ? raw.effect : undefined,
+        authorization: adaptAuthorization(raw.authorization),
+      };
     },
     promote(venue, pair, revisionId): Promise<CommandResult> {
       return postCommand("live.promote", { venue, pair, revision_id: revisionId });

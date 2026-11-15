@@ -8,7 +8,7 @@
 
 ## Scenario IDs
 
-Scenario IDs use J<journey>.<scenario>. The approved set is J1.1 through J7.5: seven journeys with five scenarios each. Each journey test title starts with its exact scenario ID.
+Scenario IDs use J<journey>.<scenario>. The approved set is J1.1 through J8.5: eight journeys with five scenarios each. Each journey test title starts with its exact scenario ID. J8.1 is covered by the browser journey; J8.2–J8.5 are covered by pytest against the API and fake transport.
 
 ## Time limits
 
@@ -28,3 +28,4 @@ Scenario IDs use J<journey>.<scenario>. The approved set is J1.1 through J7.5: s
 - j5-paper.md
 - j6-pause-restart.md
 - j7-export.md
+- j8-live-authorization.md

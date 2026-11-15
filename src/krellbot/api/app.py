@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from krellbot import config as kb_config
+from krellbot import release_policy
 from krellbot.api.jobs import (
     JOB_ERROR_NOT_FOUND,
     JOB_ERROR_RESULT_UNAVAILABLE,
@@ -1128,6 +1129,123 @@ def create_app(
         rows = operations_view_app.list_unresolved_orders(s.home, now=_now_seconds())
         return JSONResponse(
             {"schema_version": SCHEMA_VERSION, "orders": rows},
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/operations/live-authorization")
+    async def operations_live_authorization_get(request: Request) -> Response:
+        """Return the closed-shape live authorization snapshot (M1.10).
+
+        Same session gate as ``GET /api/v1/operations`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF
+        required for the read. While ``PAPER_ONLY_RELEASE`` is active the
+        body still reports the paper-only policy so the Operations panel
+        can stay visible, disabled, and explain why.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        now = _now_seconds()
+        live = live_gate.live_status(s.home, now=now)
+        paper_only = live.get("release_policy") == "paper_only"
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "authorization": live_gate.authorization_state(s.home, now=now).to_dict(),
+            "release_policy": live.get("release_policy"),
+            "release_policy_code": live.get("release_policy_code"),
+            "release_policy_message": (release_policy.paper_only_message() if paper_only else None),
+            "confirmation_required": live_gate.CONFIRMATION_TEXT,
+        }
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/operations/live-authorization")
+    async def operations_live_authorization_grant(request: Request) -> Response:
+        """Create a live authorization for one exact venue/pair with expiry.
+
+        Same state-change gate as ``POST /api/v1/commands``
+        (``_gate_state_change``): session cookie + CSRF + loopback Origin.
+        Requires the typed confirmation text ``LIVE``. While
+        ``PAPER_ONLY_RELEASE`` is active the grant is refused and no file
+        is written.
+        """
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        venue = payload.get("venue")
+        pair = payload.get("pair")
+        expires_at = payload.get("expires_at")
+        confirmation = payload.get("confirmation")
+        if (
+            not isinstance(venue, str)
+            or not isinstance(pair, str)
+            or not isinstance(expires_at, int)
+            or not isinstance(confirmation, str)
+        ):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        now = _now_seconds()
+        result = live_gate.grant_authorization(
+            s.home,
+            venue=venue,
+            pair=pair,
+            expires_at=expires_at,
+            confirmation=confirmation,
+            now=now,
+        )
+        auth = live_gate.authorization_state(s.home, now=now).to_dict()
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "code": result.code,
+                "ok": result.ok,
+                "message": result.message,
+                "effect": "changed" if result.ok else "refused",
+                "authorization": auth,
+            },
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.delete("/api/v1/operations/live-authorization")
+    async def operations_live_authorization_revoke(request: Request) -> Response:
+        """Revoke the current live authorization record.
+
+        Same state-change gate as ``POST /api/v1/commands``. While
+        ``PAPER_ONLY_RELEASE`` is active revocation is refused so the
+        panel stays disabled for the paper-only release.
+        """
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        now = _now_seconds()
+        result = live_gate.revoke_authorization(s.home, now=now)
+        auth = live_gate.authorization_state(s.home, now=now).to_dict()
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "code": result.code,
+                "ok": result.ok,
+                "message": result.message,
+                "effect": "changed" if result.ok else "refused",
+                "authorization": auth,
+            },
             status_code=200,
             headers={"Cache-Control": "no-store"},
         )

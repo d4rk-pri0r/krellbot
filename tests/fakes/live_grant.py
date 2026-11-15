@@ -1,9 +1,9 @@
 """Operator-grant writer for the live authorization gate.
 
-The brief is explicit: only ``tests/fakes/live_grant.py`` may write
-``live-authorization.json``. The product (``src/``) never creates the
-file, and the live gate's ``read_authorization`` is the only reader.
-The fake matches the v1 schema the gate validates:
+Tests may still hand-write ``live-authorization.json`` through this
+helper. Production writes go through
+``krellbot.application.live_gate.grant_authorization`` (workstation API);
+this module remains the test-only shortcut that matches the v1 schema:
 
     {
       "schema_version": "1",
