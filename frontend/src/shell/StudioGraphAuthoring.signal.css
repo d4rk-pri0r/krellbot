@@ -1,0 +1,81 @@
+/*
+ * Studio graph authoring toolbar — Signal slice.
+ * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ *
+ * Compact authoring controls for add/delete pack-DSL nodes beside the
+ * Studio canvas. Sage is the single affirmative primary (Add);
+ * Delete uses caution/danger styling and stays disabled until an
+ * indicator node is selected.
+ */
+
+.kbot-studio-authoring {
+  display: grid;
+  gap: 10px;
+  max-width: 36rem;
+  padding: 14px 16px;
+  background: var(--surface, #14222e);
+  border: 1px solid var(--line, #22465d);
+  border-radius: 11px;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-studio-authoring__eyebrow {
+  margin: 0;
+  color: var(--muted, #abc4d8);
+  font-family: var(--font-ui, Manrope, sans-serif);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kbot-studio-authoring__hint {
+  margin: 0;
+  color: var(--muted, #abc4d8);
+  font-family: var(--font-ui, Manrope, sans-serif);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.kbot-studio-authoring__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kbot-studio-authoring__primary,
+.kbot-studio-authoring__danger {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  font-family: var(--font-ui, Manrope, sans-serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-studio-authoring__primary {
+  background: var(--sage, #b3dda8);
+  color: var(--navy, #0e1c29);
+}
+
+.kbot-studio-authoring__primary:hover {
+  filter: brightness(1.04);
+}
+
+.kbot-studio-authoring__danger {
+  background: transparent;
+  border-color: var(--line, #22465d);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-studio-authoring__danger:hover:not(:disabled) {
+  border-color: var(--coral, #cc9689);
+  color: var(--coral, #cc9689);
+}
+
+.kbot-studio-authoring__danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

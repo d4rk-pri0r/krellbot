@@ -27,6 +27,8 @@ export type GraphCanvasProps = {
   edges?: Edge[];
   onAddConnection: (connection: Connection) => void;
   onSelectNode?: (nodeId: string) => void;
+  /** Pack-DSL delete for selected indicator nodes (Backspace/Delete). */
+  onDeleteNodes?: (nodeIds: string[]) => void;
   nodeTypes?: NodeTypes;
   fitView?: boolean;
 };
@@ -57,6 +59,7 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
     edges = [],
     onAddConnection,
     onSelectNode,
+    onDeleteNodes,
     nodeTypes,
     fitView = false,
   } = props;
@@ -122,6 +125,13 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
     }
   };
 
+  const handleNodesDelete = (deleted: GraphCanvasNode[]): void => {
+    if (!onDeleteNodes || deleted.length === 0) {
+      return;
+    }
+    onDeleteNodes(deleted.map((node) => String(node.id)));
+  };
+
   return (
     <div
       ref={graphCanvasContainerRef}
@@ -134,6 +144,8 @@ export function GraphCanvas(props: GraphCanvasProps): JSX.Element {
         edges={edges}
         onConnect={handleConnect}
         onNodeClick={handleNodeClick}
+        onNodesDelete={onDeleteNodes ? handleNodesDelete : undefined}
+        deleteKeyCode={onDeleteNodes ? ["Backspace", "Delete"] : null}
         nodeTypes={nodeTypes}
         nodesConnectable
         edgesFocusable={false}
