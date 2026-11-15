@@ -98,7 +98,6 @@ def _coinbase_venue(transport: FakeCoinbaseTransport) -> object:
 # ---------------------------------------------------------------------------
 
 
-
 def test_paper_only_message_tracks_package_version():
     """Honesty: refusal copy must match krellbot.__version__, not a stale pin."""
     from krellbot import __version__

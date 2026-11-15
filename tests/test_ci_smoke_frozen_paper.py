@@ -40,6 +40,7 @@ HELPER = SCRIPTS_DIR / "ci_smoke_frozen_paper.py"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-frozen.yml"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
+
 def _paper_only_message() -> str:
     from krellbot.release_policy import paper_only_message
 
