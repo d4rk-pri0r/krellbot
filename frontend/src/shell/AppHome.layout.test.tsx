@@ -13,12 +13,30 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppHome } from "./AppHome";
+import type { KeysClient } from "../features/keys/client";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 afterEach(cleanup);
+
+function absentKeysClient(): KeysClient {
+  return {
+    getStatus: vi.fn().mockResolvedValue({
+      schema_version: "1",
+      venue: "kraken",
+      present: false,
+      corrupt: false,
+      message: "no key stored",
+      backend_label: null,
+      balances: null,
+      balances_available: false,
+    }),
+    probeAndStore: vi.fn(),
+    remove: vi.fn(),
+  };
+}
 
 function readStylesheet(): string {
   return readFileSync(join(here, "AppHome.signal.css"), "utf8");
@@ -38,7 +56,7 @@ const CARD_TESTIDS = [
 
 describe("home card layout at 1440×900", () => {
   it("wraps each card's copy in a single stacked body column", () => {
-    render(<AppHome onNavigate={() => {}} />);
+    render(<AppHome onNavigate={() => {}} keysClient={absentKeysClient()} />);
     for (const testid of CARD_TESTIDS) {
       const card = screen.getByTestId(testid);
       expect(card.tagName).toBe("BUTTON");

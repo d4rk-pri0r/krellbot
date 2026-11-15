@@ -1,0 +1,187 @@
+/*
+ * Kraken keys onboarding — Signal (KRELL-SIGNAL-20261010).
+ *
+ * Workspace rail form for probe/store/status/remove. Sage is the single
+ * affirmative store action; caution/coral for load errors only.
+ *
+ *   navy #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text #E9F0F5  muted #ABC4D8  seafoam #A8D8D1  sage #B3DDA8
+ */
+
+.kbot-keys {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-keys *,
+.kbot-keys *::before,
+.kbot-keys *::after {
+  box-sizing: border-box;
+}
+
+.kbot-keys__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-keys__title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-keys__refresh,
+.kbot-keys__remove,
+.kbot-keys__store {
+  margin: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-keys__refresh,
+.kbot-keys__remove {
+  border: 1px solid var(--line, #22465d);
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-keys__store {
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 55%, var(--line, #22465d));
+  background: var(--action-primary-bg, color-mix(in srgb, var(--sage, #b3dda8) 28%, var(--panel, #18354a)));
+  color: var(--action-primary-text, var(--text, #e9f0f5));
+  font-weight: 700;
+  min-height: 40px;
+  justify-self: start;
+}
+
+.kbot-keys__refresh:disabled,
+.kbot-keys__remove:disabled,
+.kbot-keys__store:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-keys__helper,
+.kbot-keys__paper-only,
+.kbot-keys__status,
+.kbot-keys__absent,
+.kbot-keys__feedback,
+.kbot-keys__error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.kbot-keys__helper,
+.kbot-keys__paper-only,
+.kbot-keys__absent {
+  color: var(--muted, #abc4d8);
+  font-size: 12px;
+}
+
+.kbot-keys__error {
+  color: var(--caution-text, #e8c4bb);
+}
+
+.kbot-keys__form,
+.kbot-keys__connected {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-keys__row {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kbot-keys__label {
+  font-size: 12.5px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-keys input[type="text"],
+.kbot-keys input[type="password"] {
+  min-width: 0;
+  min-height: 40px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+.kbot-keys input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-keys input:focus-visible,
+.kbot-keys__refresh:focus-visible,
+.kbot-keys__remove:focus-visible,
+.kbot-keys__store:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+}
+
+.kbot-keys__balances-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-keys__balances-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.kbot-keys__balance-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+.kbot-keys__balance-asset {
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-keys__balance-free {
+  color: var(--text, #e9f0f5);
+}
+
+@media (max-width: 640px) {
+  .kbot-keys__refresh,
+  .kbot-keys__remove,
+  .kbot-keys__store {
+    min-height: 44px;
+  }
+}

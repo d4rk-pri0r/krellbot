@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppHome } from "./AppHome";
 import { WorkstationShell } from "./WorkstationShell";
 import { recoverCsrf, redeemBootstrap } from "../session";
+import type { KeysClient } from "../features/keys/client";
 
 // Exercise defensive caller failures without changing recoverCsrf's boolean contract.
 vi.mock("../session", () => ({
@@ -17,11 +18,35 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function silentKeysClient(): KeysClient {
+  return {
+    getStatus: vi.fn().mockResolvedValue({
+      schema_version: "1",
+      venue: "kraken",
+      present: false,
+      corrupt: false,
+      message: "no key stored",
+      backend_label: null,
+      balances: null,
+      balances_available: false,
+    }),
+    probeAndStore: vi.fn(),
+    remove: vi.fn(),
+  };
+}
+
 describe("Home session recovery", () => {
   it("shows each click's cause, clears it on retry, and keeps retry enabled", async () => {
     let finish: (result: { ok: boolean; error?: string }) => void = () => {};
     const recover = vi.fn(() => new Promise<{ ok: boolean; error?: string }>(resolve => { finish = resolve; }));
-    render(<AppHome onNavigate={() => {}} sessionFailed onRecoverSession={recover} />);
+    render(
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={silentKeysClient()}
+        sessionFailed
+        onRecoverSession={recover}
+      />,
+    );
     const button = screen.getByTestId("app-home-recover-session") as HTMLButtonElement;
     expect(screen.queryByTestId("apphome-recover-error")).toBeNull();
     fireEvent.click(button);
@@ -41,7 +66,14 @@ describe("Home session recovery", () => {
   });
 
   it("supplies a useful fallback for a false result without an error", async () => {
-    render(<AppHome onNavigate={() => {}} sessionFailed onRecoverSession={async () => ({ ok: false })} />);
+    render(
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={silentKeysClient()}
+        sessionFailed
+        onRecoverSession={async () => ({ ok: false })}
+      />,
+    );
     fireEvent.click(screen.getByTestId("app-home-recover-session"));
     expect((await screen.findByTestId("apphome-recover-error")).textContent).toContain("recovery refused");
   });
