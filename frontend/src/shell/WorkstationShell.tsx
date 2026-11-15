@@ -40,10 +40,18 @@ import {
   type GraphCanvasNode,
 } from "../features/studio/GraphCanvas";
 import { nodesFromPack } from "../features/studio/packNodes";
+import {
+  addIndicatorNode,
+  connectPackNodes,
+  deletePackNode,
+  edgesFromPack,
+  isIndicatorNodeId,
+} from "../features/studio/packGraph";
 import { applyExecutionEdit } from "../features/studio/executionEdit";
 import { StudioNode } from "../features/studio/StudioNode";
 import { studioNodeLabel } from "../features/studio/studioNodeLabel";
 import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
+import "./StudioGraphAuthoring.signal.css";
 import { OperationsView } from "../features/operations/OperationsView";
 import { LivePreflight } from "../features/deployments/LivePreflight";
 import { createHttpClient as createOperationsHttpClient } from "../features/operations/client";
@@ -226,9 +234,6 @@ export function WorkstationShell({
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
   const [connections, setConnections] = useState<ReadonlyArray<Connection>>([]);
-  const handleAddConnection = useCallback((connection: Connection): void => {
-    setConnections((prev) => [...prev, connection]);
-  }, []);
   const [savedRevision, setSavedRevision] = useState<LoadedRevision | null>(null);
   const [editedPack, setEditedPack] = useState<Record<string, unknown> | null>(
     null,
@@ -238,6 +243,7 @@ export function WorkstationShell({
   const [studioSaveError, setStudioSaveError] = useState<string | null>(null);
   const [studioSaveOutcome, setStudioSaveOutcome] = useState<string | null>(null);
   const [studioLayoutError, setStudioLayoutError] = useState<string | null>(null);
+  const [studioGraphError, setStudioGraphError] = useState<string | null>(null);
 
   // Research lazy-mount + portal host lifecycle.
   // The first time the user visits Research we mark it visited. Once
@@ -334,6 +340,116 @@ export function WorkstationShell({
       setEditedPack(nextPack);
     },
     [],
+  );
+
+  const handleAddConnection = useCallback(
+    (connection: Connection): void => {
+      setConnections((prev) => [...prev, connection]);
+      if (!workingPack || !connection.source || !connection.target) {
+        return;
+      }
+      const result = connectPackNodes(
+        workingPack,
+        connection.source,
+        connection.target,
+      );
+      if (!result.ok) {
+        setStudioGraphError(`Connect refused: ${result.reason}`);
+        return;
+      }
+      setStudioGraphError(null);
+      if (result.pack !== workingPack) {
+        setEditedPack(result.pack);
+      }
+    },
+    [workingPack],
+  );
+
+  const handleAddIndicatorNode = useCallback((): void => {
+    if (!workingPack) {
+      return;
+    }
+    const result = addIndicatorNode(workingPack);
+    if (!result.ok) {
+      setStudioGraphError(`Add node refused: ${result.reason}`);
+      return;
+    }
+    setStudioGraphError(null);
+    setEditedPack(result.pack);
+    if (result.nodeId) {
+      setSelectedNodeId(result.nodeId);
+      setConnections((prev) => [
+        ...prev,
+        {
+          source: result.nodeId!,
+          target: "entry",
+          sourceHandle: null,
+          targetHandle: null,
+        },
+      ]);
+    }
+  }, [workingPack]);
+
+  const handleDeleteSelectedNode = useCallback((): void => {
+    if (!workingPack || !selectedNodeId) {
+      return;
+    }
+    const result = deletePackNode(workingPack, selectedNodeId);
+    if (!result.ok) {
+      setStudioGraphError(`Delete refused: ${result.reason}`);
+      return;
+    }
+    setStudioGraphError(null);
+    setEditedPack(result.pack);
+    setConnections((prev) =>
+      prev.filter(
+        (edge) =>
+          edge.source !== selectedNodeId && edge.target !== selectedNodeId,
+      ),
+    );
+    setSelectedNodeId(null);
+  }, [workingPack, selectedNodeId]);
+
+  const handleDeleteNodes = useCallback(
+    (nodeIds: string[]): void => {
+      if (!workingPack || nodeIds.length === 0) {
+        return;
+      }
+      let pack = workingPack;
+      let refused: string | null = null;
+      const removed: string[] = [];
+      for (const nodeId of nodeIds) {
+        const result = deletePackNode(pack, nodeId);
+        if (!result.ok) {
+          refused = result.reason;
+          continue;
+        }
+        pack = result.pack;
+        removed.push(nodeId);
+      }
+      if (removed.length === 0) {
+        setStudioGraphError(
+          refused ? `Delete refused: ${refused}` : "Delete refused",
+        );
+        return;
+      }
+      setStudioGraphError(
+        refused ? `Delete refused for some nodes: ${refused}` : null,
+      );
+      setEditedPack(pack);
+      const removedSet = new Set(removed);
+      setConnections((prev) =>
+        prev.filter(
+          (edge) =>
+            !removedSet.has(edge.source ?? "") &&
+            !removedSet.has(edge.target ?? ""),
+        ),
+      );
+      if (selectedNodeId && removedSet.has(selectedNodeId)) {
+        setSelectedNodeId(null);
+      }
+    },
+    [workingPack, selectedNodeId],
   );
 
   const studioNodes = useMemo<ReadonlyArray<GraphCanvasNode>>(() => {
@@ -450,8 +566,38 @@ export function WorkstationShell({
     }
     loadedEditorFor.current = savedRevision.revision_id;
     let cancelled = false;
+    const seedFromPack = (): void => {
+      try {
+        const value = JSON.parse(savedRevision.bytes) as unknown;
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          return;
+        }
+        const derived = edgesFromPack(value as Record<string, unknown>);
+        if (derived.length === 0) {
+          return;
+        }
+        setConnections(
+          derived.map((edge) => ({
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: null,
+            targetHandle: null,
+          })),
+        );
+      } catch {
+        // Pack bytes may be unreadable; leave connections empty.
+      }
+    };
+    if (!client.loadEditor) {
+      seedFromPack();
+      return;
+    }
     void client.loadEditor(savedRevision.revision_id).then((editor) => {
-      if (cancelled || !Array.isArray(editor.edges) || editor.edges.length === 0) {
+      if (cancelled) {
+        return;
+      }
+      if (!Array.isArray(editor.edges) || editor.edges.length === 0) {
+        seedFromPack();
         return;
       }
       setConnections(
@@ -970,6 +1116,9 @@ export function WorkstationShell({
               })}
               onAddConnection={handleAddConnection}
               onSelectNode={setSelectedNodeId}
+              onDeleteNodes={
+                showStudioControls ? handleDeleteNodes : undefined
+              }
               nodeTypes={{ default: StudioNode }}
             />
             <p
@@ -1021,8 +1170,51 @@ export function WorkstationShell({
                 {studioLayoutError}
               </p>
             ) : null}
+            {studioGraphError ? (
+              <p
+                className="kbot-shell__error"
+                role="alert"
+                data-testid="studio-graph-error"
+              >
+                {studioGraphError}
+              </p>
+            ) : null}
             {showStudioControls ? (
               <>
+                <div
+                  className="kbot-studio-authoring"
+                  data-testid="studio-graph-authoring"
+                >
+                  <p className="kbot-studio-authoring__eyebrow">Graph authoring</p>
+                  <p className="kbot-studio-authoring__hint">
+                    Add indicator nodes, connect them into Entry or Exit, then
+                    Save execution to validate the pack IR.
+                  </p>
+                  <div className="kbot-studio-authoring__actions">
+                    <button
+                      type="button"
+                      className="kbot-studio-authoring__primary"
+                      data-testid="studio-add-indicator"
+                      onClick={handleAddIndicatorNode}
+                    >
+                      Add indicator
+                    </button>
+                    <button
+                      type="button"
+                      className="kbot-studio-authoring__danger"
+                      data-testid="studio-delete-node"
+                      disabled={
+                        !isIndicatorNodeId(
+                          workingPack ?? savedPack ?? {},
+                          selectedNodeId,
+                        )
+                      }
+                      onClick={handleDeleteSelectedNode}
+                    >
+                      Delete node
+                    </button>
+                  </div>
+                </div>
                 <StudioNodeInspector
                   nodeId={selectedNodeId}
                   pack={workingPack ?? savedPack ?? {}}
