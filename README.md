@@ -60,36 +60,10 @@ install or update.
 
 ## Uninstall
 
-```
-# POSIX
-~/.local/bin/krellbot uninstall
-
-# Windows
-krellbot uninstall
-```
-
-Removes only the managed launcher and the staged version directory for
-the version you ran with. `$KRELLBOT_HOME` (keys, paper state, journal,
-receipts) is **retained** by default. To delete the data home too,
-pass `--purge-data` to the uninstall flow inside the installer.
-
-## PATH check
-
-```sh
-# POSIX
-command -v krellbot
-which krellbot
-ls -l ~/.local/bin/krellbot
-
-# Windows
-Get-Command krellbot
-Test-Path "$env:LOCALAPPDATA\Krellbot\bin\krellbot.cmd"
-```
-
-If `command -v krellbot` (or `Get-Command krellbot` on Windows) returns
-nothing, add `~/.local/bin` to `PATH` (POSIX) or
-`%LOCALAPPDATA%\Krellbot\bin` to your user PATH (Windows). The site
-installer's README has the exact `PATH` line per shell.
+Uninstall, PATH checks, Tailscale Serve setup and other operational
+snippets live in [docs/cli.md](docs/cli.md). Uninstall removes only the
+managed launcher and staged version directory; `$KRELLBOT_HOME` is
+retained by default.
 
 ## Where things live
 
@@ -105,7 +79,8 @@ place keys, paper state, the journal, and receipts live.
 
 ## Arm your first paper strategy
 
-Start the workstation with `krellbot` (or `krellbot workstation --open`), then:
+Start the workstation (the installer leaves a `krellbot` launcher that
+opens it with no arguments), then:
 
 1. Open **Strategies**, choose a free starter example, then **Save** and
    **Validate**. The starter examples ship with the release.
@@ -113,143 +88,35 @@ Start the workstation with `krellbot` (or `krellbot workstation --open`), then:
    then click **Arm**. This is simulated cash, not an exchange deposit.
 3. Open **Operations**: the deployment must say `paper` and `active`, and live
    trading must remain disabled. **Workstation** also shows the armed paper row.
-4. In a terminal, verify with `krellbot status`.
 
 A research run is optional before arming. If you want an offline demonstration,
 [paper trading](docs/paper.md) documents the public repository pack/candle
 fixtures; demonstration fixture results are not market performance.
 
-On a headless machine without a persistent OS keychain, `krellbot doctor` can
-exit nonzero with keychain, missing-key, scheduler or stale-tick warnings and
-`install_ready=false` / `trading_ready=false`. These diagnostics do not require
-you to add keys for paper use. Verify paper readiness with the armed row and
-status above; do not load credentials for this path.
-
 ## Private access from your Tailscale devices
 
 For an always-on workstation, keep the backend on loopback and let
-[Tailscale Serve](https://tailscale.com/kb/1312/serve) provide tailnet-only HTTPS:
+[Tailscale Serve](https://tailscale.com/kb/1312/serve) provide tailnet-only
+HTTPS. The exact launcher flags and Serve command are in
+[docs/cli.md](docs/cli.md#private-access-from-your-tailscale-devices).
 
-```sh
-KRELLBOT_ENABLE_LIVE=0 krellbot workstation --port 8765 \
-  --tailscale-origin https://your-machine.your-tailnet.ts.net \
-  --tailscale-user you@example.com
-tailscale serve --bg http://127.0.0.1:8765
-```
+## Advanced and diagnostic commands
 
-Use your actual machine's HTTPS origin and the exact login name from Tailscale.
-Open that URL on a device signed into that account, then click **Log in with
-Tailscale**. Each browser gets its own session; no separate Krellbot password is
-stored or shared. Reopen the URL to log in again after a service restart.
-
-Both options are required together. Only the configured user, origin and
-loopback proxy are accepted. Tailscale Serve removes spoofed identity headers;
-never expose the backend directly or use Funnel. Tagged devices have no user
-identity and cannot use this owner-login flow. Existing session, CSRF and
-live-order refusal checks still apply. Without these options, the workstation
-retains its original loopback-only bootstrap behavior.
-
-## Commands
-
-```
-krellbot keys add <venue> --file <key-file>   # store a key in the OS keychain
-krellbot backtest <pack.json> --venue kraken  # run a DSL pack over candle data, no orders
-krellbot arm <pack.json> --venue kraken --mode paper
-krellbot service install                      # schedule the hourly tick for this user
-krellbot doctor                               # check install readiness and warnings
-krellbot doctor --json                        # machine-readable report
-krellbot community install <id>               # pull a pack from the community index
-krellbot telemetry enable                     # opt in to anonymous usage telemetry
-```
-
-The telemetry shape and community library are documented in
-[docs/telemetry.md](docs/telemetry.md) and
-[docs/community.md](docs/community.md). The readiness summary that
-`krellbot doctor` reports is documented in [docs/service.md](docs/service.md).
-
-## Readiness
-
-`krellbot doctor` reports two booleans that are the right thing for a
-first-run checklist:
-
-- `install_ready` is `True` when the runtime can serve the local UI:
-  home permissions are `0o700`, the keychain backend is a real
-  persistent one (not null/fail/fake), and a loopback bind probe
-  succeeds. It does **not** require keys, a tick, or the scheduler
-  unit.
-- `trading_ready` is `True` only when `install_ready` is `True`,
-  the journal has a tick in the last two hours, and at least one
-  stored key had its permissions probed with `trade=True` AND
-  `withdraw=False`. Without a permission probe, the key's permissions
-  are unknown and `trading_ready` stays `False`.
-
-The detailed fields and the existing warnings (which still drive the
-exit code) are documented in [docs/service.md](docs/service.md).
+You do not need the command line to install Krellbot or arm a paper strategy.
+The `krellbot` command is plumbing: the launcher, the scheduler entry point and
+diagnostics such as readiness checks. Those commands are documented in
+[docs/cli.md](docs/cli.md).
 
 ## Live and the UI gate
 
 - The workstation is `127.0.0.1` only; it refuses non-loopback `Host`
   headers and rejects live orders. Live arm remains a CLI-only path
   that requires typing `LIVE` exactly.
-- Exchange keys are stored in the native OS keychain with
-  `krellbot keys add`. No exchange credentials go to `krellbot.dev`.
+- Exchange keys are stored in the native OS keychain (see
+  [docs/cli.md](docs/cli.md)). No exchange credentials go to `krellbot.dev`.
 - See [docs/live.md](docs/live.md) for the live arm flow.
 
 ## Working on the engine
 
-### Build and run the workstation from source
-
-The source checkout includes the React workstation (Studio, Library, Research,
-Operations and paper deployment). This route is for engine and UI development,
-separate from the installed release above. It requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/),
-Python 3.13 (uv can download it), and Node.js 24 with npm. Use the CI-tested
-Python version explicitly: an unqualified `uv sync` on a machine without
-Python can select a newer interpreter whose locked dependencies lack wheels.
-
-On Ubuntu 24.04, install ordinary OS utilities first (as an administrator):
-
-```sh
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl git xz-utils
-```
-
-Then, as your normal user, install missing development prerequisites. If you
-already have uv and Node.js 24 on PATH, skip this block. These are upstream
-installers, not Krellbot binaries; [nvm](https://github.com/nvm-sh/nvm) installs
-Node and npm per user:
-
-```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-export NVM_DIR="$HOME/.nvm"
-. "$NVM_DIR/nvm.sh"
-nvm install 24
-uv --version
-node --version
-npm --version
-```
-
-Build the frontend before starting the service. Run these commands in the
-same shell (or reload your uv/nvm PATH in a new shell):
-
-```sh
-git clone https://github.com/d4rk-pri0r/krellbot
-cd krellbot
-uv sync --frozen --group dev --python 3.13
-npm --prefix frontend ci --include=dev
-npm --prefix frontend run build
-KRELLBOT_ENABLE_LIVE=0 uv run --no-sync krellbot workstation --port 8765
-```
-
-Open `http://127.0.0.1:8765/`. Start in Strategies, pick a free starter example,
-Save, then Validate. Research accepts a local candle CSV; paper mode needs no
-exchange keys. New research jobs retain their status and completed results under
-`$KRELLBOT_HOME/research-jobs/`. After a restart, unfinished jobs appear as
-`interrupted`; they never resume automatically. Submit a new run to retry.
-
-Run the tests:
-
-```sh
-KRELLBOT_HOME=$(mktemp -d) uv run --no-sync pytest -q
-```
+Building from source is for engine and UI development, separate from the
+installed release. See [Build from source](docs/cli.md#build-from-source).
