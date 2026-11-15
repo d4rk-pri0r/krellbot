@@ -548,11 +548,18 @@
   min-width: 0;
 }
 
+/* Label + description share the readable track; Use stays auto-sized.
+ * Three un-placed children in a two-column grid crushed the label to 0
+ * and left Use ~26px wide (one letter per line at 1440×900). */
 .kbot-strategy-editor .kbot-starter-picker__item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label action"
+    "description action";
   align-items: center;
-  gap: 10px;
+  column-gap: 12px;
+  row-gap: 4px;
   padding: 10px 11px;
   background: var(--surface, #14222e);
   border: 1px solid var(--line, #22465d);
@@ -561,14 +568,20 @@
 }
 
 .kbot-strategy-editor .kbot-starter-picker__item-label {
+  grid-area: label;
+  min-width: 0;
   font-size: 12.5px;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .kbot-strategy-editor .kbot-starter-picker__item-description {
+  grid-area: description;
   display: block;
-  margin-top: 3px;
+  min-width: 0;
+  margin-top: 0;
   font-size: 11px;
   line-height: 1.5;
   color: var(--muted, #abc4d8);
@@ -576,9 +589,15 @@
 }
 
 .kbot-strategy-editor .kbot-starter-picker__action {
+  grid-area: action;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
+  justify-self: end;
+  flex: none;
+  width: max-content;
+  max-width: none;
   min-height: 34px;
   padding: 6px 12px;
   border-radius: 7px;

@@ -210,7 +210,8 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  /* Floor keeps descriptions readable at 1440×900 (not 51–77px columns). */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
 }
 
@@ -219,11 +220,16 @@
   min-width: 0;
 }
 
-.app-home__card {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  gap: 8px;
-  align-content: start;
+/*
+ * Beat `.kbot-shell button { display: inline-flex }` (0,1,1) so the card
+ * stays a stacked surface. The inner body is the readable column grid.
+ */
+.app-home button.app-home__card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
   width: 100%;
   min-height: 148px;
   padding: 14px 15px 12px;
@@ -238,10 +244,21 @@
     transform 140ms ease;
 }
 
-.app-home__card:hover:not(:disabled) {
+.app-home button.app-home__card:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--seafoam) 45%, var(--line));
   background: color-mix(in srgb, var(--panel) 45%, var(--surface));
   transform: translateY(-1px);
+}
+
+.app-home__card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr auto;
+  gap: 8px;
+  align-content: start;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .app-home__card-mark {
@@ -472,7 +489,7 @@
     white-space: normal;
   }
 
-  .app-home__card {
+  .app-home button.app-home__card {
     min-height: 44px;
   }
 }
