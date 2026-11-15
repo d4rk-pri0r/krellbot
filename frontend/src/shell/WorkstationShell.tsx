@@ -50,6 +50,10 @@ import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
 import { JobsDrawer } from "./JobsDrawer";
 import { Navigation, type View } from "./Navigation";
+import {
+  resolveViewFromSearch,
+  syncViewToHistory,
+} from "./route";
 import { StatusStrip } from "./StatusStrip";
 
 const BOOTSTRAP_META = "krellbot-bootstrap";
@@ -138,16 +142,8 @@ export function WorkstationShell({
 }: WorkstationShellProps = {}): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchRevision, setSearchRevision] = useState(0);
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const onPopState = (): void => {
-      setSearchRevision((value) => value + 1);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  // ``plainWorkload`` / ``workloadWithPack`` and the active view are
+  // re-read from the URL whenever history changes (back/forward).
   const { workload, packParam } = parseSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
@@ -159,11 +155,30 @@ export function WorkstationShell({
   // top of a saved pack; editing still operates on the real pack.
   const plainWorkload = workload === "200" && packParam === null;
   const workloadWithPack = workload === "200" && packParam === "1";
-  // A normal root launch opens the welcoming application Home. The
-  // synthetic workload deep links keep opening Studio directly.
-  const initialActive: View =
-    plainWorkload || workloadWithPack ? "studio" : "home";
-  const [active, setActive] = useState<View>(initialActive);
+  // View comes from ``?view=`` (or workload deep-link / home default).
+  // Draft and selection state are not URL-encoded — see ``./route.ts``.
+  const [active, setActiveState] = useState<View>(() =>
+    resolveViewFromSearch(
+      typeof window === "undefined" ? "" : window.location.search,
+    ),
+  );
+  const setActive = useCallback((view: View): void => {
+    setActiveState(view);
+    // No-ops when the URL already encodes ``view`` (re-clicking the
+    // active tab must not stack duplicate history entries).
+    syncViewToHistory(view, "push");
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onPopState = (): void => {
+      setSearchRevision((value) => value + 1);
+      setActiveState(resolveViewFromSearch(window.location.search));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const [connections, setConnections] = useState<ReadonlyArray<Connection>>([]);
   const handleAddConnection = useCallback((connection: Connection): void => {
     setConnections((prev) => [...prev, connection]);
