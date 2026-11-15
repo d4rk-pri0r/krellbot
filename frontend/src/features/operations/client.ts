@@ -50,6 +50,12 @@ export type DeploymentRecordRow = {
   last_execution_summary: string;
 };
 
+export type UnresolvedOrderRow = {
+  client_order_id: string;
+  age_seconds: number | null;
+  last_lookup_result: string;
+};
+
 export type CommandResult = {
   schema_version?: string;
   code?: string;
@@ -72,6 +78,7 @@ export type OperationsClient = {
   ackAlert(alertId: string): Promise<CommandResult>;
   listDeploymentRecords?(): Promise<DeploymentRecordRow[]>;
   getDeploymentRecord?(deploymentId: string): Promise<DeploymentRecordRow>;
+  listUnresolvedOrders?(): Promise<UnresolvedOrderRow[]>;
 };
 
 async function getJson(url: string): Promise<OperationsViewModel> {
@@ -252,6 +259,30 @@ function adaptDeploymentRecord(raw: unknown): DeploymentRecordRow | null {
   };
 }
 
+function adaptUnresolvedOrder(raw: unknown): UnresolvedOrderRow | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.client_order_id !== "string" || !obj.client_order_id) {
+    return null;
+  }
+  if (typeof obj.last_lookup_result !== "string") {
+    return null;
+  }
+  const age =
+    obj.age_seconds === null
+      ? null
+      : typeof obj.age_seconds === "number" && Number.isFinite(obj.age_seconds)
+        ? obj.age_seconds
+        : null;
+  return {
+    client_order_id: obj.client_order_id,
+    age_seconds: age,
+    last_lookup_result: obj.last_lookup_result,
+  };
+}
+
 function adaptSubset(raw: unknown): Readonly<Record<string, string | number | boolean>> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return {};
@@ -265,7 +296,7 @@ function adaptSubset(raw: unknown): Readonly<Record<string, string | number | bo
   return out;
 }
 
-async function getDeploymentHistoryJson(url: string): Promise<unknown> {
+async function getOperationsReadJson(url: string, label: string): Promise<unknown> {
   const response = await fetch(url, {
     method: "GET",
     credentials: "include",
@@ -283,7 +314,7 @@ async function getDeploymentHistoryJson(url: string): Promise<unknown> {
     } catch {
       // The error body is optional; the status alone identifies the refusal.
     }
-    throw new Error(`deployment history failed: ${response.status}${refusal}`);
+    throw new Error(`${label} failed: ${response.status}${refusal}`);
   }
   return response.json();
 }
@@ -294,23 +325,38 @@ export function createHttpClient(): OperationsClient {
       return getJson("/api/v1/operations");
     },
     listDeploymentRecords(): Promise<DeploymentRecordRow[]> {
-      return getDeploymentHistoryJson("/api/v1/operations/deployments").then((raw) => {
-        const body = (raw ?? {}) as Record<string, unknown>;
-        const rows = Array.isArray(body.deployments) ? body.deployments : [];
-        return rows
-          .map(adaptDeploymentRecord)
-          .filter((row): row is DeploymentRecordRow => row !== null);
-      });
+      return getOperationsReadJson("/api/v1/operations/deployments", "deployment history").then(
+        (raw) => {
+          const body = (raw ?? {}) as Record<string, unknown>;
+          const rows = Array.isArray(body.deployments) ? body.deployments : [];
+          return rows
+            .map(adaptDeploymentRecord)
+            .filter((row): row is DeploymentRecordRow => row !== null);
+        },
+      );
     },
     getDeploymentRecord(deploymentId: string): Promise<DeploymentRecordRow> {
-      return getDeploymentHistoryJson(
+      return getOperationsReadJson(
         `/api/v1/operations/deployments/${encodeURIComponent(deploymentId)}`,
+        "deployment history",
       ).then((raw) => {
         const row = adaptDeploymentRecord(raw);
         if (row === null) {
           throw new Error("deployment history returned an unusable record");
         }
         return row;
+      });
+    },
+    listUnresolvedOrders(): Promise<UnresolvedOrderRow[]> {
+      return getOperationsReadJson(
+        "/api/v1/operations/unresolved-orders",
+        "unresolved orders",
+      ).then((raw) => {
+        const body = (raw ?? {}) as Record<string, unknown>;
+        const rows = Array.isArray(body.orders) ? body.orders : [];
+        return rows
+          .map(adaptUnresolvedOrder)
+          .filter((row): row is UnresolvedOrderRow => row !== null);
       });
     },
     promote(venue, pair, revisionId): Promise<CommandResult> {

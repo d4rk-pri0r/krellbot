@@ -222,3 +222,55 @@ describe("createHttpClient deployment history", () => {
     await expect(createHttpClient().getDeploymentRecord!("dep-1")).rejects.toThrow(/unusable/);
   });
 });
+describe("createHttpClient unresolved orders", () => {
+  const closedRow = {
+    client_order_id: "coid-stuck-1",
+    age_seconds: 42,
+    last_lookup_result: "absent",
+  };
+
+  it("listUnresolvedOrders GETs /api/v1/operations/unresolved-orders with CSRF + credentials", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1", orders: [closedRow] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await createHttpClient().listUnresolvedOrders!();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/operations/unresolved-orders");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect("X-Krellbot-CSRF" in headers).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].client_order_id).toBe("coid-stuck-1");
+    expect(rows[0].age_seconds).toBe(42);
+    expect(rows[0].last_lookup_result).toBe("absent");
+  });
+
+  it("listUnresolvedOrders keeps a null age and drops malformed rows", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        orders: [
+          closedRow,
+          { client_order_id: "coid-none", age_seconds: null, last_lookup_result: "none" },
+          { client_order_id: 7 },
+          null,
+          { last_lookup_result: "open" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await createHttpClient().listUnresolvedOrders!();
+    expect(rows.map((row) => row.client_order_id)).toEqual(["coid-stuck-1", "coid-none"]);
+    expect(rows[1]?.age_seconds).toBeNull();
+    expect(rows[1]?.last_lookup_result).toBe("none");
+  });
+
+  it("listUnresolvedOrders throws on non-2xx", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 403));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listUnresolvedOrders!()).rejects.toThrow(/403/);
+  });
+});
