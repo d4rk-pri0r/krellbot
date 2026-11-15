@@ -56,9 +56,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   transition:
-    color 120ms ease,
-    background-color 120ms ease,
-    box-shadow 120ms ease;
+    color var(--motion-duration-fast, 120ms)
+      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    background-color var(--motion-duration-fast, 120ms)
+      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    box-shadow var(--motion-duration-fast, 120ms)
+      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .kbot-shell__nav-root .kbot-shell__nav-item:hover {
@@ -150,5 +153,11 @@
 
   .kbot-shell__nav-root .kbot-shell__nav-note-text {
     overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-shell__nav-root .kbot-shell__nav-item {
+    transition: none;
   }
 }

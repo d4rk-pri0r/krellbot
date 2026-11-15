@@ -443,6 +443,45 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ============ intentional shell motion ============
+ * Three product motions for primary journeys (KRELL-SIGNAL-20261010):
+ *   1. command palette enter (fade + rise)
+ *   2. jobs drawer enter (fade + slide from trailing edge)
+ *   3. App Home hero orientation fade (see AppHome.signal.css)
+ * Durations/easing come from tokens.css. Disabled under
+ * prefers-reduced-motion. */
+
+@keyframes kbot-shell-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes kbot-shell-palette-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kbot-shell-jobs-enter {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* ============ jobs drawer ============ */
 
 .kbot-jobs__trigger[aria-expanded="true"] {
@@ -460,6 +499,8 @@
   padding: 20px;
   z-index: 10;
   overflow-y: auto;
+  animation: kbot-shell-fade-in var(--motion-duration-enter)
+    var(--motion-ease-standard);
 }
 
 .kbot-jobs__dialog {
@@ -473,6 +514,8 @@
   align-content: start;
   margin-top: 8px;
   box-shadow: 0 18px 50px color-mix(in srgb, #000 45%, transparent);
+  animation: kbot-shell-jobs-enter var(--motion-duration-enter)
+    var(--motion-ease-standard);
 }
 
 .kbot-jobs__head {
@@ -551,6 +594,8 @@
   background: color-mix(in srgb, var(--navy) 68%, transparent);
   z-index: 20;
   overflow-y: auto;
+  animation: kbot-shell-fade-in var(--motion-duration-enter)
+    var(--motion-ease-standard);
 }
 
 .kbot-palette__box {
@@ -562,6 +607,8 @@
   border-radius: var(--radius-panel);
   padding: 14px;
   box-shadow: 0 18px 50px color-mix(in srgb, #000 45%, transparent);
+  animation: kbot-shell-palette-enter var(--motion-duration-enter)
+    var(--motion-ease-standard);
 }
 
 .kbot-palette__label {
@@ -850,5 +897,14 @@
 
   .kbot-palette {
     padding: 12vh 12px 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-jobs__scrim,
+  .kbot-jobs__dialog,
+  .kbot-palette,
+  .kbot-palette__box {
+    animation: none;
   }
 }

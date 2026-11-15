@@ -68,7 +68,7 @@ export function LiveAuthorizationPanel({ client }: LiveAuthorizationPanelProps):
         release_policy: "paper_only",
         release_policy_code: "live_disabled_paper_only_release",
         release_policy_message:
-          "v0.9.6 is a paper-only release: live order send is disabled regardless of environment, stored keys, or authorization. This is temporary; an owner-approved code change can re-enable live trading.",
+          "This release is a paper-only release: live order send is disabled regardless of environment, stored keys, or authorization. This is temporary; an owner-approved code change can re-enable live trading.",
         confirmation_required: "LIVE",
       });
       setError(null);

@@ -31,8 +31,12 @@ def paper_only_release_active() -> bool:
 
 
 def paper_only_message() -> str:
+    # Bind the copy to the package version so UI/API text cannot drift
+    # behind pyproject / krellbot.__version__ (honesty bug on 0.9.7+).
+    from krellbot import __version__
+
     return (
-        "v0.9.6 is a paper-only release: live order send is disabled regardless of "
+        f"v{__version__} is a paper-only release: live order send is disabled regardless of "
         "environment, stored keys, or authorization. This is temporary; an "
         "owner-approved code change can re-enable live trading."
     )

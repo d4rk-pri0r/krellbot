@@ -98,6 +98,18 @@ def _coinbase_venue(transport: FakeCoinbaseTransport) -> object:
 # ---------------------------------------------------------------------------
 
 
+
+def test_paper_only_message_tracks_package_version():
+    """Honesty: refusal copy must match krellbot.__version__, not a stale pin."""
+    from krellbot import __version__
+    from krellbot.release_policy import PAPER_ONLY_RELEASE, paper_only_message
+
+    assert PAPER_ONLY_RELEASE is True
+    message = paper_only_message()
+    assert message.startswith(f"v{__version__} is a paper-only release:")
+    assert "v0.9.6" not in message or __version__ == "0.9.6"
+
+
 def test_gate_refuses_even_with_env_one_and_operator_grant(home, monkeypatch):
     _enable_live(monkeypatch)
     write_grant(home, venue="kraken", pair=PAIR)
@@ -106,7 +118,10 @@ def test_gate_refuses_even_with_env_one_and_operator_grant(home, monkeypatch):
 
     assert result.ok is False
     assert result.code == live_gate.CODE_PAPER_ONLY_RELEASE
-    assert "v0.9.6" in result.message
+    from krellbot import __version__
+
+    assert f"v{__version__}" in result.message
+    assert "v0.9.6" not in result.message or __version__ == "0.9.6"
     assert "paper" in result.message.lower()
 
 

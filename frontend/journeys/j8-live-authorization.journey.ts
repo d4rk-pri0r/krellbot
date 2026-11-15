@@ -28,9 +28,11 @@ test("J8.1 While this build is paper-only, the Live authorization panel is visib
   const paperOnly = page.getByTestId("ops-live-auth-paper-only");
   await expect(paperOnly).toBeVisible();
   await expect(paperOnly).toContainText(/paper-only/i);
-  await expect(page.getByTestId("ops-live-auth-paper-only-reason")).toContainText(
-    /live order send is disabled/i,
-  );
+  const reason = page.getByTestId("ops-live-auth-paper-only-reason");
+  await expect(reason).toContainText(/live order send is disabled/i);
+  // Honesty: paper_only_message must track package version (not a stale v0.9.6).
+  await expect(reason).toContainText(/v0\.9\.\d+ is a paper-only release/i);
+  await expect(reason).not.toContainText("v0.9.6");
 
   await expect(page.getByTestId("ops-live-auth-venue")).toBeDisabled();
   await expect(page.getByTestId("ops-live-auth-pair")).toBeDisabled();

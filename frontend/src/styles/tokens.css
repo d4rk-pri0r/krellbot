@@ -62,6 +62,11 @@
   --radius-panel: 11px;
   --radius-control: 7px;
 
+  /* --- motion (intentional shell enters; honor prefers-reduced-motion) --- */
+  --motion-duration-fast: 120ms;
+  --motion-duration-enter: 180ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
   /* --- compatibility aliases (existing consumers) ---
    * --signal was cyan; selection/focus/links now use seafoam.
    * --warn carried caution/error meaning in its consumers
