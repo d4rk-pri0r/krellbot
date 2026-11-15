@@ -16,6 +16,8 @@ import { EdgeRefusalNotice } from "./EdgeRefusalNotice";
 
 export type GraphCanvasNodeData = {
   timeframe?: string;
+  /** Human-readable canvas title; falls back to studioNodeLabel(id). */
+  label?: string;
 };
 
 export type GraphCanvasNode = Node<GraphCanvasNodeData>;

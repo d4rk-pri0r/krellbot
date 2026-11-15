@@ -35,6 +35,8 @@ import {
 } from "../features/studio/GraphCanvas";
 import { nodesFromPack } from "../features/studio/packNodes";
 import { applyExecutionEdit } from "../features/studio/executionEdit";
+import { StudioNode } from "../features/studio/StudioNode";
+import { studioNodeLabel } from "../features/studio/studioNodeLabel";
 import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
 import { OperationsView } from "../features/operations/OperationsView";
 import { LivePreflight } from "../features/deployments/LivePreflight";
@@ -71,12 +73,18 @@ function parseSearch(search: string): SearchParams {
 }
 
 function syntheticWorkloadNodes(): ReadonlyArray<GraphCanvasNode> {
-  return Array.from({ length: WORKLOAD_NODE_COUNT }, (_, index) => ({
-    id: `w${index}`,
-    type: "default",
-    position: { x: (index % 20) * 40, y: Math.floor(index / 20) * 40 },
-    data: { timeframe: index % 2 === 0 ? "1h" : "4h" },
-  }));
+  return Array.from({ length: WORKLOAD_NODE_COUNT }, (_, index) => {
+    const id = `w${index}`;
+    return {
+      id,
+      type: "default",
+      position: { x: (index % 20) * 40, y: Math.floor(index / 20) * 40 },
+      data: {
+        timeframe: index % 2 === 0 ? "1h" : "4h",
+        label: studioNodeLabel(id),
+      },
+    };
+  });
 }
 
 function workloadOnlyNodes(): ReadonlyArray<GraphCanvasNode> {
@@ -88,19 +96,19 @@ const STUDIO_DEMO_NODES: ReadonlyArray<GraphCanvasNode> = [
     id: "n0",
     type: "default",
     position: { x: 0, y: 0 },
-    data: { timeframe: "1h" },
+    data: { timeframe: "1h", label: studioNodeLabel("n0") },
   },
   {
     id: "n1",
     type: "default",
     position: { x: 0, y: 0 },
-    data: { timeframe: "4h" },
+    data: { timeframe: "4h", label: studioNodeLabel("n1") },
   },
   {
     id: "n2",
     type: "default",
     position: { x: 0, y: 0 },
-    data: { timeframe: "1h" },
+    data: { timeframe: "1h", label: studioNodeLabel("n2") },
   },
 ];
 
@@ -291,7 +299,10 @@ export function WorkstationShell({
               x: ((index + packNodes.length) % 20) * 40,
               y: Math.floor((index + packNodes.length) / 20) * 40,
             },
-            data: { timeframe: index % 2 === 0 ? "1h" : "4h" },
+            data: {
+              timeframe: index % 2 === 0 ? "1h" : "4h",
+              label: studioNodeLabel(id),
+            },
           });
         }
         index += 1;
@@ -795,21 +806,14 @@ export function WorkstationShell({
               })}
               onAddConnection={handleAddConnection}
               onSelectNode={setSelectedNodeId}
-              nodeTypes={{
-                default: ({ data, id }) => (
-                  <div
-                    data-testid={`studio-node-${id}`}
-                    data-timeframe={String(
-                      (data as { timeframe?: string } | undefined)?.timeframe ?? "",
-                    )}
-                    style={{ padding: 4 }}
-                  >
-                    {String(id)}
-                  </div>
-                ),
-              }}
+              nodeTypes={{ default: StudioNode }}
             />
-            <p data-testid="studio-node-count">{studioNodes.length}</p>
+            <p
+              className="kbot-studio-debug"
+              data-testid="studio-node-count"
+            >
+              {studioNodes.length}
+            </p>
             {plainWorkload ? (
               <p
                 className="app-home__note-copy kbot-shell__hint"
@@ -905,10 +909,16 @@ export function WorkstationShell({
                 </button>
               </>
             ) : null}
-            <p data-testid="studio-connection-count">
+            <p
+              className="kbot-studio-debug"
+              data-testid="studio-connection-count"
+            >
               Connections: {connections.length}
             </p>
-            <p data-testid="studio-selected-node">
+            <p
+              className="kbot-studio-debug"
+              data-testid="studio-selected-node"
+            >
               Selected: {selectedNodeId ?? "(none)"}
             </p>
           </>
