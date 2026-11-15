@@ -192,7 +192,7 @@ describe("WorkstationShell — failed session bootstrap", () => {
     });
     vi.clearAllMocks();
     fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
-    fireEvent.click(screen.getByRole("button", { name: /^Home$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Workspace$/ }));
     await waitFor(() => {
       expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
     });
@@ -262,17 +262,17 @@ describe("WorkstationShell — failed session bootstrap", () => {
       expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
     });
     const home = within(screen.getByTestId("app-home"));
-    for (const name of [
-      /create or open a strategy/i,
-      /explore research/i,
-      /open studio/i,
-      /paper workstation/i,
-      /operations/i,
+    for (const testid of [
+      "app-home-card-strategies",
+      "app-home-card-research",
+      "app-home-card-studio",
+      "app-home-card-workstation",
+      "app-home-card-operations",
     ]) {
-      const card = home.getByRole("button", { name });
+      const card = home.getByTestId(testid);
       expect((card as HTMLButtonElement).disabled).toBe(false);
     }
-    home.getByRole("button", { name: /open studio/i }).click();
+    home.getByTestId("app-home-card-studio").click();
     await waitFor(() => {
       expect(screen.queryByTestId("app-home")).toBeNull();
     });

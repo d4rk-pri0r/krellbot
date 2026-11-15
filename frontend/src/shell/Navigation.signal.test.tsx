@@ -27,11 +27,11 @@ const cssSource = readFileSync(
 );
 
 const SEVEN_VIEWS = [
-  { id: "home", label: "Home" },
+  { id: "home", label: "Workspace" },
   { id: "workstation", label: "Workstation" },
   { id: "strategies", label: "Strategies" },
   { id: "research", label: "Research" },
-  { id: "studio", label: "Studio" },
+  { id: "studio", label: "Strategy studio" },
   { id: "operations", label: "Operations" },
   { id: "deployments", label: "Deploy" },
 ] as const;

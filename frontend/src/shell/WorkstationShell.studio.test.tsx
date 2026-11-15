@@ -198,7 +198,7 @@ describe("WorkstationShell — studio view routing", () => {
       name: /workstation navigation/i,
     });
     expect(nav.querySelector("a")).toBeNull();
-    const studio = screen.getByRole("button", { name: "Studio" });
+    const studio = screen.getByRole("button", { name: "Strategy studio" });
     expect(studio.tagName).toBe("BUTTON");
   });
 
@@ -214,21 +214,21 @@ describe("WorkstationShell — studio view routing", () => {
         "Workstation",
         "Strategies",
         "Research",
-        "Studio",
+        "Strategy studio",
       ]),
     );
   });
 
   it("clicking Studio mounts the canvas and hides the Paper workstation heading", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     expect(screen.getByTestId("react-flow-stub")).toBeDefined();
     expect(screen.queryByText("Paper workstation")).toBeNull();
   });
 
   it("clicking Workstation after Studio shows the Paper workstation heading again", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     expect(screen.queryByText("Paper workstation")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
     expect(screen.getByText("Paper workstation")).toBeDefined();
@@ -245,14 +245,14 @@ describe("WorkstationShell — studio view routing", () => {
 describe("WorkstationShell — studio canvas drives refusal through mounted GraphCanvas", () => {
   it("calls the captured onConnect only when the timeframe matches", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     const captured = getCaptured();
     expect(captured.onConnect).toBeDefined();
   });
 
   it("refuses n0→n1 with the exact 'timeframe mismatch' string and records no connection", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     triggerConnect("n1");
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Timeframe mismatch");
@@ -269,7 +269,7 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
 
   it("records exactly one connection for n0→n2 and shows no timeframe mismatch", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     triggerConnect("n2");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(countText()).toMatch(/1/);
@@ -280,7 +280,7 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
 
   it("records two connections when two valid edges are added in sequence", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     triggerConnect("n2");
     triggerConnect("n0", "n2");
     expect(countText()).toMatch(/2/);
@@ -289,7 +289,7 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
 
   it("does not record a refused connection even after a successful one", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     triggerConnect("n2");
     expect(countText()).toMatch(/1/);
     triggerConnect("n1");
@@ -323,7 +323,7 @@ describe("WorkstationShell — saved strategy studio", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await screen.findByTestId("editor-revision-id");
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     expect(screen.getByTestId("studio-pack-id").textContent).toBe("trend-follow");
     const ids = (getCaptured().nodes ?? []).map((node) => node.id);
     expect(ids).toContain("entry");
@@ -358,7 +358,7 @@ describe("WorkstationShell — saved strategy studio", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await screen.findByTestId("editor-revision-id");
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     await vi.waitFor(() => {
       expect(getCaptured().edges?.[0]?.source).toBe("entry");
       expect(getCaptured().edges?.[0]?.target).toBe("sma20");
@@ -384,7 +384,7 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await screen.findByTestId("editor-revision-id");
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
   }
 
   beforeEach(() => {

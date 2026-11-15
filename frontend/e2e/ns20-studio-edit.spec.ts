@@ -115,7 +115,7 @@ async function gotoResearchView(page: Page): Promise<void> {
 }
 
 async function gotoStudioView(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Studio" }).click();
+  await page.getByRole("button", { name: "Strategy studio" }).click();
 }
 
 async function waitForSessionReady(page: Page): Promise<void> {

@@ -570,7 +570,7 @@ describe("App research navigation lifecycle (research mode)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Research" }));
     expect(screen.queryByLabelText(/dataset path/i)).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     expect(screen.queryByLabelText(/dataset path/i)).toBeNull();
     expect(screen.queryByLabelText(/fee basis points/i)).toBeNull();
     expect(screen.queryByLabelText(/holdout from/i)).toBeNull();
@@ -657,7 +657,7 @@ describe("App research navigation lifecycle (research mode)", () => {
     expect(traceButtons[1].getAttribute("aria-pressed")).toBe("true");
 
     // Navigate Research → Studio → Strategies → Research.
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
     fireEvent.click(screen.getByRole("button", { name: "Research" }));
 
@@ -735,7 +735,7 @@ describe("App research navigation lifecycle (research mode)", () => {
     expect(screen.queryByTestId("research-result")).toBeNull();
 
     // Leave Research while the request is still pending.
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     expect(screen.queryByTestId("research-job-id")).toBeNull();
     expect(screen.queryByTestId("research-result")).toBeNull();
 

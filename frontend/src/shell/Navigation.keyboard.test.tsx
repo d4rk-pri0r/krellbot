@@ -47,8 +47,8 @@ describe("Navigation — arrow key navigation", () => {
     const { rerender } = render(
       <Navigation active="home" onChange={onChange} />,
     );
-    tab("Home").focus();
-    fireEvent.keyDown(tab("Home"), { key: "ArrowRight" });
+    tab("Workspace").focus();
+    fireEvent.keyDown(tab("Workspace"), { key: "ArrowRight" });
     expect(onChange).toHaveBeenCalledWith("workstation");
     rerender(<Navigation active="workstation" onChange={onChange} />);
     expect(focusedLabel()).toBe("Workstation");
@@ -76,10 +76,10 @@ describe("Navigation — arrow key navigation", () => {
     const { rerender } = render(
       <Navigation active="home" onChange={onChange} />,
     );
-    tab("Home").focus();
-    fireEvent.keyDown(tab("Home"), { key: "ArrowLeft" });
+    tab("Workspace").focus();
+    fireEvent.keyDown(tab("Workspace"), { key: "ArrowLeft" });
     expect(onChange).not.toHaveBeenCalled();
-    expect(focusedLabel()).toBe("Home");
+    expect(focusedLabel()).toBe("Workspace");
     rerender(<Navigation active="deployments" onChange={onChange} />);
     tab("Deploy").focus();
     fireEvent.keyDown(tab("Deploy"), { key: "ArrowRight" });
@@ -101,7 +101,7 @@ describe("Navigation — arrow key navigation", () => {
     fireEvent.keyDown(tab("Deploy"), { key: "Home" });
     expect(onChange).toHaveBeenCalledWith("home");
     rerender(<Navigation active="home" onChange={onChange} />);
-    expect(focusedLabel()).toBe("Home");
+    expect(focusedLabel()).toBe("Workspace");
   });
 
   it("steps from Home to Research with three ArrowRight presses", () => {
@@ -114,7 +114,7 @@ describe("Navigation — arrow key navigation", () => {
     const { rerender } = render(
       <Navigation active={active} onChange={controller} />,
     );
-    tab("Home").focus();
+    tab("Workspace").focus();
     for (const step of ["Workstation", "Strategies", "Research"]) {
       fireEvent.keyDown(tab(focusedLabel() as string), { key: "ArrowRight" });
       rerender(<Navigation active={active} onChange={controller} />);
@@ -124,8 +124,8 @@ describe("Navigation — arrow key navigation", () => {
     fireEvent.keyDown(tab("Research"), { key: "Home" });
     rerender(<Navigation active={active} onChange={controller} />);
     expect(onChange).toHaveBeenLastCalledWith("home");
-    expect(focusedLabel()).toBe("Home");
-    fireEvent.keyDown(tab("Home"), { key: "End" });
+    expect(focusedLabel()).toBe("Workspace");
+    fireEvent.keyDown(tab("Workspace"), { key: "End" });
     rerender(<Navigation active={active} onChange={controller} />);
     expect(onChange).toHaveBeenLastCalledWith("deployments");
     expect(focusedLabel()).toBe("Deploy");
@@ -134,12 +134,12 @@ describe("Navigation — arrow key navigation", () => {
   it("leaves untouched keys to the native button behavior", () => {
     const onChange = vi.fn();
     render(<Navigation active="home" onChange={onChange} />);
-    const home = tab("Home");
+    const home = tab("Workspace");
     home.focus();
     fireEvent.keyDown(home, { key: "ArrowUp" });
     fireEvent.keyDown(home, { key: "PageDown" });
     fireEvent.keyDown(home, { key: "Enter", shiftKey: true });
     expect(onChange).not.toHaveBeenCalled();
-    expect(focusedLabel()).toBe("Home");
+    expect(focusedLabel()).toBe("Workspace");
   });
 });

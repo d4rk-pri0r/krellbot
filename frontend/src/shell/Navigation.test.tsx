@@ -19,13 +19,13 @@ describe("Navigation — workstation views", () => {
     const labels = Array.from(
       nav.querySelectorAll<HTMLButtonElement>(".kbot-nav__item"),
     ).map((button) => button.textContent?.trim());
-    expect(labels[0]).toBe("Home");
+    expect(labels[0]).toBe("Workspace");
     for (const label of [
-      "Home",
+      "Workspace",
       "Workstation",
       "Strategies",
       "Research",
-      "Studio",
+      "Strategy studio",
       "Operations",
       "Deploy",
     ]) {
@@ -36,13 +36,13 @@ describe("Navigation — workstation views", () => {
   it("marks Home with aria-current when active and clears the others", () => {
     render(<Navigation active="home" onChange={() => {}} />);
     expect(
-      screen.getByRole("button", { name: "Home" }).getAttribute("aria-current"),
+      screen.getByRole("button", { name: "Workspace" }).getAttribute("aria-current"),
     ).toBe("page");
     for (const label of [
       "Workstation",
       "Strategies",
       "Research",
-      "Studio",
+      "Strategy studio",
       "Operations",
       "Deploy",
     ]) {
@@ -55,7 +55,7 @@ describe("Navigation — workstation views", () => {
   it("reports the Home selection through onChange", () => {
     const onChange = vi.fn();
     render(<Navigation active="workstation" onChange={onChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     expect(onChange).toHaveBeenCalledWith("home");
   });
 
@@ -65,7 +65,7 @@ describe("Navigation — workstation views", () => {
       "Workstation",
       "Strategies",
       "Research",
-      "Studio",
+      "Strategy studio",
       "Operations",
     ]) {
       expect(screen.getByRole("button", { name: label })).toBeDefined();
@@ -86,7 +86,7 @@ describe("Navigation — workstation views", () => {
     const otherLabels = [
       "Strategies",
       "Research",
-      "Studio",
+      "Strategy studio",
       "Operations",
       "Deploy",
     ];
@@ -104,11 +104,11 @@ describe("Navigation — workstation views", () => {
 /* ------------------------------------------------------------------ */
 
 const SEVEN_VIEWS = [
-  { id: "home", label: "Home" },
+  { id: "home", label: "Workspace" },
   { id: "workstation", label: "Workstation" },
   { id: "strategies", label: "Strategies" },
   { id: "research", label: "Research" },
-  { id: "studio", label: "Studio" },
+  { id: "studio", label: "Strategy studio" },
   { id: "operations", label: "Operations" },
   { id: "deployments", label: "Deploy" },
 ] as const;
@@ -139,7 +139,7 @@ describe("Navigation — scoped Signal presentation", () => {
     expect(active.getAttribute("aria-current")).toBe("page");
     expect(active.className).toContain("kbot-nav__item--active");
     expect(active.className).toContain("kbot-shell__nav-item--active");
-    for (const label of ["Home", "Workstation", "Strategies"]) {
+    for (const label of ["Workspace", "Workstation", "Strategies"]) {
       const other = screen.getByRole("button", { name: label });
       expect(other.getAttribute("aria-pressed")).toBe("false");
       expect(other.className).not.toContain("kbot-shell__nav-item--active");
@@ -151,7 +151,7 @@ describe("Navigation — scoped Signal presentation", () => {
     render(<Navigation active="home" onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
     expect(onChange).toHaveBeenCalledWith("deployments");
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     expect(onChange).toHaveBeenCalledWith("studio");
   });
 

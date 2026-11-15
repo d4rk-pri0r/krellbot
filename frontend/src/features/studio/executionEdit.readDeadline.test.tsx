@@ -201,7 +201,7 @@ async function savePackAndOpenStudio(
   });
   fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
   await screen.findByTestId("editor-revision-id");
-  fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+  fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
   // Settle the shell's real-clock mount effects (notably the status
   // strip's deferred self-read arm and its refresh intervals) BEFORE a
   // test switches to fake timers, so the fake clock only ever owns the

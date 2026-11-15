@@ -1,11 +1,11 @@
 /**
- * Application Home — Signal composition (KRELL-SIGNAL-20261010).
+ * Application Home — Signal workspace composition (KRELL-SIGNAL-20261010).
  *
  * These tests pin the mounted application Home as a real, welcoming
- * overview: readable purpose, conspicuous local-preview/live-unavailable
- * copy, five state-driven navigation cards bound to the existing views,
- * keyboard activation, and no fabricated connection, account, license
- * or market state.
+ * workspace overview: readable purpose, conspicuous local-preview /
+ * live-unavailable copy, five state-driven navigation cards bound to
+ * the existing views, keyboard activation, and no fabricated
+ * connection, account, license or market state.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,14 +18,35 @@ afterEach(() => {
 });
 
 const CARD_DESTINATIONS: ReadonlyArray<{
+  testid: string;
   name: RegExp;
   view: View;
 }> = [
-  { name: /create or open a strategy/i, view: "strategies" },
-  { name: /explore research/i, view: "research" },
-  { name: /open studio/i, view: "studio" },
-  { name: /paper workstation/i, view: "workstation" },
-  { name: /operations/i, view: "operations" },
+  {
+    testid: "app-home-card-workstation",
+    name: /paper workstation/i,
+    view: "workstation",
+  },
+  {
+    testid: "app-home-card-strategies",
+    name: /create or open a strategy/i,
+    view: "strategies",
+  },
+  {
+    testid: "app-home-card-studio",
+    name: /open studio/i,
+    view: "studio",
+  },
+  {
+    testid: "app-home-card-research",
+    name: /explore research/i,
+    view: "research",
+  },
+  {
+    testid: "app-home-card-operations",
+    name: /^operations/i,
+    view: "operations",
+  },
 ];
 
 function renderHome(props: { onNavigate?: (view: View) => void } = {}): void {
@@ -43,12 +64,22 @@ describe("AppHome — application overview", () => {
     expect(region.tagName).toBe("SECTION");
     const heading = screen.getByRole("heading", {
       level: 1,
-      name: /your crypto workstation, local by design/i,
+      name: /your workspace/i,
     });
     expect(region.contains(heading)).toBe(true);
     expect(
+      screen.getByText(/A clear view of your strategies, paper bots/i),
+    ).toBeDefined();
+    expect(
       screen.getByText(/Build, inspect and paper-test/i),
     ).toBeDefined();
+  });
+
+  it("offers a primary CTA into the paper workstation", () => {
+    const onNavigate = vi.fn();
+    renderHome({ onNavigate });
+    fireEvent.click(screen.getByTestId("app-home-cta-paper"));
+    expect(onNavigate).toHaveBeenCalledWith("workstation");
   });
 
   it("keeps the local-preview / live-unavailable copy conspicuous", () => {
@@ -61,19 +92,20 @@ describe("AppHome — application overview", () => {
   it("renders the five feature cards as real in-app buttons, not anchors", () => {
     renderHome();
     expect(screen.queryByRole("link")).toBeNull();
-    for (const { name } of CARD_DESTINATIONS) {
-      const card = screen.getByRole("button", { name });
+    for (const { testid, name } of CARD_DESTINATIONS) {
+      const card = screen.getByTestId(testid);
       expect(card.tagName).toBe("BUTTON");
       expect((card as HTMLButtonElement).type).toBe("button");
       expect(card.getAttribute("href")).toBeNull();
+      expect(card.textContent).toMatch(name);
     }
   });
 
   it("navigates to each existing view when its card is activated", () => {
     const onNavigate = vi.fn();
     renderHome({ onNavigate });
-    for (const { name, view } of CARD_DESTINATIONS) {
-      fireEvent.click(screen.getByRole("button", { name }));
+    for (const { testid, view } of CARD_DESTINATIONS) {
+      fireEvent.click(screen.getByTestId(testid));
       expect(onNavigate).toHaveBeenLastCalledWith(view);
     }
     expect(onNavigate).toHaveBeenCalledTimes(CARD_DESTINATIONS.length);
@@ -85,8 +117,8 @@ describe("AppHome — application overview", () => {
     // Native buttons are keyboard-activable by the platform (Enter and
     // Space both fire click); the guarantee under test is that every
     // card is a focusable button with no scripting barrier.
-    const cards = CARD_DESTINATIONS.map(({ name }) =>
-      screen.getByRole("button", { name }),
+    const cards = CARD_DESTINATIONS.map(({ testid }) =>
+      screen.getByTestId(testid),
     );
     for (const card of cards) {
       expect(card.tagName).toBe("BUTTON");

@@ -97,11 +97,11 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     const nav = screen.getByTestId("kbot-nav");
     expect(nav).toBeDefined();
     for (const label of [
-      "Home",
+      "Workspace",
       "Workstation",
       "Strategies",
       "Research",
-      "Studio",
+      "Strategy studio",
       "Operations",
       "Deploy",
     ]) {
@@ -109,7 +109,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
         screen.getByRole("button", { name: label }).getAttribute(
           "aria-current",
         ),
-      ).toBe(label === "Home" ? "page" : null);
+      ).toBe(label === "Workspace" ? "page" : null);
     }
   });
 
@@ -126,12 +126,12 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
 
   it("returns to Home from any view through the brand button", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     expect(screen.queryByTestId("app-home")).toBeNull();
     fireEvent.click(screen.getByTestId("kbot-shell-brand"));
     expect(screen.getByTestId("app-home")).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Home" }).getAttribute("aria-current"),
+      screen.getByRole("button", { name: "Workspace" }).getAttribute("aria-current"),
     ).toBe("page");
   });
 
@@ -140,19 +140,19 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     fireEvent.click(screen.getByTestId("app-home-card-strategies"));
     expect(screen.getByTestId("library-toggle")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     fireEvent.click(screen.getByTestId("app-home-card-research"));
     expect(screen.getByTestId("research-host")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     fireEvent.click(screen.getByTestId("app-home-card-studio"));
     expect(screen.getByTestId("studio-node-count").textContent).toBe("3");
 
-    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     fireEvent.click(screen.getByTestId("app-home-card-workstation"));
     expect(screen.getByText("Paper workstation")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     fireEvent.click(screen.getByTestId("app-home-card-operations"));
     // Operations mounts after bootstrap resolves; wait for its view.
     await waitFor(() =>
@@ -186,7 +186,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     expect(screen.getByTestId("studio-node-count").textContent).toBe("200");
     expect(
       screen
-        .getByRole("button", { name: "Studio" })
+        .getByRole("button", { name: "Strategy studio" })
         .getAttribute("aria-current"),
     ).toBe("page");
     expect(
@@ -213,7 +213,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     fireEvent.click(screen.getByRole("button", { name: "Research" }));
     expect(screen.getByTestId("research-host")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: "Studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
     expect(screen.getByTestId("studio-node-count")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Operations" }));

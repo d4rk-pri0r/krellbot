@@ -1,54 +1,129 @@
 /*
- * Application Home — Signal + Krell Asset Pack v2.
- * Contract: KRELL-SIGNAL-20261010 (owner-approved).
+ * Application Home — Signal workspace composition (KRELL-SIGNAL-20261010).
  *
- * Scoped Home presentation only. Every color, font and radius comes
- * from the shared tokens in ../styles/tokens.css; this file does not
- * redefine the palette. The welcome band uses the supplied outlined
- * BrandMark (bundled, unmirrored). Availability copy is muted/caution
- * toned — never a success green — because live trading is unavailable.
+ * Mirrors the approved Signal workspace reference: hero + main column +
+ * aside. Every color, font and radius comes from shared tokens. No
+ * fabricated equity, returns, health or sample-bot metrics.
  */
 
 .app-home {
   display: grid;
-  gap: 16px;
+  gap: 22px;
   align-content: start;
   min-width: 0;
 }
 
-/* ---- welcome band ---- */
+/* ---- hero ---- */
 
-.app-home__welcome {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
+.app-home__hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+  padding: 4px 2px 2px;
+}
+
+.app-home__hero-copy {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.app-home__title {
+  margin: 0;
+  font-size: clamp(26px, 3.2vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.7px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.app-home__purpose {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14.5px;
+  max-width: 52ch;
+  line-height: 1.5;
+}
+
+.app-home__cta {
+  flex: none;
+  min-height: 40px;
+  padding: 9px 16px;
+  background: var(--action-primary-bg) !important;
+  color: var(--action-primary-text) !important;
+  border: 1px solid color-mix(in srgb, var(--sage) 55%, var(--line)) !important;
+  border-radius: var(--radius-control);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.app-home__cta:hover:not(:disabled) {
+  border-color: var(--sage) !important;
+  filter: brightness(1.05);
+}
+
+/* ---- two-column layout ---- */
+
+.app-home__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 16px;
+  align-items: start;
+}
+
+.app-home__main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.app-home__aside {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* ---- summary band ---- */
+
+.app-home__summary {
+  display: grid;
+  gap: 14px;
   padding: 18px 20px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
 }
 
-.app-home__welcome .kbot-brandmark {
-  width: 34px;
-  height: auto;
-  color: var(--seafoam);
+.app-home__summary-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
 }
 
-.app-home__title {
+.app-home__summary-head .kbot-brandmark {
+  width: 36px;
+  height: auto;
+  color: var(--seafoam);
+  flex: none;
+  margin-top: 2px;
+}
+
+.app-home__summary-title {
   margin: 0;
-  font-size: 22px;
-  line-height: 1.25;
-  letter-spacing: -0.5px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text);
 }
 
-.app-home__purpose {
+.app-home__summary-lead {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 13.5px;
-  max-width: 58ch;
+  max-width: 62ch;
+  line-height: 1.5;
 }
 
 .app-home__availability {
@@ -56,6 +131,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  width: fit-content;
   padding: 8px 14px;
   border: 1px solid color-mix(in srgb, var(--caution-text) 45%, var(--line));
   border-radius: 999px;
@@ -63,8 +139,6 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.03em;
-  white-space: nowrap;
-  justify-self: end;
 }
 
 .app-home__availability-mode {
@@ -79,20 +153,64 @@
 }
 
 .app-home__session {
-  grid-column: 1 / -1;
   margin: 0;
   color: var(--muted);
   font-size: 12.5px;
 }
 
-/* ---- feature cards ---- */
+.app-home__session--failed {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger-border) 70%, var(--line));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--caution-bg) 35%, var(--surface));
+}
+
+.app-home__recover {
+  justify-self: start;
+  min-height: 40px;
+}
+
+/* ---- section heads / bot cards ---- */
+
+.app-home__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.app-home__section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+
+.app-home__section-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-home__bots,
+.app-home__activity {
+  padding: 16px 18px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  min-width: 0;
+}
 
 .app-home__cards {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
 }
 
@@ -103,27 +221,52 @@
 
 .app-home__card {
   display: grid;
-  gap: 6px;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 8px;
   align-content: start;
   width: 100%;
-  min-height: 44px;
-  padding: 14px 16px;
+  min-height: 148px;
+  padding: 14px 15px 12px;
   text-align: left;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--navy) 45%, var(--surface));
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   color: var(--text);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms ease;
 }
 
 .app-home__card:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--seafoam) 45%, var(--line));
   background: color-mix(in srgb, var(--panel) 45%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.app-home__card-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--seafoam) 28%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(
+      320deg,
+      color-mix(in srgb, var(--panel) 80%, var(--navy)),
+      var(--navy)
+    );
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
 }
 
 .app-home__card-action {
   font-weight: 700;
-  font-size: 13.5px;
-  color: var(--seafoam);
+  font-size: 14px;
+  color: var(--text);
+  letter-spacing: -0.15px;
 }
 
 .app-home__card-detail {
@@ -132,28 +275,63 @@
   color: var(--muted);
 }
 
-/* ---- explanatory notes ---- */
-
-.app-home__notes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
+.app-home__card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
 }
 
-.app-home__note {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-panel);
-  padding: 14px 16px;
-  min-width: 0;
+.app-home__card-meta {
+  font-size: 11px;
+  color: var(--muted);
 }
 
-.app-home__note-title {
-  margin: 0 0 8px;
+.app-home__card-link {
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  color: var(--seafoam);
+}
+
+/* ---- activity list ---- */
+
+.app-home__activity-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+}
+
+.app-home__activity-row {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+}
+
+.app-home__activity-row:first-child {
+  padding-top: 4px;
+}
+
+.app-home__activity-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+
+.app-home__activity-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.app-home__activity-detail {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
@@ -167,6 +345,12 @@
   line-height: 1.5;
 }
 
+.app-home__note-list--compact {
+  color: var(--muted);
+  border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  padding-top: 12px;
+}
+
 .app-home__note-copy {
   margin: 0 0 8px;
   color: var(--text);
@@ -178,21 +362,113 @@
   margin-bottom: 0;
 }
 
-/* ---- narrow / mobile layout ---- */
+/* ---- aside rails ---- */
+
+.app-home__rail {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  display: grid;
+  gap: 8px;
+}
+
+.app-home__rail--emphasis {
+  background: color-mix(in srgb, var(--panel) 35%, var(--surface));
+}
+
+.app-home__rail-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.app-home__rail-lead {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.app-home__rail-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--seafoam);
+  flex: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--seafoam) 22%, transparent);
+}
+
+.app-home__rail-dot--caution {
+  background: var(--caution-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--caution-text) 22%, transparent);
+}
+
+.app-home__rail-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.app-home__rail-link {
+  justify-self: start;
+  margin-top: 2px;
+  padding: 0 !important;
+  min-height: 32px;
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--seafoam) !important;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.app-home__rail-link:hover:not(:disabled) {
+  color: var(--text) !important;
+}
+
+/* ---- narrow / mobile ---- */
+
+@media (max-width: 920px) {
+  .app-home__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .app-home__aside {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
 
 @media (max-width: 640px) {
-  .app-home__welcome {
-    grid-template-columns: 1fr;
-    gap: 10px;
+  .app-home__hero {
+    align-items: stretch;
+  }
+
+  .app-home__cta {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .app-home__summary {
     padding: 14px 16px;
   }
 
-  .app-home__welcome .kbot-brandmark {
+  .app-home__summary-head {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .app-home__summary-head .kbot-brandmark {
     width: 28px;
   }
 
   .app-home__availability {
-    justify-self: start;
     white-space: normal;
   }
 

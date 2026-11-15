@@ -195,7 +195,7 @@ describe("WorkstationShell — installed pack library mount", () => {
       />,
     );
 
-    for (const label of ["Workstation", "Research", "Studio", "Operations"]) {
+    for (const label of ["Workstation", "Research", "Strategy studio", "Operations"]) {
       fireEvent.click(screen.getByRole("button", { name: label }));
       expect(screen.queryByTestId("strategies-packs-toggle")).toBeNull();
       expect(screen.queryByTestId("pack-library-panel")).toBeNull();

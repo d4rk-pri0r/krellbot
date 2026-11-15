@@ -57,12 +57,15 @@ from those nine tokens. Prefer semantic roles in component CSS.
 The local application shell is **compact, horizontal and product-led**
 (`frontend/src/shell/WorkstationShell.tsx` + `frontend/src/styles/shell.css`):
 
-1. Brand bar: the supplied outlined wordmark, then status context
-   (mode + truthful availability), Jobs, and the command palette affordance.
-2. View navigation directly beneath it, with the active view underlined in
-   seafoam.
+1. Sticky brand bar: the supplied outlined wordmark, inline view navigation
+   (active tab underlined in seafoam), then status context (mode + truthful
+   availability), Jobs, and the command palette affordance.
+2. Workspace home (`AppHome`) uses a hero + main column + aside composition
+   for orientation only — never fabricated portfolio equity or sample bots.
 3. Real content panels below: readable `--surface` panels with `--line`
-   borders and a consistent radius.
+   borders and a consistent radius. Paper workstation may use a main + aside
+   split so the inspector sits as a rail, not a marketing sidebar of invented
+   health metrics.
 
 Rules:
 
