@@ -9,6 +9,8 @@ Checks (each a row in text and a field in JSON):
 - Home directory mode is `0o700` on POSIX. Windows reports the check
   skipped, not failed.
 - Keychain backend name. A null, fail, or fake backend is a warning.
+  ``NoKeyringError`` from a missing backend is the same soft warning path
+  (keys reported absent); doctor never traceback.
 - For `kraken` and `coinbase`: key present or absent. Permission probe is
   injected; with no probe we report present/absent only, never a live
   `WithdrawMethods` call.
@@ -122,13 +124,19 @@ def _keychain_backend() -> tuple[str | None, str | None]:
 
 
 def _keys_status(permission_probe: Callable[[str], Any] | None) -> dict[str, dict[str, Any]]:
+    # NoKeyringError (KeyringError) is a soft fail: report absent, never traceback.
+    try:
+        from keyring.errors import KeyringError
+    except ImportError:  # pragma: no cover - keyring is a hard dependency
+        KeyringError = RuntimeError  # type: ignore[misc,assignment]
+
     out: dict[str, dict[str, Any]] = {}
     for venue in sorted(kb_secrets.VENUES):
         info: dict[str, Any] = {"present": False}
         try:
             kb_secrets.get(venue)
             info["present"] = True
-        except (FileNotFoundError, ValueError, PermissionError):
+        except (FileNotFoundError, ValueError, PermissionError, KeyringError, OSError):
             info["present"] = False
         if permission_probe is not None and info["present"]:
             try:
