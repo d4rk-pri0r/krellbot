@@ -41,7 +41,7 @@ from krellbot.application import alerts as alerts_app
 from krellbot.application import live_gate
 from krellbot.application import operations as operations_view_app
 from krellbot.application import packs as app_packs
-from krellbot.application.live_preflight import SandboxTransport
+from krellbot.application.live_preflight import build_venue_preflight_transport
 from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
 from krellbot.application.paper import (
     project_owned_position,
@@ -89,7 +89,7 @@ class _AppState:
     draft_service: object = field(default=None)  # StrategyDraftService singleton per home
     paper_service: object = field(default=None)  # PaperService singleton per home
     rehearsal_service: object = field(default=None)
-    live_transport: object = field(default=None)  # SandboxTransport or test spy for live.preflight
+    live_transport: object = field(default=None)  # test spy override for live.preflight
     keys_transport: object = field(default=None)  # injectable venue transport for keys routes
     catalogue_transport: object = field(default=None)  # injectable signed-catalogue fetch
     keys_allow_fake_backend: bool = False  # tests-only FakeKeyring opt-in
@@ -150,17 +150,17 @@ def _rehearsal_wire(body: dict) -> dict:
     }
 
 
-def _live_transport(s: _AppState):
-    """Lazily build the sandbox live transport bound to the app's home.
+def _live_transport(s: _AppState, *, venue: str = "kraken"):
+    """Resolve the live-preflight transport for ``venue``.
 
-    Tests pre-set ``s.live_transport`` to a spy before issuing a
-    ``live.preflight`` command so they can assert that ``send`` was
-    never called.
+    Tests may pre-set ``s.live_transport`` to a spy. Production builds a
+    venue-backed adapter over the injectable ``keys_transport`` (or the
+    real HTTP transport) — never the legacy zero-USD ``SandboxTransport``.
     """
 
-    if s.live_transport is None:
-        s.live_transport = SandboxTransport(account="sandbox-default")
-    return s.live_transport
+    if s.live_transport is not None:
+        return s.live_transport
+    return build_venue_preflight_transport(venue=venue, http_transport=s.keys_transport)
 
 
 def _live_arm_gate_refusal(result: live_gate.LiveGateResult) -> JSONResponse:
@@ -1022,10 +1022,10 @@ def create_app(
 
         if command == "live.preflight":
             # ``live.preflight`` is the single carve-out from the prefix
-            # gate: a sandbox-only dry-run against the fake transport
-            # that never sends an order. Every other ``live.*`` command
-            # still returns 403 below; the ``mode == "live"`` payload
-            # refusal remains in force for non-preflight commands.
+            # gate: a sandbox-mode dry-run against the injectable venue
+            # transport that never sends an order. Every other ``live.*``
+            # command still returns 403 below; the ``mode == "live"``
+            # payload refusal remains in force for non-preflight commands.
             if live_gate.kill_state(s.home).engaged:
                 return JSONResponse(
                     {
@@ -1037,17 +1037,23 @@ def create_app(
                     },
                     status_code=200,
                 )
-            account_id = inner.get("account_id") or ""
+            venue = inner.get("venue") or "kraken"
+            account_id = inner.get("account_id") or venue
             revision_id = inner.get("revision_id")
             mode = inner.get("mode")
-            if not isinstance(account_id, str) or not isinstance(revision_id, str) or not isinstance(mode, str):
+            if (
+                not isinstance(venue, str)
+                or not isinstance(account_id, str)
+                or not isinstance(revision_id, str)
+                or not isinstance(mode, str)
+            ):
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
             stored_mode = _stored_deployment_mode(s.home)
             result = live_preflight_evaluate(
                 account_id=account_id,
                 revision_id=revision_id,
                 mode=mode,
-                transport=_live_transport(s),
+                transport=_live_transport(s, venue=venue),
                 stored_mode=stored_mode,
             )
             return JSONResponse(result.to_dict(), status_code=200)

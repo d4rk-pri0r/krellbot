@@ -70,7 +70,7 @@ async function renderAndSubmit(
   vi.stubGlobal("fetch", fetchMock);
   render(<LivePreflight />);
   fireEvent.change(await screen.findByTestId("live-preflight-account"), {
-    target: { value: "acct-1" },
+    target: { value: "kraken" },
   });
   fireEvent.change(screen.getByTestId("live-preflight-revision"), {
     target: { value: "rev-1" },
@@ -343,8 +343,10 @@ describe("LivePreflight Signal layout — verdict panel", () => {
       ok: true,
       message: "preflight ok",
       effect: "none",
-      account_id: "acct-1",
+      account_id: "kraken",
       revision_id: "rev-1",
+      balances: { ZUSD: "12.34" },
+      permissions: { can_trade: true, can_withdraw: false },
     });
 
     const result = screen.getByTestId("live-preflight-result");
@@ -352,11 +354,15 @@ describe("LivePreflight Signal layout — verdict panel", () => {
     expect(result.textContent).toMatch(/code: Ok/);
     expect(result.textContent).toMatch(/ok: true/);
     expect(result.textContent).toMatch(/preflight ok/);
-    expect(result.textContent).toMatch(/account_id: acct-1/);
+    expect(result.textContent).toMatch(/account_id: kraken/);
     expect(result.textContent).toMatch(/revision_id: rev-1/);
+    expect(result.textContent).toMatch(/permissions: trade on, withdraw off/);
+    expect(screen.getByTestId("live-preflight-balance-ZUSD").textContent).toContain(
+      "12.34",
+    );
 
     const lines = result.querySelectorAll(`.${ROOT}__result-line`);
-    expect(lines.length).toBe(5);
+    expect(lines.length).toBeGreaterThanOrEqual(5);
     expect(lines[0]?.className).toContain(`${ROOT}__result-line--ok`);
     expect(lines[1]?.className).toContain(`${ROOT}__result-line--ok`);
     // Identifiers keep the restrained technical mono treatment.

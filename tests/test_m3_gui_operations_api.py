@@ -184,10 +184,13 @@ class FakeTransport:
     """Spy with a configurable account id; never talks to a live venue."""
 
     def __init__(self, account: str, balances: dict[str, Any] | None = None) -> None:
+        from krellbot.application.live_preflight import PreflightPermissions
+
         self.account = account
         self.send = MagicMock()
         self._balances = balances if balances is not None else {"USD": 1234.56}
         self.balances = MagicMock(return_value=dict(self._balances))
+        self.permissions = MagicMock(return_value=PreflightPermissions(can_trade=True, can_withdraw=False))
 
     def was_sent(self) -> bool:
         return self.send.called
@@ -501,6 +504,7 @@ def test_live_preflight_with_kill_engaged_short_circuits(home: Path, monkeypatch
     assert decoded["ok"] is False, decoded
     assert decoded["effect"] == "refused", decoded
     transport.send.assert_not_called()
+    transport.permissions.assert_not_called()
     transport.balances.assert_not_called()
 
 

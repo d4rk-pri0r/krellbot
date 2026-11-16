@@ -11,7 +11,11 @@ function deferred<T>() {
 }
 const verdict = { ok: true, code: "ok", message: "synthetic old verdict", account_id: "synthetic-A", revision_id: "synthetic-R1" };
 function edit(field: string) {
-  fireEvent.change(screen.getByTestId(`live-preflight-${field}`), { target: { value: field === "mode" ? "live" : "synthetic-new" } });
+  const value =
+    field === "mode" ? "live" : field === "account" ? "kraken" : "synthetic-new";
+  fireEvent.change(screen.getByTestId(`live-preflight-${field}`), {
+    target: { value },
+  });
 }
 function submit() { fireEvent.click(screen.getByTestId("live-preflight-submit")); }
 
@@ -65,6 +69,16 @@ describe.each(["account", "revision", "mode"])("preflight %s intent edits", (fie
     expect((await screen.findByTestId("live-preflight-result")).textContent).toContain("synthetic current refusal");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const payload = JSON.parse(String(fetchMock.mock.calls[1][1].body)).payload;
-    expect(payload[field === "account" ? "account_id" : field === "revision" ? "revision_id" : "mode"]).toBe(field === "mode" ? "live" : "synthetic-new");
+    const expected =
+      field === "mode" ? "live" : field === "account" ? "kraken" : "synthetic-new";
+    expect(
+      payload[
+        field === "account"
+          ? "account_id"
+          : field === "revision"
+            ? "revision_id"
+            : "mode"
+      ],
+    ).toBe(expected);
   });
 });

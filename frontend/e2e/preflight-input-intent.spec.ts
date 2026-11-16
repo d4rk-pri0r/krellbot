@@ -15,7 +15,12 @@ for (const width of [1280, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const network = await attachNetworkGuard(page);
     const refused: string[] = [];
-    const submitted: Array<{ account_id: string; revision_id: string; mode: string }> = [];
+    const submitted: Array<{
+      account_id: string;
+      revision_id: string;
+      mode: string;
+      venue?: string;
+    }> = [];
     let delay = false;
     let ready!: () => void;
     let release!: () => void;
@@ -49,15 +54,15 @@ for (const width of [1280, 390]) {
       await page.goto(workstation.baseURL);
       await waitForSessionReady(page);
       await clickNav(page, "Deploy");
-      const account = page.getByTestId("live-preflight-account");
+      const venue = page.getByTestId("live-preflight-account");
       const revision = page.getByTestId("live-preflight-revision");
       const submit = page.getByTestId("live-preflight-submit");
       const result = page.getByTestId("live-preflight-result");
-      await account.fill("synthetic-account-A");
+      await venue.selectOption("kraken");
       await revision.fill("synthetic-revision-one");
       await submit.click();
       await expect(result).toBeVisible();
-      await account.fill("synthetic-account-B");
+      await revision.fill("synthetic-revision-edit");
       await expect(result).toHaveCount(0);
       expect(submitted).toHaveLength(1);
       delay = true;
@@ -75,7 +80,12 @@ for (const width of [1280, 390]) {
       await submit.click();
       await expect(result).toBeVisible();
       expect(submitted).toHaveLength(3);
-      expect(submitted[2]).toEqual({ account_id: "synthetic-account-B", revision_id: "synthetic-revision-two", mode: "sandbox" });
+      expect(submitted[2]).toEqual({
+        venue: "kraken",
+        account_id: "kraken",
+        revision_id: "synthetic-revision-two",
+        mode: "sandbox",
+      });
       expect(refused).toEqual([]);
       assertNoOffLoopback(network);
       workstation.commandLog.assertAll();

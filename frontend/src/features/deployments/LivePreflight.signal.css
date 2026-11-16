@@ -20,16 +20,17 @@
  * Composition contract:
  *   - the shell keeps the outer panel chrome for the mounted section;
  *     this scope only styles what the panel renders inside it;
- *   - the request form keeps its frozen field set (Account ID,
+ *   - the request form keeps its frozen field set (Venue,
  *     Revision ID, Mode) with muted uppercase micro-label captions and
  *     restrained technical mono inputs on the navy canvas;
  *   - "Run preflight" is the one affirmative primary, so it carries
  *     the sage treatment; the disabled state stays restrained and
  *     never reads as a success tint;
  *   - the verdict panel keeps the verbatim backend text — code label,
- *     ok flag, message, account_id, revision_id — on a grouped surface
- *     panel; sage reinforces an ok verdict, coral a refusal, and the
- *     text alone always carries the state;
+ *     ok flag, message, account_id, revision_id, permissions, and
+ *     balances — on a grouped surface panel; sage reinforces an ok
+ *     verdict, coral a refusal, and the text alone always carries the
+ *     state;
  *   - identifiers stay technical mono with tabular numerals and wrap
  *     rather than widen the page;
  *   - a failed request renders as a scoped alert on a muted panel
@@ -198,6 +199,22 @@
   .kbot-feature__live-preflight-root__result-line--refused {
   color: var(--danger-text, #e0a296);
   font-weight: 700;
+}
+
+.kbot-feature__live-preflight-root
+  .kbot-feature__live-preflight-root__balances {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kbot-feature__live-preflight-root
+  .kbot-feature__live-preflight-root__balances-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
 }
 
 /* ============ failed request (honest error state) ============ */

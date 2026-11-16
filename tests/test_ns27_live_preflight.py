@@ -47,6 +47,7 @@ from krellbot.application.live_preflight import (
     CODE_OK,
     CODE_REVISION_ID_MISSING,
     CODE_STORED_MODE_NOT_SANDBOX,
+    PreflightPermissions,
     evaluate,
 )
 
@@ -184,6 +185,7 @@ class FakeTransport:
         self.send = MagicMock()
         self._balances = balances if balances is not None else {"USD": 1234.56}
         self.balances = MagicMock(return_value=dict(self._balances))
+        self.permissions = MagicMock(return_value=PreflightPermissions(can_trade=True, can_withdraw=False))
 
     def was_sent(self) -> bool:
         return self.send.called
@@ -206,6 +208,7 @@ def test_helper_ok_does_not_send() -> None:
     assert result.account_id == "acct-1"
     assert result.revision_id == "rev-abc"
     assert transport.send.assert_not_called() is None
+    assert transport.permissions.called, "permissions should be read on success"
     assert transport.balances.called, "balances should be read on success"
 
 
@@ -223,6 +226,7 @@ def test_helper_refuses_account_mismatch_before_send() -> None:
     assert result.account_id == "acct-2"
     assert result.revision_id == "rev-abc"
     transport.send.assert_not_called()
+    assert not transport.permissions.called
     assert not transport.balances.called
 
 
