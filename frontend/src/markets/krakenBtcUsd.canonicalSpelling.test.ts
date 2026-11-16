@@ -23,9 +23,11 @@ describe("kraken BTC/USD canonical spelling", () => {
   });
 
   it("rejects the five alternate spellings as stored venue symbols", () => {
+    // Wave helper stays strict. Guided form pair validation (M6.4) allows
+    // other paper-capable pairs via PAIR_PATTERN, so defaults — not every
+    // field reject — carry the single XXBTZUSD spelling.
     for (const spelling of ["BTC/USD", "BTCUSD", "XBTUSD", "XBT/USD", "btc-usd"]) {
       expect(isKrakenWavePairSymbol(spelling)).toBe(false);
-      expect(validateOwnedStrategyField("pair", spelling)).toMatch(/XXBTZUSD/);
     }
     expect(isKrakenWavePairSymbol("XXBTZUSD")).toBe(true);
     expect(validateOwnedStrategyField("pair", "XXBTZUSD")).toBeUndefined();
