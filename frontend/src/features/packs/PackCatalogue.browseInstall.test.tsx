@@ -58,7 +58,7 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
     rollback: vi.fn(async () => ({ ok: false })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
-      status: "dead",
+      status: "dead" as const,
       message: "license not accepted",
       catalog_downloaded: false,
     })),

@@ -33,8 +33,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def _safe_pack_id_name(pack_id: str) -> str | None:
+    """Return a single path-segment pack id, or None if unsafe.
+
+    Uses ``os.path.basename`` (CodeQL-recognized sanitizer) so directory
+    components never reach a path expression under ``<home>/packs/``.
+    """
+    if not isinstance(pack_id, str) or not pack_id:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_id)
+    if not name or name in {".", ".."}:
+        return None
+    if os.path.basename(name) != name:
+        return None
+    return name
 
 BUCKET_DEPLOYED = "deployed"
 BUCKET_CONFIGURED = "configured"
@@ -94,25 +112,37 @@ def _read_json(path: Path) -> dict | None:
 
 
 def _deployed_record(home: Path, pack_id: str) -> dict | None:
-    return _read_json(home / "packs" / f"{pack_id}.deployed.json")
+    name = _safe_pack_id_name(pack_id)
+    if name is None:
+        return None
+    return _read_json(home / "packs" / f"{name}.deployed.json")
 
 
 def _configured_record(home: Path, pack_id: str) -> dict | None:
-    return _read_json(home / "packs" / f"{pack_id}.configured.json")
+    name = _safe_pack_id_name(pack_id)
+    if name is None:
+        return None
+    return _read_json(home / "packs" / f"{name}.configured.json")
 
 
 def _download_pending_marker(home: Path, pack_id: str) -> dict | None:
-    return _read_json(home / "packs" / f"{pack_id}.download_pending.json")
+    name = _safe_pack_id_name(pack_id)
+    if name is None:
+        return None
+    return _read_json(home / "packs" / f"{name}.download_pending.json")
 
 
 def _installed_pack(home: Path, pack_id: str) -> dict | None:
     """Return the parsed pack dict from one of the installed roots, if any."""
+    name = _safe_pack_id_name(pack_id)
+    if name is None:
+        return None
     for root in (
         home / "packs",
         home / "packs" / "community",
         home / "packs" / "catalog",
     ):
-        candidate = root / f"{pack_id}.json"
+        candidate = root / f"{name}.json"
         if not candidate.is_file():
             continue
         data = _read_json(candidate)
@@ -319,6 +349,10 @@ def classify(home: Path, pack_id: str) -> PackRow | None:
     source. The dashboard treats ``None`` as "do not render this id".
     """
     home = Path(home)
+    safe_id = _safe_pack_id_name(pack_id)
+    if safe_id is None:
+        return None
+    pack_id = safe_id
     deployed = _deployed_record(home, pack_id)
     if deployed is not None:
         return _row_from_deployed(home, pack_id, deployed)
