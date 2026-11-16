@@ -414,6 +414,255 @@ def project_paper_pnl_position_chart(home: Path) -> dict:
     }
 
 
+# Cap for portfolio deployment cards — same order of magnitude as the
+# paper "Last runs" panel so the wire stays bounded.
+PORTFOLIO_HISTORY_MAX_DEPLOYMENTS = 20
+
+
+def _all_fills(state: dict) -> list[dict]:
+    """Return every finite fill in ``state`` with pair/side/qty/price/ts_ms."""
+    raw = state.get("recent_fills")
+    if not isinstance(raw, list):
+        return []
+    fills: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        pair = item.get("pair")
+        if not isinstance(pair, str) or not pair:
+            continue
+        side = item.get("side")
+        if side not in ("buy", "sell"):
+            continue
+        qty = _chart_decimal(item.get("qty"))
+        price = _chart_decimal(item.get("price"))
+        ts_ms = item.get("ts_ms")
+        if qty is None or price is None or not isinstance(ts_ms, (int, float)):
+            continue
+        fills.append(
+            {
+                "pair": pair,
+                "side": side,
+                "qty": Decimal(qty),
+                "price": Decimal(price),
+                "ts_ms": int(ts_ms),
+            }
+        )
+    fills.sort(key=lambda row: row["ts_ms"])
+    return fills
+
+
+def _venue_equity_series(
+    *,
+    venue: str,
+    starting_cash: Decimal,
+    fills: list[dict],
+) -> list[dict]:
+    """Replay a venue's fills into absolute equity points (cash + marks).
+
+    Tracks per-pair qty and last mark so multi-pair wallets mark correctly
+    after each fill. Fees match the paper taker bps used by the P&L chart.
+    """
+    fee_bps = Decimal(_PAPER_TAKER_BPS.get(venue, 40))
+    cash = starting_cash
+    qty_by_pair: dict[str, Decimal] = {}
+    mark_by_pair: dict[str, Decimal] = {}
+    points: list[dict] = []
+
+    for fill in fills:
+        pair = fill["pair"]
+        notional = fill["qty"] * fill["price"]
+        fee = notional * fee_bps / Decimal(10_000)
+        held = qty_by_pair.get(pair, Decimal(0))
+        if fill["side"] == "buy":
+            cash -= notional + fee
+            held += fill["qty"]
+        else:
+            cash += notional - fee
+            held -= fill["qty"]
+        qty_by_pair[pair] = held
+        mark_by_pair[pair] = fill["price"]
+        marked = sum(
+            (qty_by_pair.get(p, Decimal(0)) * mark_by_pair.get(p, Decimal(0)) for p in qty_by_pair),
+            Decimal(0),
+        )
+        equity_text = _chart_decimal(cash + marked)
+        if equity_text is None:
+            continue
+        points.append({"ts_ms": fill["ts_ms"], "value": equity_text})
+    return _downsample_points(points)
+
+
+def _merge_venue_equity(series_by_venue: dict[str, list[dict]]) -> list[dict]:
+    """Sum last-known per-venue equity at every fill timestamp across venues."""
+    if not series_by_venue:
+        return []
+    if len(series_by_venue) == 1:
+        return next(iter(series_by_venue.values()))
+
+    events: list[tuple[int, str, Decimal]] = []
+    for venue, series in series_by_venue.items():
+        for point in series:
+            value = _chart_decimal(point.get("value"))
+            if value is None:
+                continue
+            events.append((int(point["ts_ms"]), venue, Decimal(value)))
+    events.sort(key=lambda row: row[0])
+
+    last: dict[str, Decimal] = {}
+    merged: list[dict] = []
+    for ts_ms, venue, value in events:
+        last[venue] = value
+        total = sum(last.values(), Decimal(0))
+        text = _chart_decimal(total)
+        if text is None:
+            continue
+        merged.append({"ts_ms": ts_ms, "value": text})
+    return _downsample_points(merged)
+
+
+def project_portfolio_history(home: Path) -> dict:
+    """Closed-shape cross-deployment portfolio history from journal + fills.
+
+    * ``deployments`` — one row per ``(venue, pack, pair)`` the journal
+      records (plus currently armed markets with no ticks yet), newest
+      ``last_ts_ms`` first, capped at ``PORTFOLIO_HISTORY_MAX_DEPLOYMENTS``.
+      Pair-scoped ``pnl`` / ``last_pnl`` appear only when ``starting_cash``
+      is known from the armed config for that market.
+    * ``equity`` — absolute portfolio equity over time from venue-level
+      fill replay (shared paper wallet per venue; multi-venue series are
+      summed by last-known carry). Empty when no starting cash is known
+      or no fills exist — never a fabricated flat zero series.
+
+    Read-only. Does not invent Learn/marketing sample bots or touch
+    telemetry consent.
+    """
+    home = Path(home)
+    try:
+        config = kb_config.load_config(home)
+    except (OSError, ValueError):
+        config = kb_config.Config()
+
+    armed_by_market: dict[tuple[str, str], kb_config.ArmedPack] = {}
+    for armed in config.armed:
+        armed_by_market[(armed.venue, armed.pair)] = armed
+
+    deployments: dict[tuple[str, str, str], dict] = {}
+    for record in _read_journal_dicts(home):
+        if record.get("kind") != "tick":
+            continue
+        venue = record.get("venue")
+        pack_id = record.get("pack")
+        if not isinstance(venue, str) or not isinstance(pack_id, str) or not pack_id:
+            continue
+        detail = record.get("detail")
+        pair = detail.get("pair") if isinstance(detail, dict) else None
+        if not isinstance(pair, str) or not pair:
+            continue
+        ts = record.get("ts")
+        ts_ms = int(ts) * 1000 if isinstance(ts, (int, float)) else 0
+        key = (venue, pack_id, pair)
+        row = deployments.setdefault(
+            key,
+            {
+                "venue": venue,
+                "pair": pair,
+                "pack_id": pack_id,
+                "mode": "paper",
+                "status": "closed",
+                "starting_cash": None,
+                "fills_total": 0,
+                "first_ts_ms": ts_ms,
+                "last_ts_ms": ts_ms,
+                "last_pnl": None,
+                "pnl": [],
+            },
+        )
+        row["first_ts_ms"] = min(row["first_ts_ms"], ts_ms)
+        row["last_ts_ms"] = max(row["last_ts_ms"], ts_ms)
+
+    for armed in config.armed:
+        key = (armed.venue, armed.pack_id, armed.pair)
+        row = deployments.setdefault(
+            key,
+            {
+                "venue": armed.venue,
+                "pair": armed.pair,
+                "pack_id": armed.pack_id,
+                "mode": armed.mode,
+                "status": "active",
+                "starting_cash": None,
+                "fills_total": 0,
+                "first_ts_ms": int(armed.armed_at_ts) * 1000 if armed.armed_at_ts else 0,
+                "last_ts_ms": int(armed.armed_at_ts) * 1000 if armed.armed_at_ts else 0,
+                "last_pnl": None,
+                "pnl": [],
+            },
+        )
+        row["status"] = "active"
+        row["mode"] = armed.mode
+        if armed.starting_cash is not None:
+            row["starting_cash"] = _chart_decimal(armed.starting_cash)
+
+    venue_states: dict[str, dict] = {}
+    venue_start: dict[str, Decimal] = {}
+
+    for row in deployments.values():
+        armed = armed_by_market.get((row["venue"], row["pair"]))
+        if armed is not None and armed.starting_cash is not None:
+            cash = Decimal(str(armed.starting_cash))
+            row["starting_cash"] = _chart_decimal(cash)
+            prior = venue_start.get(row["venue"])
+            if prior is None or cash > prior:
+                venue_start[row["venue"]] = cash
+
+        if row["venue"] not in venue_states:
+            venue_states[row["venue"]] = read_paper_state(home, row["venue"])
+        state = venue_states[row["venue"]]
+        pair_fills = _fills_for_pair(state, row["pair"])
+        row["fills_total"] = len(pair_fills)
+        if pair_fills:
+            first_fill_ts = pair_fills[0]["ts_ms"]
+            last_fill_ts = pair_fills[-1]["ts_ms"]
+            if row["first_ts_ms"] == 0:
+                row["first_ts_ms"] = first_fill_ts
+            else:
+                row["first_ts_ms"] = min(row["first_ts_ms"], first_fill_ts)
+            row["last_ts_ms"] = max(row["last_ts_ms"], last_fill_ts)
+
+        if row["starting_cash"] is None:
+            continue
+        pnl, _marks = _pnl_and_mark_series(
+            venue=row["venue"],
+            starting_cash=Decimal(row["starting_cash"]),
+            fills=pair_fills,
+        )
+        row["pnl"] = pnl
+        if pnl:
+            row["last_pnl"] = pnl[-1]["value"]
+
+    series_by_venue: dict[str, list[dict]] = {}
+    for venue, starting in venue_start.items():
+        state = venue_states.get(venue) or read_paper_state(home, venue)
+        series_by_venue[venue] = _venue_equity_series(
+            venue=venue,
+            starting_cash=starting,
+            fills=_all_fills(state),
+        )
+
+    body_deployments = sorted(
+        deployments.values(),
+        key=lambda row: row["last_ts_ms"],
+        reverse=True,
+    )[:PORTFOLIO_HISTORY_MAX_DEPLOYMENTS]
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "equity": _merge_venue_equity(series_by_venue),
+        "deployments": body_deployments,
+    }
+
+
 def _revision(home: Path) -> str | None:
     path = kb_config.config_path(home)
     if not path.exists():

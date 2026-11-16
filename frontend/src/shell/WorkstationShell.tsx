@@ -24,6 +24,9 @@ import { createLastRunsHttpClient } from "../features/paper/client";
 import { ArmedRecordsList } from "../features/paper/ArmedRecordsList";
 import { FleetArmedList } from "../features/paper/FleetArmedList";
 import { createFleetHttpClient } from "../features/paper/client";
+import { PortfolioHistoryPanel } from "../features/portfolio/PortfolioHistoryPanel";
+import { createPortfolioHttpClient } from "../features/portfolio/client";
+import type { PortfolioClient } from "../features/portfolio/client";
 import { ResearchView } from "../features/research/ResearchView";
 import { createHttpClient as createResearchHttpClient } from "../features/research/client";
 import type { ResearchClient } from "../features/research/client";
@@ -689,6 +692,10 @@ export function WorkstationShell({
     },
     [setActive],
   );
+  const portfolio: PortfolioClient = useMemo(
+    () => createPortfolioHttpClient(),
+    [],
+  );
   const operations = useMemo(
     () => operationsClient ?? createOperationsHttpClient(),
     [operationsClient],
@@ -1052,6 +1059,7 @@ export function WorkstationShell({
                       unresolvedClient={operations}
                     />
                     <LastRunsPanel client={paperRuns} />
+                    <PortfolioHistoryPanel client={portfolio} />
                     {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
                         an injected legacy client without listArmed renders the
                         truthful unavailable state instead of crashing. */}
