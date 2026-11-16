@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from "react";
 import "./OperationsView.signal.css";
 import { AlertsFilter } from "./AlertsFilter";
 import { DeploymentHistory } from "./DeploymentHistory";
@@ -13,6 +20,11 @@ import { summarizeAlertCode } from "./alertCodeLabel";
 import type { AlertRow, OperationsClient, OperationsViewModel } from "./client";
 import { summarizeAlertSeverity } from "./alertSeverityLabel";
 import { LiveAuthorizationPanel } from "./LiveAuthorizationPanel";
+import { NotificationsPanel } from "./NotificationsPanel";
+import {
+  createNotificationsHttpClient,
+  type NotificationsClient,
+} from "./notificationsClient";
 import { SchedulerPanel } from "./SchedulerPanel";
 import { UnresolvedOrdersList } from "./UnresolvedOrdersList";
 import { JournalBrowsePanel } from "./JournalBrowsePanel";
@@ -50,6 +62,8 @@ const ENTRIES_LABEL = "Entries";
 export type { OperationsClient } from "./client";
 export type OperationsViewProps = {
   client: OperationsClient;
+  /** Opt-in alert notification settings (M9.4). Defaults to HTTP client. */
+  notificationsClient?: NotificationsClient;
 };
 
 function rowId(venue: string, pair: string): string {
@@ -231,7 +245,15 @@ function renderLiveBanner(live: OperationsViewModel["live"]): JSX.Element {
   );
 }
 
-export function OperationsView({ client }: OperationsViewProps): JSX.Element {
+export function OperationsView({
+  client,
+  notificationsClient,
+}: OperationsViewProps): JSX.Element {
+  const defaultNotificationsClient = useMemo(
+    () => createNotificationsHttpClient(),
+    [],
+  );
+  const notifications = notificationsClient ?? defaultNotificationsClient;
   const [killReason, setKillReason] = useState<string>("");
   const killInFlight = useRef(false);
   const [killPending, setKillPending] = useState(false);
@@ -709,6 +731,14 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
           data-testid="ops-scheduler-panel"
         >
           <SchedulerPanel client={client} />
+        </section>
+
+        <section
+          className="kbot-ops__panel"
+          aria-label="Notifications"
+          data-testid="ops-notifications-panel"
+        >
+          <NotificationsPanel client={notifications} />
         </section>
 
         <section
