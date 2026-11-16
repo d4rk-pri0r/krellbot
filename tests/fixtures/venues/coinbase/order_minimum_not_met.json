@@ -1,0 +1,10 @@
+# Derived from Coinbase's Advanced Trade REST documentation, not recorded from a real account.
+{
+  "success": false,
+  "error_response": {
+    "error": "INVALID_ARGUMENT",
+    "message": "Order size is too small",
+    "error_details": "base size below product minimum",
+    "preview_failure_reason": "PREVIEW_INVALID_BASE_SIZE_TOO_SMALL"
+  }
+}

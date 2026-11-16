@@ -1,0 +1,10 @@
+# Derived from Coinbase's Advanced Trade REST documentation, not recorded from a real account.
+{
+  "success": false,
+  "error_response": {
+    "error": "INSUFFICIENT_FUND",
+    "message": "Insufficient funds in source account.",
+    "error_details": "",
+    "preview_failure_reason": "PREVIEW_INSUFFICIENT_FUND"
+  }
+}

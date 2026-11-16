@@ -1,0 +1,10 @@
+# Derived from Coinbase's Advanced Trade REST documentation, not recorded from a real account.
+{
+  "results": [
+    {
+      "success": true,
+      "failure_reason": "UNKNOWN_CANCEL_FAILURE_REASON",
+      "order_id": "burl0-cancel-accepted-001"
+    }
+  ]
+}

@@ -14,8 +14,8 @@ On a successful sandbox path the helper checks trade-only permissions
 and then reads balances. It never calls ``transport.send``. Production
 wiring builds a venue-backed adapter over the injectable HTTP transport
 (the same seam keys onboarding and web live-arm probes use). Tests
-substitute either a spy ``LiveTransport`` or a ``FakeKrakenTransport``
-under that adapter.
+substitute either a spy ``LiveTransport`` or a fake venue HTTP transport
+(``FakeKrakenTransport`` / ``FakeCoinbaseTransport``) under that adapter.
 
 Contract:
 
@@ -47,7 +47,7 @@ CODE_PREFLIGHT_BLOCKED = "preflight_blocked"
 
 MODE_SANDBOX = "sandbox"
 
-SUPPORTED_PREFLIGHT_VENUES = frozenset({"kraken"})
+SUPPORTED_PREFLIGHT_VENUES = frozenset({"kraken", "coinbase"})
 
 
 class PreflightTransportError(Exception):
@@ -386,6 +386,16 @@ def build_venue_preflight_transport(
             api_secret,
             http_transport or HttpTransport(),
             min_interval_ms=0,
+        )
+        return VenueBackedPreflightTransport(account=venue, _venue=venue_obj)
+
+    if venue == "coinbase":
+        from krellbot.venues.coinbase import CoinbaseVenue, HttpTransport
+
+        venue_obj = CoinbaseVenue(
+            api_key,
+            api_secret,
+            http_transport or HttpTransport(),
         )
         return VenueBackedPreflightTransport(account=venue, _venue=venue_obj)
 

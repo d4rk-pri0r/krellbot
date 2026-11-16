@@ -1,0 +1,6 @@
+# Derived from Coinbase's Advanced Trade REST documentation, not recorded from a real account.
+{
+  "error": "UNAUTHENTICATED",
+  "message": "Unauthorized",
+  "error_details": "invalid jwt: nonce claim reused or missing"
+}

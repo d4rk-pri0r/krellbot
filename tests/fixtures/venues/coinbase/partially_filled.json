@@ -1,0 +1,25 @@
+# Derived from Coinbase's Advanced Trade REST documentation, not recorded from a real account.
+{
+  "order": {
+    "order_id": "burl0-partial-001",
+    "product_id": "BTC-USD",
+    "user_id": "docs-user",
+    "order_configuration": {
+      "limit_limit_gtc": {
+        "base_size": "1.25000000",
+        "limit_price": "25000.00",
+        "post_only": false
+      }
+    },
+    "side": "BUY",
+    "client_order_id": "client-partial-001",
+    "status": "OPEN",
+    "order_type": "LIMIT",
+    "filled_size": "0.50000000",
+    "average_filled_price": "25000.00",
+    "number_of_fills": "1",
+    "filled_value": "12500.00",
+    "pending_cancel": false,
+    "completion_percentage": "40.00"
+  }
+}

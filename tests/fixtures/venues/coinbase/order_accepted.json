@@ -1,0 +1,15 @@
+# Derived from Coinbase's Advanced Trade REST documentation, not recorded from a real account.
+{
+  "success": true,
+  "success_response": {
+    "order_id": "burl0-order-accepted-001",
+    "product_id": "BTC-USD",
+    "side": "BUY",
+    "client_order_id": "client-order-accepted-001"
+  },
+  "order_configuration": {
+    "market_market_ioc": {
+      "base_size": "0.01000000"
+    }
+  }
+}
