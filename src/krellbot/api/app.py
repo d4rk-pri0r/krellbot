@@ -1838,6 +1838,76 @@ def create_app(
             headers={"Cache-Control": "no-store"},
         )
 
+    @app.get("/api/v1/journal")
+    async def journal_browse(request: Request) -> Response:
+        """Browse journal events — CLI ``krellbot journal`` parity subset.
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF.
+
+        Query params (mutually exclusive selection; ``since`` wins when both
+        are present, matching the CLI):
+
+        - ``tail`` — positive integer; default 5 when ``since`` is absent.
+        - ``since`` — ``24h`` or ``14d`` only.
+
+        Body is ``{"schema_version": "1", "records": [...]}`` with export
+        secret fields (``key``, ``secret``, ``license``, ``balance``)
+        dropped at any depth. Empty journal → ``records: []``. Invalid
+        params → 400 with a typed ``code``. Served with
+        ``Cache-Control: no-store``.
+        """
+
+        from krellbot import journal as kb_journal
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        raw_tail = request.query_params.get("tail")
+        raw_since = request.query_params.get("since")
+
+        tail: int | None = None
+        since: str | None = None
+
+        if raw_since is not None and raw_since != "":
+            since = raw_since
+        if raw_tail is not None and raw_tail != "":
+            try:
+                tail = int(raw_tail)
+            except (TypeError, ValueError):
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "detail": f"invalid --tail: {raw_tail}",
+                        "code": "invalid_tail",
+                    },
+                    status_code=400,
+                )
+
+        try:
+            records = kb_journal.browse(s.home, tail=tail, since=since)
+        except kb_journal.BrowseError as err:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "detail": err.message,
+                    "code": err.code,
+                },
+                status_code=400,
+            )
+
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "records": records,
+        }
+        return JSONResponse(
+            body,
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.get("/api/v1/paper/armed")
     async def paper_armed(request: Request) -> Response:
         """Return the closed-shape list of every armed pack record.
