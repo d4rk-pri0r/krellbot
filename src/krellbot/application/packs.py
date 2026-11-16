@@ -33,9 +33,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
+
+_PACK_SIDECAR_SUFFIXES = (
+    ".deployed.json",
+    ".configured.json",
+    ".download_pending.json",
+)
 
 
 def _safe_pack_id_name(pack_id: str) -> str | None:
@@ -44,7 +49,9 @@ def _safe_pack_id_name(pack_id: str) -> str | None:
     Uses ``os.path.basename`` (CodeQL-recognized sanitizer) so directory
     components never reach a path expression under ``<home>/packs/``.
     """
-    if not isinstance(pack_id, str) or not pack_id:
+    import os.path
+
+    if type(pack_id) is not str or not pack_id:
         return None
     # CodeQL-recognized sanitizer: basename strips directory components.
     name = os.path.basename(pack_id)
@@ -53,6 +60,37 @@ def _safe_pack_id_name(pack_id: str) -> str | None:
     if os.path.basename(name) != name:
         return None
     return name
+
+
+def _open_under_dir(base_dir: str, filename: str) -> dict | None:
+    """Read JSON from ``base_dir/filename`` with CodeQL-recognized guards.
+
+    ``filename`` must already be a single path segment (basename). Uses
+    ``os.path.normpath`` + ``startswith`` containment — the idiom CodeQL
+    documents for ``py/path-injection`` — then ``open`` on the checked path.
+    """
+    import os.path
+
+    if type(filename) is not str or not filename:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(filename)
+    if not name or name in {".", ".."} or os.path.basename(name) != name:
+        return None
+    if not name.endswith(".json") or name.startswith("."):
+        return None
+    base_path = os.path.realpath(base_dir)
+    fullpath = os.path.normpath(os.path.join(base_path, name))
+    if fullpath != base_path and not fullpath.startswith(base_path + os.sep):
+        return None
+    try:
+        with open(fullpath, encoding="utf-8") as handle:
+            data = json.loads(handle.read())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
 
 
 BUCKET_DEPLOYED = "deployed"
@@ -116,25 +154,26 @@ def _read_json(path: Path) -> dict | None:
 def _read_pack_sidecar(home: Path, pack_id: str, suffix: str) -> dict | None:
     """Read ``<home>/packs/<basename(pack_id)><suffix>``.
 
-    ``os.path.basename`` is applied in the same function as ``read_text``
-    (CodeQL-recognized sanitizer at the sink), matching
-    ``api.app._client_pack_basename`` / trusted home join.
+    Matches ``api.app._client_pack_basename``: basename the full filename,
+    then open only after ``normpath`` + ``startswith`` containment under
+    the trusted packs directory (CodeQL-documented path-injection idiom).
     """
-    if not isinstance(pack_id, str) or not pack_id:
+    import os.path
+
+    if type(pack_id) is not str or not pack_id:
+        return None
+    if suffix not in _PACK_SIDECAR_SUFFIXES:
         return None
     # CodeQL-recognized sanitizer: basename strips directory components.
-    name = os.path.basename(pack_id)
+    # Basename the full filename (id + closed suffix), same shape as
+    # ``_client_pack_basename`` returning a ``*.json`` name.
+    name = os.path.basename(pack_id + suffix)
     if not name or name in {".", ".."} or os.path.basename(name) != name:
         return None
-    # Path is packs dir + sanitized basename only (no user directories).
-    path = home / "packs" / f"{name}{suffix}"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    if not name.endswith(suffix) or name.startswith("."):
         return None
-    if not isinstance(data, dict):
-        return None
-    return data
+    packs_dir = os.path.join(str(home), "packs")
+    return _open_under_dir(packs_dir, name)
 
 
 def _deployed_record(home: Path, pack_id: str) -> dict | None:
@@ -151,26 +190,20 @@ def _download_pending_marker(home: Path, pack_id: str) -> dict | None:
 
 def _installed_pack(home: Path, pack_id: str) -> dict | None:
     """Return the parsed pack dict from one of the installed roots, if any."""
-    if not isinstance(pack_id, str) or not pack_id:
+    import os.path
+
+    if type(pack_id) is not str or not pack_id:
         return None
     # CodeQL-recognized sanitizer: basename strips directory components.
-    name = os.path.basename(pack_id)
+    name = os.path.basename(pack_id + ".json")
     if not name or name in {".", ".."} or os.path.basename(name) != name:
         return None
-    for root in (
-        home / "packs",
-        home / "packs" / "community",
-        home / "packs" / "catalog",
-    ):
-        # Path is trusted root + sanitized basename only.
-        candidate = root / f"{name}.json"
-        if not candidate.is_file():
-            continue
-        try:
-            data = json.loads(candidate.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(data, dict):
+    if not name.endswith(".json") or name.startswith("."):
+        return None
+    home_s = str(home)
+    for rel in ("packs", os.path.join("packs", "community"), os.path.join("packs", "catalog")):
+        data = _open_under_dir(os.path.join(home_s, rel), name)
+        if data is not None:
             return data
     return None
 

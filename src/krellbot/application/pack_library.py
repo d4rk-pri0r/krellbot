@@ -268,12 +268,8 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
     classifier bucket), returns the existing row without rewriting.
     """
     home = Path(home)
-    # Sanitize before any path join / classify (CodeQL path-injection).
+    # Sanitize request id before catalogue lookup (no FS join on it).
     pack_id = _safe_pack_id_segment(pack_id)
-
-    existing = app_packs.classify(home, pack_id)
-    if existing is not None and existing.bucket != app_packs.BUCKET_PURCHASED:
-        return _row_dict(existing)
 
     entry = _catalogue_entry(home, pack_id)
     if entry is None:
@@ -293,12 +289,18 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
             f"catalogue entry not installable for {pack_id!r}",
         )
 
-    # Use the catalogue's own id (verified cache) for the on-disk name so
-    # the write path is not the raw request string.
+    # Use the catalogue's own id (verified cache) for all FS ops so the
+    # request string never reaches classify / path joins (CodeQL).
     catalog_id = entry.get("id")
     if not isinstance(catalog_id, str) or catalog_id != pack_id:
         raise InstallRefused("pack_not_found", "catalogue entry not found")
     safe_id = _safe_pack_id_segment(catalog_id)
+
+    # Already-local check uses disk-listed rows only (ids from filenames),
+    # never classify(user pack_id).
+    for row in app_packs.list_packs(home):
+        if row.get("pack_id") == safe_id and row.get("bucket") != app_packs.BUCKET_PURCHASED:
+            return row
 
     packs_dir = (home / "packs").resolve()
     packs_dir.mkdir(parents=True, exist_ok=True)
@@ -317,14 +319,14 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
         marker["permissions"] = []
 
     # Path is packs_dir + sanitized basename only (no user directories).
-    filename = f"{safe_id}.download_pending.json"
-    filename = os.path.basename(filename)
+    filename = os.path.basename(f"{safe_id}.download_pending.json")
     target = (packs_dir / filename).resolve()
     if target.parent != packs_dir:
         raise InstallRefused("invalid_request", "pack_id is required")
     payload = (json.dumps(marker, sort_keys=True) + "\n").encode("utf-8")
     kb_paths.atomic_write(target, payload)
 
+    # Classify with catalogue id only (not the raw request string).
     row = app_packs.classify(home, safe_id)
     if row is None:
         # Marker write succeeded; synthesise the closed row the UI expects.
