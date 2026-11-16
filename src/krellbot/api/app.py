@@ -171,10 +171,35 @@ def _live_arm_key_check(s: _AppState) -> Callable[[str], object]:
     return key_check
 
 
-def _pack_pair_for_venue(pack_path: Path, venue: str) -> str | None:
-    """Return the pack's market pair for ``venue``, or None if missing/invalid."""
+def _safe_pack_path_under_home(home: Path, pack_path: str | Path) -> Path | None:
+    """Resolve ``pack_path`` and require it stays under ``home``.
+
+    Absolute paths must resolve inside ``home``; relative paths are joined
+    to ``home`` first. Returns ``None`` on traversal or resolution failure.
+    """
+    home_resolved = Path(home).resolve()
     try:
-        pack_data = json.loads(Path(pack_path).read_text(encoding="utf-8"))
+        candidate = Path(pack_path)
+        if not candidate.is_absolute():
+            candidate = home_resolved / candidate
+        resolved = candidate.resolve()
+        resolved.relative_to(home_resolved)
+    except (OSError, ValueError):
+        return None
+    return resolved
+
+
+def _pack_pair_for_venue(home: Path, pack_path: str | Path, venue: str) -> str | None:
+    """Return the pack's market pair for ``venue``, or None if missing/invalid.
+
+    Reads only paths that resolve under ``home`` (no user-controlled
+    path traversal).
+    """
+    safe = _safe_pack_path_under_home(home, pack_path)
+    if safe is None:
+        return None
+    try:
+        pack_data = json.loads(safe.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return None
     if not isinstance(pack_data, dict):
@@ -941,22 +966,27 @@ def create_app(
                         },
                         status_code=404,
                     )
-                except DraftNotRunnable as exc:
+                except DraftNotRunnable:
+                    msg = f"draft {revision_id} is not runnable"
                     return JSONResponse(
                         {
                             "schema_version": SCHEMA_VERSION,
                             "code": "draft_not_runnable",
                             "ok": False,
-                            "message": str(exc),
+                            "message": msg,
                             "effect": "refused",
-                            "detail": str(exc),
+                            "detail": msg,
                         },
                         status_code=403,
                     )
-            if not isinstance(pack_path, str) or not pack_path:
+            if not isinstance(pack_path, (str, Path)) or not str(pack_path):
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
 
-            pair = _pack_pair_for_venue(Path(pack_path), venue)
+            safe_pack = _safe_pack_path_under_home(s.home, pack_path)
+            if safe_pack is None:
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+            pair = _pack_pair_for_venue(s.home, safe_pack, venue)
             if pair is None:
                 return JSONResponse(
                     {
@@ -979,7 +1009,7 @@ def create_app(
             from krellbot.run import arm_pack
 
             rc = arm_pack(
-                Path(pack_path),
+                safe_pack,
                 venue=venue,
                 mode="live",
                 home=s.home,

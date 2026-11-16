@@ -395,3 +395,47 @@ def test_check_web_live_arm_matches_check_live_send(home: Path) -> None:
     result = live_gate.check_web_live_arm(home, venue=VENUE, pair=PAIR)
     assert result.code == CODE_PAPER_ONLY_RELEASE
     assert live_gate.web_arm_skips_stdin_confirmation(result) is False
+
+
+def test_web_live_arm_refuses_pack_path_outside_home(
+    home: Path,
+    fresh_keyring,
+    live_capable_release,
+    monkeypatch,
+    tmp_path_factory,
+) -> None:
+    """User-controlled pack_path must not escape the data home."""
+    del live_capable_release
+    del fresh_keyring
+    monkeypatch.setenv("KRELLBOT_ENABLE_LIVE", "1")
+    write_grant(home, venue=VENUE, pair=PAIR)
+    outside = tmp_path_factory.mktemp("outside-pack") / "escape.json"
+    outside.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "escape",
+                "version": "1.0.0",
+                "label": "Escape",
+                "author": "tests",
+                "timeframe": "1h",
+                "indicators": {"sma2": {"fn": "sma", "src": "close", "len": 2}},
+                "entry": ["close", "crosses_above", "sma2"],
+                "exit": ["close", "crosses_below", "sma2"],
+                "risk": {"max_account_pct": 100, "stop": {"type": "pct", "pct": 50}},
+                "markets": [{"venue": VENUE, "pair": PAIR}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = _config_bytes(home)
+    app = _build_app(home)
+    session = _bootstrap(app)
+    status, _h, body, _c = _post_json(
+        app,
+        "/api/v1/commands",
+        _live_arm_payload(outside),
+        headers=session,
+    )
+    assert status == 400, (status, body)
+    assert _config_bytes(home) == before
