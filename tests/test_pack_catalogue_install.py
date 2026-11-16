@@ -97,6 +97,16 @@ def test_install_from_catalogue_refuses_paid_without_activation(tmp_path: Path) 
     assert not (home / "packs" / "paid-triple-stack.download_pending.json").exists()
 
 
+def test_install_from_catalogue_refuses_path_traversal_pack_id(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    _write_catalogue(home)
+    with pytest.raises(pack_library.InstallRefused) as caught:
+        pack_library.install_from_catalogue(home, "../evil")
+    assert caught.value.code == "invalid_request"
+    assert not (home / "packs").exists() or not any((home / "packs").rglob("*evil*"))
+
+
 def test_packs_install_route_free_ok_and_paid_forbidden(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()

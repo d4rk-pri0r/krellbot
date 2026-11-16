@@ -28,6 +28,7 @@ the network path and always takes an injectable transport in tests.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,34 @@ _EMPTY_CATALOGUE: dict[str, Any] = {
 
 # Closed pack id shape for path construction — no separators or traversal.
 _SAFE_PACK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
+
+
+def _safe_pack_id_segment(pack_id: str) -> str:
+    """Return a single path-segment pack id, or raise InstallRefused.
+
+    Uses ``os.path.basename`` (CodeQL-recognized sanitizer) so directory
+    components never reach a path expression, matching
+    ``api.app._client_pack_basename``.
+    """
+    if not isinstance(pack_id, str) or not pack_id.strip():
+        raise InstallRefused("invalid_request", "pack_id is required")
+    raw = pack_id.strip()
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(raw)
+    windows_drive = len(name) >= 2 and name[1] == ":" and name[0].isalpha()
+    if (
+        not name
+        or name != raw
+        or os.path.basename(name) != name
+        or name in {".", ".."}
+        or "/" in raw
+        or "\\" in raw
+        or "\x00" in raw
+        or windows_drive
+        or not _SAFE_PACK_ID.fullmatch(name)
+    ):
+        raise InstallRefused("invalid_request", "pack_id is required")
+    return name
 
 
 class InstallRefused(Exception):
@@ -239,13 +268,8 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
     classifier bucket), returns the existing row without rewriting.
     """
     home = Path(home)
-    if not isinstance(pack_id, str) or not pack_id.strip():
-        raise InstallRefused("invalid_request", "pack_id is required")
-    pack_id = pack_id.strip()
-    # Refuse before any path join so user-controlled ids cannot escape
-    # ``<home>/packs`` (CodeQL path-injection).
-    if not _SAFE_PACK_ID.fullmatch(pack_id):
-        raise InstallRefused("invalid_request", "pack_id is required")
+    # Sanitize before any path join / classify (CodeQL path-injection).
+    pack_id = _safe_pack_id_segment(pack_id)
 
     existing = app_packs.classify(home, pack_id)
     if existing is not None and existing.bucket != app_packs.BUCKET_PURCHASED:
@@ -269,11 +293,18 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
             f"catalogue entry not installable for {pack_id!r}",
         )
 
+    # Use the catalogue's own id (verified cache) for the on-disk name so
+    # the write path is not the raw request string.
+    catalog_id = entry.get("id")
+    if not isinstance(catalog_id, str) or catalog_id != pack_id:
+        raise InstallRefused("pack_not_found", "catalogue entry not found")
+    safe_id = _safe_pack_id_segment(catalog_id)
+
     packs_dir = (home / "packs").resolve()
     packs_dir.mkdir(parents=True, exist_ok=True)
     marker: dict[str, Any] = {
         "schema_version": "1",
-        "pack_id": pack_id,
+        "pack_id": safe_id,
         "tier": "free",
     }
     version = entry.get("version")
@@ -285,19 +316,21 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
     else:
         marker["permissions"] = []
 
-    # Filename is only the validated id; resolve + parent check blocks escape.
-    target = (packs_dir / f"{pack_id}.download_pending.json").resolve()
+    # Path is packs_dir + sanitized basename only (no user directories).
+    filename = f"{safe_id}.download_pending.json"
+    filename = os.path.basename(filename)
+    target = (packs_dir / filename).resolve()
     if target.parent != packs_dir:
         raise InstallRefused("invalid_request", "pack_id is required")
     payload = (json.dumps(marker, sort_keys=True) + "\n").encode("utf-8")
     kb_paths.atomic_write(target, payload)
 
-    row = app_packs.classify(home, pack_id)
+    row = app_packs.classify(home, safe_id)
     if row is None:
         # Marker write succeeded; synthesise the closed row the UI expects.
         return {
             "bucket": app_packs.BUCKET_DOWNLOAD_PENDING,
-            "pack_id": pack_id,
+            "pack_id": safe_id,
             "version": marker.get("version") if isinstance(marker.get("version"), str) else None,
             "permissions": list(marker["permissions"]),
             "rollback_ref": None,
