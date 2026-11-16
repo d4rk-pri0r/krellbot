@@ -23,14 +23,21 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 _CACHE_FILENAME = "license-cache.json"
+_CATALOGUE_CACHE_FILENAME = "catalogue.json"
 _KEYS_DIR = Path(__file__).resolve().parent / "keys"
 _REJECT_MSG = "license signature rejected"
 _DEV_MARKER = "# DEV"
+_VALID_CATALOGUE_TIERS = frozenset({"free", "paid"})
 
 
 def cache_path(home: Path) -> Path:
     """Return the path to the license-cache.json file under <home>/catalog."""
     return Path(home) / "catalog" / _CACHE_FILENAME
+
+
+def catalogue_cache_path(home: Path) -> Path:
+    """Return the path to the verified catalogue cache under <home>/catalog."""
+    return Path(home) / "catalog" / _CATALOGUE_CACHE_FILENAME
 
 
 def read_cache(home: Path) -> dict | None:
@@ -213,3 +220,106 @@ def refresh(
 
     write_cache(home, status=status, period_end=period_end, grace_until=grace_until)
     return verified
+
+
+def _normalize_catalogue(verified: dict) -> dict:
+    """Return the closed catalogue metadata document, or raise ValueError.
+
+    Required shape after signature verification:
+
+      * ``catalogue_version`` — non-empty string
+      * ``packs`` — list of objects, each with non-empty ``id`` and
+        ``tier`` in ``{"free", "paid"}``
+
+    Optional per-entry fields kept when present and well-typed:
+    ``label``, ``description``, ``version``, ``permissions`` (list of
+    strings). Optional top-level ``updated`` (string). Unknown fields
+    are dropped so a verified but hostile payload cannot widen the
+    wire contract. The reject message never includes payload bytes.
+    """
+    if not isinstance(verified, dict):
+        raise TypeError(_REJECT_MSG)
+    catalogue_version = verified.get("catalogue_version")
+    if not isinstance(catalogue_version, str) or not catalogue_version:
+        raise ValueError(_REJECT_MSG)
+    packs_raw = verified.get("packs")
+    if not isinstance(packs_raw, list):
+        raise TypeError(_REJECT_MSG)
+
+    packs: list[dict] = []
+    for entry in packs_raw:
+        if not isinstance(entry, dict):
+            raise TypeError(_REJECT_MSG)
+        pack_id = entry.get("id")
+        tier = entry.get("tier")
+        if not isinstance(pack_id, str) or not pack_id:
+            raise ValueError(_REJECT_MSG)
+        if tier not in _VALID_CATALOGUE_TIERS:
+            raise ValueError(_REJECT_MSG)
+        row: dict = {"id": pack_id, "tier": tier}
+        label = entry.get("label")
+        if isinstance(label, str):
+            row["label"] = label
+        description = entry.get("description")
+        if isinstance(description, str):
+            row["description"] = description
+        version = entry.get("version")
+        if isinstance(version, str):
+            row["version"] = version
+        permissions = entry.get("permissions")
+        if isinstance(permissions, list) and all(isinstance(p, str) for p in permissions):
+            row["permissions"] = list(permissions)
+        else:
+            row["permissions"] = []
+        packs.append(row)
+
+    out: dict = {
+        "catalogue_version": catalogue_version,
+        "packs": packs,
+    }
+    updated = verified.get("updated")
+    if isinstance(updated, str):
+        out["updated"] = updated
+    return out
+
+
+def verify_catalogue(payload: bytes, sig: str, *, release: bool = False) -> dict:
+    """Verify an ed25519-signed catalogue and return closed metadata.
+
+    ``payload`` is canonical JSON; ``sig`` is unpadded base64url of the
+    64-byte signature. Verification reuses :func:`verify_signed`, then
+    the payload is normalized to free+paid catalogue metadata. Raises
+    ``ValueError("license signature rejected")`` on a bad signature or
+    a payload that is not a free+paid catalogue document.
+    """
+    verified = verify_signed(payload, sig, release=release)
+    return _normalize_catalogue(verified)
+
+
+def read_catalogue_cache(home: Path) -> dict | None:
+    """Return the cached verified catalogue, or None if absent/unreadable."""
+    path = catalogue_cache_path(home)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    try:
+        return _normalize_catalogue(data)
+    except ValueError:
+        return None
+
+
+def write_catalogue_cache(home: Path, document: dict) -> Path:
+    """Write a verified catalogue document atomically. Returns the path."""
+    from krellbot import paths
+
+    normalized = _normalize_catalogue(document)
+    path = catalogue_cache_path(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    paths.atomic_write(path, body.encode("utf-8"))
+    return path
