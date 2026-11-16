@@ -74,15 +74,15 @@ journal, and receipts survive install, update, and uninstall.
 ### Code-signing / notarization status
 
 The downloaded artifact is verified against an HTTPS-pinned SHA-256
-manifest **before** extraction. The artifact itself is **not**
-code-signed and **not** notarized in this release:
+manifest **before** extraction. This cut remains an **unsigned
+prerelease** until a secrets-gated signed release is published:
 
 - macOS Gatekeeper may show a first-run warning.
 - Windows SmartScreen may show a first-run warning.
-- Linux has no `gpg`/`minisign` publisher signature today.
+- Linux stays checksum-pinned (no platform code-signature product).
 
-Code signing, notarization, and signed publisher releases are a future
-hardening step; the SHA-256 check is the integrity guarantee today.
+Operator signing secrets, Gatekeeper / SmartScreen expectations, and
+Linux policy: [docs/signing.md](signing.md).
 
 ### PATH check
 

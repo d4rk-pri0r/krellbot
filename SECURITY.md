@@ -16,23 +16,22 @@ The client is open so you can read what it does before you run it.
 
 The site installer pins each release to a SHA-256 manifest over HTTPS,
 and the installer verifies that digest **before** staging or extracting
-the artifact. That is the integrity guarantee today.
+the artifact. That checksum pin is always part of the integrity story.
 
-The frozen binaries themselves are **not** code-signed and **not**
-notarized in this release:
+**Current published channel:** frozen binaries are still treated as an
+**unsigned prerelease** until owner-held signing secrets are configured
+and a signed cut is cut with `ARTIFACTS_SIGNED` flipped. Until then:
 
-- macOS: not Apple Developer ID–signed, so Gatekeeper may show a
-  first-run warning. Use "Open Anyway" from System Settings the first
-  time, or run the installer's smoke check.
-- Windows: not Authenticode–signed, so SmartScreen may show a
-  first-run warning. Click "More info" → "Run anyway".
-- Linux: no `gpg`/`minisign` publisher signature.
+- macOS: Gatekeeper may show a first-run warning (Open Anyway).
+- Windows: SmartScreen may show a first-run warning (More info → Run anyway).
+- Linux: checksum-pinned only; no platform code-signature product.
 
-The HTTPS-pinned SHA-256 protects transport and integrity against a
-modified download, but it is **not** an independent publisher signature.
-Code signing, notarization, and signed publisher releases are a future
-hardening step; today the docs must not claim a higher bar than the
-verifier enforces.
+`release-frozen.yml` can produce Developer ID + notarized macOS and
+Authenticode Windows artifacts when signing is requested and the
+required GitHub Actions secrets are present (fail closed if requested
+but missing). Secret **names**, Gatekeeper / SmartScreen expectations,
+and the Linux checksum policy are documented in
+[docs/signing.md](docs/signing.md). Never put cert material in the repo.
 
 ## Unknown permissions are fail-closed
 

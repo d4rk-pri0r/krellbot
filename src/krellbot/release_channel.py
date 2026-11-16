@@ -1,9 +1,11 @@
 """Release channel honesty for version and signing state.
 
-Public non-prerelease (GA) releases require signed artifacts. Until owner
-code signing (M12.1) lands, this build is an unsigned prerelease and must
-say so. ``PAPER_ONLY_RELEASE`` is unrelated and stays owned by
-``release_policy``.
+Public non-prerelease (GA) releases require signed artifacts. Until the
+owner configures signing secrets, cuts a signed release, and flips
+``ARTIFACTS_SIGNED``, this build is an unsigned prerelease and must say
+so. ``release-frozen.yml`` may produce signed macOS/Windows artifacts
+when secrets are present; that alone does not flip this module.
+``PAPER_ONLY_RELEASE`` is unrelated and stays owned by ``release_policy``.
 """
 
 from __future__ import annotations

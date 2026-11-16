@@ -42,12 +42,12 @@ with no arguments (or `krellbot ui --open` / `krellbot workstation --open`)
 starts the workstation on loopback and opens it in your default browser.
 Then [arm your first paper strategy](#arm-your-first-paper-strategy).
 
-**Signing status (this release):** the downloaded artifact is verified
-against an HTTPS-pinned SHA-256 manifest, but the artifact itself is
-**not** code-signed and **not** notarized. macOS Gatekeeper and Windows
-SmartScreen may show a first-run warning; the SHA-256 check before
-extraction is the integrity guarantee today. Authenticode, notarization,
-and signed publisher releases are a future hardening step.
+**Signing status (this release):** HTTPS-pinned SHA-256 before extract.
+Published cuts stay an **unsigned prerelease** until owner signing
+secrets are wired and a signed tag is cut. Gatekeeper / SmartScreen may
+warn on unsigned builds. Secrets-gated Developer ID + notarization
+(macOS) and Authenticode (Windows), plus the Linux checksum policy:
+[docs/signing.md](docs/signing.md).
 
 ## Update policy
 
