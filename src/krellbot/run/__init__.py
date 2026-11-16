@@ -16,7 +16,9 @@
 
 `arm_pack` records a pack into config. It refuses a second pack on the same
 venue+pair, refuses if the cap cannot meet the pair's costmin (paper), and
-requires a typed "LIVE" confirmation the first time live is armed.
+requires a typed "LIVE" confirmation the first time live is armed — unless
+``skip_confirm=True`` (web ``live.arm`` after an operator grant that already
+required typed LIVE).
 
 Money is `Decimal`. No HTTP. No secret in any log/journal line.
 """
@@ -90,23 +92,29 @@ def arm_pack(
     confirm_fn: Callable[[], str] | None = None,
     key_check: Callable[[str], Any] | None = None,
     home: Path | None = None,
+    skip_confirm: bool = False,
 ) -> int:
     """Arm a pack on a venue. Returns 0 on success, 1 on refusal, 2 on bad input.
 
     `confirm_fn` and `key_check` are injected so tests don't touch stdin or
     the network. The CLI wires stdin and `cli_keys._probe`.
+
+    ``skip_confirm`` is for the web ``live.arm`` path: when the operator
+    already typed LIVE to grant authorization, stdin is not prompted again.
     """
     from krellbot.venues.base import WithdrawCapableError
 
     home = Path(home) if home is not None else kb_paths.home()
     pack_path = Path(pack_path)
     if not pack_path.exists():
-        print(f"no such pack: {pack_path}", flush=True)
+        # Do not interpolate pack_path: CodeQL treats path args reachable
+        # from the web live.arm entry as sensitive for clear-text logging.
+        print("no such pack", flush=True)
         return 2
     try:
         pack_data = json.loads(pack_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        print(f"invalid JSON: {exc}", flush=True)
+    except json.JSONDecodeError:
+        print("invalid JSON", flush=True)
         return 2
     if not isinstance(pack_data, dict):
         print("pack must be a JSON object", flush=True)
@@ -199,13 +207,17 @@ def arm_pack(
         if cap <= Decimal(0):
             print("live arm requires a cap > 0", flush=True)
             return 1
-        # First live arm: typed confirmation.
+        # First live arm: typed confirmation — unless the web path already
+        # collected LIVE at grant time (skip_confirm).
         if not config.live_first_armed:
-            text = confirm_fn() if confirm_fn is not None else input("Type LIVE to arm: ")
-            if text.strip() != "LIVE":
-                print("confirmation text was not 'LIVE'; not armed", flush=True)
-                return 1
-            config.live_first_armed = True
+            if skip_confirm:
+                config.live_first_armed = True
+            else:
+                text = confirm_fn() if confirm_fn is not None else input("Type LIVE to arm: ")
+                if text.strip() != "LIVE":
+                    print("confirmation text was not 'LIVE'; not armed", flush=True)
+                    return 1
+                config.live_first_armed = True
         else:
             # Second-and-later live arm: no prompt. Tests inject must_not_call
             # to prove it.

@@ -18,9 +18,11 @@ When live is re-enabled, order paths require THREE things, all of them true:
 This module is the ONLY place that reads or writes the authorization
 record. The workstation grants and revokes it through
 :func:`grant_authorization` / :func:`revoke_authorization` behind a typed
-``LIVE`` confirmation. Promotion to live is owner-deferred in this build,
-so ``check_promotion`` always refuses with ``CODE_PROMOTION_DEFERRED`` even
-when the rest of the gate would let the send through.
+``LIVE`` confirmation. Web ``live.arm`` uses :func:`check_web_live_arm`;
+when that check passes, stdin ``Type LIVE to arm:`` is not required again.
+Promotion to live is owner-deferred in this build, so ``check_promotion``
+always refuses with ``CODE_PROMOTION_DEFERRED`` even when the rest of the
+gate would let the send through.
 """
 
 from __future__ import annotations
@@ -396,6 +398,30 @@ def check_live_send(
             "live send not authorized for venue/pair",
         )
     return LiveGateResult(CODE_OK, True, "live send authorized")
+
+
+def check_web_live_arm(
+    home: Path,
+    *,
+    venue: str,
+    pair: str,
+    env: Mapping[str, str] | None = None,
+    now: int | None = None,
+) -> LiveGateResult:
+    """Authorize (or refuse) a web ``live.arm`` command.
+
+    Same fence as :func:`check_live_send`: paper-only release, kill switch,
+    ``KRELLBOT_ENABLE_LIVE == "1"``, and an active operator grant for the
+    exact ``(venue, pair)``. When this returns ``ok``, the workstation path
+    must not re-prompt ``Type LIVE to arm:`` on stdin —
+    :func:`grant_authorization` already required typed ``LIVE``.
+    """
+    return check_live_send(home, venue=venue, pair=pair, env=env, now=now)
+
+
+def web_arm_skips_stdin_confirmation(result: LiveGateResult) -> bool:
+    """True when a successful web-arm gate check replaces stdin ``LIVE``."""
+    return bool(result.ok)
 
 
 def check_promotion(

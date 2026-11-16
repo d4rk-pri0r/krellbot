@@ -98,7 +98,8 @@ def test_login_requires_same_origin_and_api_still_requires_session_and_csrf(work
         headers=authenticated,
         payload={"command": "live.arm", "payload": {"mode": "live"}},
     )
-    assert status == 403 and b"live orders are disabled" in body
+    assert status == 403
+    assert b"live_disabled_paper_only_release" in body or b"paper-only" in body
     assert (
         request(
             workstation,

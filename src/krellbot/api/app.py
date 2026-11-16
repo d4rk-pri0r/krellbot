@@ -163,6 +163,73 @@ def _live_transport(s: _AppState):
     return s.live_transport
 
 
+def _live_arm_gate_refusal(result: live_gate.LiveGateResult) -> JSONResponse:
+    """Honest 403 body for a refused web ``live.arm`` gate check."""
+    return JSONResponse(
+        {
+            "schema_version": SCHEMA_VERSION,
+            "code": result.code,
+            "ok": False,
+            "effect": "refused",
+            "message": result.message,
+            "detail": result.message,
+        },
+        status_code=403,
+    )
+
+
+def _live_arm_key_check(s: _AppState) -> Callable[[str], object]:
+    """Build a key_check callable that uses the injectable keys transport."""
+    from krellbot import secrets as kb_secrets
+    from krellbot.cli_keys import _probe
+
+    def key_check(venue_arg: str) -> object:
+        try:
+            api_key, api_secret = kb_secrets.get(venue_arg)
+        except (FileNotFoundError, ValueError, PermissionError):
+            return None
+        probe = _probe(venue_arg, api_key, api_secret, transport=s.keys_transport)
+        return probe.to_key_perms()
+
+    return key_check
+
+
+def _client_pack_basename(pack_path: str) -> str | None:
+    """Return a safe ``*.json`` basename from a client pack_path, or None.
+
+    Uses ``os.path.basename`` so directory components never reach a path
+    expression; the name is joined only onto the trusted data home.
+    """
+    import os.path
+
+    if type(pack_path) is not str or not pack_path:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_path)
+    if not name or name in {".", ".."}:
+        return None
+    if not name.endswith(".json") or name.startswith("."):
+        return None
+    if os.path.basename(name) != name:
+        return None
+    return name
+
+
+def _pair_from_pack_data(pack_data: object, venue: str) -> str | None:
+    """Return the market pair for ``venue`` from an in-memory pack object."""
+    if type(pack_data) is not dict:
+        return None
+    markets = pack_data.get("markets") or []
+    if type(markets) is not list:
+        return None
+    for market in markets:
+        if type(market) is dict and market.get("venue") == venue:
+            pair = market.get("pair")
+            if type(pair) is str and pair:
+                return pair
+    return None
+
+
 def _scheduler_supervisor(s: _AppState):
     """Return the platform supervisor, creating the production default.
 
@@ -1077,6 +1144,151 @@ def create_app(
                     "alert": acked.to_dict(),
                 },
                 status_code=200,
+            )
+        if command == "live.arm":
+            # Web live arm behind the existing gate. While PAPER_ONLY_RELEASE
+            # is active, refuse with an honest structured 403 before any
+            # pack/key/transport work. When live is re-enabled, authorize via
+            # grant + kill switch + env and skip stdin Type LIVE (grant
+            # already required typed LIVE).
+            if release_policy.paper_only_release_active():
+                paper_only = live_gate.check_web_live_arm(
+                    s.home,
+                    venue="kraken",
+                    pair="unused",
+                )
+                return _live_arm_gate_refusal(paper_only)
+
+            venue = inner.get("venue")
+            pack_path_raw = inner.get("pack_path")
+            revision_id = inner.get("revision_id")
+            if not isinstance(venue, str) or not venue:
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            if not pack_path_raw and not revision_id:
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+            trusted_pack: Path | None = None
+            pack_data: object | None = None
+            if revision_id:
+                if not isinstance(revision_id, str):
+                    return JSONResponse({"detail": "invalid body"}, status_code=400)
+                try:
+                    draft = _draft_service(s)
+                    # Server-owned draft path + pack bytes; never from client path.
+                    trusted_pack, pack_data = draft.pack_for_arm(revision_id)
+                except RevisionNotFound:
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "draft_not_found",
+                            "ok": False,
+                            "message": f"draft {revision_id} not found",
+                            "effect": "refused",
+                            "detail": f"draft {revision_id} not found",
+                        },
+                        status_code=404,
+                    )
+                except DraftNotRunnable:
+                    msg = f"draft {revision_id} is not runnable"
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "draft_not_runnable",
+                            "ok": False,
+                            "message": msg,
+                            "effect": "refused",
+                            "detail": msg,
+                        },
+                        status_code=403,
+                    )
+            else:
+                if not isinstance(pack_path_raw, str):
+                    return JSONResponse({"detail": "invalid body"}, status_code=400)
+                basename = _client_pack_basename(pack_path_raw)
+                if basename is None:
+                    return JSONResponse({"detail": "invalid body"}, status_code=400)
+                # Path is home + sanitized basename only (no user directories).
+                trusted_pack = s.home / basename
+                try:
+                    pack_data = json.loads(trusted_pack.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "pack_has_no_market",
+                            "ok": False,
+                            "effect": "refused",
+                            "message": f"pack has no market for {venue}",
+                            "detail": f"pack has no market for {venue}",
+                        },
+                        status_code=400,
+                    )
+
+            if trusted_pack is None:
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+            pair = _pair_from_pack_data(pack_data, venue)
+            if pair is None:
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": "pack_has_no_market",
+                        "ok": False,
+                        "effect": "refused",
+                        "message": f"pack has no market for {venue}",
+                        "detail": f"pack has no market for {venue}",
+                    },
+                    status_code=400,
+                )
+
+            gate = live_gate.check_web_live_arm(s.home, venue=venue, pair=pair)
+            if not gate.ok:
+                return _live_arm_gate_refusal(gate)
+            # Successful gate ⇒ grant already collected typed LIVE; skip stdin
+            # (see live_gate.web_arm_skips_stdin_confirmation).
+
+            from krellbot.run import arm_pack
+
+            rc = arm_pack(
+                trusted_pack,
+                venue=venue,
+                mode="live",
+                home=s.home,
+                skip_confirm=True,
+                key_check=_live_arm_key_check(s),
+            )
+            if rc == 0:
+                if revision_id:
+                    try:
+                        _draft_service(s).mark_deployed(revision_id)
+                    except (RevisionNotFound, DraftNotRunnable):
+                        pass
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "correlation_id": correlation_id,
+                        "code": "armed",
+                        "ok": True,
+                        "effect": "changed",
+                        "message": f"armed on {venue} {pair}",
+                        "venue": venue,
+                        "pair": pair,
+                    },
+                    status_code=200,
+                )
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "correlation_id": correlation_id,
+                    "code": "live_arm_refused",
+                    "ok": False,
+                    "effect": "refused",
+                    "message": "live arm refused",
+                    "detail": "live arm refused",
+                    "venue": venue,
+                    "pair": pair,
+                },
+                status_code=403,
             )
         if command.startswith("live."):
             return JSONResponse({"detail": "live orders are disabled"}, status_code=403)

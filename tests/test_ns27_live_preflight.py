@@ -18,7 +18,7 @@ may expose balances and is never a live venue client.
 The integration half posts ``live.preflight`` through the live API and
 asserts the helper ran (the response body has a preflight code) and the
 spy transport's ``send`` was never called. A companion test posts
-``live.arm`` and asserts the 403 prefix-gate still fires — only
+``live.arm`` and asserts the honest paper-only 403 still fires — only
 ``live.preflight`` is let through, every other ``live.*`` command stays
 disabled.
 
@@ -471,7 +471,9 @@ def test_app_live_preflight_refuses_wrong_mode_when_stored_is_live(home: Path) -
 
 
 def test_app_live_arm_is_403(home: Path) -> None:
-    """``live.arm`` is still 403 with the standard "live orders are disabled"."""
+    """``live.arm`` is 403 with the honest paper-only refusal body."""
+
+    from krellbot.release_policy import CODE_PAPER_ONLY_RELEASE, paper_only_message
 
     token = _bootstrap_token(home)
     app = _build_app(home, bootstrap_token=token)
@@ -484,7 +486,9 @@ def test_app_live_arm_is_403(home: Path) -> None:
     status, _hdrs, body, _cookies = _post_json(app, "/api/v1/commands", payload, headers=_auth_headers(csrf, session))
     assert status == 403, (status, body)
     decoded = json.loads(body)
-    assert decoded.get("detail") == "live orders are disabled", decoded
+    assert decoded.get("code") == CODE_PAPER_ONLY_RELEASE, decoded
+    assert decoded.get("detail") == paper_only_message(), decoded
+    assert decoded.get("ok") is False, decoded
 
 
 def test_app_paper_arm_with_mode_live_is_403(home: Path) -> None:
