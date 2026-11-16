@@ -130,13 +130,19 @@ def read_paper_state(home: Path, venue: str) -> dict:
 
 
 def base_quote(pair: str) -> tuple[str, str]:
-    """Split a Kraken-style pair like ``SUIUSD`` into ``(base, quote)``.
+    """Split a venue pair into ``(base, quote)``.
 
     Mirrors the paper venue's pair split so the owned-position projection
     and the engine agree on which balance is this market's holding.
+    Coinbase product ids use ``BASE-QUOTE`` (wave paper arm: ``BTC-USD``);
+    Kraken-style compact pairs like ``SUIUSD`` strip a trailing ``USD``.
     """
     if not pair:
         return ("", "")
+    if "-" in pair:
+        base, _, quote = pair.partition("-")
+        if base and quote and "-" not in quote:
+            return base, quote
     if pair.endswith("USD"):
         return pair[: -len("USD")], "USD"
     if len(pair) >= 6:
