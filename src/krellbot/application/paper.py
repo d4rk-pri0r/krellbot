@@ -888,6 +888,21 @@ class PaperService:
                 message = f"armed {armed.pack_id} {armed.pack_version} on {venue} {armed.pair}"
             else:
                 message = f"armed {venue} {pair or '?'}"
+            # Library packs (under <home>/packs/) get a deployed sidecar
+            # so the pack-library classifier matches the arm flow. Use
+            # the armed record's pack_id (never open the caller path).
+            if armed is not None and isinstance(armed.pack_id, str) and armed.pack_id:
+                from krellbot.application import pack_library as pack_library_app
+
+                if pack_library_app.is_library_pack_path(pack_path):
+                    try:
+                        pack_library_app.mark_deployed(
+                            self._home,
+                            armed.pack_id,
+                            now=int(self._clock()),
+                        )
+                    except pack_library_app.InstallRefused:
+                        pass
             return CommandResultV1(
                 schema_version=SCHEMA_VERSION,
                 correlation_id=correlation_id,
@@ -960,8 +975,22 @@ class PaperService:
                 rev_before,
             )
 
+        disarmed_pack_id = armed.pack_id
         config.armed = [a for a in config.armed if not (a.venue == venue and a.pair == pair)]
         kb_config.save_config(self._home, config)
+
+        # Still-armed copies of the same pack keep the deployed marker;
+        # only demote when this pack_id is no longer armed anywhere.
+        still_armed = any(a.pack_id == disarmed_pack_id for a in config.armed)
+        if not still_armed and isinstance(disarmed_pack_id, str) and disarmed_pack_id:
+            from krellbot.application import pack_library as pack_library_app
+
+            pack_library_app.demote_deployed_to_configured(
+                self._home,
+                disarmed_pack_id,
+                now=int(self._clock()),
+            )
+
         rev_after = _revision(self._home)
 
         return CommandResultV1(

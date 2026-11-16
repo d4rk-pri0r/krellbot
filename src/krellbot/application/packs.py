@@ -5,12 +5,17 @@ shape: ``bucket``, ``pack_id``, ``version``, ``permissions``, and
 ``rollback_ref``. ``bucket`` is one of five closed lifecycle states:
 
     deployed           - a deployed record exists for this pack id
+                         (written by ``pack_library.mark_deployed`` on
+                         paper arm of a library pack)
     configured         - a configured record exists but no deployed one
+                         (written by ``pack_library.mark_configured`` on
+                         catalog/community install and on disarm demotion)
     installed          - a pack file exists at <home>/packs/<id>.json
                          (or community/), but no configured or deployed
                          record
     download_pending   - a download-pending marker exists for this id
-                         (no pack file on disk)
+                         (written by ``pack_library.install_from_catalogue``;
+                         no pack file on disk)
     purchased          - the cached catalog lists the id but no local
                          state exists yet
 
