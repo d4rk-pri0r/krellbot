@@ -171,46 +171,38 @@ def _live_arm_key_check(s: _AppState) -> Callable[[str], object]:
     return key_check
 
 
-def _safe_pack_path_under_home(home: Path, pack_path: str | Path) -> Path | None:
-    """Resolve ``pack_path`` and require it stays under ``home``.
+def _client_pack_basename(pack_path: str) -> str | None:
+    """Return a safe ``*.json`` basename from a client pack_path, or None.
 
-    Absolute paths must resolve inside ``home``; relative paths are joined
-    to ``home`` first. Returns ``None`` on traversal or resolution failure.
+    Uses ``os.path.basename`` so directory components never reach a path
+    expression; the name is joined only onto the trusted data home.
     """
-    home_resolved = Path(home).resolve()
-    try:
-        candidate = Path(pack_path)
-        if not candidate.is_absolute():
-            candidate = home_resolved / candidate
-        resolved = candidate.resolve()
-        resolved.relative_to(home_resolved)
-    except (OSError, ValueError):
+    import os.path
+
+    if type(pack_path) is not str or not pack_path:
         return None
-    return resolved
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_path)
+    if not name or name in {".", ".."}:
+        return None
+    if not name.endswith(".json") or name.startswith("."):
+        return None
+    if os.path.basename(name) != name:
+        return None
+    return name
 
 
-def _pack_pair_for_venue(home: Path, pack_path: str | Path, venue: str) -> str | None:
-    """Return the pack's market pair for ``venue``, or None if missing/invalid.
-
-    Reads only paths that resolve under ``home`` (no user-controlled
-    path traversal).
-    """
-    safe = _safe_pack_path_under_home(home, pack_path)
-    if safe is None:
-        return None
-    try:
-        pack_data = json.loads(safe.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        return None
-    if not isinstance(pack_data, dict):
+def _pair_from_pack_data(pack_data: object, venue: str) -> str | None:
+    """Return the market pair for ``venue`` from an in-memory pack object."""
+    if type(pack_data) is not dict:
         return None
     markets = pack_data.get("markets") or []
-    if not isinstance(markets, list):
+    if type(markets) is not list:
         return None
     for market in markets:
-        if isinstance(market, dict) and market.get("venue") == venue:
+        if type(market) is dict and market.get("venue") == venue:
             pair = market.get("pair")
-            if isinstance(pair, str) and pair:
+            if type(pair) is str and pair:
                 return pair
     return None
 
@@ -942,18 +934,22 @@ def create_app(
                 return _live_arm_gate_refusal(paper_only)
 
             venue = inner.get("venue")
-            pack_path = inner.get("pack_path")
+            pack_path_raw = inner.get("pack_path")
             revision_id = inner.get("revision_id")
             if not isinstance(venue, str) or not venue:
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
-            if not pack_path and not revision_id:
+            if not pack_path_raw and not revision_id:
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+            trusted_pack: Path | None = None
+            pack_data: object | None = None
             if revision_id:
                 if not isinstance(revision_id, str):
                     return JSONResponse({"detail": "invalid body"}, status_code=400)
                 try:
                     draft = _draft_service(s)
-                    pack_path, _pack = draft.pack_for_arm(revision_id)
+                    # Server-owned draft path + pack bytes; never from client path.
+                    trusted_pack, pack_data = draft.pack_for_arm(revision_id)
                 except RevisionNotFound:
                     return JSONResponse(
                         {
@@ -979,14 +975,33 @@ def create_app(
                         },
                         status_code=403,
                     )
-            if not isinstance(pack_path, (str, Path)) or not str(pack_path):
+            else:
+                if not isinstance(pack_path_raw, str):
+                    return JSONResponse({"detail": "invalid body"}, status_code=400)
+                basename = _client_pack_basename(pack_path_raw)
+                if basename is None:
+                    return JSONResponse({"detail": "invalid body"}, status_code=400)
+                # Path is home + sanitized basename only (no user directories).
+                trusted_pack = s.home / basename
+                try:
+                    pack_data = json.loads(trusted_pack.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "pack_has_no_market",
+                            "ok": False,
+                            "effect": "refused",
+                            "message": f"pack has no market for {venue}",
+                            "detail": f"pack has no market for {venue}",
+                        },
+                        status_code=400,
+                    )
+
+            if trusted_pack is None:
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
 
-            safe_pack = _safe_pack_path_under_home(s.home, pack_path)
-            if safe_pack is None:
-                return JSONResponse({"detail": "invalid body"}, status_code=400)
-
-            pair = _pack_pair_for_venue(s.home, safe_pack, venue)
+            pair = _pair_from_pack_data(pack_data, venue)
             if pair is None:
                 return JSONResponse(
                     {
@@ -1009,7 +1024,7 @@ def create_app(
             from krellbot.run import arm_pack
 
             rc = arm_pack(
-                safe_pack,
+                trusted_pack,
                 venue=venue,
                 mode="live",
                 home=s.home,
