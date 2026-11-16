@@ -223,12 +223,12 @@ describe("packs client redeemActivation", () => {
 });
 
 describe("createPacksHttpClient", () => {
-  it("exposes the same read surface the shell mounts", async () => {
+  it("exposes the same read surface the shell mounts without dead rollback", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
     const client = createPacksHttpClient();
     expect(typeof client.listInstalled).toBe("function");
-    expect(typeof client.rollback).toBe("function");
+    expect("rollback" in client).toBe(false);
     expect(typeof client.redeemActivation).toBe("function");
     expect(typeof client.listCatalogue).toBe("function");
     expect(typeof client.install).toBe("function");
@@ -237,6 +237,35 @@ describe("createPacksHttpClient", () => {
       "/api/v1/packs",
       expect.objectContaining({ method: "GET", credentials: "include" }),
     );
+    expect(fetchMock.mock.calls.every(([url]) => url !== "/api/v1/packs/rollback")).toBe(
+      true,
+    );
+  });
+});
+
+describe("packs client omits rollback until a real route exists", () => {
+  it("never POSTs /api/v1/packs/rollback from the HTTP client", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        ok: true,
+        pack: {
+          bucket: "download_pending",
+          pack_id: "free-dual-ma",
+          version: "1.0.0",
+          permissions: [],
+          rollback_ref: null,
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createHttpClient();
+    await client.install("free-dual-ma");
+    await client.listInstalled();
+    expect("rollback" in client).toBe(false);
+    expect(
+      fetchMock.mock.calls.map(([url]) => url as string),
+    ).not.toContain("/api/v1/packs/rollback");
   });
 });
 

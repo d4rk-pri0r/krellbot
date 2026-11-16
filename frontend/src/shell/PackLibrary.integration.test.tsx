@@ -117,7 +117,6 @@ function makePackClient(): PackLibraryClient & {
         rollback_ref: null,
       },
     ]),
-    rollback: vi.fn(async () => ({ ok: true })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,

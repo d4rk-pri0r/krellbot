@@ -37,7 +37,6 @@ function makeClient(): PacksClient {
   let library: PackRow[] = [];
   return {
     listInstalled: vi.fn(async () => library),
-    rollback: vi.fn(async () => ({ ok: false })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,

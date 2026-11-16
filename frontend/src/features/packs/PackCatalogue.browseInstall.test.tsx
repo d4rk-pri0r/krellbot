@@ -55,7 +55,6 @@ function installedRow(pack_id: string, version: string): PackRow {
 function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
   return {
     listInstalled: vi.fn(async () => []),
-    rollback: vi.fn(async () => ({ ok: false })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,

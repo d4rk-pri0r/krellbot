@@ -20,11 +20,6 @@ export type PackRow = {
   rollback_ref: PackRollbackRef | null;
 };
 
-export type PackRollbackResult = {
-  ok: boolean;
-  message?: string;
-};
-
 /** Closed outcome from ``POST /api/v1/activation/redeem`` (never echoes a key). */
 export type ActivationRedeemStatus = "paid" | "grace" | "dead" | "unreachable";
 
@@ -70,9 +65,13 @@ export class PackLibraryHttpError extends Error {
   }
 }
 
+/**
+ * Library + redeem surface. No ``rollback`` method: there is no
+ * ``POST /api/v1/packs/rollback`` until a prior-revision store exists.
+ * Rows may still carry read-only ``rollback_ref`` metadata.
+ */
 export type PackLibraryClient = {
   listInstalled(): Promise<PackRow[]>;
-  rollback(pack_id: string): Promise<PackRollbackResult>;
   /** Redeem an activation key; on paid/grace the caller refreshes the library. */
   redeemActivation(key: string): Promise<ActivationRedeemResult>;
 };
@@ -168,29 +167,6 @@ async function getCatalogue(url: string): Promise<CatalogueDocument> {
     updated: typeof raw.updated === "string" ? raw.updated : null,
     packs,
   };
-}
-
-async function postRollback(pack_id: string): Promise<PackRollbackResult> {
-  const response = await fetch("/api/v1/packs/rollback", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Krellbot-CSRF": getCsrf(),
-    },
-    body: JSON.stringify({
-      schema_version: "1",
-      command: "packs.rollback",
-      payload: { pack_id },
-    }),
-  });
-  if (!response.ok) {
-    return { ok: false, message: `rollback failed: ${response.status}` };
-  }
-  const raw = (await response.json()) as Record<string, unknown>;
-  const ok = raw.ok === true;
-  const message = typeof raw.message === "string" ? raw.message : undefined;
-  return ok ? { ok: true } : { ok: false, ...(message !== undefined ? { message } : {}) };
 }
 
 const REDEEM_STATUSES = new Set<ActivationRedeemStatus>([
@@ -290,9 +266,6 @@ export function createHttpClient(): PacksClient {
   return {
     listInstalled(): Promise<PackRow[]> {
       return getJson("/api/v1/packs");
-    },
-    rollback(pack_id: string): Promise<PackRollbackResult> {
-      return postRollback(pack_id);
     },
     redeemActivation(key: string): Promise<ActivationRedeemResult> {
       return postRedeemActivation(key);
