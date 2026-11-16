@@ -20,6 +20,11 @@ and permissions from the verified catalogue). Paid entries are refused
 until activation redeem (M5.3) establishes entitlement. Already-local
 packs return their existing classifier row without rewriting state.
 
+There is no ``rollback_pack`` helper and no
+``POST /api/v1/packs/rollback`` until a prior-revision store exists
+(M5.4): list rows may still carry read-only ``rollback_ref`` metadata,
+but install never claims a rollback action.
+
 ``list_installed`` / ``update_pack`` / ``install_from_catalogue`` read
 local metadata only; no network call is made. ``refresh_catalogue`` is
 the network path and always takes an injectable transport in tests.

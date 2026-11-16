@@ -9,7 +9,6 @@ const rows: PackRow[] = ids.map((pack_id) => ({
 }));
 const client: PackLibraryClient = {
   listInstalled: async () => rows,
-  rollback: async () => ({ ok: false }),
   redeemActivation: async () => ({
     schema_version: "1",
     status: "dead",

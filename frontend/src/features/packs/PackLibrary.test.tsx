@@ -18,7 +18,6 @@ afterEach(() => {
 function makeClient(overrides: Partial<PackLibraryClient> = {}): PackLibraryClient {
   return {
     listInstalled: vi.fn(async () => [] as PackRow[]),
-    rollback: vi.fn(async () => ({ ok: true })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,
@@ -269,16 +268,14 @@ describe("PackLibrary click-to-copy pack_id", () => {
 
 describe("PackLibrary inventory rows stay non-mutating", () => {
   it("keeps row actions to copy only — no install, catalog, or rollback control", async () => {
-    const rollback = vi.fn(async () => ({ ok: true }));
     const rows = [
       row("alpha", "deployed", {
         rollback_ref: { pack_id: "alpha", prior_revision_id: "0".repeat(64) },
       }),
       row("bravo", "installed"),
     ];
-    render(
-      <PackLibrary client={makeClient({ rollback, listInstalled: vi.fn(async () => rows) })} />,
-    );
+    const client = makeClient({ listInstalled: vi.fn(async () => rows) });
+    render(<PackLibrary client={client} />);
     await screen.findByTestId("pack-library-list");
     for (const r of rows) {
       const item = screen.getByTestId(`pack-library-row-${r.pack_id}`);
@@ -288,7 +285,7 @@ describe("PackLibrary inventory rows stay non-mutating", () => {
         `pack-library-copy-${r.pack_id}`,
       );
     }
-    expect(rollback).not.toHaveBeenCalled();
+    expect("rollback" in client).toBe(false);
     const panelText =
       screen.getByTestId("pack-library-panel").textContent ?? "";
     expect(panelText).not.toMatch(/\b(install|catalog|rollback)\b/i);

@@ -21,7 +21,6 @@ export type {
   ActivationRedeemStatus,
   PackLibraryClient,
   PackRow,
-  PackRollbackResult,
 } from "./client";
 
 export type PackLibraryProps = {

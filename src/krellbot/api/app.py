@@ -2845,6 +2845,8 @@ def create_app(
         bucket+version; paid entries return 403 with
         ``activation_required``. Unknown ids return 404. No network
         call — the verified catalogue cache is the only source.
+        Install does not claim rollback: ``POST /api/v1/packs/rollback``
+        is intentionally unmounted until a prior-revision store exists.
         """
 
         from krellbot.application import pack_library as pack_library_app

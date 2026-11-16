@@ -32,7 +32,6 @@ afterEach(() => {
 function makeClient(overrides: Partial<PackLibraryClient> = {}): PackLibraryClient {
   return {
     listInstalled: vi.fn(async () => [] as PackRow[]),
-    rollback: vi.fn(async () => ({ ok: true })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,
@@ -147,10 +146,8 @@ describe("PackLibrary local query", () => {
 
   it("filters locally without fetching or mutating records", async () => {
     const listInstalled = vi.fn(async () => INVENTORY);
-    const rollback = vi.fn(async () => ({ ok: true }));
-    render(
-      <PackLibrary client={makeClient({ listInstalled, rollback })} />,
-    );
+    const client = makeClient({ listInstalled });
+    render(<PackLibrary client={client} />);
     await screen.findByTestId("pack-library-list");
 
     fireEvent.change(screen.getByLabelText(/Search packs/i), {
@@ -160,7 +157,7 @@ describe("PackLibrary local query", () => {
     fireEvent.change(bucketSelect, { target: { value: "installed" } });
 
     expect(listInstalled).toHaveBeenCalledTimes(1);
-    expect(rollback).not.toHaveBeenCalled();
+    expect("rollback" in client).toBe(false);
   });
 });
 
@@ -368,8 +365,7 @@ describe("PackLibrary copy after filtering", () => {
 });
 
 describe("PackLibrary discovery stays non-mutating except redeem", () => {
-  it("never calls rollback or redeem while searching, filtering or clearing", async () => {
-    const rollback = vi.fn(async () => ({ ok: true }));
+  it("never calls redeem while searching, filtering or clearing", async () => {
     const redeemActivation = vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,
@@ -377,7 +373,6 @@ describe("PackLibrary discovery stays non-mutating except redeem", () => {
       catalog_downloaded: false,
     }));
     const client = makeClient({
-      rollback,
       redeemActivation,
       listInstalled: vi.fn(async () => INVENTORY),
     });
@@ -393,7 +388,7 @@ describe("PackLibrary discovery stays non-mutating except redeem", () => {
     fireEvent.click(screen.getByTestId("pack-library-clear-filters"));
     fireEvent.click(screen.getByTestId("pack-library-copy-krell.alpha.momentum"));
 
-    expect(rollback).not.toHaveBeenCalled();
+    expect("rollback" in client).toBe(false);
     expect(redeemActivation).not.toHaveBeenCalled();
     expect(screen.getByTestId("pack-library-redeem")).toBeDefined();
     const panelText =

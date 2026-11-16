@@ -10,7 +10,6 @@ afterEach(() => {
 function makeClient(rows: PackRow[]): PackLibraryClient {
   return {
     listInstalled: vi.fn(async () => rows),
-    rollback: vi.fn(async () => ({ ok: true })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,

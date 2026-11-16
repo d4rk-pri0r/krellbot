@@ -18,7 +18,6 @@ afterEach(() => {
 function makeClient(overrides: Partial<PackLibraryClient> = {}): PackLibraryClient {
   return {
     listInstalled: vi.fn(async () => [] as PackRow[]),
-    rollback: vi.fn(async () => ({ ok: true })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,

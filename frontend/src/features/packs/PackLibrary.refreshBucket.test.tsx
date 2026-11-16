@@ -17,7 +17,6 @@ afterEach(() => {
 function makeClient(overrides: Partial<PackLibraryClient> = {}): PackLibraryClient {
   return {
     listInstalled: vi.fn(async () => [] as PackRow[]),
-    rollback: vi.fn(async () => ({ ok: true })),
     redeemActivation: vi.fn(async () => ({
       schema_version: "1",
       status: "dead" as const,
@@ -45,7 +44,6 @@ type ReadStep =
 function scriptClient(steps: ReadStep[]): {
   client: PackLibraryClient;
   listInstalled: ReturnType<typeof vi.fn>;
-  rollback: ReturnType<typeof vi.fn>;
 } {
   let call = 0;
   const listInstalled = vi.fn(async (): Promise<PackRow[]> => {
@@ -56,8 +54,7 @@ function scriptClient(steps: ReadStep[]): {
     }
     return step.rows;
   });
-  const rollback = vi.fn(async () => ({ ok: true }));
-  return { client: makeClient({ listInstalled, rollback }), listInstalled, rollback };
+  return { client: makeClient({ listInstalled }), listInstalled };
 }
 
 function bucketSelect(): HTMLSelectElement {
@@ -274,8 +271,8 @@ describe("PackLibrary refresh keeps the selected bucket filter truthful", () => 
     );
   });
 
-  it("only ever reads on refresh: no rollback or redeem in these flows", async () => {
-    const { client, listInstalled, rollback } = scriptClient([
+  it("only ever reads on refresh: no redeem in these flows", async () => {
+    const { client, listInstalled } = scriptClient([
       {
         kind: "rows",
         rows: [row("alpha", "installed"), row("bravo", "deployed")],
@@ -295,7 +292,7 @@ describe("PackLibrary refresh keeps the selected bucket filter truthful", () => 
     await screen.findByTestId("pack-library-error");
 
     expect(listInstalled).toHaveBeenCalledTimes(3);
-    expect(rollback).not.toHaveBeenCalled();
+    expect("rollback" in client).toBe(false);
     expect(vi.mocked(client.redeemActivation)).not.toHaveBeenCalled();
   });
 });
