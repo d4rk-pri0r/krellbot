@@ -2,9 +2,15 @@ name: release-frozen
 
 on:
   workflow_dispatch:
+    inputs:
+      sign_release:
+        description: "Request macOS Developer ID + notarization and Windows Authenticode (requires secrets). Leave false for unsigned smoke."
+        type: boolean
+        default: false
   pull_request:
     paths:
       - ".github/workflows/release-frozen.yml"
+      - "docs/signing.md"
       - "scripts/**"
       - "src/**"
       - "pyproject.toml"
@@ -12,6 +18,10 @@ on:
       - "tests/test_release_archive.py"
       - "tests/test_frozen_main.py"
       - "tests/test_ci_smoke_frozen_paper.py"
+      - "tests/test_release_signing_gates.py"
+      - "tests/test_macos_app_bundle.py"
+      - "scripts/macos_app_bundle.py"
+      - "scripts/macos_entitlements.plist"
   push:
     tags: ["v*"]
 
@@ -267,6 +277,239 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # ------------------------------------------------------------------
+      # Platform signing (secrets-gated). PR CI always stays unsigned.
+      # Tag / workflow_dispatch builds sign only when signing is requested
+      # via vars.KRELLBOT_SIGN_RELEASE=true or the dispatch input
+      # sign_release=true. When requested, missing secrets fail closed.
+      # Secret *names* are documented in docs/signing.md — never commit
+      # cert material.
+      # ------------------------------------------------------------------
+      - name: Resolve whether platform signing is requested
+        if: github.event_name != 'pull_request'
+        id: signing
+        shell: bash
+        env:
+          DISPATCH_SIGN: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_release || false }}
+          VAR_SIGN: ${{ vars.KRELLBOT_SIGN_RELEASE }}
+        run: |
+          set -euo pipefail
+          requested=false
+          if [ "${DISPATCH_SIGN}" = "true" ]; then
+            requested=true
+          elif [ "${VAR_SIGN}" = "true" ] || [ "${VAR_SIGN}" = "1" ]; then
+            requested=true
+          fi
+          echo "requested=${requested}" >> "$GITHUB_OUTPUT"
+          if [ "${requested}" = "true" ]; then
+            echo "Platform signing requested for this non-PR run."
+          else
+            echo "Platform signing not requested; producing unsigned checksum-pinned artifacts."
+            echo "Set repo variable KRELLBOT_SIGN_RELEASE=true (or dispatch with sign_release=true) after secrets are configured."
+          fi
+
+      - name: Sign macOS Developer ID Application, notarize, and staple
+        if: >-
+          matrix.os == 'macos-latest'
+          && github.event_name != 'pull_request'
+          && steps.signing.outputs.requested == 'true'
+        id: macos_sign
+        env:
+          APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          KRELLBOT_VERSION: ${{ env.KRELLBOT_VERSION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            APPLE_DEVELOPER_ID_P12_BASE64 \
+            APPLE_DEVELOPER_ID_P12_PASSWORD \
+            APPLE_CODESIGN_IDENTITY \
+            APPLE_TEAM_ID \
+            APPLE_API_KEY_P8_BASE64 \
+            APPLE_API_KEY_ID \
+            APPLE_API_ISSUER_ID
+          do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::macOS signing requested but required secrets are missing: ${missing[*]}"
+            echo "Configure the secret names listed in docs/signing.md, then re-run."
+            exit 1
+          fi
+
+          APP_VERSION="${KRELLBOT_VERSION}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            APP_VERSION="${GITHUB_REF_NAME}"
+          fi
+
+          # Wrap the PyInstaller one-dir into a notarizable .app (nested first).
+          uv run python scripts/macos_app_bundle.py \
+            --onedir dist/krellbot \
+            --app dist/Krellbot.app \
+            --version "${APP_VERSION}"
+
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/krellbot-signing.keychain-db"
+          P12_PATH="${RUNNER_TEMP}/developer-id.p12"
+          P8_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          NOTARIZE_ZIP="${RUNNER_TEMP}/krellbot-macos-notarize.zip"
+          ENTITLEMENTS="scripts/macos_entitlements.plist"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" $(security list-keychains -d user | sed -e s/\"//g)
+
+          echo "${APPLE_DEVELOPER_ID_P12_BASE64}" | base64 --decode > "${P12_PATH}"
+          security import "${P12_PATH}" -k "${KEYCHAIN_PATH}" -P "${APPLE_DEVELOPER_ID_P12_PASSWORD}" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          rm -f "${P12_PATH}"
+
+          # Deep codesign: nested Mach-O first, then the .app bundle.
+          while IFS= read -r -d '' candidate; do
+            if file "${candidate}" | grep -Eq 'Mach-O|shared library|dynamically linked shared library|bundle'; then
+              echo "codesign nested: ${candidate}"
+              codesign --force --options runtime --timestamp \
+                --entitlements "${ENTITLEMENTS}" \
+                --sign "${APPLE_CODESIGN_IDENTITY}" "${candidate}"
+            fi
+          done < <(find dist/Krellbot.app/Contents -type f -print0 | sort -z -r)
+          codesign --force --options runtime --timestamp \
+            --entitlements "${ENTITLEMENTS}" \
+            --sign "${APPLE_CODESIGN_IDENTITY}" "dist/Krellbot.app"
+          codesign --verify --deep --strict "dist/Krellbot.app"
+
+          echo "${APPLE_API_KEY_P8_BASE64}" | base64 --decode > "${P8_PATH}"
+          ditto -c -k --keepParent "dist/Krellbot.app" "${NOTARIZE_ZIP}"
+          xcrun notarytool submit "${NOTARIZE_ZIP}" \
+            --key "${P8_PATH}" \
+            --key-id "${APPLE_API_KEY_ID}" \
+            --issuer "${APPLE_API_ISSUER_ID}" \
+            --wait
+          rm -f "${P8_PATH}" "${NOTARIZE_ZIP}"
+
+          xcrun stapler staple "dist/Krellbot.app"
+          xcrun stapler validate "dist/Krellbot.app"
+
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "app=dist/Krellbot.app" >> "$GITHUB_OUTPUT"
+          echo "macos Developer ID + notarization + staple completed"
+
+      - name: Sign Windows Authenticode
+        if: >-
+          matrix.os == 'windows-latest'
+          && github.event_name != 'pull_request'
+          && steps.signing.outputs.requested == 'true'
+        id: windows_sign
+        env:
+          WINDOWS_CODESIGN_P12_BASE64: ${{ secrets.WINDOWS_CODESIGN_P12_BASE64 }}
+          WINDOWS_CODESIGN_P12_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_P12_PASSWORD }}
+          WINDOWS_CODESIGN_TIMESTAMP_URL: ${{ vars.WINDOWS_CODESIGN_TIMESTAMP_URL }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $missing = @()
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_P12_BASE64)) { $missing += "WINDOWS_CODESIGN_P12_BASE64" }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_P12_PASSWORD)) { $missing += "WINDOWS_CODESIGN_P12_PASSWORD" }
+          if ($missing.Count -gt 0) {
+            Write-Error "Windows signing requested but required secrets are missing: $($missing -join ', '). See docs/signing.md."
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP "krellbot-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_P12_BASE64))
+          $timestamp = $env:WINDOWS_CODESIGN_TIMESTAMP_URL
+          if ([string]::IsNullOrWhiteSpace($timestamp)) {
+            $timestamp = "http://timestamp.digicert.com"
+          }
+
+          $candidates = @(
+            Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending |
+              Select-Object -ExpandProperty FullName
+          )
+          if (-not $candidates -or $candidates.Count -eq 0) {
+            Write-Error "signtool.exe not found on the Windows runner"
+          }
+          $signtool = $candidates[0]
+          Write-Host "Using signtool: $signtool"
+
+          $targets = Get-ChildItem -Path "dist\krellbot" -Recurse -Include *.exe,*.dll
+          foreach ($target in $targets) {
+            Write-Host "signtool: $($target.FullName)"
+            & $signtool sign /f $pfxPath /p $env:WINDOWS_CODESIGN_P12_PASSWORD `
+              /fd SHA256 /td SHA256 /tr $timestamp $target.FullName
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "signtool failed for $($target.FullName)"
+            }
+          }
+          Remove-Item -Force $pfxPath
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "signed=true"
+          Write-Host "windows Authenticode signing completed"
+
+      - name: Record Linux checksum-pinned signing policy
+        if: >-
+          matrix.os == 'ubuntu-latest'
+          && github.event_name != 'pull_request'
+        id: linux_sign
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Linux has no Gatekeeper/Authenticode equivalent in this product.
+          # Integrity remains HTTPS-pinned SHA-256 (see docs/signing.md).
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+          echo "policy=checksum_pinned" >> "$GITHUB_OUTPUT"
+          echo "Linux release artifacts stay checksum-pinned (no platform code signature)."
+
+      - name: Write signing status marker
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          SIGNING_REQUESTED: ${{ steps.signing.outputs.requested }}
+          MACOS_SIGNED: ${{ steps.macos_sign.outputs.signed }}
+          WINDOWS_SIGNED: ${{ steps.windows_sign.outputs.signed }}
+          LINUX_POLICY: ${{ steps.linux_sign.outputs.policy }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          platform="${{ matrix.platform_tag }}"
+          arch="${{ matrix.arch }}"
+          signed="false"
+          detail="unsigned"
+          if [ "${SIGNING_REQUESTED}" != "true" ]; then
+            detail="unsigned_signing_not_requested"
+          elif [ "${platform}" = "macos" ] && [ "${MACOS_SIGNED}" = "true" ]; then
+            signed="true"
+            detail="developer_id_notarized_stapled_app"
+          elif [ "${platform}" = "windows" ] && [ "${WINDOWS_SIGNED}" = "true" ]; then
+            signed="true"
+            detail="authenticode"
+          elif [ "${platform}" = "linux" ]; then
+            detail="checksum_pinned_policy"
+          fi
+          cat > "artifacts/signing-status-${platform}-${arch}.json" <<EOF
+          {
+            "platform": "${platform}",
+            "arch": "${arch}",
+            "signing_requested": ${SIGNING_REQUESTED:-false},
+            "signed": ${signed},
+            "detail": "${detail}",
+            "sha": "${GITHUB_SHA}"
+          }
+          EOF
+          # Normalize JSON whitespace for humans reading the artifact.
+          uv run python -c "import json,pathlib; p=pathlib.Path('artifacts/signing-status-${platform}-${arch}.json'); p.write_text(json.dumps(json.loads(p.read_text()), indent=2, sort_keys=True)+'\n')"
+
       - name: "Verify immutable release base URL is configured"
         if: github.event_name != 'pull_request'
         # The manifest URL is built from $KRELLBOT_RELEASE_BASE_URL +
@@ -307,18 +550,29 @@ jobs:
             KRELLBOT_VERSION="${GITHUB_REF_NAME}"
           fi
           URL="${KRELLBOT_RELEASE_BASE_URL}${KRELLBOT_VERSION}/${{ matrix.archive_name }}"
+          # Signed macOS ships a stapled Krellbot.app zip. Unsigned macOS
+          # (and all other platforms) keep the one-dir archive contract.
           uv run python -c "
           import json
           from pathlib import Path
-          from scripts.release_archive import build_archive
-          m = build_archive(
-              Path('dist/krellbot'),
-              Path('${ARCHIVE}'),
-              version='${KRELLBOT_VERSION}',
-              platform_tag='${{ matrix.platform_tag }}',
-              arch='${{ matrix.arch }}',
-              url='${URL}',
-          )
+          from scripts.release_archive import build_archive, build_macos_app_archive
+          archive = Path('${ARCHIVE}')
+          version = '${KRELLBOT_VERSION}'
+          arch = '${{ matrix.arch }}'
+          platform = '${{ matrix.platform_tag }}'
+          url = '${URL}'
+          app = Path('dist/Krellbot.app')
+          if platform == 'macos' and app.is_dir():
+              m = build_macos_app_archive(app, archive, version=version, arch=arch, url=url)
+          else:
+              m = build_archive(
+                  Path('dist/krellbot'),
+                  archive,
+                  version=version,
+                  platform_tag=platform,
+                  arch=arch,
+                  url=url,
+              )
           print(json.dumps(m, indent=2, sort_keys=True))
           " | tee "artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json"
 
@@ -330,6 +584,7 @@ jobs:
           path: |
             artifacts/${{ matrix.archive_name }}
             artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json
+            artifacts/signing-status-${{ matrix.platform_tag }}-${{ matrix.arch }}.json
           if-no-files-found: error
 
   publish:
@@ -340,6 +595,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
@@ -355,11 +611,24 @@ jobs:
             echo "::error::no release zips downloaded"
             exit 1
           fi
+
+          # Honest release notes from signing-status markers. Never claim
+          # notarized / Authenticode unless the platform markers say so.
+          # Channel stays --prerelease until owner flips ARTIFACTS_SIGNED
+          # (M12.2 / M13.3) — this job does not promote to GA.
+          # Fallback keeps the historical Unsigned / Not notarized phrasing
+          # when the helper or markers are absent.
+          if [ -f scripts/ci_release_notes_from_signing_status.py ]; then
+            NOTES="$(python3 scripts/ci_release_notes_from_signing_status.py --root release-assets --sha "${GITHUB_SHA}")"
+          else
+            NOTES="Unsigned checksum-pinned build from ${GITHUB_SHA}. Not notarized. Not Authenticode-signed. SHA-256 is the integrity check."
+          fi
+
           if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release create "${GITHUB_REF_NAME}" \
               --repo "${GITHUB_REPOSITORY}" \
               --title "${GITHUB_REF_NAME}" \
               --prerelease \
-              --notes "Unsigned checksum-pinned build from ${GITHUB_SHA}. Not notarized. Not Authenticode-signed. SHA-256 is the integrity check."
+              --notes "${NOTES}"
           fi
           gh release upload "${GITHUB_REF_NAME}" "${zips[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
