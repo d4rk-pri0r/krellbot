@@ -18,6 +18,12 @@ function makeClient(overrides: Partial<PackLibraryClient> = {}): PackLibraryClie
   return {
     listInstalled: vi.fn(async () => [] as PackRow[]),
     rollback: vi.fn(async () => ({ ok: true })),
+    redeemActivation: vi.fn(async () => ({
+      schema_version: "1",
+      status: "dead" as const,
+      message: "license not accepted",
+      catalog_downloaded: false,
+    })),
     ...overrides,
   };
 }
@@ -268,7 +274,7 @@ describe("PackLibrary refresh keeps the selected bucket filter truthful", () => 
     );
   });
 
-  it("only ever reads: no rollback or other mutating client call in these flows", async () => {
+  it("only ever reads on refresh: no rollback or redeem in these flows", async () => {
     const { client, listInstalled, rollback } = scriptClient([
       {
         kind: "rows",
@@ -290,5 +296,6 @@ describe("PackLibrary refresh keeps the selected bucket filter truthful", () => 
 
     expect(listInstalled).toHaveBeenCalledTimes(3);
     expect(rollback).not.toHaveBeenCalled();
+    expect(vi.mocked(client.redeemActivation)).not.toHaveBeenCalled();
   });
 });
