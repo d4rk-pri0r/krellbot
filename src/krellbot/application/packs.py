@@ -103,6 +103,31 @@ class PackRow:
 
 
 def _read_json(path: Path) -> dict | None:
+    """Read JSON from a trusted fixed path (catalog, etc.)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _read_pack_sidecar(home: Path, pack_id: str, suffix: str) -> dict | None:
+    """Read ``<home>/packs/<basename(pack_id)><suffix>``.
+
+    ``os.path.basename`` is applied in the same function as ``read_text``
+    (CodeQL-recognized sanitizer at the sink), matching
+    ``api.app._client_pack_basename`` / trusted home join.
+    """
+    if not isinstance(pack_id, str) or not pack_id:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_id)
+    if not name or name in {".", ".."} or os.path.basename(name) != name:
+        return None
+    # Path is packs dir + sanitized basename only (no user directories).
+    path = home / "packs" / f"{name}{suffix}"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -113,43 +138,40 @@ def _read_json(path: Path) -> dict | None:
 
 
 def _deployed_record(home: Path, pack_id: str) -> dict | None:
-    name = _safe_pack_id_name(pack_id)
-    if name is None:
-        return None
-    return _read_json(home / "packs" / f"{name}.deployed.json")
+    return _read_pack_sidecar(home, pack_id, ".deployed.json")
 
 
 def _configured_record(home: Path, pack_id: str) -> dict | None:
-    name = _safe_pack_id_name(pack_id)
-    if name is None:
-        return None
-    return _read_json(home / "packs" / f"{name}.configured.json")
+    return _read_pack_sidecar(home, pack_id, ".configured.json")
 
 
 def _download_pending_marker(home: Path, pack_id: str) -> dict | None:
-    name = _safe_pack_id_name(pack_id)
-    if name is None:
-        return None
-    return _read_json(home / "packs" / f"{name}.download_pending.json")
+    return _read_pack_sidecar(home, pack_id, ".download_pending.json")
 
 
 def _installed_pack(home: Path, pack_id: str) -> dict | None:
     """Return the parsed pack dict from one of the installed roots, if any."""
-    name = _safe_pack_id_name(pack_id)
-    if name is None:
+    if not isinstance(pack_id, str) or not pack_id:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_id)
+    if not name or name in {".", ".."} or os.path.basename(name) != name:
         return None
     for root in (
         home / "packs",
         home / "packs" / "community",
         home / "packs" / "catalog",
     ):
+        # Path is trusted root + sanitized basename only.
         candidate = root / f"{name}.json"
         if not candidate.is_file():
             continue
-        data = _read_json(candidate)
-        if data is None:
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
             continue
-        return data
+        if isinstance(data, dict):
+            return data
     return None
 
 
