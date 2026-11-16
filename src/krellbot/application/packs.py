@@ -223,12 +223,20 @@ def _row_from_purchased(entry: dict) -> PackRow | None:
     )
 
 
-def _row_from_download_pending(pack_id: str) -> PackRow:
+def _row_from_download_pending(pack_id: str, marker: dict | None = None) -> PackRow:
+    """Build a download_pending row; prefer version/permissions from the marker."""
+    version = None
+    permissions: list[str] = []
+    if isinstance(marker, dict):
+        raw_version = marker.get("version")
+        if isinstance(raw_version, str):
+            version = raw_version
+        permissions = _permissions_from(marker.get("permissions"))
     return PackRow(
         bucket=BUCKET_DOWNLOAD_PENDING,
         pack_id=pack_id,
-        version=None,
-        permissions=[],
+        version=version,
+        permissions=permissions,
         rollback_ref=None,
     )
 
@@ -323,8 +331,9 @@ def classify(home: Path, pack_id: str) -> PackRow | None:
     if pack is not None:
         return _row_from_installed(pack_id, pack)
 
-    if _download_pending_marker(home, pack_id) is not None:
-        return _row_from_download_pending(pack_id)
+    pending = _download_pending_marker(home, pack_id)
+    if pending is not None:
+        return _row_from_download_pending(pack_id, pending)
 
     # Fall back to the cached catalog (purchased). A catalog entry is
     # the only state source that lives outside ``<home>/packs/``.

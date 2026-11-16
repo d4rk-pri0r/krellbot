@@ -50,8 +50,16 @@ const VIEW_ACTIONS: ReadonlyArray<PaletteAction> = [
     label: "Go to Strategies",
     group: "Views",
     kind: "view",
-    keywords: "packs library editor",
+    keywords: "library editor",
     view: "strategies",
+  },
+  {
+    id: "view-packs",
+    label: "Go to Packs",
+    group: "Views",
+    kind: "view",
+    keywords: "packs catalogue install library store",
+    view: "packs",
   },
   {
     id: "view-research",

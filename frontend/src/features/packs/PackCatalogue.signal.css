@@ -1,0 +1,180 @@
+/*
+ * Signed Strategy Pack catalogue browse + one-click install.
+ * Contract: KRELL-SIGNAL-20261010.
+ *
+ * Root-scoped to .kbot-pack-catalogue. Shares tokens from
+ * src/styles/tokens.css. Sage is the sole affirmative Install action.
+ */
+
+.kbot-pack-catalogue {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.kbot-pack-catalogue__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kbot-pack-catalogue__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-pack-catalogue__refresh {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+
+.kbot-pack-catalogue__helper {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 52rem;
+}
+
+.kbot-pack-catalogue__meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kbot-pack-catalogue__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+.kbot-pack-catalogue__row {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.kbot-pack-catalogue__row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-pack-catalogue__label {
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kbot-pack-catalogue__id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.kbot-pack-catalogue__tier {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--seafoam);
+}
+
+.kbot-pack-catalogue__tier--paid {
+  color: var(--caution-text);
+}
+
+.kbot-pack-catalogue__description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.kbot-pack-catalogue__row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kbot-pack-catalogue__row-meta dt {
+  display: inline;
+  font-weight: 700;
+  margin: 0;
+}
+
+.kbot-pack-catalogue__row-meta dd {
+  display: inline;
+  margin: 0 0 0 0.35em;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.kbot-pack-catalogue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.kbot-pack-catalogue__install {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--action-primary-bg);
+  color: var(--navy);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.kbot-pack-catalogue__install:disabled,
+.kbot-pack-catalogue__install[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-pack-catalogue__install:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.kbot-pack-catalogue__status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kbot-pack-catalogue__error {
+  margin: 0;
+  color: var(--caution-text);
+  font-size: 13px;
+}
+
+.kbot-pack-catalogue__empty,
+.kbot-pack-catalogue__loading,
+.kbot-pack-catalogue__failed {
+  margin: 0;
+  color: var(--muted);
+}

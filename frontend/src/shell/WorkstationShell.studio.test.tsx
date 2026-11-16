@@ -213,6 +213,7 @@ describe("WorkstationShell — studio view routing", () => {
       expect.arrayContaining([
         "Workstation",
         "Strategies",
+        "Packs",
         "Research",
         "Strategy studio",
       ]),

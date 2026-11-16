@@ -22,6 +22,7 @@ describe("route — parse and resolve", () => {
       "home",
       "workstation",
       "strategies",
+      "packs",
       "research",
       "studio",
       "operations",

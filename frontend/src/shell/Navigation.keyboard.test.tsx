@@ -35,9 +35,9 @@ function tabIndexes(): number[] {
 describe("Navigation — roving tabindex", () => {
   it("keeps only the active tab in the tab order", () => {
     const { rerender } = render(<Navigation active="home" onChange={() => {}} />);
-    expect(tabIndexes()).toEqual([0, -1, -1, -1, -1, -1, -1]);
+    expect(tabIndexes()).toEqual([0, -1, -1, -1, -1, -1, -1, -1]);
     rerender(<Navigation active="deployments" onChange={() => {}} />);
-    expect(tabIndexes()).toEqual([-1, -1, -1, -1, -1, -1, 0]);
+    expect(tabIndexes()).toEqual([-1, -1, -1, -1, -1, -1, -1, 0]);
   });
 });
 
@@ -66,9 +66,9 @@ describe("Navigation — arrow key navigation", () => {
     );
     tab("Research").focus();
     fireEvent.keyDown(tab("Research"), { key: "ArrowLeft" });
-    expect(onChange).toHaveBeenCalledWith("strategies");
-    rerender(<Navigation active="strategies" onChange={onChange} />);
-    expect(focusedLabel()).toBe("Strategies");
+    expect(onChange).toHaveBeenCalledWith("packs");
+    rerender(<Navigation active="packs" onChange={onChange} />);
+    expect(focusedLabel()).toBe("Packs");
   });
 
   it("clamps instead of wrapping at the row ends", () => {
@@ -115,7 +115,7 @@ describe("Navigation — arrow key navigation", () => {
       <Navigation active={active} onChange={controller} />,
     );
     tab("Workspace").focus();
-    for (const step of ["Workstation", "Strategies", "Research"]) {
+    for (const step of ["Workstation", "Strategies", "Packs", "Research"]) {
       fireEvent.keyDown(tab(focusedLabel() as string), { key: "ArrowRight" });
       rerender(<Navigation active={active} onChange={controller} />);
       expect(focusedLabel()).toBe(step);

@@ -14,14 +14,21 @@ metadata (free + paid entries) from the local cache. ``refresh_catalogue``
 fetches and verifies a fresh signed envelope through the license
 activation transport before rewriting that cache.
 
-``list_installed`` / ``update_pack`` read local metadata only; no network
-call is made. ``refresh_catalogue`` is the network path and always takes
-an injectable transport in tests.
+``install_from_catalogue(home, pack_id)`` one-click installs a free
+catalogue entry by writing a ``download_pending`` marker (with version
+and permissions from the verified catalogue). Paid entries are refused
+until activation redeem (M5.3) establishes entitlement. Already-local
+packs return their existing classifier row without rewriting state.
+
+``list_installed`` / ``update_pack`` / ``install_from_catalogue`` read
+local metadata only; no network call is made. ``refresh_catalogue`` is
+the network path and always takes an injectable transport in tests.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +40,26 @@ _EMPTY_CATALOGUE: dict[str, Any] = {
     "catalogue_version": "0",
     "packs": [],
 }
+
+# Closed pack id shape for path construction — no separators or traversal.
+_SAFE_PACK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
+
+
+class InstallRefused(Exception):
+    """``install_from_catalogue`` refused without changing any byte.
+
+    The ``code`` attribute is one of:
+
+      * ``"pack_not_found"`` — ``pack_id`` is absent from the verified
+        catalogue cache.
+      * ``"activation_required"`` — the entry is paid and local
+        entitlement has not been established.
+      * ``"invalid_request"`` — ``pack_id`` is missing or empty.
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class UpdateRefused(Exception):
@@ -179,6 +206,105 @@ def list_catalogue(home: Path) -> dict[str, Any]:
     return cached
 
 
+def _catalogue_entry(home: Path, pack_id: str) -> dict[str, Any] | None:
+    document = list_catalogue(home)
+    packs = document.get("packs")
+    if not isinstance(packs, list):
+        return None
+    for entry in packs:
+        if isinstance(entry, dict) and entry.get("id") == pack_id:
+            return entry
+    return None
+
+
+def _row_dict(row: app_packs.PackRow) -> dict[str, Any]:
+    return {
+        "bucket": row.bucket,
+        "pack_id": row.pack_id,
+        "version": row.version,
+        "permissions": list(row.permissions),
+        "rollback_ref": row.rollback_ref,
+    }
+
+
+def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
+    """One-click install a free catalogue pack into the local library.
+
+    Looks up ``pack_id`` in the verified catalogue cache only (no
+    network). Free entries write a ``download_pending`` marker carrying
+    the catalogue version/permissions so the library can show
+    bucket+version immediately. Paid entries raise
+    :class:`InstallRefused` with ``activation_required``. Unknown ids
+    raise ``pack_not_found``. When the pack is already local (any
+    classifier bucket), returns the existing row without rewriting.
+    """
+    home = Path(home)
+    if not isinstance(pack_id, str) or not pack_id.strip():
+        raise InstallRefused("invalid_request", "pack_id is required")
+    pack_id = pack_id.strip()
+    # Refuse before any path join so user-controlled ids cannot escape
+    # ``<home>/packs`` (CodeQL path-injection).
+    if not _SAFE_PACK_ID.fullmatch(pack_id):
+        raise InstallRefused("invalid_request", "pack_id is required")
+
+    existing = app_packs.classify(home, pack_id)
+    if existing is not None and existing.bucket != app_packs.BUCKET_PURCHASED:
+        return _row_dict(existing)
+
+    entry = _catalogue_entry(home, pack_id)
+    if entry is None:
+        raise InstallRefused(
+            "pack_not_found",
+            f"catalogue entry not found for {pack_id!r}",
+        )
+    tier = entry.get("tier")
+    if tier == "paid":
+        raise InstallRefused(
+            "activation_required",
+            f"paid pack {pack_id!r} requires activation redeem before install",
+        )
+    if tier != "free":
+        raise InstallRefused(
+            "pack_not_found",
+            f"catalogue entry not installable for {pack_id!r}",
+        )
+
+    packs_dir = (home / "packs").resolve()
+    packs_dir.mkdir(parents=True, exist_ok=True)
+    marker: dict[str, Any] = {
+        "schema_version": "1",
+        "pack_id": pack_id,
+        "tier": "free",
+    }
+    version = entry.get("version")
+    if isinstance(version, str) and version:
+        marker["version"] = version
+    permissions = entry.get("permissions")
+    if isinstance(permissions, list) and all(isinstance(p, str) for p in permissions):
+        marker["permissions"] = list(permissions)
+    else:
+        marker["permissions"] = []
+
+    # Filename is only the validated id; resolve + parent check blocks escape.
+    target = (packs_dir / f"{pack_id}.download_pending.json").resolve()
+    if target.parent != packs_dir:
+        raise InstallRefused("invalid_request", "pack_id is required")
+    payload = (json.dumps(marker, sort_keys=True) + "\n").encode("utf-8")
+    kb_paths.atomic_write(target, payload)
+
+    row = app_packs.classify(home, pack_id)
+    if row is None:
+        # Marker write succeeded; synthesise the closed row the UI expects.
+        return {
+            "bucket": app_packs.BUCKET_DOWNLOAD_PENDING,
+            "pack_id": pack_id,
+            "version": marker.get("version") if isinstance(marker.get("version"), str) else None,
+            "permissions": list(marker["permissions"]),
+            "rollback_ref": None,
+        }
+    return _row_dict(row)
+
+
 def refresh_catalogue(
     home: Path,
     *,
@@ -196,7 +322,9 @@ def refresh_catalogue(
 
 
 __all__ = [
+    "InstallRefused",
     "UpdateRefused",
+    "install_from_catalogue",
     "list_catalogue",
     "list_installed",
     "refresh_catalogue",
