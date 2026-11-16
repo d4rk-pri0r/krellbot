@@ -577,8 +577,10 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                   data-testid="owned-strategy-form-unsupported"
                 >
                   This pack is not supported by the form (it uses features outside
-                  the supported moving-average subset). Edit it as JSON below; the
-                  form will not rewrite it. Imported pack ownership is not verified.
+                  the guided subset: indicators, ATR/pct stops, single-level
+                  all/any confirm nesting, and up to two kraken/coinbase markets).
+                  Edit it as JSON below; the form will not rewrite it. Imported
+                  pack ownership is not verified.
                 </p>
               ) : null}
               {copiedDraft ? (

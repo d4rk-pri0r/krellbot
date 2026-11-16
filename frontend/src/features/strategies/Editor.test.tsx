@@ -760,12 +760,10 @@ describe("Editor owned-strategy form: no-JSON creation", () => {
     fireEvent.change(screen.getByLabelText(/protective stop percent/i), {
       target: { value: "2.5" },
     });
-    const pairSelect = screen.getByTestId("owned-strategy-pair") as HTMLSelectElement;
-    expect(pairSelect.value).toBe("XXBTZUSD");
-    expect(Array.from(pairSelect.options).map((option) => option.value)).toEqual([
-      "XXBTZUSD",
-    ]);
-    fireEvent.change(screen.getByLabelText(/average type/i), {
+    fireEvent.change(screen.getByLabelText(/^market pair/i), {
+      target: { value: "XETHZUSD" },
+    });
+    fireEvent.change(screen.getByLabelText(/indicator type/i), {
       target: { value: "ema" },
     });
     fireEvent.change(screen.getByLabelText(/timeframe/i), {
@@ -788,7 +786,7 @@ describe("Editor owned-strategy form: no-JSON creation", () => {
       max_account_pct: 40,
       stop: { type: "pct", pct: 2.5 },
     });
-    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XXBTZUSD" }]);
+    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XETHZUSD" }]);
   });
 
   it("an invalid value refuses to generate a pack and keeps the last good payload for Save", async () => {

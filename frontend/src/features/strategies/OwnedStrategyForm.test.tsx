@@ -70,26 +70,30 @@ describe("OwnedStrategyForm", () => {
       /recipe/i,
       /strategy name/i,
       /strategy id/i,
+      /^market pair/i,
+      /^market venue$/i,
+      /optional second pair/i,
       /average length/i,
       /max account percent/i,
+      /^protective stop$/i,
       /protective stop percent/i,
       /timeframe/i,
-      /average type/i,
+      /indicator type/i,
       /enter when/i,
       /exit when/i,
+      /entry nesting/i,
+      /exit nesting/i,
     ]) {
       expect(screen.getByLabelText(label)).toBeDefined();
     }
-    expect(screen.getByLabelText("Kraken pair")).toBe(
-      screen.getByTestId("owned-strategy-pair"),
-    );
   });
 
   it("reports which pack fields each control owns", () => {
     setup();
-    expect(screen.getByText(/close versus one moving average/i)).toBeDefined();
-    expect(screen.getByText(/fast average crossing a slow average/i)).toBeDefined();
+    expect(screen.getByText(/close versus one indicator/i)).toBeDefined();
+    expect(screen.getByText(/fast\/slow crossover/i)).toBeDefined();
     expect(screen.getByText(/paper-trading only/i)).toBeDefined();
+    expect(screen.getByText(/validate before arm/i)).toBeDefined();
   });
 
   it("does not offer the fast length field on the single-average recipe", () => {
@@ -113,7 +117,7 @@ describe("OwnedStrategyForm", () => {
     fireEvent.change(screen.getByLabelText(/^average length/i), {
       target: { value: "21" },
     });
-    fireEvent.change(screen.getByLabelText(/average type/i), {
+    fireEvent.change(screen.getByLabelText(/indicator type/i), {
       target: { value: "ema" },
     });
     fireEvent.change(screen.getByLabelText(/enter when/i), {
@@ -206,7 +210,7 @@ describe("OwnedStrategyForm", () => {
 
   it("switching to EMA changes the indicator fn", () => {
     const { onApply } = setup();
-    fireEvent.change(screen.getByLabelText(/average type/i), {
+    fireEvent.change(screen.getByLabelText(/indicator type/i), {
       target: { value: "ema" },
     });
     const [pack] = onApply.mock.calls.at(-1) as unknown as [
@@ -218,24 +222,95 @@ describe("OwnedStrategyForm", () => {
     });
   });
 
-  it("changing timeframe keeps the canonical wave pair in the pack payload", () => {
+  it("changing timeframe and pair changes the pack payload", () => {
     const { onApply } = setup();
     fireEvent.change(screen.getByLabelText(/timeframe/i), {
       target: { value: "1d" },
     });
-    const pairSelect = screen.getByTestId("owned-strategy-pair") as HTMLSelectElement;
-    expect(pairSelect.tagName).toBe("SELECT");
-    expect(pairSelect.value).toBe("XXBTZUSD");
-    expect(
-      Array.from(pairSelect.options).map((option) => option.value),
-    ).toEqual(["XXBTZUSD"]);
-    expect(screen.getByLabelText("Kraken pair")).toBe(pairSelect);
+    fireEvent.change(screen.getByLabelText(/^market pair/i), {
+      target: { value: "XETHZUSD" },
+    });
     const [pack] = onApply.mock.calls.at(-1) as unknown as [
       Record<string, unknown>,
       string[],
     ];
     expect(pack.timeframe).toBe("1d");
-    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XXBTZUSD" }]);
+    expect(pack.markets).toEqual([{ venue: "kraken", pair: "XETHZUSD" }]);
+  });
+
+  it("emits an ATR stop when the protective stop kind is atr", () => {
+    const { onApply } = setup();
+    fireEvent.change(screen.getByLabelText(/^protective stop$/i), {
+      target: { value: "atr" },
+    });
+    fireEvent.change(screen.getByLabelText(/atr stop length/i), {
+      target: { value: "14" },
+    });
+    fireEvent.change(screen.getByLabelText(/atr stop multiplier/i), {
+      target: { value: "2.5" },
+    });
+    const [pack, problems] = lastCall(onApply);
+    expect(problems).toEqual([]);
+    expect(pack.risk).toEqual({
+      max_account_pct: 25,
+      stop: { type: "atr", len: 14, mult: 2.5 },
+    });
+    expect(readOwnedStrategy(pack as Pack)?.stopKind).toBe("atr");
+  });
+
+  it("emits coinbase market and optional second market from the guided fields", () => {
+    const { onApply } = setup();
+    fireEvent.change(screen.getByLabelText(/^market venue$/i), {
+      target: { value: "coinbase" },
+    });
+    fireEvent.change(screen.getByLabelText(/^market pair/i), {
+      target: { value: "BTC-USD" },
+    });
+    fireEvent.change(screen.getByLabelText(/optional second pair/i), {
+      target: { value: "XXBTZUSD" },
+    });
+    fireEvent.change(screen.getByLabelText(/second venue/i), {
+      target: { value: "kraken" },
+    });
+    const [pack, problems] = lastCall(onApply);
+    expect(problems).toEqual([]);
+    expect(pack.markets).toEqual([
+      { venue: "coinbase", pair: "BTC-USD" },
+      { venue: "kraken", pair: "XXBTZUSD" },
+    ]);
+  });
+
+  it("emits all/any confirm nesting around the primary entry leaf", () => {
+    const { onApply } = setup();
+    fireEvent.change(screen.getByLabelText(/entry nesting/i), {
+      target: { value: "all" },
+    });
+    fireEvent.change(screen.getByLabelText(/entry confirm when/i), {
+      target: { value: ">" },
+    });
+    fireEvent.change(screen.getByLabelText(/entry confirm threshold/i), {
+      target: { value: "100" },
+    });
+    const [pack, problems] = lastCall(onApply);
+    expect(problems).toEqual([]);
+    expect(pack.entry).toEqual({
+      all: [
+        ["close", ">", INDICATOR_NAME],
+        ["close", ">", 100],
+      ],
+    });
+    expect(readOwnedStrategy(pack as Pack)?.entryNesting).toBe("all");
+  });
+
+  it("offers remaining guided indicator fns beyond sma and ema", () => {
+    const { onApply } = setup();
+    fireEvent.change(screen.getByLabelText(/indicator type/i), {
+      target: { value: "wma" },
+    });
+    const [pack] = lastCall(onApply);
+    expect(pack.indicators).toEqual({
+      [INDICATOR_NAME]: { fn: "wma", src: "close", len: 20 },
+    });
   });
 
   it("refuses to emit a pack for an invalid length and keeps reporting the problem", () => {

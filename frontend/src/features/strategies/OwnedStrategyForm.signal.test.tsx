@@ -202,10 +202,16 @@ describe("OwnedStrategyForm signal slice — verbatim source labels", () => {
 
   it("offers exactly the source average-kind keys with their verbatim labels", () => {
     setup();
-    expect(selectValues(/average type/i)).toEqual([...MOVING_AVERAGE_KINDS]);
-    expect(selectTexts(/average type/i)).toEqual([
+    expect(selectValues(/indicator type/i)).toEqual([...MOVING_AVERAGE_KINDS]);
+    expect(selectTexts(/indicator type/i)).toEqual([
       "SMA (simple)",
       "EMA (exponential)",
+      "WMA (weighted)",
+      "VWMA (volume-weighted)",
+      "Stdev (standard deviation)",
+      "ROC (rate of change)",
+      "Efficiency ratio",
+      "HMA (Hull)",
     ]);
   });
 });

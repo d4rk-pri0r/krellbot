@@ -55,13 +55,21 @@ def _generated_pack(fast_len: int, slow_len: int, fn: str) -> dict:
     """
     import json
 
+    # Full OwnedStrategyFormState (M6.4 expanded guided coverage). Missing
+    # venue/nesting/stopKind fields make buildOwnedStrategyPack return null.
     form_state = (
         "{"
-        f'"name":"Crossover plan","id":"crossover-plan","pair":"XXBTZUSD",'
+        f'"name":"Crossover plan","id":"crossover-plan",'
+        f'"venue":"kraken","pair":"XXBTZUSD",'
+        f'"secondVenue":"coinbase","secondPair":"",'
         f'"timeframe":"1h","recipe":"ma_cross","kind":"{fn}",'
         f'"fastLength":"{fast_len}","length":"{slow_len}",'
         f'"entryComparison":"crosses_above","exitComparison":"crosses_below",'
-        f'"maxAccountPct":"25","stopPct":"5"'
+        f'"entryNesting":"leaf","exitNesting":"leaf",'
+        f'"entryConfirmComparison":">","exitConfirmComparison":"<",'
+        f'"entryConfirmThreshold":"0","exitConfirmThreshold":"0",'
+        f'"maxAccountPct":"25","stopKind":"pct","stopPct":"5",'
+        f'"atrLen":"14","atrMult":"2"'
         "}"
     )
     module = (
