@@ -20,7 +20,7 @@ from pathlib import Path
 from krellbot.pack.model import Candle
 
 from .cache import write_cache
-from .candles import drop_forming, parse_timestamp
+from .candles import drop_forming, drop_future, parse_timestamp
 from .import_progress import (
     CHECKPOINT_EVERY,
     DEFAULT_MAX_RECORDS,
@@ -39,13 +39,18 @@ OHLC_TF_MINUTES: dict[str, int] = {"1h": 60, "4h": 240, "1d": 1440}
 OHLC_CAP = 720
 
 
-def fetch_kraken_ohlc(pair: str, tf: str) -> list[Candle]:
-    """Fetch one window of Kraken OHLC. Returns up to 720 closed candles.
+def fetch_kraken_ohlc(pair: str, tf: str, *, include_forming: bool = False) -> list[Candle]:
+    """Fetch one window of Kraken OHLC. Returns up to 720 candles.
 
-    Keep only bars closed at request start, before applying the 720-row tail.
-    The conservative cutoff cannot admit a still-forming response row merely
-    because it closes while the request is in flight. The 'last' cursor is
-    ignored; timestamp closure, not array position, determines eligibility.
+    Default (research / signal): keep only bars closed at request start,
+    before applying the 720-row tail. The conservative cutoff cannot admit a
+    still-forming response row merely because it closes while the request is
+    in flight. The 'last' cursor is ignored; timestamp closure, not array
+    position, determines eligibility.
+
+    ``include_forming=True`` (paper pricing): drop only future bars that have
+    not started yet, keeping the in-progress bar so paper fills can mark at
+    the forming close.
     """
     if tf not in OHLC_TF_MINUTES:
         raise ValueError(f"kraken: unsupported timeframe {tf!r}")
@@ -58,7 +63,10 @@ def fetch_kraken_ohlc(pair: str, tf: str) -> list[Candle]:
     with urlopen(req, timeout=20) as resp:
         body = resp.read()
     payload = json.loads(body.decode("utf-8"))
-    candles = parse_kraken_ohlc(payload, pair=pair, now_ms=cutoff_ms, tf=tf)
+    if include_forming:
+        candles = drop_future(parse_kraken_ohlc(payload, pair=pair), cutoff_ms)
+    else:
+        candles = parse_kraken_ohlc(payload, pair=pair, now_ms=cutoff_ms, tf=tf)
     return candles[-OHLC_CAP:]
 
 

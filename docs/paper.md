@@ -56,10 +56,12 @@ The tick engine:
 | Kraken   | 40 bps    | 5 bps    |
 | Coinbase | 120 bps   | 5 bps    |
 
-A market entry fills at `last_close * (1 + buy_slip)`. A market exit fills
-at `last_close * (1 - sell_slip)`. A stop fill lands at
-`min(stop, open) * (1 - sell_slip)` before any signal fill on the same
-bar.
+A market entry fills at `pricing_close * (1 + buy_slip)`. A market exit
+fills at `pricing_close * (1 - sell_slip)`. When the candle reader still
+includes the in-progress bar, `pricing_close` is that forming close (not
+only the last closed close); otherwise it is the latest closed close. A
+stop fill lands at `min(stop, open) * (1 - sell_slip)` before any signal
+fill on the same bar. Strategy evaluation still acts on closed bars only.
 
 ## State file
 

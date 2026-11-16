@@ -9,11 +9,14 @@ Costs match Phase 3:
     * Coinbase taker fee = 120 bps
     * Slippage = 5 bps each side
 
-A market entry fills at last_close * (1 + buy_slip). A stop fills on a
-closed bar whose low <= stop, at min(stop, open) * (1 - sell_slip), before
-any new signal fill. For Kraken paper, if a Kraken key is stored AND a
-validate transport was injected, the venue also POSTs AddOrder with
-validate=true; the validate POST never records a fill.
+A market entry fills at pricing_close * (1 + buy_slip). When the reader
+includes a forming bar and a timeframe is known, pricing prefers that
+forming close (not only the last closed close). A stop fills on a closed
+bar whose low <= stop, at min(stop, open) * (1 - sell_slip), before any
+new signal fill; a still-forming bar may also trigger the stop without
+advancing the closed-bar cursor. For Kraken paper, if a Kraken key is
+stored AND a validate transport was injected, the venue also POSTs
+AddOrder with validate=true; the validate POST never records a fill.
 
 The candle reader is injected. The CLI uses `--offline-candles <csv>` to
 populate the reader; tests inject a static list.
@@ -28,6 +31,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from krellbot import paths as kb_paths
+from krellbot.data.candles import TF_MS, drop_forming, is_forming, pricing_close
 from krellbot.data.instruments import InstrumentMetadataError
 from krellbot.venues.base import (
     Balance,
@@ -83,6 +87,7 @@ class PaperVenue:
         has_stored_key: bool = False,
         validate_transport: ValidateTransport | None = None,
         clock: Callable[[], float] | None = None,
+        timeframe_for_pair: Callable[[str], str] | None = None,
     ) -> None:
         self.venue = venue
         self._rules_provider = rules_provider
@@ -93,6 +98,7 @@ class PaperVenue:
         self._has_stored_key = has_stored_key
         self._validate_transport = validate_transport
         self._clock = clock
+        self._timeframe_for_pair = timeframe_for_pair
         self._state = self._load_state()
         self._cursor_migration_pending = False
         cursors = self._state.setdefault("last_applied_ts_by_pair", {})
@@ -411,8 +417,26 @@ class PaperVenue:
 
     # ---- internals ---------------------------------------------------------
 
+    def _now_ms(self) -> int:
+        return int((self._clock() if self._clock else _now_seconds()) * 1000)
+
+    def _timeframe(self, pair: str) -> str | None:
+        if self._timeframe_for_pair is None:
+            return None
+        tf = self._timeframe_for_pair(pair)
+        return tf if tf in TF_MS else None
+
     def _latest_bar_ts(self, pair: str) -> int:
+        """Latest closed bar timestamp when timeframe is known; else max ts.
+
+        Entry placement advances the stop cursor to this value so a still-
+        forming bar remains eligible for an intrabar stop check.
+        """
         candles = self._reader(self.venue, pair) or []
+        tf = self._timeframe(pair)
+        if tf is not None:
+            closed = drop_forming(candles, tf, self._now_ms())
+            return max((int(candle.ts_ms) for candle in closed), default=-1)
         return max((int(candle.ts_ms) for candle in candles), default=-1)
 
     def _advance_pair_cursor(self, pair: str, ts: int) -> None:
@@ -425,8 +449,10 @@ class PaperVenue:
         """Fill a resting stop when a newer closed bar's low touches it.
 
         The entry bar is marked applied when the entry is placed, so the stop
-        just attached cannot fire on that same bar. A later bar fires at
-        min(stop, open) * (1 - sell slippage), before any new signal fill.
+        just attached cannot fire on that same bar. A later closed bar fires
+        at min(stop, open) * (1 - sell slippage), before any new signal fill.
+        When timeframe is known, a still-forming bar may also trigger the
+        stop without advancing the closed-bar cursor.
         """
         pairs = {str(o.get("pair", "")) for o in self._state.get("open_orders", []) if o.get("stop_price") is not None}
         if not pairs:
@@ -434,8 +460,16 @@ class PaperVenue:
         changed = self._cursor_migration_pending
         for pair in sorted(pairs):
             candles = sorted(self._reader(self.venue, pair) or [], key=lambda candle: int(candle.ts_ms))
+            tf = self._timeframe(pair)
+            now_ms = self._now_ms()
+            if tf is not None:
+                closed = drop_forming(candles, tf, now_ms)
+                forming = [c for c in candles if is_forming(c, tf, now_ms)]
+            else:
+                closed = candles
+                forming = []
             last_applied = int(self._state["last_applied_ts_by_pair"][pair])
-            for candle in candles:
+            for candle in closed:
                 if int(candle.ts_ms) <= last_applied:
                     continue
                 last_applied = int(candle.ts_ms)
@@ -454,6 +488,22 @@ class PaperVenue:
                 )
                 fill = min(stop, Decimal(str(candle.open))) * (Decimal(1) - self._slip)
                 self.record_stop_fill(f"stop-{pair}-{candle.ts_ms}", qty, fill, pair=pair)
+            if self.resting_stop(pair) is not None and forming:
+                candle = forming[-1]
+                if int(candle.ts_ms) > last_applied:
+                    stop = self.resting_stop(pair)
+                    if stop is not None and Decimal(str(candle.low)) <= stop:
+                        qty = next(
+                            (
+                                Decimal(str(o.get("qty", "0")))
+                                for o in self._state["open_orders"]
+                                if o.get("pair") == pair and o.get("stop_price") is not None
+                            ),
+                            Decimal(0),
+                        )
+                        fill = min(stop, Decimal(str(candle.open))) * (Decimal(1) - self._slip)
+                        self.record_stop_fill(f"stop-{pair}-{candle.ts_ms}", qty, fill, pair=pair)
+                        changed = True
         if changed:
             self._persist()
 
@@ -461,7 +511,11 @@ class PaperVenue:
         candles = self._reader(self.venue, pair) or []
         if not candles:
             return None
-        return Decimal(str(candles[-1].close))
+        tf = self._timeframe(pair)
+        if tf is not None:
+            return pricing_close(candles, tf, self._now_ms())
+        ordered = sorted(candles, key=lambda c: int(c.ts_ms))
+        return Decimal(str(ordered[-1].close))
 
     def _load_state(self) -> dict[str, Any]:
         path = _state_path(self._home, self.venue)
