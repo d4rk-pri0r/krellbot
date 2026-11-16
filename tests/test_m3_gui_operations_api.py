@@ -679,16 +679,23 @@ def test_alerts_ack_known_returns_alert_body(home: Path, monkeypatch) -> None:
 
 
 def test_live_arm_and_live_order_are_still_403(home: Path, monkeypatch) -> None:
-    """No new live command is let through; only preflight and the
-    new typed commands are accepted."""
+    """live.arm is honest paper-only 403; other live.* stay blanket-disabled."""
+    from krellbot.release_policy import CODE_PAPER_ONLY_RELEASE, paper_only_message
+
     monkeypatch.delenv("KRELLBOT_ENABLE_LIVE", raising=False)
     token = _bootstrap_token(home)
     app = _build_app(home, bootstrap_token=token)
     csrf, session = _bootstrap(app, token)
 
-    for cmd in ("live.arm", "live.order"):
-        body = {"schema_version": "1", "command": cmd, "payload": {"venue": "kraken"}}
-        s, _h, payload, _c = _post_command(app, csrf, session, body)
-        assert s == 403, (cmd, s, payload)
-        decoded = json.loads(payload)
-        assert decoded.get("detail") == "live orders are disabled", decoded
+    arm_body = {"schema_version": "1", "command": "live.arm", "payload": {"venue": "kraken"}}
+    s, _h, payload, _c = _post_command(app, csrf, session, arm_body)
+    assert s == 403, (s, payload)
+    decoded = json.loads(payload)
+    assert decoded.get("code") == CODE_PAPER_ONLY_RELEASE, decoded
+    assert decoded.get("detail") == paper_only_message(), decoded
+
+    order_body = {"schema_version": "1", "command": "live.order", "payload": {"venue": "kraken"}}
+    s, _h, payload, _c = _post_command(app, csrf, session, order_body)
+    assert s == 403, (s, payload)
+    decoded = json.loads(payload)
+    assert decoded.get("detail") == "live orders are disabled", decoded

@@ -636,7 +636,9 @@ def test_commands_live_mode_in_arm_payload_returns_403_and_leaves_config(home: P
 
 
 def test_commands_live_command_name_returns_403_and_leaves_config(home: Path) -> None:
-    """A command whose name starts with ``live.`` is 403 without mutation."""
+    """``live.arm`` is 403 with the honest paper-only body and no mutation."""
+
+    from krellbot.release_policy import CODE_PAPER_ONLY_RELEASE, paper_only_message
 
     before = _config_bytes(home)
     token = _bootstrap_token(home)
@@ -663,6 +665,9 @@ def test_commands_live_command_name_returns_403_and_leaves_config(home: Path) ->
     ]
     status, _hdrs, body, _cookies = _post_json(app, "/api/v1/commands", payload, headers=headers)
     assert status == 403, (status, body)
+    refused = json.loads(body)
+    assert refused.get("code") == CODE_PAPER_ONLY_RELEASE, refused
+    assert refused.get("detail") == paper_only_message(), refused
     assert _config_bytes(home) == before
 
 
