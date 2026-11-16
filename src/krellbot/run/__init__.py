@@ -16,9 +16,10 @@
 
 `arm_pack` records a pack into config. It refuses a second pack on the same
 venue+pair, refuses if the cap cannot meet the pair's costmin (paper), and
-requires a typed "LIVE" confirmation the first time live is armed — unless
-``skip_confirm=True`` (web ``live.arm`` after an operator grant that already
-required typed LIVE).
+for live mode requires ``skip_confirm=True`` (web ``live.arm`` after an
+operator grant that already required typed LIVE). The CLI no longer prompts
+``Type LIVE to arm:`` on stdin — that path is refused with an honest
+workstation-grant message (M13.5).
 
 Money is `Decimal`. No HTTP. No secret in any log/journal line.
 """
@@ -96,11 +97,15 @@ def arm_pack(
 ) -> int:
     """Arm a pack on a venue. Returns 0 on success, 1 on refusal, 2 on bad input.
 
-    `confirm_fn` and `key_check` are injected so tests don't touch stdin or
-    the network. The CLI wires stdin and `cli_keys._probe`.
+    ``key_check`` is injected so tests don't touch the network. The CLI wires
+    ``cli_keys._probe`` for live attempts that still run key diagnostics.
 
-    ``skip_confirm`` is for the web ``live.arm`` path: when the operator
-    already typed LIVE to grant authorization, stdin is not prompted again.
+    ``skip_confirm`` is required for a successful live arm: the web
+    ``live.arm`` path sets it after the operator typed LIVE to grant
+    authorization. Without it, live arm refuses with a workstation-grant
+    message instead of blocking on ``Type LIVE to arm:`` stdin.
+    ``confirm_fn`` is retained for call-site compatibility and is never
+    invoked for live confirmation.
     """
     from krellbot.venues.base import WithdrawCapableError
 
@@ -207,21 +212,19 @@ def arm_pack(
         if cap <= Decimal(0):
             print("live arm requires a cap > 0", flush=True)
             return 1
-        # First live arm: typed confirmation — unless the web path already
-        # collected LIVE at grant time (skip_confirm).
+        # Live arm confirmation lives on the workstation grant (typed LIVE).
+        # Do not prompt CLI stdin ``Type LIVE to arm:`` (M13.5). Web
+        # ``live.arm`` passes skip_confirm=True after the grant check.
+        _ = confirm_fn  # retained for API compatibility; never used for LIVE
+        if not skip_confirm:
+            print(
+                "live arm uses the workstation grant; use live.arm in the web "
+                "workstation (CLI does not prompt Type LIVE)",
+                flush=True,
+            )
+            return 1
         if not config.live_first_armed:
-            if skip_confirm:
-                config.live_first_armed = True
-            else:
-                text = confirm_fn() if confirm_fn is not None else input("Type LIVE to arm: ")
-                if text.strip() != "LIVE":
-                    print("confirmation text was not 'LIVE'; not armed", flush=True)
-                    return 1
-                config.live_first_armed = True
-        else:
-            # Second-and-later live arm: no prompt. Tests inject must_not_call
-            # to prove it.
-            pass
+            config.live_first_armed = True
 
     if requires_license is None:
         requires_license = kb_catalog.requires_license_for(pack_path, home)

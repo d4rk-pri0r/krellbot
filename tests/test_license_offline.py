@@ -1,9 +1,10 @@
 """Offline license gating + live arm flow.
 
 The license cache is a local file only. There is no HTTP in any test. Live
-arming must be refused without KRELLBOT_ENABLE_LIVE=1, must read a typed
-"LIVE" confirmation the first time on an install, and must require a stored
-key whose permissions are trade-on / withdraw-off.
+arming must be refused without KRELLBOT_ENABLE_LIVE=1, must require a stored
+key whose permissions are trade-on / withdraw-off, and (after M13.5) must
+use ``skip_confirm=True`` for a successful live arm — CLI no longer prompts
+typed ``LIVE`` on stdin.
 """
 
 from __future__ import annotations
@@ -186,11 +187,13 @@ def test_live_disabled_without_env_flag(home, monkeypatch, fresh_keyring):
     assert rc == 1
 
 
-def test_live_arm_requires_withdraw_off_and_confirmation(home, monkeypatch, fresh_keyring):
-    """`arm --mode live` requires trade-yes, withdraw-no, and a "LIVE" prompt.
+def test_live_arm_requires_withdraw_off_and_skip_confirm(home, monkeypatch, fresh_keyring, capsys):
+    """Live arm requires trade-yes, withdraw-no, and web ``skip_confirm``.
 
-    First live arm reads stdin; if the text is not exactly "LIVE", it refuses.
-    A key that can withdraw is refused. A key that cannot trade is refused.
+    Without ``skip_confirm``, arm refuses with a workstation-grant message
+    (no Type LIVE stdin). A key that can withdraw is refused. A key that
+    cannot trade is refused. With ``skip_confirm`` and a trade-only key,
+    arm succeeds and confirm_fn is never called.
     """
     from fakes.live_grant import write_grant
 
@@ -202,16 +205,20 @@ def test_live_arm_requires_withdraw_off_and_confirmation(home, monkeypatch, fres
     secrets.store("kraken", "FAKEKEY", "FAKESECRET")
     pack_path = _write_pack(home)
 
-    # Wrong text on stdin → refused.
+    def must_not_call() -> str:
+        raise AssertionError("confirm_fn must not be called for live confirmation")
+
+    # Missing skip_confirm → refused without prompting.
     rc = arm_pack(
         pack_path,
         venue="kraken",
         mode="live",
         paper_balance=None,
-        confirm_fn=lambda: "yes",
+        confirm_fn=must_not_call,
         key_check=lambda venue: _KeyCheckResult(can_trade=True, can_withdraw=False),
     )
     assert rc == 1
+    assert "workstation grant" in capsys.readouterr().out.lower()
 
     # Withdraw on → refused.
     rc = arm_pack(
@@ -219,7 +226,8 @@ def test_live_arm_requires_withdraw_off_and_confirmation(home, monkeypatch, fres
         venue="kraken",
         mode="live",
         paper_balance=None,
-        confirm_fn=lambda: "LIVE",
+        skip_confirm=True,
+        confirm_fn=must_not_call,
         key_check=lambda venue: _KeyCheckResult(can_trade=True, can_withdraw=True),
     )
     assert rc == 1
@@ -230,34 +238,33 @@ def test_live_arm_requires_withdraw_off_and_confirmation(home, monkeypatch, fres
         venue="kraken",
         mode="live",
         paper_balance=None,
-        confirm_fn=lambda: "LIVE",
+        skip_confirm=True,
+        confirm_fn=must_not_call,
         key_check=lambda venue: _KeyCheckResult(can_trade=False, can_withdraw=False),
     )
     assert rc == 1
 
-    # All checks pass → armed (rc == 0). The first live arm on this install.
+    # All checks pass + skip_confirm → armed (rc == 0).
     rc = arm_pack(
         pack_path,
         venue="kraken",
         mode="live",
         paper_balance=None,
-        confirm_fn=lambda: "LIVE",
+        skip_confirm=True,
+        confirm_fn=must_not_call,
         key_check=lambda venue: _KeyCheckResult(can_trade=True, can_withdraw=False),
     )
     assert rc == 0
 
-    # Disarm, then re-arm live. The re-arm must NOT prompt. If confirm_fn
-    # is called again, it raises and we detect the regression.
+    # Disarm, then re-arm live with skip_confirm. confirm_fn must not run.
     disarm_pack(venue="kraken", pair="SUIUSD", home=home)
-
-    def must_not_call() -> str:
-        raise AssertionError("confirm_fn must not be called after the first live arm")
 
     rc = arm_pack(
         pack_path,
         venue="kraken",
         mode="live",
         paper_balance=None,
+        skip_confirm=True,
         confirm_fn=must_not_call,
         key_check=lambda venue: _KeyCheckResult(can_trade=True, can_withdraw=False),
     )

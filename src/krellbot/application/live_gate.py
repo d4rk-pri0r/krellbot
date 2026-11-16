@@ -19,7 +19,8 @@ This module is the ONLY place that reads or writes the authorization
 record. The workstation grants and revokes it through
 :func:`grant_authorization` / :func:`revoke_authorization` behind a typed
 ``LIVE`` confirmation. Web ``live.arm`` uses :func:`check_web_live_arm`;
-when that check passes, stdin ``Type LIVE to arm:`` is not required again.
+when that check passes, ``arm_pack(..., skip_confirm=True)`` arms without
+CLI stdin ``Type LIVE to arm:`` (that prompt path is removed — M13.5).
 Promotion to live is owner-deferred in this build, so ``check_promotion``
 always refuses with ``CODE_PROMOTION_DEFERRED`` even when the rest of the
 gate would let the send through.
