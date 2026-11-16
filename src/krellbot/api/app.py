@@ -2872,13 +2872,20 @@ def create_app(
         try:
             row = pack_library_app.install_from_catalogue(s.home, pack_id)
         except pack_library_app.InstallRefused as exc:
+            # Closed safe messages only — never echo exception text
+            # (paths / pack ids from the refusal) to the wire.
             status = 404 if exc.code == "pack_not_found" else 403
+            safe = {
+                "pack_not_found": "catalogue entry not found",
+                "activation_required": "activation required for paid packs",
+                "invalid_request": "pack_id is required",
+            }.get(exc.code, "install refused")
             return JSONResponse(
                 {
                     "schema_version": SCHEMA_VERSION,
                     "ok": False,
                     "code": exc.code,
-                    "message": str(exc),
+                    "message": safe,
                 },
                 status_code=status,
             )
