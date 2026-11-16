@@ -14,8 +14,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AppHome } from "./AppHome";
+import type { VersionClient } from "../api/version";
 import type { KeysClient } from "../features/keys/client";
+import { AppHome } from "./AppHome";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +39,17 @@ function absentKeysClient(): KeysClient {
   };
 }
 
+function previewVersionClient(): VersionClient {
+  return {
+    getVersion: vi.fn().mockResolvedValue({
+      schema_version: "1",
+      version: "0.9.7",
+      channel: "prerelease",
+      artifacts_signed: false,
+    }),
+  };
+}
+
 function readStylesheet(): string {
   return readFileSync(join(here, "AppHome.signal.css"), "utf8");
 }
@@ -56,7 +68,13 @@ const CARD_TESTIDS = [
 
 describe("home card layout at 1440×900", () => {
   it("wraps each card's copy in a single stacked body column", () => {
-    render(<AppHome onNavigate={() => {}} keysClient={absentKeysClient()} />);
+    render(
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={absentKeysClient()}
+        versionClient={previewVersionClient()}
+      />,
+    );
     for (const testid of CARD_TESTIDS) {
       const card = screen.getByTestId(testid);
       expect(card.tagName).toBe("BUTTON");

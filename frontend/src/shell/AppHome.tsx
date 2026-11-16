@@ -1,4 +1,5 @@
 import { useRef, useState, type JSX } from "react";
+import type { VersionClient } from "../api/version";
 import { BrandMark } from "../components/brand/BrandMark";
 import { KeysOnboardingPanel } from "../features/keys/KeysOnboardingPanel";
 import {
@@ -6,6 +7,7 @@ import {
   type KeysClient,
 } from "../features/keys/client";
 import type { ReconnectIssue } from "../session";
+import { AboutPanel } from "./AboutPanel";
 import type { View } from "./Navigation";
 import { ReconnectQr } from "./ReconnectQr";
 import "./AppHome.signal.css";
@@ -102,6 +104,8 @@ type AppHomeProps = {
   onRecoverSession?: () => Promise<{ ok: boolean; error?: string }>;
   /** Injectable keys client; defaults to the loopback HTTP client. */
   keysClient?: KeysClient;
+  /** Injectable version/about client; defaults to the loopback HTTP client. */
+  versionClient?: VersionClient;
   /**
    * Primary session: mint a short-lived reconnect token/QR for a second
    * browser. Absent when the local session is not ready.
@@ -119,6 +123,7 @@ export function AppHome({
   sessionFailed = false,
   onRecoverSession,
   keysClient,
+  versionClient,
   onIssueReconnect,
   onRedeemReconnect,
 }: AppHomeProps): JSX.Element {
@@ -553,6 +558,17 @@ export function AppHome({
             >
               See operations →
             </button>
+          </section>
+
+          <section
+            className="app-home__rail"
+            aria-label="About this build"
+            data-testid="app-home-about-rail"
+          >
+            <AboutPanel
+              client={versionClient}
+              enabled={!sessionPending}
+            />
           </section>
         </aside>
       </div>

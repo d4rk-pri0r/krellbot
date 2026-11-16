@@ -9,9 +9,10 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { VersionClient } from "../api/version";
+import type { KeysClient, KeysStatus } from "../features/keys/client";
 import { AppHome } from "./AppHome";
 import type { View } from "./Navigation";
-import type { KeysClient, KeysStatus } from "../features/keys/client";
 
 afterEach(() => {
   cleanup();
@@ -34,6 +35,18 @@ function fakeKeysClient(over: Partial<KeysClient> = {}): KeysClient {
     getStatus: vi.fn().mockResolvedValue(ABSENT_KEYS),
     probeAndStore: vi.fn(),
     remove: vi.fn(),
+    ...over,
+  };
+}
+
+function fakeVersionClient(over: Partial<VersionClient> = {}): VersionClient {
+  return {
+    getVersion: vi.fn().mockResolvedValue({
+      schema_version: "1",
+      version: "0.9.7",
+      channel: "prerelease",
+      artifacts_signed: false,
+    }),
     ...over,
   };
 }
@@ -74,6 +87,7 @@ function renderHome(
   props: {
     onNavigate?: (view: View) => void;
     keysClient?: KeysClient;
+    versionClient?: VersionClient;
     sessionPending?: boolean;
     sessionFailed?: boolean;
   } = {},
@@ -83,6 +97,7 @@ function renderHome(
     <AppHome
       onNavigate={props.onNavigate ?? (() => {})}
       keysClient={keysClient}
+      versionClient={props.versionClient ?? fakeVersionClient()}
       sessionPending={props.sessionPending}
       sessionFailed={props.sessionFailed}
     />,
@@ -189,7 +204,11 @@ describe("AppHome — application overview", () => {
 
   it("never fabricates live readiness, profit or sign-in marketing", async () => {
     const { container } = render(
-      <AppHome onNavigate={() => {}} keysClient={fakeKeysClient()} />,
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={fakeKeysClient()}
+        versionClient={fakeVersionClient()}
+      />,
     );
     await screen.findByTestId("keys-form-kraken");
     const html = container.innerHTML;
@@ -210,7 +229,11 @@ describe("AppHome — application overview", () => {
 
   it("does not fabricate financial or market data when no key is stored", async () => {
     const { container } = render(
-      <AppHome onNavigate={() => {}} keysClient={fakeKeysClient()} />,
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={fakeKeysClient()}
+        versionClient={fakeVersionClient()}
+      />,
     );
     await screen.findByTestId("keys-form-kraken");
     const html = container.innerHTML;
@@ -231,14 +254,37 @@ describe("AppHome — application overview", () => {
     expect(screen.queryByTestId("keys-balances-coinbase")).toBeNull();
   });
 
+  it("surfaces the engine version and prerelease channel on About", async () => {
+    renderHome();
+    expect((await screen.findByTestId("app-home-about-version")).textContent).toBe(
+      "v0.9.7",
+    );
+    expect(screen.getByTestId("app-home-about-channel").textContent).toBe(
+      "Prerelease",
+    );
+    expect(screen.getByTestId("app-home-about-signing").textContent).toBe(
+      "Unsigned artifacts",
+    );
+  });
+
   it("shows the session note only while the local session is starting", async () => {
     const keysClient = fakeKeysClient();
+    const versionClient = fakeVersionClient();
     const { rerender } = render(
-      <AppHome onNavigate={() => {}} keysClient={keysClient} />,
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={keysClient}
+        versionClient={versionClient}
+      />,
     );
     expect(screen.queryByTestId("app-home-session")).toBeNull();
     rerender(
-      <AppHome onNavigate={() => {}} keysClient={keysClient} sessionPending />,
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={keysClient}
+        versionClient={versionClient}
+        sessionPending
+      />,
     );
     expect(screen.getByTestId("app-home-session").textContent).toMatch(
       /starting the local session/i,
@@ -249,6 +295,7 @@ describe("AppHome — application overview", () => {
       <AppHome
         onNavigate={() => {}}
         keysClient={keysClient}
+        versionClient={versionClient}
         sessionPending={false}
       />,
     );

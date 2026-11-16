@@ -1,0 +1,59 @@
+/*
+ * About / version rail — Signal (KRELL-SIGNAL-20261010).
+ * Nested under .app-home__rail; tokens only.
+ */
+
+.kbot-about {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-about__title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kbot-about__copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.kbot-about__copy--caution {
+  color: var(--caution-text);
+}
+
+.kbot-about__facts {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.kbot-about__row {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.kbot-about__row dt {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kbot-about__row dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
