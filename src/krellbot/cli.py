@@ -1131,10 +1131,10 @@ def _build_paper_rules_provider(home, venue: str):
          protection run, so a non-SUI pair never silently inherits the
          SUIUSD minima.
 
-    Paper ticks call `_ensure_paper_instrument_rules` first so the wave
-    Kraken BTC/USD pair (and any other armed pair) is written into
-    `$KRELLBOT_HOME/run/instrument-rules.json` from public metadata
-    before this provider runs.
+    Paper ticks call `_ensure_paper_instrument_rules` first so wave
+    Kraken ``XXBTZUSD`` / Coinbase ``BTC-USD`` (and any other armed pair)
+    are written into `$KRELLBOT_HOME/run/instrument-rules.json` from
+    public metadata before this provider runs.
     """
     from krellbot.data.instruments import (
         InstrumentMetadataError,

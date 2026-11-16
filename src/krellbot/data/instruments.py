@@ -23,10 +23,10 @@ labeled cache, not production truth.
 
 Production paper ticks call `ensure_instrument_rules` before evaluating
 entries so armed pairs (including the wave Kraken BTC/USD spelling
-``XXBTZUSD`` used by the owned-strategy paper arm default) are fetched
-from public AssetPairs / product metadata and written into that snapshot.
-Without that write, a non-SUI paper arm journals ``metadata_refusal`` for
-missing rules forever.
+``XXBTZUSD`` and the wave Coinbase BTC/USD product ``BTC-USD``) are
+fetched from public AssetPairs / product metadata and written into that
+snapshot. Without that write, a non-SUI paper arm journals
+``metadata_refusal`` for missing rules forever.
 
 Stable refusal codes:
 
@@ -53,6 +53,10 @@ from krellbot.venues.base import PairRules
 # Wave Kraken BTC/USD spelling used by the owned-strategy paper arm default
 # (`frontend` `DEFAULT_PAIR`). AssetPairs also accepts altname ``XBTUSD``.
 PAPER_WAVE_KRAKEN_BTC_USD = "XXBTZUSD"
+
+# Wave Coinbase BTC/USD product id for the Coinbase paper-arm path (M11.2).
+# Advanced Trade public product metadata uses this exact ``product_id``.
+PAPER_WAVE_COINBASE_BTC_USD = "BTC-USD"
 
 SCHEMA_VERSION = "1"
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h

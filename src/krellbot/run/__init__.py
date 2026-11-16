@@ -1103,8 +1103,18 @@ def _now_seconds() -> float:
 
 
 def _base_quote(pair: str) -> tuple[str, str]:
+    """Split a venue pair into ``(base, quote)``.
+
+    Matches ``venues.paper._base_quote`` / ``application.paper.base_quote``:
+    Coinbase ``BASE-QUOTE`` product ids (wave paper arm ``BTC-USD``) and
+    Kraken-style compact pairs that strip a trailing ``USD``.
+    """
     if not pair:
         return ("", "")
+    if "-" in pair:
+        base, _, quote = pair.partition("-")
+        if base and quote and "-" not in quote:
+            return base, quote
     if pair.endswith("USD"):
         return pair[: -len("USD")], "USD"
     if len(pair) >= 6:
