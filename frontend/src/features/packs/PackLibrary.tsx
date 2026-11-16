@@ -5,17 +5,32 @@ import {
   useMemo,
   useRef,
   useState,
+  type FormEvent,
   type JSX,
 } from "react";
-import type { PackLibraryClient, PackRow } from "./client";
+import type {
+  ActivationRedeemResult,
+  PackLibraryClient,
+  PackRow,
+} from "./client";
 import { PackLibraryHttpError } from "./client";
 import "./PackLibrary.signal.css";
 
-export type { PackLibraryClient, PackRow, PackRollbackResult } from "./client";
+export type {
+  ActivationRedeemResult,
+  ActivationRedeemStatus,
+  PackLibraryClient,
+  PackRow,
+  PackRollbackResult,
+} from "./client";
 
 export type PackLibraryProps = {
   client: PackLibraryClient;
 };
+
+function isRedeemSuccess(result: ActivationRedeemResult): boolean {
+  return result.status === "paid" || result.status === "grace";
+}
 
 const BUCKET_LABELS: Record<PackRow["bucket"], string> = {
   deployed: "Deployed",
@@ -65,8 +80,14 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
   const copySeq = useRef(0);
   const [query, setQuery] = useState("");
   const [bucketFilter, setBucketFilter] = useState<string>(ALL_BUCKETS);
+  const [activationKey, setActivationKey] = useState("");
+  const [redeemPending, setRedeemPending] = useState(false);
+  const [redeemFeedback, setRedeemFeedback] = useState<string | null>(null);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
   const requestSeq = useRef(0);
+  const redeemInFlight = useRef(false);
   const copyTimer = useRef<number | null>(null);
+  const redeemKeyId = useId();
 
   useEffect(() => {
     const seq = (requestSeq.current += 1);
@@ -119,6 +140,65 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
         }
       });
   }, [client]);
+
+  const refreshLibraryAfterRedeem = useCallback(async (): Promise<void> => {
+    const seq = (requestSeq.current += 1);
+    setRefreshing(true);
+    setError(null);
+    try {
+      const next = await client.listInstalled();
+      if (seq !== requestSeq.current) return;
+      setRows(next);
+      setError(null);
+    } catch (err: unknown) {
+      if (seq !== requestSeq.current) return;
+      setError(failureMessage(err));
+    } finally {
+      if (seq === requestSeq.current) {
+        setRefreshing(false);
+      }
+    }
+  }, [client]);
+
+  const handleRedeem = useCallback(
+    async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+      event.preventDefault();
+      if (redeemInFlight.current) {
+        return;
+      }
+      const trimmed = activationKey.trim();
+      if (trimmed === "") {
+        setRedeemFeedback(null);
+        setRedeemError("Enter an activation key to redeem.");
+        return;
+      }
+      redeemInFlight.current = true;
+      setRedeemPending(true);
+      setRedeemFeedback(null);
+      setRedeemError(null);
+      try {
+        const result = await client.redeemActivation(trimmed);
+        // Never surface the submitted key; only the closed server message.
+        if (isRedeemSuccess(result)) {
+          setActivationKey("");
+          setRedeemFeedback(result.message);
+          await refreshLibraryAfterRedeem();
+        } else {
+          setRedeemError(result.message);
+        }
+      } catch (err: unknown) {
+        if (err instanceof PackLibraryHttpError) {
+          setRedeemError(`Activation redeem failed (HTTP ${err.status})`);
+        } else {
+          setRedeemError("Activation redeem failed");
+        }
+      } finally {
+        redeemInFlight.current = false;
+        setRedeemPending(false);
+      }
+    },
+    [activationKey, client, refreshLibraryAfterRedeem],
+  );
 
   const handleCopy = useCallback((pack_id: string): void => {
     const seq = (copySeq.current += 1);
@@ -231,6 +311,66 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
           {refreshing ? "Reading installed packs…" : ""}
         </p>
       </header>
+
+      <form
+        className="kbot-pack-library__redeem"
+        data-testid="pack-library-redeem"
+        onSubmit={(event) => {
+          void handleRedeem(event);
+        }}
+      >
+        <div className="kbot-pack-library__redeem-copy">
+          <h3 className="kbot-pack-library__redeem-title">Redeem activation key</h3>
+          <p className="kbot-pack-library__redeem-helper">
+            Redeem a signed activation key to refresh entitlements and the pack
+            library on this machine. The key is never stored or echoed.
+          </p>
+        </div>
+        <label className="kbot-pack-library__redeem-label" htmlFor={redeemKeyId}>
+          <span className="kbot-pack-library__redeem-caption">Activation key</span>
+          <input
+            id={redeemKeyId}
+            type="password"
+            className="kbot-pack-library__redeem-input"
+            data-testid="pack-library-redeem-input"
+            autoComplete="off"
+            spellCheck={false}
+            value={activationKey}
+            disabled={redeemPending}
+            onChange={(event) => {
+              setActivationKey(event.target.value);
+            }}
+          />
+        </label>
+        <button
+          type="submit"
+          className="kbot-pack-library__redeem-submit"
+          data-testid="pack-library-redeem-submit"
+          disabled={redeemPending}
+          aria-disabled={redeemPending}
+          aria-busy={redeemPending}
+        >
+          {redeemPending ? "Redeeming…" : "Redeem"}
+        </button>
+        {redeemFeedback !== null ? (
+          <p
+            className="kbot-pack-library__redeem-feedback"
+            role="status"
+            data-testid="pack-library-redeem-feedback"
+          >
+            {redeemFeedback}
+          </p>
+        ) : null}
+        {redeemError !== null ? (
+          <p
+            className="kbot-pack-library__redeem-error"
+            role="alert"
+            data-testid="pack-library-redeem-error"
+          >
+            {redeemError}
+          </p>
+        ) : null}
+      </form>
 
       {rows !== null && rows.length > 0 ? (
         <div className="kbot-pack-library__toolbar">

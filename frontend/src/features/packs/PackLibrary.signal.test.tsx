@@ -9,7 +9,7 @@
  *  - a clear affordance that restores the actual loaded inventory;
  *  - "no matches" distinct from a server-empty library and from load errors;
  *  - exact pack_id copy still works after filtering, with truthful feedback;
- *  - no rollback (or any other mutating client call) is ever made.
+ *  - no rollback during discovery/query; activation redeem is a separate form.
  */
 
 import {
@@ -33,6 +33,12 @@ function makeClient(overrides: Partial<PackLibraryClient> = {}): PackLibraryClie
   return {
     listInstalled: vi.fn(async () => [] as PackRow[]),
     rollback: vi.fn(async () => ({ ok: true })),
+    redeemActivation: vi.fn(async () => ({
+      schema_version: "1",
+      status: "dead" as const,
+      message: "license not accepted",
+      catalog_downloaded: false,
+    })),
     ...overrides,
   };
 }
@@ -361,11 +367,18 @@ describe("PackLibrary copy after filtering", () => {
   });
 });
 
-describe("PackLibrary read-only discovery", () => {
-  it("never calls rollback while searching, filtering or clearing", async () => {
+describe("PackLibrary discovery stays non-mutating except redeem", () => {
+  it("never calls rollback or redeem while searching, filtering or clearing", async () => {
     const rollback = vi.fn(async () => ({ ok: true }));
+    const redeemActivation = vi.fn(async () => ({
+      schema_version: "1",
+      status: "dead" as const,
+      message: "license not accepted",
+      catalog_downloaded: false,
+    }));
     const client = makeClient({
       rollback,
+      redeemActivation,
       listInstalled: vi.fn(async () => INVENTORY),
     });
     render(<PackLibrary client={client} />);
@@ -381,9 +394,11 @@ describe("PackLibrary read-only discovery", () => {
     fireEvent.click(screen.getByTestId("pack-library-copy-krell.alpha.momentum"));
 
     expect(rollback).not.toHaveBeenCalled();
+    expect(redeemActivation).not.toHaveBeenCalled();
+    expect(screen.getByTestId("pack-library-redeem")).toBeDefined();
     const panelText =
       screen.getByTestId("pack-library-panel").textContent ?? "";
-    expect(panelText).not.toMatch(/\b(install|catalog|entitle|rollback)\b/i);
+    expect(panelText).not.toMatch(/\b(install|catalog|rollback)\b/i);
   });
 
   it("reports how many loaded records the current view shows", async () => {

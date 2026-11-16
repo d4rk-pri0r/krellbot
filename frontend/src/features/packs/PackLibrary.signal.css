@@ -46,6 +46,95 @@
   flex: 0 0 auto;
 }
 
+/* ============ activation redeem (POST /api/v1/activation/redeem) ============ */
+
+.kbot-pack-library__redeem {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--navy) 55%, var(--surface));
+  min-width: 0;
+}
+
+.kbot-pack-library__redeem-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kbot-pack-library__redeem-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-pack-library__redeem-helper {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.kbot-pack-library__redeem-label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kbot-pack-library__redeem-caption {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.kbot-pack-library__redeem-input {
+  width: min(420px, 100%);
+  min-width: 0;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--navy);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.kbot-pack-library__redeem-submit {
+  justify-self: start;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--sage) 55%, var(--line));
+  background: var(--action-primary-bg, color-mix(in srgb, var(--sage) 28%, var(--panel)));
+  color: var(--action-primary-text, var(--text));
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.kbot-pack-library__redeem-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-pack-library__redeem-feedback {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.kbot-pack-library__redeem-error {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--danger-text);
+}
+
 /* ============ toolbar: local search / bucket filter / clear ============ */
 
 .kbot-pack-library__toolbar {
@@ -293,8 +382,14 @@
      their :not() attribute arguments) regardless of bundle order. */
   .kbot-pack-library .kbot-pack-library__toolbar label.kbot-pack-library__search-label > input.kbot-pack-library__search,
   .kbot-pack-library .kbot-pack-library__toolbar label.kbot-pack-library__bucket-label > select.kbot-pack-library__bucket-select,
-  .kbot-pack-library .kbot-pack-library__toolbar button.kbot-pack-library__clear {
+  .kbot-pack-library .kbot-pack-library__toolbar button.kbot-pack-library__clear,
+  .kbot-pack-library .kbot-pack-library__redeem input.kbot-pack-library__redeem-input,
+  .kbot-pack-library .kbot-pack-library__redeem button.kbot-pack-library__redeem-submit {
     min-height: 44px;
+  }
+
+  .kbot-pack-library__redeem-input {
+    width: 100%;
   }
 
   .kbot-pack-library__count {

@@ -19,6 +19,12 @@ function makeClient(overrides: Partial<PackLibraryClient> = {}): PackLibraryClie
   return {
     listInstalled: vi.fn(async () => [] as PackRow[]),
     rollback: vi.fn(async () => ({ ok: true })),
+    redeemActivation: vi.fn(async () => ({
+      schema_version: "1",
+      status: "dead" as const,
+      message: "license not accepted",
+      catalog_downloaded: false,
+    })),
     ...overrides,
   };
 }

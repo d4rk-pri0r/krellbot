@@ -19,6 +19,12 @@ function makeClient(overrides: Partial<PackLibraryClient> = {}): PackLibraryClie
   return {
     listInstalled: vi.fn(async () => [] as PackRow[]),
     rollback: vi.fn(async () => ({ ok: true })),
+    redeemActivation: vi.fn(async () => ({
+      schema_version: "1",
+      status: "dead" as const,
+      message: "license not accepted",
+      catalog_downloaded: false,
+    })),
     ...overrides,
   };
 }
@@ -261,8 +267,8 @@ describe("PackLibrary click-to-copy pack_id", () => {
   });
 });
 
-describe("PackLibrary is read-only", () => {
-  it("renders no install, catalog, entitlement, or rollback control", async () => {
+describe("PackLibrary inventory rows stay non-mutating", () => {
+  it("keeps row actions to copy only — no install, catalog, or rollback control", async () => {
     const rollback = vi.fn(async () => ({ ok: true }));
     const rows = [
       row("alpha", "deployed", {
@@ -285,6 +291,112 @@ describe("PackLibrary is read-only", () => {
     expect(rollback).not.toHaveBeenCalled();
     const panelText =
       screen.getByTestId("pack-library-panel").textContent ?? "";
-    expect(panelText).not.toMatch(/\b(install|catalog|entitle|rollback)\b/i);
+    expect(panelText).not.toMatch(/\b(install|catalog|rollback)\b/i);
+    expect(screen.getByTestId("pack-library-redeem")).toBeDefined();
+  });
+});
+
+describe("PackLibrary activation redeem refreshes entitlements", () => {
+  it("POSTs redeem then reloads the pack library on paid success", async () => {
+    const listInstalled = vi
+      .fn<() => Promise<PackRow[]>>()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([row("entitled-pack", "purchased")]);
+    const redeemActivation = vi.fn(async () => ({
+      schema_version: "1",
+      status: "paid" as const,
+      message: "license verified",
+      catalog_downloaded: true,
+    }));
+    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} />);
+    await screen.findByTestId("pack-library-empty");
+
+    fireEvent.change(screen.getByTestId("pack-library-redeem-input"), {
+      target: { value: "FAKE-ACTIVATION-KEY" },
+    });
+    fireEvent.click(screen.getByTestId("pack-library-redeem-submit"));
+
+    await waitFor(() => {
+      expect(redeemActivation).toHaveBeenCalledWith("FAKE-ACTIVATION-KEY");
+    });
+    await waitFor(() => {
+      expect(listInstalled).toHaveBeenCalledTimes(2);
+    });
+    await screen.findByTestId("pack-library-row-entitled-pack");
+    expect(screen.getByTestId("pack-library-redeem-feedback").textContent).toBe(
+      "license verified",
+    );
+    expect(
+      (screen.getByTestId("pack-library-redeem-input") as HTMLInputElement).value,
+    ).toBe("");
+    const panelText =
+      screen.getByTestId("pack-library-panel").textContent ?? "";
+    expect(panelText).not.toContain("FAKE-ACTIVATION-KEY");
+  });
+
+  it("refreshes the library on grace success as well", async () => {
+    const listInstalled = vi
+      .fn<() => Promise<PackRow[]>>()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([row("grace-pack", "purchased")]);
+    const redeemActivation = vi.fn(async () => ({
+      schema_version: "1",
+      status: "grace" as const,
+      message: "license in grace period",
+      catalog_downloaded: true,
+    }));
+    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} />);
+    await screen.findByTestId("pack-library-empty");
+    fireEvent.change(screen.getByTestId("pack-library-redeem-input"), {
+      target: { value: "grace-key" },
+    });
+    fireEvent.click(screen.getByTestId("pack-library-redeem-submit"));
+    await waitFor(() => {
+      expect(listInstalled).toHaveBeenCalledTimes(2);
+    });
+    await screen.findByTestId("pack-library-row-grace-pack");
+  });
+
+  it("surfaces a closed refusal without refreshing when redeem is dead", async () => {
+    const listInstalled = vi.fn(async () => [] as PackRow[]);
+    const redeemActivation = vi.fn(async () => ({
+      schema_version: "1",
+      status: "dead" as const,
+      message: "license not accepted",
+      catalog_downloaded: false,
+    }));
+    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} />);
+    await screen.findByTestId("pack-library-empty");
+    fireEvent.change(screen.getByTestId("pack-library-redeem-input"), {
+      target: { value: "bad-key" },
+    });
+    fireEvent.click(screen.getByTestId("pack-library-redeem-submit"));
+    await waitFor(() => {
+      expect(screen.getByTestId("pack-library-redeem-error").textContent).toBe(
+        "license not accepted",
+      );
+    });
+    expect(listInstalled).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("pack-library-redeem-feedback")).toBeNull();
+  });
+
+  it("reports HTTP gate failures without echoing the key", async () => {
+    const redeemActivation = vi.fn(async () => {
+      throw new PackLibraryHttpError(403, "activation redeem failed: 403");
+    });
+    render(<PackLibrary client={makeClient({ redeemActivation })} />);
+    await screen.findByTestId("pack-library-empty");
+    fireEvent.change(screen.getByTestId("pack-library-redeem-input"), {
+      target: { value: "secret-key-xyz" },
+    });
+    fireEvent.click(screen.getByTestId("pack-library-redeem-submit"));
+    await waitFor(() => {
+      expect(screen.getByTestId("pack-library-redeem-error").textContent).toBe(
+        "Activation redeem failed (HTTP 403)",
+      );
+    });
+    const panelText =
+      screen.getByTestId("pack-library-panel").textContent ?? "";
+    expect(panelText).not.toContain("secret-key-xyz");
   });
 });

@@ -25,6 +25,16 @@ export type PackRollbackResult = {
   message?: string;
 };
 
+/** Closed outcome from ``POST /api/v1/activation/redeem`` (never echoes a key). */
+export type ActivationRedeemStatus = "paid" | "grace" | "dead" | "unreachable";
+
+export type ActivationRedeemResult = {
+  schema_version: string;
+  status: ActivationRedeemStatus;
+  message: string;
+  catalog_downloaded: boolean;
+};
+
 export class PackLibraryHttpError extends Error {
   readonly status: number;
 
@@ -38,6 +48,8 @@ export class PackLibraryHttpError extends Error {
 export type PackLibraryClient = {
   listInstalled(): Promise<PackRow[]>;
   rollback(pack_id: string): Promise<PackRollbackResult>;
+  /** Redeem an activation key; on paid/grace the caller refreshes the library. */
+  redeemActivation(key: string): Promise<ActivationRedeemResult>;
 };
 
 async function getJson(url: string): Promise<PackRow[]> {
@@ -107,6 +119,50 @@ async function postRollback(pack_id: string): Promise<PackRollbackResult> {
   return ok ? { ok: true } : { ok: false, ...(message !== undefined ? { message } : {}) };
 }
 
+const REDEEM_STATUSES = new Set<ActivationRedeemStatus>([
+  "paid",
+  "grace",
+  "dead",
+  "unreachable",
+]);
+
+function adaptRedeemResult(raw: unknown): ActivationRedeemResult {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  const statusRaw = typeof body.status === "string" ? body.status : "dead";
+  const status: ActivationRedeemStatus = REDEEM_STATUSES.has(
+    statusRaw as ActivationRedeemStatus,
+  )
+    ? (statusRaw as ActivationRedeemStatus)
+    : "dead";
+  return {
+    schema_version:
+      typeof body.schema_version === "string" ? body.schema_version : "1",
+    status,
+    message:
+      typeof body.message === "string" ? body.message : "license not accepted",
+    catalog_downloaded: body.catalog_downloaded === true,
+  };
+}
+
+async function postRedeemActivation(key: string): Promise<ActivationRedeemResult> {
+  const response = await fetch("/api/v1/activation/redeem", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: JSON.stringify({ key }),
+  });
+  if (!response.ok) {
+    throw new PackLibraryHttpError(
+      response.status,
+      `activation redeem failed: ${response.status}`,
+    );
+  }
+  return adaptRedeemResult(await response.json());
+}
+
 export function createHttpClient(): PackLibraryClient {
   return {
     listInstalled(): Promise<PackRow[]> {
@@ -114,6 +170,9 @@ export function createHttpClient(): PackLibraryClient {
     },
     rollback(pack_id: string): Promise<PackRollbackResult> {
       return postRollback(pack_id);
+    },
+    redeemActivation(key: string): Promise<ActivationRedeemResult> {
+      return postRedeemActivation(key);
     },
   };
 }

@@ -132,6 +132,96 @@ describe("packs client listInstalled", () => {
   });
 });
 
+describe("packs client redeemActivation", () => {
+  it("POSTs /api/v1/activation/redeem with credentials, CSRF, and key body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        status: "paid",
+        message: "license verified",
+        catalog_downloaded: true,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const csrfMock = vi
+      .spyOn(await import("../../session"), "getCsrf")
+      .mockReturnValue("csrf-redeem-1");
+    try {
+      const result = await createHttpClient().redeemActivation("FAKE-KEY");
+      expect(result).toEqual({
+        schema_version: "1",
+        status: "paid",
+        message: "license verified",
+        catalog_downloaded: true,
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("/api/v1/activation/redeem");
+      expect(init.method).toBe("POST");
+      expect(init.credentials).toBe("include");
+      expect((init.headers as Record<string, string>)["X-Krellbot-CSRF"]).toBe(
+        "csrf-redeem-1",
+      );
+      expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
+        "application/json",
+      );
+      expect(JSON.parse(String(init.body))).toEqual({ key: "FAKE-KEY" });
+    } finally {
+      csrfMock.mockRestore();
+    }
+  });
+
+  it("adapts grace and dead outcomes without inventing success", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schema_version: "1",
+          status: "grace",
+          message: "license in grace period",
+          catalog_downloaded: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schema_version: "1",
+          status: "dead",
+          message: "license not accepted",
+          catalog_downloaded: false,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createHttpClient();
+    expect(await client.redeemActivation("a")).toEqual({
+      schema_version: "1",
+      status: "grace",
+      message: "license in grace period",
+      catalog_downloaded: true,
+    });
+    expect(await client.redeemActivation("b")).toEqual({
+      schema_version: "1",
+      status: "dead",
+      message: "license not accepted",
+      catalog_downloaded: false,
+    });
+  });
+
+  it.each([403, 500])(
+    "throws PackLibraryHttpError carrying status %s on non-2xx",
+    async (status) => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, status));
+      vi.stubGlobal("fetch", fetchMock);
+      const promise = createHttpClient().redeemActivation("k");
+      await expect(promise).rejects.toBeInstanceOf(PackLibraryHttpError);
+      await promise.catch((err: unknown) => {
+        expect((err as PackLibraryHttpError).status).toBe(status);
+        expect((err as Error).message).toContain(String(status));
+        expect((err as Error).message).not.toContain("k");
+      });
+    },
+  );
+});
+
 describe("createPacksHttpClient", () => {
   it("exposes the same read surface the shell mounts", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
@@ -139,6 +229,7 @@ describe("createPacksHttpClient", () => {
     const client = createPacksHttpClient();
     expect(typeof client.listInstalled).toBe("function");
     expect(typeof client.rollback).toBe("function");
+    expect(typeof client.redeemActivation).toBe("function");
     expect(await client.listInstalled()).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/packs",

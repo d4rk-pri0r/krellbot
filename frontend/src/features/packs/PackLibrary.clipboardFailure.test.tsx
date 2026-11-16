@@ -10,6 +10,12 @@ const rows: PackRow[] = ids.map((pack_id) => ({
 const client: PackLibraryClient = {
   listInstalled: async () => rows,
   rollback: async () => ({ ok: false }),
+  redeemActivation: async () => ({
+    schema_version: "1",
+    status: "dead",
+    message: "license not accepted",
+    catalog_downloaded: false,
+  }),
 };
 const copy = (i: number) => screen.getByRole("button", { name: `Copy pack_id ${ids[i]}` });
 const item = (i: number) => screen.getByTestId(`pack-library-row-${ids[i]}`);
