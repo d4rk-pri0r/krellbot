@@ -9,10 +9,14 @@
 // editor never silently rewrites or strips it.
 
 import type { Pack } from "./client";
+import { KRAKEN_BTC_USD_VENUE_SYMBOL } from "../../markets/krakenBtcUsd.ts";
 
 export const INDICATOR_NAME = "ma";
 export const FAST_INDICATOR_NAME = "fast";
 export const SLOW_INDICATOR_NAME = "slow";
+
+/** Stored Kraken venue symbol for the BTC/USD wave (not a display label). */
+export const DEFAULT_PAIR = KRAKEN_BTC_USD_VENUE_SYMBOL;
 
 export const TIMEFRAMES = ["1h", "4h", "1d"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
@@ -106,7 +110,6 @@ const LENGTH_MAX = 599;
 const NAME_MAX = 120;
 const AUTHOR_MAX = 120;
 const DEFAULT_AUTHOR = "local workstation";
-const DEFAULT_PAIR = "XXBTZUSD";
 const DEFAULT_TIMEFRAME: Timeframe = "1h";
 const ATR_MULT_MAX = 20;
 
