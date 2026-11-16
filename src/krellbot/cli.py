@@ -1095,9 +1095,26 @@ def _default_fetch(venue: str, pair: str, tf: str, transport, *, include_forming
     raise ValueError(f"unsupported venue for fetch: {venue!r}")
 
 
-def _paper_price_fetch(venue: str, pair: str, tf: str, transport):
-    """Public fetch that retains the forming bar for paper venue pricing."""
-    return _default_fetch(venue, pair, tf, transport, include_forming=True)
+class _PaperPriceFetch:
+    """Fetch wrapper: request forming bars when the callable supports it.
+
+    Monkeypatched four-arg fakes that reject ``include_forming`` fall back to
+    the closed-only call and leave ``keeps_forming`` False so the signal
+    reader does not drop bars the fake already treats as actionable.
+    """
+
+    def __init__(self, fetch) -> None:
+        self._fetch = fetch
+        self.keeps_forming = False
+
+    def __call__(self, venue: str, pair: str, tf: str, transport):
+        try:
+            candles = self._fetch(venue, pair, tf, transport, include_forming=True)
+            self.keeps_forming = True
+            return candles
+        except TypeError:
+            self.keeps_forming = False
+            return self._fetch(venue, pair, tf, transport)
 
 
 def _default_transport():
@@ -1233,14 +1250,21 @@ def _build_fetch_reader(armed_list, *, fetch, transport):
     return reader
 
 
-def _closed_signal_reader(price_reader, armed_list, *, clock):
-    """Wrap a price reader so strategy evaluation sees only closed bars."""
+def _closed_signal_reader(price_reader, armed_list, *, clock, keeps_forming=None):
+    """Wrap a price reader so strategy evaluation sees only closed bars.
+
+    When ``keeps_forming`` is provided and returns False (fetch did not retain
+    a forming bar), return the price series unchanged — fakes that already
+    emit closed-only / last-bar series stay compatible.
+    """
     from krellbot.data.candles import TF_MS, drop_forming
 
     by_pair = {a.pair: a for a in armed_list}
 
     def reader(venue: str, pair: str):
         candles = list(price_reader(venue, pair) or [])
+        if keeps_forming is not None and not keeps_forming():
+            return candles
         armed = by_pair.get(pair)
         if armed is None:
             return candles
@@ -1321,9 +1345,14 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
 
         # Paper venue keeps forming bars for fill/mark pricing; the tick
         # signal reader drops them so strategy evaluation stays closed-only.
-        price_fetch = _paper_price_fetch if fetch is _default_fetch else fetch
+        price_fetch = _PaperPriceFetch(fetch)
         price_reader = _build_fetch_reader(armed_list, fetch=price_fetch, transport=transport)
-        reader = _closed_signal_reader(price_reader, armed_list, clock=_run_now_seconds)
+        reader = _closed_signal_reader(
+            price_reader,
+            armed_list,
+            clock=_run_now_seconds,
+            keeps_forming=lambda: price_fetch.keeps_forming,
+        )
         _ensure_paper_instrument_rules(home, armed_list, transport=transport)
         has_key = _key_present(armed.venue)
         venue_obj = PaperVenue(
