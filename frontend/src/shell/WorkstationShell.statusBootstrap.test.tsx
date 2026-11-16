@@ -47,6 +47,14 @@ it.each(["bootstrap", "csrf"])(
           balances_available: false,
         }), { status: 200 });
       }
+      if (url === "/api/v1/version") {
+        return new Response(JSON.stringify({
+          schema_version: "1",
+          version: "0.9.7",
+          channel: "prerelease",
+          artifacts_signed: false,
+        }), { status: 200 });
+      }
       if (url === "/api/v1/operations") {
         return new Response(JSON.stringify({
           live: {
@@ -76,7 +84,8 @@ it.each(["bootstrap", "csrf"])(
     });
     // React commits the settled session before the strip schedules its
     // existing deferred read; advance that timer in the next act boundary.
-    // Workspace keys status may read in the same commit as session-ready.
+    // Workspace keys + about/version may read in the same commit as
+    // session-ready; Operations still must not precede the session settle.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
@@ -84,6 +93,7 @@ it.each(["bootstrap", "csrf"])(
       `/api/v1/session/${sessionRoute}`,
       "/api/v1/keys/kraken",
       "/api/v1/keys/coinbase",
+      "/api/v1/version",
       "/api/v1/operations",
     ]);
     expect(screen.getByTestId("live-orders-status").textContent).toBe("No live venues authorized");

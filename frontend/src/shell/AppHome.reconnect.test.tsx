@@ -1,10 +1,40 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { VersionClient } from "../api/version";
+import type { KeysClient } from "../features/keys/client";
 import { AppHome } from "./AppHome";
 
 afterEach(() => {
   cleanup();
 });
+
+function silentKeysClient(): KeysClient {
+  return {
+    getStatus: vi.fn().mockResolvedValue({
+      schema_version: "1",
+      venue: "kraken",
+      present: false,
+      corrupt: false,
+      message: "no key stored",
+      backend_label: null,
+      balances: null,
+      balances_available: false,
+    }),
+    probeAndStore: vi.fn(),
+    remove: vi.fn(),
+  };
+}
+
+function silentVersionClient(): VersionClient {
+  return {
+    getVersion: vi.fn().mockResolvedValue({
+      schema_version: "1",
+      version: "0.9.7",
+      channel: "prerelease",
+      artifacts_signed: false,
+    }),
+  };
+}
 
 describe("AppHome reconnect invite (primary session)", () => {
   it("issues a token and shows QR plus redeem URL", async () => {
@@ -18,6 +48,8 @@ describe("AppHome reconnect invite (primary session)", () => {
     render(
       <AppHome
         onNavigate={() => {}}
+        keysClient={silentKeysClient()}
+        versionClient={silentVersionClient()}
         onIssueReconnect={onIssue}
       />,
     );
@@ -43,6 +75,8 @@ describe("AppHome reconnect paste (failed session)", () => {
     render(
       <AppHome
         onNavigate={() => {}}
+        keysClient={silentKeysClient()}
+        versionClient={silentVersionClient()}
         sessionFailed
         onRedeemReconnect={onRedeem}
       />,

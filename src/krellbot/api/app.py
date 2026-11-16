@@ -2177,6 +2177,19 @@ def create_app(
         }
         return JSONResponse(body, status_code=200)
 
+    @app.get("/api/v1/version")
+    async def version(request: Request) -> Response:
+        """Surface engine version and release-channel honesty.
+
+        Same loopback Host gate as ``GET /api/v1/capabilities`` (no
+        session). Channel is prerelease while artifacts are unsigned;
+        GA is refused until signing state matches.
+        """
+
+        from krellbot import release_channel
+
+        return JSONResponse(release_channel.version_payload(), status_code=200)
+
     # ---- keys onboarding (M3.1 Kraken + M11.1 Coinbase) ----------------
 
     KEYS_VENUES = frozenset({"kraken", "coinbase"})
