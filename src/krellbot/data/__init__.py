@@ -12,7 +12,7 @@ Submodules:
 from __future__ import annotations
 
 from .cache import cache_path, manifest_path, read_cache, sha256_bytes, write_cache
-from .candles import TF_MS, drop_forming, parse_timestamp
+from .candles import TF_MS, drop_forming, drop_future, is_forming, parse_timestamp, pricing_close
 from .coinbase_public import fetch_coinbase_candles, parse_coinbase_candles
 from .gaps import GapError, check_gaps
 from .instruments import (
@@ -57,15 +57,18 @@ __all__ = [
     "check_gaps",
     "derive_decimal_places",
     "drop_forming",
+    "drop_future",
     "ensure_instrument_rules",
     "fetch_coinbase_candles",
     "fetch_kraken_ohlc",
     "import_kraken_ohlcvt_zip",
+    "is_forming",
     "manifest_path",
     "pairrules_from_instrument",
     "parse_coinbase_candles",
     "parse_kraken_ohlc",
     "parse_timestamp",
+    "pricing_close",
     "read_cache",
     "sha256_bytes",
     "write_cache",

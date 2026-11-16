@@ -1095,20 +1095,50 @@ LIVE_TICK_REFUSED = "live is off; set KRELLBOT_ENABLE_LIVE=1 to tick a live pack
 PAPER_ONLY_TICK_REFUSED = "v0.9.6 is paper-only; live tick refused"
 
 
-def _default_fetch(venue: str, pair: str, tf: str, transport):
+def _default_fetch(venue: str, pair: str, tf: str, transport, *, include_forming: bool = False):
     """Dispatch to the real public fetch for `venue`.
 
     `transport` is unused for Kraken (its public fetch talks urllib directly);
     it is required for Coinbase. Tests inject their own `fetch` so the real
     HTTP functions are never called from the test suite.
+
+    ``include_forming`` keeps the in-progress bar for paper fill pricing; the
+    default closed-only path stays for research / signal evaluation.
     """
-    from krellbot.data import fetch_coinbase_candles, fetch_kraken_ohlc
+    from krellbot.data import drop_future, fetch_coinbase_candles, fetch_kraken_ohlc
 
     if venue == "kraken":
-        return fetch_kraken_ohlc(pair, tf)
+        return fetch_kraken_ohlc(pair, tf, include_forming=include_forming)
     if venue == "coinbase":
-        return fetch_coinbase_candles(pair, tf, transport)
+        candles = fetch_coinbase_candles(pair, tf, transport)
+        if include_forming:
+            import time
+
+            return drop_future(candles, time.time_ns() // 1_000_000)
+        return candles
     raise ValueError(f"unsupported venue for fetch: {venue!r}")
+
+
+class _PaperPriceFetch:
+    """Fetch wrapper: request forming bars when the callable supports it.
+
+    Monkeypatched four-arg fakes that reject ``include_forming`` fall back to
+    the closed-only call and leave ``keeps_forming`` False so the signal
+    reader does not drop bars the fake already treats as actionable.
+    """
+
+    def __init__(self, fetch) -> None:
+        self._fetch = fetch
+        self.keeps_forming = False
+
+    def __call__(self, venue: str, pair: str, tf: str, transport):
+        try:
+            candles = self._fetch(venue, pair, tf, transport, include_forming=True)
+            self.keeps_forming = True
+            return candles
+        except TypeError:
+            self.keeps_forming = False
+            return self._fetch(venue, pair, tf, transport)
 
 
 def _default_transport():
@@ -1201,6 +1231,19 @@ def _ensure_paper_instrument_rules(home, armed_list, *, transport) -> None:
         ensure_instrument_rules(home, venue=venue, pairs=pairs, transport=transport)
 
 
+def _pack_timeframe(armed) -> str | None:
+    """Read the pack timeframe for an armed record, or None on refusal."""
+    try:
+        raw = Path(armed.pack_path).read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    tf = data.get("timeframe")
+    return str(tf) if tf else None
+
+
 def _build_fetch_reader(armed_list, *, fetch, transport):
     """Load the pack whose pair is being read, then call `fetch`.
 
@@ -1229,6 +1272,46 @@ def _build_fetch_reader(armed_list, *, fetch, transport):
             raise CandleFetchError(type(exc).__name__) from exc
 
     return reader
+
+
+def _closed_signal_reader(price_reader, armed_list, *, clock, keeps_forming=None):
+    """Wrap a price reader so strategy evaluation sees only closed bars.
+
+    When ``keeps_forming`` is provided and returns False (fetch did not retain
+    a forming bar), return the price series unchanged — fakes that already
+    emit closed-only / last-bar series stay compatible.
+    """
+    from krellbot.data.candles import TF_MS, drop_forming
+
+    by_pair = {a.pair: a for a in armed_list}
+
+    def reader(venue: str, pair: str):
+        candles = list(price_reader(venue, pair) or [])
+        if keeps_forming is not None and not keeps_forming():
+            return candles
+        armed = by_pair.get(pair)
+        if armed is None:
+            return candles
+        tf = _pack_timeframe(armed)
+        if tf not in TF_MS:
+            return candles
+        now_ms = int(clock() * 1000)
+        return drop_forming(candles, tf, now_ms)
+
+    return reader
+
+
+def _timeframe_for_armed(armed_list):
+    """Build pair -> timeframe lookup from armed packs."""
+    by_pair = {a.pair: a for a in armed_list}
+
+    def timeframe_for_pair(pair: str) -> str:
+        armed = by_pair.get(pair)
+        if armed is None:
+            return "1h"
+        return _pack_timeframe(armed) or "1h"
+
+    return timeframe_for_pair
 
 
 def _build_offline_reader(offline: Path):
@@ -1277,24 +1360,39 @@ def venue_for_tick(home, armed_list, *, transport, fetch):
     from krellbot.venues.paper import PaperVenue
 
     armed = armed_list[0]
-    reader = _build_fetch_reader(armed_list, fetch=fetch, transport=transport)
     modes = {a.mode for a in armed_list}
     if modes != {"paper"} and modes != {"live"}:
         return "mixed paper and live arms; tick refused"
 
     if armed.mode == "paper":
+        from krellbot.run import _now_seconds as _run_now_seconds
+
+        # Paper venue keeps forming bars for fill/mark pricing; the tick
+        # signal reader drops them so strategy evaluation stays closed-only.
+        price_fetch = _PaperPriceFetch(fetch)
+        price_reader = _build_fetch_reader(armed_list, fetch=price_fetch, transport=transport)
+        reader = _closed_signal_reader(
+            price_reader,
+            armed_list,
+            clock=_run_now_seconds,
+            keeps_forming=lambda: price_fetch.keeps_forming,
+        )
         _ensure_paper_instrument_rules(home, armed_list, transport=transport)
         has_key = _key_present(armed.venue)
         venue_obj = PaperVenue(
             armed.venue,
             rules_provider=_build_paper_rules_provider(home, armed.venue),
-            candle_reader=reader,
+            candle_reader=price_reader,
             home=home,
             starting_cash=armed.starting_cash,
             has_stored_key=has_key,
             validate_transport=_as_validate_transport(transport) if has_key and armed.venue == "kraken" else None,
+            clock=_run_now_seconds,
+            timeframe_for_pair=_timeframe_for_armed(armed_list),
         )
         return (venue_obj, reader)
+
+    reader = _build_fetch_reader(armed_list, fetch=fetch, transport=transport)
 
     gate_result = kb_live_gate.check_live_send(home, venue=armed.venue, pair=armed.pair)
     if not gate_result.ok:
@@ -1500,23 +1598,30 @@ def _tick_one_venue(
     armed = armed_list[0]
 
     if offline is not None:
-        reader = _build_offline_reader(offline)
+        price_reader = _build_offline_reader(offline)
         if armed.mode == "paper":
+            from krellbot.run import _now_seconds as _run_now_seconds
+
             # `--offline-candles` must not contact public metadata endpoints.
             # Journey harnesses refuse off-loopback DNS; SUIUSD still falls
             # back to labeled `default_rules`. Online ticks (no offline CSV)
             # call `_ensure_paper_instrument_rules` via `venue_for_tick`.
+            # Offline CSVs may include a forming tail; signal path drops it.
+            reader = _closed_signal_reader(price_reader, armed_list, clock=_run_now_seconds)
             has_key = _key_present(armed.venue)
             venue_obj = PaperVenue(
                 armed.venue,
                 rules_provider=_build_paper_rules_provider(home, armed.venue),
-                candle_reader=reader,
+                candle_reader=price_reader,
                 home=home,
                 starting_cash=armed.starting_cash,
                 has_stored_key=has_key,
                 validate_transport=_as_validate_transport(transport) if has_key and armed.venue == "kraken" else None,
+                clock=_run_now_seconds,
+                timeframe_for_pair=_timeframe_for_armed(armed_list),
             )
             return _tick_and_summarize(home, venue, venue_obj, reader, armed.mode)
+        reader = price_reader
         venue_obj = _build_live_venue_for_offline(armed, transport=transport)
         if isinstance(venue_obj, str):
             print(venue_obj, flush=True)

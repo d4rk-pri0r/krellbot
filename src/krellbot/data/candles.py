@@ -14,7 +14,10 @@ from __future__ import annotations
 __all__ = [
     "TF_MS",
     "drop_forming",
+    "drop_future",
+    "is_forming",
     "parse_timestamp",
+    "pricing_close",
 ]
 
 
@@ -59,3 +62,31 @@ def drop_forming(candles: list, tf: str, now_ms: int) -> list:
     """
     tf_ms = TF_MS[tf]
     return [c for c in candles if c.ts_ms + tf_ms <= now_ms]
+
+
+def is_forming(candle, tf: str, now_ms: int) -> bool:
+    """True when the bar has started but not yet closed at `now_ms`."""
+    ts_ms = int(candle.ts_ms)
+    return ts_ms <= now_ms < ts_ms + TF_MS[tf]
+
+
+def drop_future(candles: list, now_ms: int) -> list:
+    """Drop bars that have not started yet (`ts_ms` > `now_ms`)."""
+    return [c for c in candles if int(c.ts_ms) <= now_ms]
+
+
+def pricing_close(candles: list, tf: str, now_ms: int):
+    """Close used for paper market fills / marks.
+
+    Prefer the newest forming bar's close (last-trade proxy on the in-progress
+    candle). When no forming bar is present, use the latest closed close.
+    """
+    from decimal import Decimal
+
+    if not candles:
+        return None
+    ordered = sorted(candles, key=lambda c: int(c.ts_ms))
+    forming = [c for c in ordered if is_forming(c, tf, now_ms)]
+    if forming:
+        return Decimal(str(forming[-1].close))
+    return Decimal(str(ordered[-1].close))
