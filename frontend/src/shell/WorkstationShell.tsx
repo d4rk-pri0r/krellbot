@@ -14,12 +14,16 @@ import type {
   PaperPosition,
   PaperRunsClient,
   PaperArmedClient,
+  FleetArmedClient,
+  PaperStatusSelect,
 } from "../features/paper/client";
 import { StatusPanel } from "../features/paper/StatusPanel";
 import { createHttpClient as createPaperHttpClient } from "../features/paper/client";
 import { LastRunsPanel } from "../features/paper/LastRunsPanel";
 import { createLastRunsHttpClient } from "../features/paper/client";
 import { ArmedRecordsList } from "../features/paper/ArmedRecordsList";
+import { FleetArmedList } from "../features/paper/FleetArmedList";
+import { createFleetHttpClient } from "../features/paper/client";
 import { ResearchView } from "../features/research/ResearchView";
 import { createHttpClient as createResearchHttpClient } from "../features/research/client";
 import type { ResearchClient } from "../features/research/client";
@@ -96,6 +100,8 @@ const STUDIO_SAVE_ERROR_MESSAGE =
 type SearchParams = {
   workload: string | null;
   packParam: string | null;
+  venue: string | null;
+  pair: string | null;
 };
 
 function parseSearch(search: string): SearchParams {
@@ -103,6 +109,8 @@ function parseSearch(search: string): SearchParams {
   return {
     workload: params.get("workload"),
     packParam: params.get("pack"),
+    venue: params.get("venue"),
+    pair: params.get("pair"),
   };
 }
 
@@ -198,7 +206,8 @@ export function WorkstationShell({
   const [searchRevision, setSearchRevision] = useState(0);
   // ``plainWorkload`` / ``workloadWithPack`` and the active view are
   // re-read from the URL whenever history changes (back/forward).
-  const { workload, packParam } = parseSearch(
+  // Fleet detail deep links also carry ``venue`` + ``pair``.
+  const { workload, packParam, venue, pair } = parseSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
   // ``searchRevision`` is consumed to make this hook reactive to
@@ -222,6 +231,19 @@ export function WorkstationShell({
     // active tab must not stack duplicate history entries).
     syncViewToHistory(view, "push");
   }, []);
+  const fleetSelect: PaperStatusSelect | null =
+    venue !== null &&
+    venue !== "" &&
+    pair !== null &&
+    pair !== ""
+      ? { venue, pair }
+      : null;
+  const [statusSelect, setStatusSelect] = useState<PaperStatusSelect | null>(
+    fleetSelect,
+  );
+  useEffect(() => {
+    setStatusSelect(fleetSelect);
+  }, [venue, pair, searchRevision]);
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -643,6 +665,30 @@ export function WorkstationShell({
     () => Object.assign({}, paper, createLastRunsHttpClient()),
     [paper],
   );
+  const paperFleet = useMemo((): PaperClient & FleetArmedClient => {
+    const candidate = paper as PaperClient & Partial<FleetArmedClient>;
+    if (
+      typeof candidate === "object" &&
+      candidate !== null &&
+      typeof candidate.listFleet === "function"
+    ) {
+      return candidate as PaperClient & FleetArmedClient;
+    }
+    return Object.assign({}, paper, createFleetHttpClient());
+  }, [paper]);
+  const handleFleetOpenDetail = useCallback(
+    (href: string, nextVenue: string, nextPair: string): void => {
+      setStatusSelect({ venue: nextVenue, pair: nextPair });
+      if (typeof window !== "undefined") {
+        // Push the fleet detail_href first so ``view`` + market are in
+        // the URL; ``setActive`` then no-ops history when view matches.
+        window.history.pushState(window.history.state, "", href);
+        setSearchRevision((value) => value + 1);
+      }
+      setActive("workstation");
+    },
+    [setActive],
+  );
   const operations = useMemo(
     () => operationsClient ?? createOperationsHttpClient(),
     [operationsClient],
@@ -994,10 +1040,16 @@ export function WorkstationShell({
                   <>
                     <StatusPanel
                       client={paper}
+                      select={statusSelect}
                       onPositionSelect={handlePositionSelect}
                       positionSelected={
                         inspectorSelection?.kind === "position"
                       }
+                    />
+                    <FleetArmedList
+                      client={paperFleet}
+                      onOpenDetail={handleFleetOpenDetail}
+                      unresolvedClient={operations}
                     />
                     <LastRunsPanel client={paperRuns} />
                     {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
@@ -1281,7 +1333,13 @@ export function WorkstationShell({
         ) : null}
         {active === "operations" ? (
           bootstrapDone ? (
-            <OperationsView client={operations} />
+            <>
+              <FleetArmedList
+                client={paperFleet}
+                onOpenDetail={handleFleetOpenDetail}
+              />
+              <OperationsView client={operations} />
+            </>
           ) : (
             <p
               className="kbot-paper-status__empty"

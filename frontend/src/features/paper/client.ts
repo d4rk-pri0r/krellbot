@@ -168,6 +168,29 @@ export type PaperArmedClient = {
   listArmed(): Promise<PaperArmedView>;
 };
 
+/** One armed fleet row from ``GET /api/v1/paper/fleet``. */
+export type FleetArmedDeployment = {
+  venue: string;
+  pair: string;
+  mode: string;
+  pack_id: string;
+  entries_paused: boolean;
+  last_tick_ts_ms: number | null;
+  last_tick_result: string;
+  last_refusal_code: string | null;
+  detail_href: string;
+};
+
+export type FleetArmedView = {
+  schema_version: string;
+  armed: boolean;
+  deployments: FleetArmedDeployment[];
+};
+
+export type FleetArmedClient = {
+  listFleet(): Promise<FleetArmedView>;
+};
+
 /** One owned holding from the persisted paper state file. */
 export type PaperPositionHolding = {
   symbol: string;
@@ -572,6 +595,66 @@ async function getArmedJson(url: string): Promise<PaperArmedView> {
   return adaptArmedView(raw);
 }
 
+function adaptFleetView(raw: Record<string, unknown>): FleetArmedView {
+  const schema_version =
+    typeof raw.schema_version === "string" ? raw.schema_version : "1";
+  const rawRows = Array.isArray(raw.deployments) ? raw.deployments : [];
+  const deployments: FleetArmedDeployment[] = [];
+  for (const entry of rawRows) {
+    if (entry === null || typeof entry !== "object") {
+      continue;
+    }
+    const row = entry as Record<string, unknown>;
+    if (
+      typeof row.venue !== "string" ||
+      typeof row.pair !== "string" ||
+      typeof row.mode !== "string" ||
+      typeof row.pack_id !== "string" ||
+      typeof row.entries_paused !== "boolean" ||
+      typeof row.last_tick_result !== "string" ||
+      typeof row.detail_href !== "string"
+    ) {
+      continue;
+    }
+    const lastTick =
+      typeof row.last_tick_ts_ms === "number" && Number.isFinite(row.last_tick_ts_ms)
+        ? row.last_tick_ts_ms
+        : null;
+    deployments.push({
+      venue: row.venue,
+      pair: row.pair,
+      mode: row.mode,
+      pack_id: row.pack_id,
+      entries_paused: row.entries_paused,
+      last_tick_ts_ms: lastTick,
+      last_tick_result: row.last_tick_result,
+      last_refusal_code:
+        typeof row.last_refusal_code === "string" ? row.last_refusal_code : null,
+      detail_href: row.detail_href,
+    });
+  }
+  return {
+    schema_version,
+    armed: deployments.length > 0,
+    deployments,
+  };
+}
+
+async function listFleet(): Promise<FleetArmedView> {
+  const response = await fetch("/api/v1/paper/fleet", {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`paper fleet list failed: ${response.status}`);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  return adaptFleetView(raw);
+}
+
 /**
  * Decode the closed-shape ``GET /api/v1/paper/position`` body. The
  * adapter is strict: an armed body without the projection fields, or a
@@ -742,6 +825,7 @@ export function createHttpClient(): PaperClient &
   PaperRunsClient &
   PaperArmedClient &
   PaperChartClient &
+  FleetArmedClient &
   Required<Pick<PaperClient, "raiseStop">> {
   return {
     getStatus(select?: PaperStatusSelect): Promise<PaperStatus> {
@@ -756,6 +840,7 @@ export function createHttpClient(): PaperClient &
     listArmed(): Promise<PaperArmedView> {
       return getArmedJson("/api/v1/paper/armed");
     },
+    listFleet,
     pauseEntries(venue: string, pair: string): Promise<PaperCommandResult> {
       return postCommand("paper.pause_entries", { venue, pair });
     },
@@ -784,6 +869,10 @@ export function createHttpClient(): PaperClient &
       return createRehearsalHttpClient();
     },
   };
+}
+
+export function createFleetHttpClient(): FleetArmedClient {
+  return { listFleet };
 }
 
 export function createLastRunsHttpClient(): PaperRunsClient {
