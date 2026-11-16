@@ -45,6 +45,137 @@ DEFAULT_PRICE_DECIMALS = 5
 STOP_BUFFER = Decimal("0.005")  # limit = stop * (1 - 0.5%)
 
 
+class CoinbaseDocumentedOutcome:
+    """Closed taxonomy for documented Coinbase Advanced Trade response shapes.
+
+    Fixtures under ``tests/fixtures/venues/coinbase/`` are derived from
+    Coinbase's published Advanced Trade REST docs, not recorded from a real
+    account. Each fixture maps to exactly one of these outcomes via
+    ``classify_documented_response``. The closed set matches the Kraken M1.6
+    spine so live-path callers share one typed vocabulary.
+    """
+
+    ORDER_ACCEPTED = "order_accepted"
+    INSUFFICIENT_FUNDS = "insufficient_funds"
+    ORDER_MINIMUM_NOT_MET = "order_minimum_not_met"
+    RATE_LIMIT = "rate_limit"
+    INVALID_NONCE = "invalid_nonce"
+    NO_RESPONSE = "no_response"
+    PARTIALLY_FILLED = "partially_filled"
+    STOP_TRIGGERED = "stop_triggered"
+    CANCEL_ACCEPTED = "cancel_accepted"
+
+    _ALL = frozenset(
+        {
+            ORDER_ACCEPTED,
+            INSUFFICIENT_FUNDS,
+            ORDER_MINIMUM_NOT_MET,
+            RATE_LIMIT,
+            INVALID_NONCE,
+            NO_RESPONSE,
+            PARTIALLY_FILLED,
+            STOP_TRIGGERED,
+            CANCEL_ACCEPTED,
+        }
+    )
+
+    @classmethod
+    def values(cls) -> frozenset[str]:
+        return cls._ALL
+
+
+def classify_documented_response(payload: object) -> str:
+    """Map a documented Coinbase Advanced Trade body (or timeout) to one outcome.
+
+    ``None`` means the transport got no HTTP body (timeout / no response).
+    Create-order failures use ``error_response.error`` / preview failure
+    reasons from the published Create Order docs. Cancel uses the Cancel
+    Orders ``results`` list. Partial fill and stop-triggered shapes match
+    Get Order / List Orders examples with filled size and stop-limit config.
+    """
+    if payload is None:
+        return CoinbaseDocumentedOutcome.NO_RESPONSE
+    if not isinstance(payload, dict):
+        raise TypeError("coinbase documented response must be a dict or None")
+
+    error_response = payload.get("error_response")
+    if isinstance(error_response, dict):
+        return _classify_coinbase_error_response(error_response)
+
+    top_error = payload.get("error")
+    if isinstance(top_error, str) and top_error:
+        return _classify_coinbase_error_token(
+            top_error,
+            message=str(payload.get("message") or ""),
+            details=str(payload.get("error_details") or ""),
+        )
+
+    results = payload.get("results")
+    if isinstance(results, list) and results:
+        for item in results:
+            if isinstance(item, dict) and item.get("success") is True and item.get("order_id"):
+                return CoinbaseDocumentedOutcome.CANCEL_ACCEPTED
+        raise ValueError(f"unrecognized documented coinbase cancel results: {results!r}")
+
+    order = payload.get("order")
+    if isinstance(order, dict):
+        return _classify_coinbase_order(order)
+
+    if payload.get("success") is True:
+        box = payload.get("success_response")
+        if isinstance(box, dict) and box.get("order_id"):
+            return CoinbaseDocumentedOutcome.ORDER_ACCEPTED
+
+    raise ValueError("unrecognized documented coinbase response shape")
+
+
+def _classify_coinbase_error_response(error_response: dict) -> str:
+    token = str(error_response.get("error") or "")
+    message = str(error_response.get("message") or "")
+    details = str(error_response.get("error_details") or "")
+    preview = str(error_response.get("preview_failure_reason") or "")
+    joined = " ".join(part for part in (token, message, details, preview) if part)
+    return _classify_coinbase_error_token(joined, message=message, details=details)
+
+
+def _classify_coinbase_error_token(token: str, *, message: str = "", details: str = "") -> str:
+    joined = " ".join(part for part in (token, message, details) if part).upper()
+    if "INSUFFICIENT_FUND" in joined or "INSUFFICIENT FUND" in joined:
+        return CoinbaseDocumentedOutcome.INSUFFICIENT_FUNDS
+    if "TOO_SMALL" in joined or "SIZE_TOO_SMALL" in joined or "ORDER_MINIMUM" in joined or "BELOW MINIMUM" in joined:
+        return CoinbaseDocumentedOutcome.ORDER_MINIMUM_NOT_MET
+    if "RATE_LIMIT" in joined or "TOO_MANY_REQUESTS" in joined:
+        return CoinbaseDocumentedOutcome.RATE_LIMIT
+    if "NONCE" in joined or "INVALID JWT" in joined or "UNAUTHENTICATED" in joined:
+        return CoinbaseDocumentedOutcome.INVALID_NONCE
+    raise ValueError(f"unrecognized documented coinbase error: {token!r}")
+
+
+def _classify_coinbase_order(order: dict) -> str:
+    config = order.get("order_configuration")
+    stop_box = config.get("stop_limit_stop_limit_gtc") if isinstance(config, dict) else None
+    status = str(order.get("status") or "").upper()
+    order_type = str(order.get("order_type") or "").upper()
+    # Documented stop-limit fill after the stop fires.
+    if (
+        isinstance(stop_box, dict)
+        and (status == "FILLED" or order_type in {"STOP", "STOP_LIMIT", "STOP_LIMIT_STOP_LIMIT_GTC"})
+        and (status == "FILLED" or _optional_decimal(order.get("filled_size")) is not None)
+    ):
+        filled = _optional_decimal(order.get("filled_size")) or Decimal(0)
+        if filled > 0 or status == "FILLED":
+            return CoinbaseDocumentedOutcome.STOP_TRIGGERED
+
+    filled = _optional_decimal(order.get("filled_size"))
+    total = _optional_decimal(_coinbase_size(order))
+    if filled is not None and total is not None and Decimal(0) < filled < total:
+        return CoinbaseDocumentedOutcome.PARTIALLY_FILLED
+    if status in {"PENDING", "OPEN"} and filled is not None and filled > 0 and total is None:
+        return CoinbaseDocumentedOutcome.PARTIALLY_FILLED
+
+    raise ValueError("unrecognized documented coinbase order shape")
+
+
 class Transport(Protocol):
     """Anything with `get` and `post` returning parsed JSON dicts."""
 
@@ -362,6 +493,11 @@ class CoinbaseVenue:
 
     def order_by_coid(self, coid: str) -> OpenOrder | None:
         ref = self._recent.get(coid)
+        if ref is None and self._product_id:
+            found = self._find_order(coid, self._product_id)
+            if found is not None:
+                ref = found
+                self._recent[coid] = found
         if ref is None:
             return None
         return OpenOrder(
@@ -555,6 +691,9 @@ def _order_ok(resp: Any) -> bool:
 def _extract_order_id(resp: Any) -> str:
     if not isinstance(resp, dict):
         return ""
+    success_response = resp.get("success_response")
+    if isinstance(success_response, dict) and success_response.get("order_id"):
+        return str(success_response.get("order_id", ""))
     success = resp.get("success")
     if isinstance(success, dict):
         return str(success.get("order_id", ""))

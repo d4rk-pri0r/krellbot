@@ -41,6 +41,7 @@ class FakeCoinbaseTransport:
         orders: dict | None = None,
         accounts: dict | None = None,
         fills: dict | None = None,
+        raise_on_get: set[str] | None = None,
     ) -> None:
         self._post_responses = list(post_responses or [])
         self._get_responses = list(get_responses or [])
@@ -49,6 +50,7 @@ class FakeCoinbaseTransport:
         self._orders = orders
         self._accounts = accounts
         self._fills = fills
+        self._raise_on_get = set(raise_on_get or ())
         self.calls: list[RecordedCall] = []
 
     def post(self, url: str, body: dict, headers: dict[str, str]) -> dict:
@@ -59,6 +61,9 @@ class FakeCoinbaseTransport:
 
     def get(self, url: str, headers: dict[str, str]) -> dict:
         self.calls.append(RecordedCall(method="GET", url=url, headers=dict(headers)))
+        for marker in self._raise_on_get:
+            if marker in url:
+                raise RuntimeError(f"fake coinbase unreachable on {marker}")
         if "key_permissions" in url:
             if self._key_permissions is None:
                 return {"scopes": []}

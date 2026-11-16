@@ -1,0 +1,6 @@
+# Derived from Coinbase's Advanced Trade REST documentation, not recorded from a real account.
+{
+  "error": "RATE_LIMIT_EXCEEDED",
+  "message": "Too many requests. Please retry after the rate limit window.",
+  "error_details": "Public rate limit exceeded"
+}
