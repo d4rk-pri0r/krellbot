@@ -4,7 +4,7 @@
  *
  * These tests pin the owner-approved Signal shell composition as it is
  * actually mounted: the supplied outlined wordmark in the compact
- * horizontal header, truthful paper/live-unavailable context, all six
+ * horizontal header, truthful paper/live-unavailable context, all
  * views reachable, the Jobs drawer and command palette reachable, and
  * no fabricated metrics (balances, returns, positions, latency,
  * health, license status) invented by the chrome.
@@ -103,6 +103,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
       "Workspace",
       "Workstation",
       "Strategies",
+      "Packs",
       "Research",
       "Strategy studio",
       "Operations",

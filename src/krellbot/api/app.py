@@ -2831,6 +2831,74 @@ def create_app(
             },
         )
 
+    # ---- pack catalogue one-click install (M5.2) ------------------------
+
+    @app.post("/api/v1/packs/install")
+    async def packs_install(request: Request) -> Response:
+        """One-click install a free signed-catalogue pack into the library.
+
+        Same state-change gate as other POSTs (``_gate_state_change``):
+        session cookie + CSRF + loopback Origin. Body is
+        ``{"pack_id": "<id>"}`` (optional ``schema_version`` /
+        ``command`` wrappers are ignored). Free catalogue entries write
+        a ``download_pending`` marker so the library can show
+        bucket+version; paid entries return 403 with
+        ``activation_required``. Unknown ids return 404. No network
+        call — the verified catalogue cache is the only source.
+        """
+
+        from krellbot.application import pack_library as pack_library_app
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        pack_id = payload.get("pack_id")
+        if not isinstance(pack_id, str) or not pack_id:
+            nested = payload.get("payload")
+            if isinstance(nested, dict):
+                pack_id = nested.get("pack_id")
+        if not isinstance(pack_id, str) or not pack_id:
+            return JSONResponse({"detail": "pack_id is required"}, status_code=400)
+
+        try:
+            row = pack_library_app.install_from_catalogue(s.home, pack_id)
+        except pack_library_app.InstallRefused as exc:
+            # Closed safe messages only — never echo exception text
+            # (paths / pack ids from the refusal) to the wire.
+            status = 404 if exc.code == "pack_not_found" else 403
+            safe = {
+                "pack_not_found": "catalogue entry not found",
+                "activation_required": "activation required for paid packs",
+                "invalid_request": "pack_id is required",
+            }.get(exc.code, "install refused")
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": exc.code,
+                    "message": safe,
+                },
+                status_code=status,
+            )
+
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "ok": True,
+                "pack": row,
+            },
+            status_code=200,
+        )
+
     # ---- activation redeem (lane E) -------------------------------------
 
     @app.post("/api/v1/activation/redeem")

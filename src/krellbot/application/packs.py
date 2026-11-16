@@ -36,6 +36,63 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+_PACK_SIDECAR_SUFFIXES = (
+    ".deployed.json",
+    ".configured.json",
+    ".download_pending.json",
+)
+
+
+def _safe_pack_id_name(pack_id: str) -> str | None:
+    """Return a single path-segment pack id, or None if unsafe.
+
+    Uses ``os.path.basename`` (CodeQL-recognized sanitizer) so directory
+    components never reach a path expression under ``<home>/packs/``.
+    """
+    import os.path
+
+    if type(pack_id) is not str or not pack_id:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_id)
+    if not name or name in {".", ".."}:
+        return None
+    if os.path.basename(name) != name:
+        return None
+    return name
+
+
+def _open_under_dir(base_dir: str, filename: str) -> dict | None:
+    """Read JSON from ``base_dir/filename`` with CodeQL-recognized guards.
+
+    ``filename`` must already be a single path segment (basename). Uses
+    ``os.path.normpath`` + ``startswith`` containment — the idiom CodeQL
+    documents for ``py/path-injection`` — then ``open`` on the checked path.
+    """
+    import os.path
+
+    if type(filename) is not str or not filename:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(filename)
+    if not name or name in {".", ".."} or os.path.basename(name) != name:
+        return None
+    if not name.endswith(".json") or name.startswith("."):
+        return None
+    base_path = os.path.realpath(base_dir)
+    fullpath = os.path.normpath(os.path.join(base_path, name))
+    if fullpath != base_path and not fullpath.startswith(base_path + os.sep):
+        return None
+    try:
+        with open(fullpath, encoding="utf-8") as handle:
+            data = json.loads(handle.read())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
 BUCKET_DEPLOYED = "deployed"
 BUCKET_CONFIGURED = "configured"
 BUCKET_INSTALLED = "installed"
@@ -84,6 +141,7 @@ class PackRow:
 
 
 def _read_json(path: Path) -> dict | None:
+    """Read JSON from a trusted fixed path (catalog, etc.)."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -93,32 +151,60 @@ def _read_json(path: Path) -> dict | None:
     return data
 
 
+def _read_pack_sidecar(home: Path, pack_id: str, suffix: str) -> dict | None:
+    """Read ``<home>/packs/<basename(pack_id)><suffix>``.
+
+    Matches ``api.app._client_pack_basename``: basename the full filename,
+    then open only after ``normpath`` + ``startswith`` containment under
+    the trusted packs directory (CodeQL-documented path-injection idiom).
+    """
+    import os.path
+
+    if type(pack_id) is not str or not pack_id:
+        return None
+    if suffix not in _PACK_SIDECAR_SUFFIXES:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    # Basename the full filename (id + closed suffix), same shape as
+    # ``_client_pack_basename`` returning a ``*.json`` name.
+    name = os.path.basename(pack_id + suffix)
+    if not name or name in {".", ".."} or os.path.basename(name) != name:
+        return None
+    if not name.endswith(suffix) or name.startswith("."):
+        return None
+    packs_dir = os.path.join(str(home), "packs")
+    return _open_under_dir(packs_dir, name)
+
+
 def _deployed_record(home: Path, pack_id: str) -> dict | None:
-    return _read_json(home / "packs" / f"{pack_id}.deployed.json")
+    return _read_pack_sidecar(home, pack_id, ".deployed.json")
 
 
 def _configured_record(home: Path, pack_id: str) -> dict | None:
-    return _read_json(home / "packs" / f"{pack_id}.configured.json")
+    return _read_pack_sidecar(home, pack_id, ".configured.json")
 
 
 def _download_pending_marker(home: Path, pack_id: str) -> dict | None:
-    return _read_json(home / "packs" / f"{pack_id}.download_pending.json")
+    return _read_pack_sidecar(home, pack_id, ".download_pending.json")
 
 
 def _installed_pack(home: Path, pack_id: str) -> dict | None:
     """Return the parsed pack dict from one of the installed roots, if any."""
-    for root in (
-        home / "packs",
-        home / "packs" / "community",
-        home / "packs" / "catalog",
-    ):
-        candidate = root / f"{pack_id}.json"
-        if not candidate.is_file():
-            continue
-        data = _read_json(candidate)
-        if data is None:
-            continue
-        return data
+    import os.path
+
+    if type(pack_id) is not str or not pack_id:
+        return None
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_id + ".json")
+    if not name or name in {".", ".."} or os.path.basename(name) != name:
+        return None
+    if not name.endswith(".json") or name.startswith("."):
+        return None
+    home_s = str(home)
+    for rel in ("packs", os.path.join("packs", "community"), os.path.join("packs", "catalog")):
+        data = _open_under_dir(os.path.join(home_s, rel), name)
+        if data is not None:
+            return data
     return None
 
 
@@ -223,12 +309,20 @@ def _row_from_purchased(entry: dict) -> PackRow | None:
     )
 
 
-def _row_from_download_pending(pack_id: str) -> PackRow:
+def _row_from_download_pending(pack_id: str, marker: dict | None = None) -> PackRow:
+    """Build a download_pending row; prefer version/permissions from the marker."""
+    version = None
+    permissions: list[str] = []
+    if isinstance(marker, dict):
+        raw_version = marker.get("version")
+        if isinstance(raw_version, str):
+            version = raw_version
+        permissions = _permissions_from(marker.get("permissions"))
     return PackRow(
         bucket=BUCKET_DOWNLOAD_PENDING,
         pack_id=pack_id,
-        version=None,
-        permissions=[],
+        version=version,
+        permissions=permissions,
         rollback_ref=None,
     )
 
@@ -311,6 +405,10 @@ def classify(home: Path, pack_id: str) -> PackRow | None:
     source. The dashboard treats ``None`` as "do not render this id".
     """
     home = Path(home)
+    safe_id = _safe_pack_id_name(pack_id)
+    if safe_id is None:
+        return None
+    pack_id = safe_id
     deployed = _deployed_record(home, pack_id)
     if deployed is not None:
         return _row_from_deployed(home, pack_id, deployed)
@@ -323,8 +421,9 @@ def classify(home: Path, pack_id: str) -> PackRow | None:
     if pack is not None:
         return _row_from_installed(pack_id, pack)
 
-    if _download_pending_marker(home, pack_id) is not None:
-        return _row_from_download_pending(pack_id)
+    pending = _download_pending_marker(home, pack_id)
+    if pending is not None:
+        return _row_from_download_pending(pack_id, pending)
 
     # Fall back to the cached catalog (purchased). A catalog entry is
     # the only state source that lives outside ``<home>/packs/``.

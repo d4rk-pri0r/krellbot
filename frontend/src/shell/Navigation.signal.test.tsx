@@ -6,7 +6,7 @@
  * top-of-shell tab strip renders (frontend/src/shell/Navigation.signal.css)
  * without touching the legacy unscoped Navigation.test.tsx: every
  * expectation here is driven through the existing `active`/`onChange`
- * prop path over the seven-tab VIEWS array, and every test references an
+ * prop path over the eight-tab VIEWS array, and every test references an
  * existing data-testid marker verbatim (kbot-nav / nav-local-preview /
  * nav-local-preview-note), which this slice must not alter.
  */
@@ -26,10 +26,11 @@ const cssSource = readFileSync(
   "utf8",
 );
 
-const SEVEN_VIEWS = [
+const EIGHT_VIEWS = [
   { id: "home", label: "Workspace" },
   { id: "workstation", label: "Workstation" },
   { id: "strategies", label: "Strategies" },
+  { id: "packs", label: "Packs" },
   { id: "research", label: "Research" },
   { id: "studio", label: "Strategy studio" },
   { id: "operations", label: "Operations" },
@@ -47,18 +48,18 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
     expect(nav.getAttribute("aria-label")).toBe("Workstation navigation");
   });
 
-  it("renders the seven VIEWS tabs in order with the scoped item vocabulary", () => {
+  it("renders the eight VIEWS tabs in order with the scoped item vocabulary", () => {
     render(<Navigation active="home" onChange={() => {}} />);
     const nav = screen.getByTestId("kbot-nav");
     const items = Array.from(nav.querySelectorAll("button"));
     expect(items.map((button) => button.textContent?.trim())).toEqual(
-      SEVEN_VIEWS.map((view) => view.label),
+      EIGHT_VIEWS.map((view) => view.label),
     );
     for (const item of items) {
       expect(item.classList.contains("kbot-shell__nav-item")).toBe(true);
     }
     expect(nav.querySelectorAll(".kbot-shell__nav-item")).toHaveLength(
-      SEVEN_VIEWS.length,
+      EIGHT_VIEWS.length,
     );
   });
 
@@ -74,7 +75,7 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
     expect(
       nav.querySelectorAll(".kbot-shell__nav-item--active"),
     ).toHaveLength(1);
-    for (const view of SEVEN_VIEWS) {
+    for (const view of EIGHT_VIEWS) {
       if (view.id === "research") {
         continue;
       }
@@ -91,11 +92,11 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
     const onChange = vi.fn();
     render(<Navigation active="home" onChange={onChange} />);
     expect(screen.getByTestId("kbot-nav")).toBeInstanceOf(HTMLElement);
-    for (const view of SEVEN_VIEWS) {
+    for (const view of EIGHT_VIEWS) {
       fireEvent.click(screen.getByRole("button", { name: view.label }));
     }
     expect(onChange.mock.calls).toEqual(
-      SEVEN_VIEWS.map((view) => [view.id]),
+      EIGHT_VIEWS.map((view) => [view.id]),
     );
   });
 

@@ -67,8 +67,9 @@ import type {
   OperationsClient,
 } from "../features/operations/client";
 import { PackLibrary } from "../features/packs/PackLibrary";
+import { PacksView } from "../features/packs/PacksView";
 import { createPacksHttpClient } from "../features/packs/client";
-import type { PackLibraryClient } from "../features/packs/client";
+import type { PackLibraryClient, PacksClient } from "../features/packs/client";
 import {
   issueReconnectToken,
   recoverCsrf,
@@ -194,7 +195,7 @@ export type WorkstationShellProps = {
   strategyClient?: StrategyClient;
   operationsClient?: OperationsClient;
   libraryClient?: LibraryClient;
-  packClient?: PackLibraryClient;
+  packClient?: PacksClient | PackLibraryClient;
 };
 
 export function WorkstationShell({
@@ -700,10 +701,30 @@ export function WorkstationShell({
     () => operationsClient ?? createOperationsHttpClient(),
     [operationsClient],
   );
-  const packs = useMemo(
-    () => packClient ?? createPacksHttpClient(),
-    [packClient],
-  );
+  const packs: PacksClient = useMemo(() => {
+    if (packClient === undefined) {
+      return createPacksHttpClient();
+    }
+    if ("listCatalogue" in packClient && "install" in packClient) {
+      return packClient as PacksClient;
+    }
+    // Legacy PackLibraryClient injects still work for the Strategies
+    // toggle; Packs destination gets an honest empty catalogue stub.
+    return {
+      ...packClient,
+      listCatalogue: async () => ({
+        schema_version: "1",
+        catalogue_version: "0",
+        updated: null,
+        packs: [],
+      }),
+      install: async () => ({
+        ok: false,
+        code: "unavailable",
+        message: "install unavailable",
+      }),
+    };
+  }, [packClient]);
   const [packsOpen, setPacksOpen] = useState(false);
 
   const [bootstrapDone, setBootstrapDone] = useState(false);
@@ -1151,6 +1172,7 @@ export function WorkstationShell({
             {packsOpen ? <PackLibrary client={packs} /> : null}
           </>
         ) : null}
+        {active === "packs" ? <PacksView client={packs} /> : null}
         {active === "research" ? (
           <div
             ref={researchHostRef}

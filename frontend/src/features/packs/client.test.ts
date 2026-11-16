@@ -230,10 +230,114 @@ describe("createPacksHttpClient", () => {
     expect(typeof client.listInstalled).toBe("function");
     expect(typeof client.rollback).toBe("function");
     expect(typeof client.redeemActivation).toBe("function");
+    expect(typeof client.listCatalogue).toBe("function");
+    expect(typeof client.install).toBe("function");
     expect(await client.listInstalled()).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/packs",
       expect.objectContaining({ method: "GET", credentials: "include" }),
     );
+  });
+});
+
+describe("packs client listCatalogue", () => {
+  it("GETs /api/v1/catalogue with credentials and CSRF", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        catalogue_version: "1",
+        packs: [
+          { id: "free-dual-ma", tier: "free", version: "1.0.0", permissions: [] },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const doc = await createHttpClient().listCatalogue();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/catalogue",
+      expect.objectContaining({ method: "GET", credentials: "include" }),
+    );
+    expect(doc.catalogue_version).toBe("1");
+    expect(doc.packs).toEqual([
+      {
+        id: "free-dual-ma",
+        tier: "free",
+        label: null,
+        description: null,
+        version: "1.0.0",
+        permissions: [],
+      },
+    ]);
+  });
+
+  it("throws PackLibraryHttpError on catalogue refusal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 502));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listCatalogue()).rejects.toBeInstanceOf(
+      PackLibraryHttpError,
+    );
+  });
+});
+
+describe("packs client install", () => {
+  it("POSTs /api/v1/packs/install with CSRF and returns the pack row", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        ok: true,
+        pack: {
+          bucket: "download_pending",
+          pack_id: "free-dual-ma",
+          version: "1.0.0",
+          permissions: [],
+          rollback_ref: null,
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const csrfMock = vi
+      .spyOn(await import("../../session"), "getCsrf")
+      .mockReturnValue("csrf-install");
+    try {
+      const result = await createHttpClient().install("free-dual-ma");
+      expect(result.ok).toBe(true);
+      expect(result.pack?.bucket).toBe("download_pending");
+      expect(result.pack?.version).toBe("1.0.0");
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("/api/v1/packs/install");
+      expect(init.method).toBe("POST");
+      expect(init.credentials).toBe("include");
+      expect((init.headers as Record<string, string>)["X-Krellbot-CSRF"]).toBe(
+        "csrf-install",
+      );
+      expect(JSON.parse(String(init.body))).toEqual({
+        schema_version: "1",
+        command: "packs.install",
+        pack_id: "free-dual-ma",
+      });
+    } finally {
+      csrfMock.mockRestore();
+    }
+  });
+
+  it("returns activation_required without throwing on paid refusal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          schema_version: "1",
+          ok: false,
+          code: "activation_required",
+          message: "paid pack requires activation",
+        },
+        403,
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await createHttpClient().install("paid-triple-stack");
+    expect(result).toEqual({
+      ok: false,
+      code: "activation_required",
+      message: "paid pack requires activation",
+    });
   });
 });

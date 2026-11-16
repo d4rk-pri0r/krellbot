@@ -1,0 +1,32 @@
+/*
+ * First-class Packs destination shell.
+ * Contract: KRELL-SIGNAL-20261010.
+ */
+
+.kbot-packs-view {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kbot-packs-view__head {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kbot-packs-view__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-packs-view__lede {
+  margin: 0;
+  max-width: 48rem;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}

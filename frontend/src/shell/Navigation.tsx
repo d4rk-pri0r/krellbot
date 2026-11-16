@@ -5,6 +5,7 @@ export type View =
   | "home"
   | "workstation"
   | "strategies"
+  | "packs"
   | "research"
   | "studio"
   | "operations"
@@ -14,6 +15,7 @@ const VIEWS: ReadonlyArray<{ id: View; label: string }> = [
   { id: "home", label: "Workspace" },
   { id: "workstation", label: "Workstation" },
   { id: "strategies", label: "Strategies" },
+  { id: "packs", label: "Packs" },
   { id: "research", label: "Research" },
   { id: "studio", label: "Strategy studio" },
   { id: "operations", label: "Operations" },

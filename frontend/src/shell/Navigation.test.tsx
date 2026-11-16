@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("Navigation — workstation views", () => {
-  it("renders the Home tab first alongside the five core nav tabs", () => {
+  it("renders the Home tab first alongside the core nav tabs", () => {
     render(<Navigation active="home" onChange={() => {}} />);
     const nav = screen.getByTestId("kbot-nav");
     const labels = Array.from(
@@ -24,6 +24,7 @@ describe("Navigation — workstation views", () => {
       "Workspace",
       "Workstation",
       "Strategies",
+      "Packs",
       "Research",
       "Strategy studio",
       "Operations",
@@ -41,6 +42,7 @@ describe("Navigation — workstation views", () => {
     for (const label of [
       "Workstation",
       "Strategies",
+      "Packs",
       "Research",
       "Strategy studio",
       "Operations",
@@ -59,11 +61,12 @@ describe("Navigation — workstation views", () => {
     expect(onChange).toHaveBeenCalledWith("home");
   });
 
-  it("renders the five core nav tabs with their labels", () => {
+  it("renders the core nav tabs with their labels", () => {
     render(<Navigation active="workstation" onChange={() => {}} />);
     for (const label of [
       "Workstation",
       "Strategies",
+      "Packs",
       "Research",
       "Strategy studio",
       "Operations",
@@ -85,6 +88,7 @@ describe("Navigation — workstation views", () => {
     expect(activeButton.getAttribute("aria-current")).toBe("page");
     const otherLabels = [
       "Strategies",
+      "Packs",
       "Research",
       "Strategy studio",
       "Operations",
@@ -103,10 +107,11 @@ describe("Navigation — workstation views", () => {
 /* Contract: KRELL-SIGNAL-20261010.                                   */
 /* ------------------------------------------------------------------ */
 
-const SEVEN_VIEWS = [
+const EIGHT_VIEWS = [
   { id: "home", label: "Workspace" },
   { id: "workstation", label: "Workstation" },
   { id: "strategies", label: "Strategies" },
+  { id: "packs", label: "Packs" },
   { id: "research", label: "Research" },
   { id: "studio", label: "Strategy studio" },
   { id: "operations", label: "Operations" },
@@ -114,7 +119,7 @@ const SEVEN_VIEWS = [
 ] as const;
 
 describe("Navigation — scoped Signal presentation", () => {
-  it("renders the seven existing views in order inside the scoped nav root", () => {
+  it("renders the eight existing views in order inside the scoped nav root", () => {
     render(<Navigation active="home" onChange={() => {}} />);
     const nav = screen.getByTestId("kbot-nav");
     expect(nav).toBeInstanceOf(HTMLElement);
@@ -123,7 +128,7 @@ describe("Navigation — scoped Signal presentation", () => {
       nav.querySelectorAll<HTMLButtonElement>(".kbot-nav__item"),
     );
     expect(items.map((button) => button.textContent?.trim())).toEqual(
-      SEVEN_VIEWS.map((view) => view.label),
+      EIGHT_VIEWS.map((view) => view.label),
     );
     for (const item of items) {
       expect(item.className).toContain("kbot-shell__nav-item");
@@ -166,7 +171,7 @@ describe("Navigation — scoped Signal presentation", () => {
     const root = screen.getByTestId("kbot-nav");
     expect(root.contains(badge)).toBe(true);
     const tabs = root.querySelectorAll(".kbot-nav__item");
-    expect(tabs.length).toBe(SEVEN_VIEWS.length);
+    expect(tabs.length).toBe(EIGHT_VIEWS.length);
     const note = caption.closest(".kbot-shell__nav-note");
     expect(note).toBe(root.lastElementChild);
     expect(badge.compareDocumentPosition(tabs[tabs.length - 1])).toBe(

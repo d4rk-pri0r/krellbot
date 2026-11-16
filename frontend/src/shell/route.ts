@@ -30,6 +30,7 @@ const KNOWN_VIEWS: ReadonlySet<string> = new Set([
   "home",
   "workstation",
   "strategies",
+  "packs",
   "research",
   "studio",
   "operations",
