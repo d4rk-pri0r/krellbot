@@ -15,6 +15,7 @@ import { summarizeAlertSeverity } from "./alertSeverityLabel";
 import { LiveAuthorizationPanel } from "./LiveAuthorizationPanel";
 import { SchedulerPanel } from "./SchedulerPanel";
 import { UnresolvedOrdersList } from "./UnresolvedOrdersList";
+import { JournalBrowsePanel } from "./JournalBrowsePanel";
 
 const DISABLED_BANNER =
   "Live trading is disabled in this build (KRELLBOT_ENABLE_LIVE is not 1).";
@@ -724,6 +725,14 @@ export function OperationsView({ client }: OperationsViewProps): JSX.Element {
           data-testid="ops-unresolved-orders-panel"
         >
           <UnresolvedOrdersList client={client} />
+        </section>
+
+        <section
+          className="kbot-ops__panel"
+          aria-label="Journal"
+          data-testid="ops-journal-panel"
+        >
+          <JournalBrowsePanel client={client} />
         </section>
 
         <section

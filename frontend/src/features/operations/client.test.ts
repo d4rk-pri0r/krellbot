@@ -275,6 +275,65 @@ describe("createHttpClient unresolved orders", () => {
   });
 });
 
+describe("createHttpClient journal browse", () => {
+  const closedRow = {
+    ts: 1_700_000_000,
+    kind: "tick",
+    venue: "kraken",
+    pack: "sma_cross",
+    bar_ts: 1_700_000_000,
+    detail: { pair: "SUIUSD", reason: "no_signal" },
+  };
+
+  it("listJournal GETs /api/v1/journal with CSRF + credentials by default", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1", records: [closedRow] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await createHttpClient().listJournal!();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/journal");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Record<string, string>;
+    expect("X-Krellbot-CSRF" in headers).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe("tick");
+    expect(rows[0].venue).toBe("kraken");
+  });
+
+  it("listJournal encodes tail and since query params (since preferred in URL builder)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ schema_version: "1", records: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createHttpClient();
+    await client.listJournal!({ tail: 20 });
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe("/api/v1/journal?tail=20");
+    await client.listJournal!({ since: "24h" });
+    expect((fetchMock.mock.calls[1] as [string])[0]).toBe("/api/v1/journal?since=24h");
+    await client.listJournal!({ tail: 5, since: "14d" });
+    expect((fetchMock.mock.calls[2] as [string])[0]).toBe("/api/v1/journal?since=14d");
+  });
+
+  it("listJournal drops malformed rows and throws on non-2xx", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schema_version: "1",
+          records: [closedRow, { ts: "bad" }, null, { kind: "tick" }],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ code: "invalid_tail" }, 400));
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await createHttpClient().listJournal!();
+    expect(rows.map((row) => row.ts)).toEqual([1_700_000_000]);
+    await expect(createHttpClient().listJournal!({ tail: 0 })).rejects.toThrow(
+      /400 invalid_tail/,
+    );
+  });
+});
+
 describe("createHttpClient scheduler", () => {
   const closed = {
     schema_version: "1",

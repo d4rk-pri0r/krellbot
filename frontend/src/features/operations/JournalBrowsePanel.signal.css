@@ -1,0 +1,210 @@
+/*
+ * Journal browse — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for the mounted JournalBrowsePanel on the
+ * Operations surface. Namespaced under `.kbot-ops__journal` with nested
+ * prefixes so shared shell / OperationsView rules cannot flatten hierarchy.
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1 (selection/focus)
+ *   sage        #B3DDA8 (affirmative primary)  coral #CC9689 (caution)
+ */
+
+.kbot-ops__journal {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-ops__journal *,
+.kbot-ops__journal *::before,
+.kbot-ops__journal *::after {
+  box-sizing: border-box;
+}
+
+.kbot-ops__journal .kbot-ops__journal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops__journal .kbot-ops__panel-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__journal .kbot-ops__preview-badge {
+  margin: 0;
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.kbot-ops__journal .kbot-ops__journal-refresh {
+  margin: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-ops__journal .kbot-ops__journal-refresh:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.kbot-ops__journal .kbot-ops__journal-refresh:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+.kbot-ops__journal .kbot-ops__journal-helper {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted, #abc4d8);
+  max-width: 72ch;
+}
+
+.kbot-ops__journal .kbot-ops__journal-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-ops__journal .kbot-ops__journal-filter-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__journal .kbot-ops__journal-filter {
+  margin: 0;
+  min-height: 34px;
+  min-width: 10rem;
+  padding: 6px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.kbot-ops__journal .kbot-ops__journal-filter:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+.kbot-ops__journal .kbot-ops__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__journal .kbot-ops__row-result {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--caution-text, var(--coral, #cc9689));
+}
+
+.kbot-ops__journal .kbot-ops__row-result button {
+  margin-left: 8px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.kbot-ops__journal .kbot-ops__journal-scroll {
+  min-width: 0;
+  max-width: 100%;
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.kbot-ops__journal .kbot-ops__journal-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 0;
+}
+
+.kbot-ops__journal .kbot-ops__journal-table th,
+.kbot-ops__journal .kbot-ops__journal-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line, #22465d);
+  vertical-align: top;
+}
+
+.kbot-ops__journal .kbot-ops__journal-table th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+  position: sticky;
+  top: 0;
+  background: var(--surface, #14222e);
+}
+
+.kbot-ops__journal .kbot-ops__journal-ts,
+.kbot-ops__journal .kbot-ops__journal-kind,
+.kbot-ops__journal .kbot-ops__journal-venue,
+.kbot-ops__journal .kbot-ops__journal-pack {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.kbot-ops__journal .kbot-ops__journal-detail {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--muted, #abc4d8);
+  overflow-wrap: anywhere;
+  max-width: 36rem;
+}
+
+@media (max-width: 640px) {
+  .kbot-ops__journal .kbot-ops__journal-refresh,
+  .kbot-ops__journal .kbot-ops__journal-filter,
+  .kbot-ops__journal .kbot-ops__row-result button {
+    min-height: 44px;
+  }
+}
