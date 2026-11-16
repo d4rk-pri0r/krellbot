@@ -46,6 +46,7 @@ from krellbot.application.live_preflight import evaluate as live_preflight_evalu
 from krellbot.application.paper import (
     project_owned_position,
     project_paper_pnl_position_chart,
+    project_portfolio_history,
 )
 from krellbot.application.strategy import (
     DraftNotRunnable,
@@ -1983,6 +1984,37 @@ def create_app(
             "schema_version": SCHEMA_VERSION,
             "records": records,
         }
+        return JSONResponse(
+            body,
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/portfolio/history")
+    async def portfolio_history(request: Request) -> Response:
+        """Return cross-deployment portfolio history (equity + deployments).
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF. The
+        body is read-only evidence over ``<home>/journal/*.jsonl`` and
+        ``<home>/run/paper-<venue>.json``:
+
+        * ``equity`` — absolute portfolio equity series from venue fill
+          replay (empty when starting cash or fills are absent)
+        * ``deployments`` — one card per journalled / armed
+          ``(venue, pack, pair)``, with pair-scoped ``pnl`` only when
+          ``starting_cash`` is known from the armed config
+
+        Never fabricates sample bots or flat zero equity. Does not
+        change opt-in telemetry. Read-only: never arms or writes.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = project_portfolio_history(s.home)
         return JSONResponse(
             body,
             status_code=200,

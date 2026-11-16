@@ -11,7 +11,7 @@ One line per item. Nothing here is work until the owner moves it into a mileston
 - Paper pricing uses last-closed rather than forming candles (MEDIUM note on #197).
 - `scripts/release_archive.py` still accepts a root `static/index.html` as the UI payload (the test fixtures use it); only `frontend/dist/index.html` is real after M0.5.
 - docs/cli.md documents `krellbot uninstall`, but `cli.py` has no top-level `uninstall` (installer/launcher flow).
-- Signal concept artboard shows a Learn top-nav and sample portfolio equity/bot cards; no Learn view or portfolio-history API exists yet — do not invent those in the cockpit.
+- Signal concept artboard shows a Learn top-nav; no Learn view exists yet — do not invent Learn in the cockpit. Portfolio history API + Workstation surface shipped in M4.4 (real journal/fills only; never fabricate sample bots).
 - Packs remain under Strategies (toggle), not a top-level nav item matching the marketing concept strip.
 - CI frontend flake: `Editor.ownedSeedIdentity.test.tsx` intermittently misses `[data-testid="editor-revision-id"]` under full suite load (seen on #426; passes alone locally; main tip green).
 - CI macOS flake: `tests/test_int01_workstation_launch.py` intermittently times out (`test_workstation_serves_index_with_bootstrap_meta` HTTP TimeoutError / `test_workstation_missing_index_exits_2_with_build_hint` subprocess TimeoutExpired) under full suite (seen on #450; Ubuntu/Windows green; main tip green).
