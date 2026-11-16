@@ -67,18 +67,25 @@ workstation; do not load credentials for this path.
 
 ### Uninstall
 
-```
-# POSIX
-~/.local/bin/krellbot uninstall
+There is no top-level engine CLI product command named
+`krellbot uninstall`. Two separate removals exist:
 
-# Windows
-krellbot uninstall
-```
-
-Removes only the managed launcher and the staged version directory for
+**Release install** (site installer / managed launcher and staged
+version directory): use the **installer's** uninstall flow. That flow
+removes only the managed launcher and the staged version directory for
 the version you ran with. `$KRELLBOT_HOME` (keys, paper state, journal,
 receipts) is **retained** by default. To delete the data home too,
 pass `--purge-data` to the uninstall flow inside the installer.
+
+**Scheduler unit** (hourly tick only — not the release install):
+
+```
+krellbot service uninstall
+```
+
+See [service.md](service.md). Running `krellbot uninstall` on the
+engine CLI prints this pointer and exits nonzero; it does not remove
+files.
 
 ### PATH check
 
