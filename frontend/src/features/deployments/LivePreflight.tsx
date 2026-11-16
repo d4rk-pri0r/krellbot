@@ -3,6 +3,11 @@ import { getCsrf } from "../../session";
 import { summarizePreflightCode } from "./preflightCodeLabel";
 import "./LivePreflight.signal.css";
 
+export type LivePreflightPermissions = {
+  can_trade?: boolean;
+  can_withdraw?: boolean;
+};
+
 export type LivePreflightResult = {
   schema_version?: string;
   code?: string;
@@ -12,12 +17,15 @@ export type LivePreflightResult = {
   account_id?: string;
   revision_id?: string;
   stored_mode?: string;
+  balances?: Record<string, string | number> | null;
+  permissions?: LivePreflightPermissions | null;
 };
 
 type PreflightMode = "sandbox" | "live";
+type PreflightVenue = "kraken";
 
 export function LivePreflight(): JSX.Element {
-  const [accountId, setAccountId] = useState("");
+  const [venue, setVenue] = useState<PreflightVenue>("kraken");
   const [revisionId, setRevisionId] = useState("");
   const [mode, setMode] = useState<PreflightMode>("sandbox");
   const [result, setResult] = useState<LivePreflightResult | null>(null);
@@ -33,9 +41,9 @@ export function LivePreflight(): JSX.Element {
     setPending(false);
   };
 
-  const handleAccountChange = (event: ChangeEvent<HTMLInputElement>): void => {
+  const handleVenueChange = (_event: ChangeEvent<HTMLSelectElement>): void => {
     invalidate();
-    setAccountId(event.target.value);
+    setVenue("kraken");
   };
 
   const handleRevisionChange = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -69,7 +77,8 @@ export function LivePreflight(): JSX.Element {
           schema_version: "1",
           command: "live.preflight",
           payload: {
-            account_id: accountId,
+            venue,
+            account_id: venue,
             revision_id: revisionId,
             mode,
           },
@@ -95,6 +104,12 @@ export function LivePreflight(): JSX.Element {
       ? "kbot-feature__live-preflight-root__result-line--ok"
       : "kbot-feature__live-preflight-root__result-line--refused";
 
+  const balanceEntries =
+    result?.balances !== null && result?.balances !== undefined
+      ? Object.entries(result.balances)
+      : null;
+  const permissions = result?.permissions ?? null;
+
   return (
     <section
       className="kbot-feature__live-preflight-root"
@@ -115,16 +130,18 @@ export function LivePreflight(): JSX.Element {
       >
         <label
           className="kbot-feature__live-preflight-root__field"
-          htmlFor="live-preflight-account-input"
+          htmlFor="live-preflight-venue-select"
         >
-          Account ID
-          <input
-            id="live-preflight-account-input"
+          Venue
+          <select
+            id="live-preflight-venue-select"
             className="kbot-feature__live-preflight-root__input"
             data-testid="live-preflight-account"
-            value={accountId}
-            onChange={handleAccountChange}
-          />
+            value={venue}
+            onChange={handleVenueChange}
+          >
+            <option value="kraken">kraken</option>
+          </select>
         </label>
         <label
           className="kbot-feature__live-preflight-root__field"
@@ -202,6 +219,45 @@ export function LivePreflight(): JSX.Element {
           >
             revision_id: {result.revision_id}
           </p>
+          {permissions !== null ? (
+            <p
+              className="kbot-feature__live-preflight-root__result-line"
+              data-testid="live-preflight-permissions"
+            >
+              permissions: trade {permissions.can_trade === true ? "on" : "off"},
+              withdraw {permissions.can_withdraw === true ? "on" : "off"}
+            </p>
+          ) : null}
+          {balanceEntries !== null ? (
+            <div
+              className="kbot-feature__live-preflight-root__balances"
+              data-testid="live-preflight-balances"
+            >
+              <p className="kbot-feature__live-preflight-root__result-line">
+                balances
+              </p>
+              {balanceEntries.length === 0 ? (
+                <p
+                  className="kbot-feature__live-preflight-root__result-line kbot-feature__live-preflight-root__result-line--tech"
+                  data-testid="live-preflight-balances-empty"
+                >
+                  (none)
+                </p>
+              ) : (
+                <ul className="kbot-feature__live-preflight-root__balances-list">
+                  {balanceEntries.map(([asset, free]) => (
+                    <li
+                      key={asset}
+                      className="kbot-feature__live-preflight-root__result-line kbot-feature__live-preflight-root__result-line--tech"
+                      data-testid={`live-preflight-balance-${asset}`}
+                    >
+                      {asset}: {String(free)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {errorMessage !== null ? (

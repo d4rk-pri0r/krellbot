@@ -36,11 +36,11 @@ function lastFetchCall(fetchMock: ReturnType<typeof vi.fn>): FetchCall {
 
 async function renderAndSubmit(
   fetchMock: ReturnType<typeof vi.fn>,
-  overrides: { account_id?: string; revision_id?: string; mode?: string } = {},
+  overrides: { revision_id?: string; mode?: string } = {},
 ): Promise<void> {
   render(createElement(LivePreflight));
   fireEvent.change(await screen.findByTestId("live-preflight-account"), {
-    target: { value: overrides.account_id ?? "acct-1" },
+    target: { value: "kraken" },
   });
   fireEvent.change(screen.getByTestId("live-preflight-revision"), {
     target: { value: overrides.revision_id ?? "rev-1" },
@@ -65,8 +65,10 @@ describe("LivePreflight submission", () => {
         ok: true,
         message: "preflight ok",
         effect: "none",
-        account_id: "acct-1",
+        account_id: "kraken",
         revision_id: "rev-1",
+        balances: { ZUSD: "100.50" },
+        permissions: { can_trade: true, can_withdraw: false },
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -81,15 +83,22 @@ describe("LivePreflight submission", () => {
       schema_version: "1",
       command: "live.preflight",
       payload: {
-        account_id: "acct-1",
+        venue: "kraken",
+        account_id: "kraken",
         revision_id: "rev-1",
         mode: "sandbox",
       },
     });
     const payload = body.payload as Record<string, unknown>;
-    expect(payload.account_id).toBe("acct-1");
+    expect(payload.venue).toBe("kraken");
+    expect(payload.account_id).toBe("kraken");
     expect(payload.revision_id).toBe("rev-1");
     expect(payload.mode).toBe("sandbox");
+    const result = screen.getByTestId("live-preflight-result");
+    expect(result.textContent ?? "").toMatch(/permissions: trade on, withdraw off/);
+    expect(screen.getByTestId("live-preflight-balance-ZUSD").textContent).toContain(
+      "100.50",
+    );
   });
 
   it("never includes an args key in the posted body", async () => {
@@ -141,8 +150,10 @@ describe("LivePreflight result rendering", () => {
         ok: true,
         message: "preflight ok",
         effect: "none",
-        account_id: "acct-1",
+        account_id: "kraken",
         revision_id: "rev-1",
+        balances: { ZUSD: "100.50" },
+        permissions: { can_trade: true, can_withdraw: false },
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -150,8 +161,14 @@ describe("LivePreflight result rendering", () => {
     const result = screen.getByTestId("live-preflight-result");
     expect(result.textContent ?? "").toMatch(/code: Ok/);
     expect(result.textContent ?? "").toMatch(/preflight ok/);
-    expect(result.textContent ?? "").toMatch(/acct-1/);
+    expect(result.textContent ?? "").toMatch(/kraken/);
     expect(result.textContent ?? "").toMatch(/rev-1/);
+    expect(screen.getByTestId("live-preflight-permissions").textContent).toMatch(
+      /trade on, withdraw off/,
+    );
+    expect(screen.getByTestId("live-preflight-balance-ZUSD").textContent).toContain(
+      "100.50",
+    );
   });
 
   it("renders an account_mismatch refusal code and message", async () => {
@@ -162,7 +179,7 @@ describe("LivePreflight result rendering", () => {
         ok: false,
         message: "account mismatch: acct-x is not stored",
         effect: "refused",
-        account_id: "acct-1",
+        account_id: "kraken",
         revision_id: "rev-1",
       }),
     );

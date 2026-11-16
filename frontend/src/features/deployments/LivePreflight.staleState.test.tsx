@@ -24,13 +24,13 @@ const verdict = (fresh: boolean) => ({
   ok: !fresh,
   message: fresh ? "live mode is refused: sandbox only" : "first preflight ok",
   effect: fresh ? "refused" : "none",
-  account_id: fresh ? "acct-new" : "acct-old",
+  account_id: "kraken",
   revision_id: fresh ? "rev-new" : "rev-old",
 });
 
 function fill(fresh: boolean): void {
   fireEvent.change(screen.getByTestId("live-preflight-account"), {
-    target: { value: fresh ? "acct-new" : "acct-old" },
+    target: { value: "kraken" },
   });
   fireEvent.change(screen.getByTestId("live-preflight-revision"), {
     target: { value: fresh ? "rev-new" : "rev-old" },
@@ -59,7 +59,7 @@ describe("LivePreflight repeat submission", () => {
       render(<LivePreflight />);
       fill(false);
       submit();
-      expect((await screen.findByTestId("live-preflight-result")).textContent).toContain("acct-old");
+      expect((await screen.findByTestId("live-preflight-result")).textContent).toContain("rev-old");
 
       fill(true);
       const button = submit();
@@ -69,7 +69,12 @@ describe("LivePreflight repeat submission", () => {
       expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toEqual({
         schema_version: "1",
         command: "live.preflight",
-        payload: { account_id: "acct-new", revision_id: "rev-new", mode: "live" },
+        payload: {
+          venue: "kraken",
+          account_id: "kraken",
+          revision_id: "rev-new",
+          mode: "live",
+        },
       });
       await act(async () => {
         if (outcome === "network rejection") next.reject(new TypeError("Failed to fetch"));
@@ -83,9 +88,8 @@ describe("LivePreflight repeat submission", () => {
         expect(result.textContent).toContain("code: Mode not sandbox");
         expect(result.textContent).toContain("ok: false");
         expect(result.textContent).toContain(verdict(true).message);
-        expect(result.textContent).toContain("acct-new");
+        expect(result.textContent).toContain("kraken");
         expect(result.textContent).toContain("rev-new");
-        expect(result.textContent).not.toContain("acct-old");
         expect(result.textContent).not.toContain("rev-old");
         expect(screen.queryByTestId("live-preflight-error")).toBeNull();
       } else {
@@ -93,7 +97,7 @@ describe("LivePreflight repeat submission", () => {
         expect(screen.queryByTestId("live-preflight-result")).toBeNull();
         submit();
         expect(screen.queryByTestId("live-preflight-error")).toBeNull();
-        expect((await screen.findByTestId("live-preflight-result")).textContent).toContain("acct-new");
+        expect((await screen.findByTestId("live-preflight-result")).textContent).toContain("rev-new");
         expect(screen.queryByTestId("live-preflight-error")).toBeNull();
       }
     },

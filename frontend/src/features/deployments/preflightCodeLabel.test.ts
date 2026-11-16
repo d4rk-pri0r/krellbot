@@ -39,8 +39,17 @@ describe("summarizePreflightCode", () => {
   });
 
   it("maps the remaining known codes to their canonical labels", () => {
+    expect(summarizePreflightCode("revision_id_missing").label).toBe(
+      "Revision id missing",
+    );
     expect(summarizePreflightCode("revision_mismatch").label).toBe(
       "Revision mismatch",
+    );
+    expect(summarizePreflightCode("stored_mode_not_sandbox").label).toBe(
+      "Stored mode not sandbox",
+    );
+    expect(summarizePreflightCode("kill_switch_engaged").label).toBe(
+      "Kill switch engaged",
     );
     expect(summarizePreflightCode("rate_limited").label).toBe("Rate limited");
     expect(summarizePreflightCode("circuit_open").label).toBe("Circuit open");
