@@ -54,6 +54,7 @@ def _safe_pack_id_name(pack_id: str) -> str | None:
         return None
     return name
 
+
 BUCKET_DEPLOYED = "deployed"
 BUCKET_CONFIGURED = "configured"
 BUCKET_INSTALLED = "installed"
