@@ -1187,13 +1187,24 @@ def create_app(
 
         try:
             body = kb_notifications.update_settings(s.home, payload)
-        except (TypeError, ValueError) as exc:
+        except ValueError:
+            # Fixed copy only — do not echo exception text (CodeQL py/stack-trace-exposure).
             return JSONResponse(
                 {
                     "schema_version": SCHEMA_VERSION,
                     "code": "bad_input",
                     "ok": False,
-                    "message": str(exc),
+                    "message": "email password must come from KRELLBOT_SMTP_PASSWORD, not settings",
+                },
+                status_code=400,
+            )
+        except TypeError:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "bad_input",
+                    "ok": False,
+                    "message": "invalid notification settings",
                 },
                 status_code=400,
             )
