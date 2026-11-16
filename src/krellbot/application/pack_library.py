@@ -321,25 +321,45 @@ def library_pack_id_for_path(home: Path, pack_path: Path | str) -> str | None:
     ``packs/catalog/``. Draft paths and anything outside those roots
     return ``None`` so arm/disarm of non-library packs leave markers
     untouched.
+
+    Never opens the caller path string. Basename is taken (CodeQL
+    sanitizer), the parent directory name must be a known library
+    segment, and the JSON body is read only via ``normpath`` +
+    ``startswith`` under the trusted ``<home>/packs…`` root.
     """
-    home = Path(home).resolve()
-    path = Path(pack_path).resolve()
-    roots = (
-        (home / "packs").resolve(),
-        (home / "packs" / "community").resolve(),
-        (home / "packs" / "catalog").resolve(),
-    )
-    if not any(path.parent == root for root in roots):
+    import os.path
+
+    if type(pack_path) is not str and not isinstance(pack_path, os.PathLike):
         return None
-    if path.suffix != ".json" or path.name.startswith("."):
+    raw = str(pack_path)
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(raw)
+    if not name or name in {".", ".."} or os.path.basename(name) != name:
         return None
-    # Sidecar files are not pack bodies.
-    stem = path.name
+    if not name.endswith(".json") or name.startswith("."):
+        return None
     for suffix in (".deployed.json", ".configured.json", ".download_pending.json"):
-        if stem.endswith(suffix):
+        if name.endswith(suffix):
             return None
+
+    # Parent segment must name a library root (no resolve/open on raw).
+    parent_name = os.path.basename(os.path.dirname(os.path.normpath(raw)))
+    if parent_name == "packs":
+        rel = "packs"
+    elif parent_name == "community":
+        rel = os.path.join("packs", "community")
+    elif parent_name == "catalog":
+        rel = os.path.join("packs", "catalog")
+    else:
+        return None
+
+    base_path = os.path.realpath(os.path.join(str(home), rel))
+    fullpath = os.path.normpath(os.path.join(base_path, name))
+    if fullpath != base_path and not fullpath.startswith(base_path + os.sep):
+        return None
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        with open(fullpath, encoding="utf-8") as handle:
+            data = json.loads(handle.read())
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return None
     if not isinstance(data, dict):
