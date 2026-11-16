@@ -314,63 +314,34 @@ def _classify_or_raise(home: Path, safe_id: str) -> dict[str, Any]:
     return _row_dict(row)
 
 
-def library_pack_id_for_path(home: Path, pack_path: Path | str) -> str | None:
-    """Return the pack id when ``pack_path`` is a library pack under home.
+def is_library_pack_path(pack_path: Path | str) -> bool:
+    """True when ``pack_path`` names a file under a pack-library root.
 
-    Library roots are ``packs/``, ``packs/community/``, and
-    ``packs/catalog/``. Draft paths and anything outside those roots
-    return ``None`` so arm/disarm of non-library packs leave markers
-    untouched.
+    Library roots are directories whose basename is ``packs``, ``community``,
+    or ``catalog`` (i.e. ``<home>/packs/``, ``…/packs/community/``,
+    ``…/packs/catalog/``). Draft paths and anything else return False.
 
-    Never opens the caller path string. Basename is taken (CodeQL
-    sanitizer), the parent directory name must be a known library
-    segment, and the JSON body is read only via ``normpath`` +
-    ``startswith`` under the trusted ``<home>/packs…`` root.
+    Path-only check: basename + parent-segment gate. No ``open``,
+    ``resolve``, or ``read_text`` on the caller string — the arm path
+    uses the armed record's ``pack_id`` and ``mark_deployed`` reads only
+    under the trusted home via sanitized ids.
     """
     import os.path
 
     if type(pack_path) is not str and not isinstance(pack_path, os.PathLike):
-        return None
+        return False
     raw = str(pack_path)
     # CodeQL-recognized sanitizer: basename strips directory components.
     name = os.path.basename(raw)
     if not name or name in {".", ".."} or os.path.basename(name) != name:
-        return None
+        return False
     if not name.endswith(".json") or name.startswith("."):
-        return None
+        return False
     for suffix in (".deployed.json", ".configured.json", ".download_pending.json"):
         if name.endswith(suffix):
-            return None
-
-    # Parent segment must name a library root (no resolve/open on raw).
+            return False
     parent_name = os.path.basename(os.path.dirname(os.path.normpath(raw)))
-    if parent_name == "packs":
-        rel = "packs"
-    elif parent_name == "community":
-        rel = os.path.join("packs", "community")
-    elif parent_name == "catalog":
-        rel = os.path.join("packs", "catalog")
-    else:
-        return None
-
-    base_path = os.path.realpath(os.path.join(str(home), rel))
-    fullpath = os.path.normpath(os.path.join(base_path, name))
-    if fullpath != base_path and not fullpath.startswith(base_path + os.sep):
-        return None
-    try:
-        with open(fullpath, encoding="utf-8") as handle:
-            data = json.loads(handle.read())
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    pack_id = data.get("id")
-    if not isinstance(pack_id, str) or not pack_id:
-        return None
-    try:
-        return _safe_pack_id_segment(pack_id)
-    except InstallRefused:
-        return None
+    return parent_name in {"packs", "community", "catalog"}
 
 
 def mark_configured(
@@ -614,7 +585,7 @@ __all__ = [
     "UpdateRefused",
     "demote_deployed_to_configured",
     "install_from_catalogue",
-    "library_pack_id_for_path",
+    "is_library_pack_path",
     "list_catalogue",
     "list_installed",
     "mark_configured",

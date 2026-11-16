@@ -233,7 +233,7 @@ def test_draft_arm_path_does_not_write_library_deployed_marker(tmp_path: Path) -
     draft_path = drafts / "pack.json"
     draft_path.write_text(json.dumps(body), encoding="utf-8")
 
-    assert pack_library.library_pack_id_for_path(home, draft_path) is None
+    assert pack_library.is_library_pack_path(draft_path) is False
 
     result = PaperService(home=home).arm(
         draft_path,

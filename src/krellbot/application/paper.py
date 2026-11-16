@@ -889,19 +889,20 @@ class PaperService:
             else:
                 message = f"armed {venue} {pair or '?'}"
             # Library packs (under <home>/packs/) get a deployed sidecar
-            # so the pack-library classifier matches the arm flow.
-            from krellbot.application import pack_library as pack_library_app
+            # so the pack-library classifier matches the arm flow. Use
+            # the armed record's pack_id (never open the caller path).
+            if armed is not None and isinstance(armed.pack_id, str) and armed.pack_id:
+                from krellbot.application import pack_library as pack_library_app
 
-            library_id = pack_library_app.library_pack_id_for_path(self._home, pack_path)
-            if library_id is not None:
-                try:
-                    pack_library_app.mark_deployed(
-                        self._home,
-                        library_id,
-                        now=int(self._clock()),
-                    )
-                except pack_library_app.InstallRefused:
-                    pass
+                if pack_library_app.is_library_pack_path(pack_path):
+                    try:
+                        pack_library_app.mark_deployed(
+                            self._home,
+                            armed.pack_id,
+                            now=int(self._clock()),
+                        )
+                    except pack_library_app.InstallRefused:
+                        pass
             return CommandResultV1(
                 schema_version=SCHEMA_VERSION,
                 correlation_id=correlation_id,
