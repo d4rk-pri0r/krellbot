@@ -888,6 +888,20 @@ class PaperService:
                 message = f"armed {armed.pack_id} {armed.pack_version} on {venue} {armed.pair}"
             else:
                 message = f"armed {venue} {pair or '?'}"
+            # Library packs (under <home>/packs/) get a deployed sidecar
+            # so the pack-library classifier matches the arm flow.
+            from krellbot.application import pack_library as pack_library_app
+
+            library_id = pack_library_app.library_pack_id_for_path(self._home, pack_path)
+            if library_id is not None:
+                try:
+                    pack_library_app.mark_deployed(
+                        self._home,
+                        library_id,
+                        now=int(self._clock()),
+                    )
+                except pack_library_app.InstallRefused:
+                    pass
             return CommandResultV1(
                 schema_version=SCHEMA_VERSION,
                 correlation_id=correlation_id,
@@ -960,8 +974,22 @@ class PaperService:
                 rev_before,
             )
 
+        disarmed_pack_id = armed.pack_id
         config.armed = [a for a in config.armed if not (a.venue == venue and a.pair == pair)]
         kb_config.save_config(self._home, config)
+
+        # Still-armed copies of the same pack keep the deployed marker;
+        # only demote when this pack_id is no longer armed anywhere.
+        still_armed = any(a.pack_id == disarmed_pack_id for a in config.armed)
+        if not still_armed and isinstance(disarmed_pack_id, str) and disarmed_pack_id:
+            from krellbot.application import pack_library as pack_library_app
+
+            pack_library_app.demote_deployed_to_configured(
+                self._home,
+                disarmed_pack_id,
+                now=int(self._clock()),
+            )
+
         rev_after = _revision(self._home)
 
         return CommandResultV1(

@@ -204,6 +204,14 @@ def install_catalog(
         path = root / f"{pack_id}.json"
         body = json.dumps(pack, sort_keys=True, separators=(",", ":")).encode("utf-8")
         kb_paths.atomic_write(path, body)
+        # Production install path writes the configured sidecar the
+        # pack-library classifier expects (installed+ready, not armed).
+        from krellbot.application import pack_library as pack_library_app
+
+        try:
+            pack_library_app.mark_configured(Path(home), pack_id)
+        except pack_library_app.InstallRefused:
+            pass
         wrote = True
     return wrote
 

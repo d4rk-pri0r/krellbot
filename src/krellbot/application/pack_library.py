@@ -25,9 +25,21 @@ There is no ``rollback_pack`` helper and no
 (M5.4): list rows may still carry read-only ``rollback_ref`` metadata,
 but install never claims a rollback action.
 
-``list_installed`` / ``update_pack`` / ``install_from_catalogue`` read
-local metadata only; no network call is made. ``refresh_catalogue`` is
-the network path and always takes an injectable transport in tests.
+Lifecycle sidecar writers (production install/arm paths):
+
+  * ``install_from_catalogue`` → ``*.download_pending.json``
+  * ``mark_configured`` → ``*.configured.json`` (pack file present;
+    used after disarm demotion and by install helpers that leave a
+    pack ready but not armed)
+  * ``mark_deployed`` → ``*.deployed.json`` (paper arm of a library
+    pack under ``<home>/packs/``)
+  * ``demote_deployed_to_configured`` → drop deployed, write configured
+    (paper disarm of a library pack)
+
+``list_installed`` / ``update_pack`` / ``install_from_catalogue`` /
+marker writers read local metadata only; no network call is made.
+``refresh_catalogue`` is the network path and always takes an
+injectable transport in tests.
 """
 
 from __future__ import annotations
@@ -35,6 +47,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -261,6 +274,224 @@ def _row_dict(row: app_packs.PackRow) -> dict[str, Any]:
     }
 
 
+def _packs_dir(home: Path) -> Path:
+    return (Path(home) / "packs").resolve()
+
+
+def _sidecar_target(home: Path, safe_id: str, suffix: str) -> Path:
+    """Return ``<home>/packs/<safe_id><suffix>`` after basename confinement."""
+    packs_dir = _packs_dir(home)
+    packs_dir.mkdir(parents=True, exist_ok=True)
+    filename = os.path.basename(f"{safe_id}{suffix}")
+    target = (packs_dir / filename).resolve()
+    if target.parent != packs_dir:
+        raise InstallRefused("invalid_request", "pack_id is required")
+    return target
+
+
+def _unlink_sidecar(home: Path, safe_id: str, suffix: str) -> None:
+    packs_dir = Path(home) / "packs"
+    filename = os.path.basename(f"{safe_id}{suffix}")
+    target = packs_dir / filename
+    try:
+        if target.resolve().parent != packs_dir.resolve():
+            return
+    except OSError:
+        return
+    try:
+        target.unlink()
+    except OSError:
+        return
+
+
+def _classify_or_raise(home: Path, safe_id: str) -> dict[str, Any]:
+    row = app_packs.classify(home, safe_id)
+    if row is None:
+        raise InstallRefused(
+            "pack_not_found",
+            f"pack file not found for {safe_id!r}",
+        )
+    return _row_dict(row)
+
+
+def library_pack_id_for_path(home: Path, pack_path: Path | str) -> str | None:
+    """Return the pack id when ``pack_path`` is a library pack under home.
+
+    Library roots are ``packs/``, ``packs/community/``, and
+    ``packs/catalog/``. Draft paths and anything outside those roots
+    return ``None`` so arm/disarm of non-library packs leave markers
+    untouched.
+    """
+    home = Path(home).resolve()
+    path = Path(pack_path).resolve()
+    roots = (
+        (home / "packs").resolve(),
+        (home / "packs" / "community").resolve(),
+        (home / "packs" / "catalog").resolve(),
+    )
+    if not any(path.parent == root for root in roots):
+        return None
+    if path.suffix != ".json" or path.name.startswith("."):
+        return None
+    # Sidecar files are not pack bodies.
+    stem = path.name
+    for suffix in (".deployed.json", ".configured.json", ".download_pending.json"):
+        if stem.endswith(suffix):
+            return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    pack_id = data.get("id")
+    if not isinstance(pack_id, str) or not pack_id:
+        return None
+    try:
+        return _safe_pack_id_segment(pack_id)
+    except InstallRefused:
+        return None
+
+
+def mark_configured(
+    home: Path,
+    pack_id: str,
+    *,
+    permissions: list[str] | None = None,
+    now: int | None = None,
+) -> dict[str, Any]:
+    """Write a ``configured`` sidecar for an installed library pack.
+
+    Requires a pack file under ``packs/`` (or community/catalog). Does
+    not remove a deployed record — deployed still wins classifier
+    priority. Clears a stale ``download_pending`` marker when present.
+    """
+    home = Path(home)
+    safe_id = _safe_pack_id_segment(pack_id)
+    pack_path = _find_installed_pack_path(home, safe_id)
+    if pack_path is None:
+        raise InstallRefused(
+            "pack_not_found",
+            f"pack file not found for {safe_id!r}",
+        )
+    installed = _read_one(pack_path)
+    if installed is None:
+        raise InstallRefused(
+            "pack_not_found",
+            f"pack file unreadable for {safe_id!r}",
+        )
+
+    if permissions is None:
+        raw_permissions = installed.get("permissions")
+        if isinstance(raw_permissions, list) and all(isinstance(p, str) for p in raw_permissions):
+            permissions = list(raw_permissions)
+        else:
+            permissions = []
+
+    marker: dict[str, Any] = {
+        "schema_version": "1",
+        "pack_id": safe_id,
+        "configured_at": int(time.time() if now is None else now),
+        "permissions": list(permissions),
+    }
+    target = _sidecar_target(home, safe_id, ".configured.json")
+    payload = (json.dumps(marker, sort_keys=True) + "\n").encode("utf-8")
+    kb_paths.atomic_write(target, payload)
+    _unlink_sidecar(home, safe_id, ".download_pending.json")
+    return _classify_or_raise(home, safe_id)
+
+
+def mark_deployed(
+    home: Path,
+    pack_id: str,
+    *,
+    permissions: list[str] | None = None,
+    now: int | None = None,
+) -> dict[str, Any]:
+    """Write a ``deployed`` sidecar from the installed pack revision.
+
+    Called by the paper arm path after a library pack is successfully
+    armed. When a prior deployed record exists with a different
+    ``revision_id``, that id is retained as ``prior_revision_id`` for
+    the rollback affordance. Clears a stale ``download_pending`` marker.
+    """
+    home = Path(home)
+    safe_id = _safe_pack_id_segment(pack_id)
+    pack_path = _find_installed_pack_path(home, safe_id)
+    if pack_path is None:
+        raise InstallRefused(
+            "pack_not_found",
+            f"pack file not found for {safe_id!r}",
+        )
+    installed = _read_one(pack_path)
+    if installed is None:
+        raise InstallRefused(
+            "pack_not_found",
+            f"pack file unreadable for {safe_id!r}",
+        )
+
+    revision_id = app_packs.installed_revision_id(installed)
+    version = installed.get("version") if isinstance(installed.get("version"), str) else None
+    if permissions is None:
+        raw_permissions = installed.get("permissions")
+        if isinstance(raw_permissions, list) and all(isinstance(p, str) for p in raw_permissions):
+            permissions = list(raw_permissions)
+        else:
+            permissions = []
+
+    prior_revision_id: str | None = None
+    existing = _read_one(home / "packs" / f"{safe_id}.deployed.json")
+    if existing is not None:
+        old_rev = existing.get("revision_id")
+        if isinstance(old_rev, str) and old_rev and old_rev != revision_id:
+            prior_revision_id = old_rev
+        elif isinstance(existing.get("prior_revision_id"), str) and existing.get("prior_revision_id"):
+            # Same revision re-arm: keep the previous prior if any.
+            prior_revision_id = existing["prior_revision_id"]
+
+    marker: dict[str, Any] = {
+        "schema_version": "1",
+        "pack_id": safe_id,
+        "revision_id": revision_id,
+        "deployed_at": int(time.time() if now is None else now),
+        "permissions": list(permissions),
+    }
+    if isinstance(version, str) and version:
+        marker["version"] = version
+    if prior_revision_id is not None:
+        marker["prior_revision_id"] = prior_revision_id
+
+    target = _sidecar_target(home, safe_id, ".deployed.json")
+    payload = (json.dumps(marker, sort_keys=True) + "\n").encode("utf-8")
+    kb_paths.atomic_write(target, payload)
+    _unlink_sidecar(home, safe_id, ".download_pending.json")
+    return _classify_or_raise(home, safe_id)
+
+
+def demote_deployed_to_configured(
+    home: Path,
+    pack_id: str,
+    *,
+    now: int | None = None,
+) -> dict[str, Any] | None:
+    """After disarm: drop the deployed sidecar and write configured.
+
+    Returns the classifier row when the pack remains installed, or
+    ``None`` when there is no library pack to demote (draft-only arms).
+    Missing deployed markers are fine — still writes configured when
+    the pack file exists so the library shows a post-arm setup state.
+    """
+    home = Path(home)
+    try:
+        safe_id = _safe_pack_id_segment(pack_id)
+    except InstallRefused:
+        return None
+    if _find_installed_pack_path(home, safe_id) is None:
+        return None
+    _unlink_sidecar(home, safe_id, ".deployed.json")
+    return mark_configured(home, safe_id, now=now)
+
+
 def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
     """One-click install a free catalogue pack into the local library.
 
@@ -307,7 +538,7 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
         if row.get("pack_id") == safe_id and row.get("bucket") != app_packs.BUCKET_PURCHASED:
             return row
 
-    packs_dir = (home / "packs").resolve()
+    packs_dir = _packs_dir(home)
     packs_dir.mkdir(parents=True, exist_ok=True)
     marker: dict[str, Any] = {
         "schema_version": "1",
@@ -324,10 +555,7 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
         marker["permissions"] = []
 
     # Path is packs_dir + sanitized basename only (no user directories).
-    filename = os.path.basename(f"{safe_id}.download_pending.json")
-    target = (packs_dir / filename).resolve()
-    if target.parent != packs_dir:
-        raise InstallRefused("invalid_request", "pack_id is required")
+    target = _sidecar_target(home, safe_id, ".download_pending.json")
     payload = (json.dumps(marker, sort_keys=True) + "\n").encode("utf-8")
     kb_paths.atomic_write(target, payload)
 
@@ -364,9 +592,13 @@ def refresh_catalogue(
 __all__ = [
     "InstallRefused",
     "UpdateRefused",
+    "demote_deployed_to_configured",
     "install_from_catalogue",
+    "library_pack_id_for_path",
     "list_catalogue",
     "list_installed",
+    "mark_configured",
+    "mark_deployed",
     "refresh_catalogue",
     "update_pack",
 ]
