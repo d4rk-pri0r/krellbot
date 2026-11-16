@@ -107,12 +107,14 @@ def arm_pack(
     home = Path(home) if home is not None else kb_paths.home()
     pack_path = Path(pack_path)
     if not pack_path.exists():
-        print(f"no such pack: {pack_path}", flush=True)
+        # Do not interpolate pack_path: CodeQL treats path args reachable
+        # from the web live.arm entry as sensitive for clear-text logging.
+        print("no such pack", flush=True)
         return 2
     try:
         pack_data = json.loads(pack_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        print(f"invalid JSON: {exc}", flush=True)
+    except json.JSONDecodeError:
+        print("invalid JSON", flush=True)
         return 2
     if not isinstance(pack_data, dict):
         print("pack must be a JSON object", flush=True)
