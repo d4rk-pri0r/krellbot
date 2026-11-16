@@ -10,3 +10,4 @@ One line per item. Nothing here is work until the owner moves it into a mileston
 - Packs remain under Strategies (toggle), not a top-level nav item matching the marketing concept strip (tracked as M5.2).
 - CI frontend flake: `Editor.ownedSeedIdentity.test.tsx` intermittently misses `[data-testid="editor-revision-id"]` under full suite load (seen on #426; passes alone locally; main tip green).
 - CI macOS flake: `tests/test_int01_workstation_launch.py` intermittently times out (`test_workstation_serves_index_with_bootstrap_meta` HTTP TimeoutError / `test_workstation_missing_index_exits_2_with_build_hint` subprocess TimeoutExpired) under full suite (seen on #450; Ubuntu/Windows green; main tip green).
+- `docs/getting-started.md` Uninstall section still shows top-level `krellbot uninstall` like the pre-M13.8 `docs/cli.md` claim; align with cli.md honesty when that page is next touched.

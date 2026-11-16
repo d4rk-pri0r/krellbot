@@ -800,6 +800,30 @@ def usage():
     return 2
 
 
+def cmd_uninstall_help() -> int:
+    """Honest pointer only — not a product uninstall surface.
+
+    The engine CLI has no top-level uninstall that removes the release
+    install. Point at the installer uninstall flow and at
+    ``krellbot service uninstall`` for the scheduler unit.
+    """
+    print(
+        "There is no top-level `krellbot uninstall` product command.",
+        file=sys.stderr,
+    )
+    print(
+        "Remove the site install with the installer's uninstall flow "
+        "(retains $KRELLBOT_HOME by default; pass --purge-data inside "
+        "the installer to delete it).",
+        file=sys.stderr,
+    )
+    print(
+        "Remove only the hourly scheduler unit with: krellbot service uninstall",
+        file=sys.stderr,
+    )
+    return 2
+
+
 def _new_correlation_id() -> str:
     """Return a short opaque correlation id for service calls."""
     import secrets as _secrets
@@ -2167,6 +2191,10 @@ def main(argv):
         return 0
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
         return usage()
+    if argv[1] == "uninstall":
+        # Thin honesty pointer only — before migrate, and never a product
+        # uninstall that deletes install paths or $KRELLBOT_HOME.
+        return cmd_uninstall_help()
     if argv[1] == "backup" and len(argv) >= 2:
         return cmd_backup(argv[2:])
     try:
