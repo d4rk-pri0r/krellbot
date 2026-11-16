@@ -8,7 +8,7 @@ The client is open so you can read what it does before you run it.
 - krellbot.dev receives a license key if you add packs. It does not receive the exchange key.
 - This repository does not contain the paid packs.
 - Paper fills stay on this machine, inside `$KRELLBOT_HOME/run/paper-<venue>.json`. No exchange sees a paper fill.
-- A live order requires typing `LIVE` exactly at the first arm prompt and a key whose withdraw permission is off. The typed confirmation is a CLI-only path; the dashboard refuses live arm.
+- A live order requires an operator live grant (typed `LIVE` in the workstation) and a key whose withdraw permission is off. CLI `arm --mode live` does not prompt `Type LIVE` on stdin; successful live arm is the web `live.arm` path after that grant.
 - Telemetry is off until the operator types `y`. See [docs/telemetry.md](docs/telemetry.md).
 - The Exchange wizard step displays only historical status — "last stored through wizard at <ts>; current key presence not checked" or "unknown; not currently verified". It never claims a live connection; CLI-side rotation is not detectable from the page because no credential is read at render time.
 

@@ -902,9 +902,10 @@ def cmd_arm(args):
     """`krellbot arm <pack.json> --venue V --mode M [--paper-balance USD]`.
 
     Paper mode delegates to the application service so validation, persistence,
-    and pause semantics share a single boundary. Live mode stays on the legacy
-    `run.arm_pack` path so the typed confirmation and key check remain a
-    CLI-only concern.
+    and pause semantics share a single boundary. Live mode still routes through
+    `run.arm_pack` for paper-only / gate / key diagnostics, but does not prompt
+    ``Type LIVE`` — successful live arm is the workstation ``live.arm`` path
+    after an operator grant (M10.1 / M13.5).
     """
     from krellbot import secrets as kb_secrets_mod
     from krellbot.application.paper import PaperService
@@ -989,6 +990,8 @@ def cmd_arm(args):
             probe = _probe(venue_arg, api_key, api_secret)
             return probe.to_key_perms()
 
+        # Never pass skip_confirm from the CLI: live arm confirmation is the
+        # workstation grant. arm_pack refuses without prompting Type LIVE.
         rc = arm_pack(
             Path(pack_arg),
             venue=venue,
@@ -996,6 +999,7 @@ def cmd_arm(args):
             paper_balance=paper_balance,
             confirm_fn=None,
             key_check=key_check,
+            skip_confirm=False,
         )
         if rc == 0 and _is_community_path(Path(pack_arg).resolve()):
             print(COMMUNITY_BANNER, flush=True)

@@ -19,12 +19,15 @@ The rest of this document describes the dormant live implementation.
 
 Live mode runs a pack against the real venue. The local engine still owns
 the lifecycle — licensing, locking, journaling, and stop placement — but
-orders hit the exchange. Live mode is off by default and requires a typed
-confirmation the first time you arm.
+orders hit the exchange. Live mode is off by default. Successful live arm
+is the workstation path: grant authorization (typed `LIVE` in the UI), then
+`live.arm`. The CLI does not prompt `Type LIVE to arm:` on stdin.
 
 ## Arm gate
 
 ```
+# Prefer the workstation: grant LIVE authorization, then live.arm.
+# CLI arm --mode live refuses without that path (no Type LIVE stdin prompt).
 KRELLBOT_ENABLE_LIVE=1 krellbot arm tests/fixtures/packs/sma_cross.json \
     --venue kraken \
     --mode live
@@ -32,22 +35,27 @@ KRELLBOT_ENABLE_LIVE=1 krellbot arm tests/fixtures/packs/sma_cross.json \
 
 Live arm refuses when:
 
+* `PAPER_ONLY_RELEASE` is active (this release): honest paper-only refusal.
 * `KRELLBOT_ENABLE_LIVE` is not `1`.
+* No operator live grant names the exact venue+pair (workstation grant).
 * No key is stored for the venue. Store one first with
   `krellbot keys add kraken --file <key-file>`.
 * `check_key` reports `can_withdraw=True`. Krellbot only accepts
   trade-only keys.
 * `check_key` reports `can_trade=False`.
 * The pack has no `risk.stop` or `risk.max_account_pct` ≤ 0.
-
-The first live arm on an install reads a confirmation prompt. You must
-type `LIVE` exactly. A later live arm on the same install does not
-prompt. Disarm + re-arm on the same pair goes through arm again with the
-saved `live_first_armed=true` flag.
+* The caller is the CLI without the web `skip_confirm` seam — CLI prints
+  an honest “use the workstation grant” message instead of prompting.
 
 ## Tick
 
-A live tick sends only when `KRELLBOT_ENABLE_LIVE=1` and the stored key is trade-only. The typed `LIVE` confirmation is required when you arm, not again on every tick. A withdraw-capable key is refused with that reason. It is not reported as the env gate. Paper ticks stay on this machine. If a Kraken key is stored, a paper entry also posts `validate=true` and does not record that post as a fill.
+A live tick sends only when `KRELLBOT_ENABLE_LIVE=1`, an operator grant
+covers the venue+pair, and the stored key is trade-only. Typed `LIVE` is
+collected at grant time in the workstation, not again on every tick or on
+CLI arm. A withdraw-capable key is refused with that reason. It is not
+reported as the env gate. Paper ticks stay on this machine. If a Kraken key
+is stored, a paper entry also posts `validate=true` and does not record that
+post as a fill.
 
 ## Live-only invariants
 
@@ -81,9 +89,8 @@ Disarm removes the armed record. The venue state is left untouched.
 ## What this phase does NOT do
 
 * Does not run `krellbot tick --venue kraken` over the public network
-  with `KRELLBOT_ENABLE_LIVE=1` unless you really mean to. The first
-  live arm types confirmation into stdin; later live arms do not
-  prompt.
+  with `KRELLBOT_ENABLE_LIVE=1` unless you really mean to. Live arm
+  confirmation is the workstation grant, not a CLI stdin prompt.
 * Does not call `CancelAllOrdersAfter`. The source is grepped for the
   string and the guardrail test enforces that.
 * Does not lower a stop. `raise_stop` only replaces the resting stop if

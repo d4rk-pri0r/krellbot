@@ -780,10 +780,11 @@ class PaperService:
         """Arm a pack in paper mode.
 
         The service is the boundary; the engine's ``run.arm_pack``
-        remains the single authority for the typed live confirmation,
-        the key check, the pack-shape validation, and the costmin
-        check (so the existing live path and the existing engine
-        guarantees are unchanged). For paper mode the service runs
+        remains the single authority for live key checks, pack-shape
+        validation, and the costmin check (so the existing live path
+        and the existing engine guarantees are unchanged). Live typed
+        ``LIVE`` confirmation is the workstation grant + ``skip_confirm``
+        seam, not a CLI stdin prompt. For paper mode the service runs
         its own validation, then delegates to ``run.arm_pack`` with
         ``home=self._home`` so the persistence and the on-disk
         record are byte-identical to what the engine produces.
