@@ -49,11 +49,18 @@ describe("LiveAuthorizationPanel paper-only state", () => {
     );
 
     expect((screen.getByTestId("ops-live-auth-venue") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByTestId("ops-live-auth-pair") as HTMLInputElement).disabled).toBe(true);
+    const pairSelect = screen.getByTestId("ops-live-auth-pair") as HTMLSelectElement;
+    expect(pairSelect.disabled).toBe(true);
+    expect(pairSelect.tagName).toBe("SELECT");
+    expect(pairSelect.value).toBe("XXBTZUSD");
+    expect(Array.from(pairSelect.options).map((option) => option.value)).toEqual([
+      "XXBTZUSD",
+    ]);
     expect((screen.getByTestId("ops-live-auth-hours") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByTestId("ops-live-auth-confirm") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByTestId("ops-live-auth-grant") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("ops-live-auth-revoke") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/stored Kraken venue symbol XXBTZUSD/i)).toBeDefined();
 
     await waitFor(() => {
       expect(client.getLiveAuthorization).toHaveBeenCalled();

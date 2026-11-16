@@ -10,10 +10,17 @@
 // the editor never silently rewrites or strips it.
 
 import type { Pack } from "./client";
+import {
+  KRAKEN_BTC_USD_VENUE_SYMBOL,
+  isKrakenWavePairSymbol,
+} from "../../markets/krakenBtcUsd.ts";
 
 export const INDICATOR_NAME = "ma";
 export const FAST_INDICATOR_NAME = "fast";
 export const SLOW_INDICATOR_NAME = "slow";
+
+/** Stored Kraken venue symbol for the BTC/USD wave (not a display label). */
+export const DEFAULT_PAIR = KRAKEN_BTC_USD_VENUE_SYMBOL;
 
 export const TIMEFRAMES = ["1h", "4h", "1d"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
@@ -70,11 +77,9 @@ const LENGTH_MAX = 599;
 const NAME_MAX = 120;
 const AUTHOR_MAX = 120;
 const DEFAULT_AUTHOR = "local workstation";
-const DEFAULT_PAIR = "XXBTZUSD";
 const DEFAULT_TIMEFRAME: Timeframe = "1h";
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
-const PAIR_PATTERN = /^[A-Z0-9]{2,16}(-[A-Z0-9]{2,16})?$/;
 
 function isFiniteNumber(text: string): boolean {
   if (!/^-?\d+(\.\d+)?$/.test(text)) {
@@ -121,8 +126,8 @@ export function validateOwnedStrategyField(
       }
       return undefined;
     case "pair":
-      if (!PAIR_PATTERN.test(value)) {
-        return "Pair must be uppercase like XXBTZUSD";
+      if (!isKrakenWavePairSymbol(value)) {
+        return `Pair must be the wave Kraken BTC/USD symbol ${KRAKEN_BTC_USD_VENUE_SYMBOL}`;
       }
       return undefined;
     case "length":
@@ -262,7 +267,12 @@ export function readOwnedStrategy(pack: Pack | null): OwnedStrategyFormState | n
     return null;
   }
   const market = markets[0] as { venue?: unknown; pair?: unknown };
-  if (market.venue !== "kraken" || typeof market.pair !== "string") {
+  // Guided form is wave-pair only; other Kraken pairs stay editable as raw JSON.
+  if (
+    market.venue !== "kraken" ||
+    typeof market.pair !== "string" ||
+    !isKrakenWavePairSymbol(market.pair)
+  ) {
     return null;
   }
   const indicatorEntries = Object.entries(indicators as Record<string, unknown>).map(

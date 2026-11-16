@@ -15,6 +15,10 @@ import {
   type Timeframe,
 } from "./ownedStrategy";
 import type { Pack } from "./client";
+import {
+  KRAKEN_WAVE_PAIR_OPTIONS,
+  krakenWavePairLabel,
+} from "../../markets/krakenBtcUsd";
 
 export type OwnedStrategyFormProps = {
   state: OwnedStrategyFormState;
@@ -54,13 +58,12 @@ const RECIPE_LABELS: Record<RecipeName, string> = {
 type TextFieldName =
   | "name"
   | "id"
-  | "pair"
   | "fastLength"
   | "length"
   | "maxAccountPct"
   | "stopPct";
 
-const TEXT_FIELD_LABELS: Record<TextFieldName, string> = {
+const TEXT_FIELD_LABELS: Record<TextFieldName | "pair", string> = {
   name: "Strategy name",
   id: "Strategy id",
   pair: "Kraken pair",
@@ -72,9 +75,11 @@ const TEXT_FIELD_LABELS: Record<TextFieldName, string> = {
 
 const TEXT_FIELD_HINTS: Partial<Record<TextFieldName, string>> = {
   id: "lowercase-with-hyphens, max 32 characters; editing it starts a different strategy",
-  pair: "uppercase like XXBTZUSD or XETHZUSD",
   fastLength: "must be shorter than the slow average length",
 };
+
+const PAIR_FIELD_HINT =
+  "Wave market only: display BTC/USD, stored as the Kraken venue symbol XXBTZUSD";
 
 const VALIDATED_FIELDS: OwnedStrategyField[] = [
   "name",
@@ -156,13 +161,23 @@ export function OwnedStrategyForm({
             ? (raw as MovingAverageKind)
             : field === "recipe"
               ? (raw as RecipeName)
-              : (raw as Comparison);
+              : field === "pair"
+                ? raw
+                : (raw as Comparison);
       update({ [field]: value } as Partial<OwnedStrategyFormState>);
     };
 
   const crossover = state.recipe === "ma_cross";
   const comparisonLabels = crossover ? CROSS_COMPARISON_LABELS : COMPARISON_LABELS;
-  const visibleTextFields = (Object.keys(TEXT_FIELD_LABELS) as TextFieldName[]).filter(
+  const textFieldNames: TextFieldName[] = [
+    "name",
+    "id",
+    "fastLength",
+    "length",
+    "maxAccountPct",
+    "stopPct",
+  ];
+  const visibleTextFields = textFieldNames.filter(
     (field) => field !== "fastLength" || crossover,
   );
 
@@ -236,6 +251,34 @@ export function OwnedStrategyForm({
               ) : null}
             </label>
           ))}
+          <div className="kbot-owned-strategy-form__field">
+            <label
+              className="kbot-owned-strategy-form__field-label"
+              htmlFor="kbot-owned-strategy-pair"
+            >
+              {TEXT_FIELD_LABELS.pair}
+            </label>
+            <select
+              id="kbot-owned-strategy-pair"
+              className="kbot-owned-strategy-form__select"
+              data-testid="owned-strategy-pair"
+              value={state.pair}
+              onChange={handleSelectChange("pair")}
+              aria-describedby="kbot-owned-strategy-pair-hint"
+            >
+              {KRAKEN_WAVE_PAIR_OPTIONS.map((option) => (
+                <option key={option.venueSymbol} value={option.venueSymbol}>
+                  {krakenWavePairLabel(option.venueSymbol)}
+                </option>
+              ))}
+            </select>
+            <span
+              id="kbot-owned-strategy-pair-hint"
+              className="kbot-owned-strategy-form__field-hint"
+            >
+              {PAIR_FIELD_HINT}
+            </span>
+          </div>
           <label
             className="kbot-owned-strategy-form__field"
             htmlFor="kbot-owned-strategy-timeframe"
