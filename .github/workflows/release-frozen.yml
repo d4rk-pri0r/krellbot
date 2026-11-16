@@ -19,6 +19,9 @@ on:
       - "tests/test_frozen_main.py"
       - "tests/test_ci_smoke_frozen_paper.py"
       - "tests/test_release_signing_gates.py"
+      - "tests/test_macos_app_bundle.py"
+      - "scripts/macos_app_bundle.py"
+      - "scripts/macos_entitlements.plist"
   push:
     tags: ["v*"]
 
@@ -305,7 +308,7 @@ jobs:
             echo "Set repo variable KRELLBOT_SIGN_RELEASE=true (or dispatch with sign_release=true) after secrets are configured."
           fi
 
-      - name: Sign macOS Developer ID Application and notarize
+      - name: Sign macOS Developer ID Application, notarize, and staple
         if: >-
           matrix.os == 'macos-latest'
           && github.event_name != 'pull_request'
@@ -319,6 +322,7 @@ jobs:
           APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          KRELLBOT_VERSION: ${{ env.KRELLBOT_VERSION }}
         shell: bash
         run: |
           set -euo pipefail
@@ -342,11 +346,23 @@ jobs:
             exit 1
           fi
 
+          APP_VERSION="${KRELLBOT_VERSION}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            APP_VERSION="${GITHUB_REF_NAME}"
+          fi
+
+          # Wrap the PyInstaller one-dir into a notarizable .app (nested first).
+          uv run python scripts/macos_app_bundle.py \
+            --onedir dist/krellbot \
+            --app dist/Krellbot.app \
+            --version "${APP_VERSION}"
+
           KEYCHAIN_PASSWORD="$(uuidgen)"
           KEYCHAIN_PATH="${RUNNER_TEMP}/krellbot-signing.keychain-db"
           P12_PATH="${RUNNER_TEMP}/developer-id.p12"
           P8_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
           NOTARIZE_ZIP="${RUNNER_TEMP}/krellbot-macos-notarize.zip"
+          ENTITLEMENTS="scripts/macos_entitlements.plist"
 
           security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
           security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
@@ -360,20 +376,22 @@ jobs:
             -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
           rm -f "${P12_PATH}"
 
-          # Sign nested Mach-O / dylib / so / bundle binaries deepest-first, then the launcher.
+          # Deep codesign: nested Mach-O first, then the .app bundle.
           while IFS= read -r -d '' candidate; do
             if file "${candidate}" | grep -Eq 'Mach-O|shared library|dynamically linked shared library|bundle'; then
-              echo "codesign: ${candidate}"
+              echo "codesign nested: ${candidate}"
               codesign --force --options runtime --timestamp \
+                --entitlements "${ENTITLEMENTS}" \
                 --sign "${APPLE_CODESIGN_IDENTITY}" "${candidate}"
             fi
-          done < <(find dist/krellbot -type f -print0 | sort -z -r)
+          done < <(find dist/Krellbot.app/Contents -type f -print0 | sort -z -r)
           codesign --force --options runtime --timestamp \
-            --sign "${APPLE_CODESIGN_IDENTITY}" "dist/krellbot/krellbot"
-          codesign --verify --deep --strict "dist/krellbot/krellbot"
+            --entitlements "${ENTITLEMENTS}" \
+            --sign "${APPLE_CODESIGN_IDENTITY}" "dist/Krellbot.app"
+          codesign --verify --deep --strict "dist/Krellbot.app"
 
           echo "${APPLE_API_KEY_P8_BASE64}" | base64 --decode > "${P8_PATH}"
-          ditto -c -k --keepParent "dist/krellbot" "${NOTARIZE_ZIP}"
+          ditto -c -k --keepParent "dist/Krellbot.app" "${NOTARIZE_ZIP}"
           xcrun notarytool submit "${NOTARIZE_ZIP}" \
             --key "${P8_PATH}" \
             --key-id "${APPLE_API_KEY_ID}" \
@@ -381,10 +399,12 @@ jobs:
             --wait
           rm -f "${P8_PATH}" "${NOTARIZE_ZIP}"
 
-          # Zip-distributed onedir: stapling applies to .app/.pkg/.dmg, not bare zips.
-          # Gatekeeper validates the notarization ticket online for these hashes.
+          xcrun stapler staple "dist/Krellbot.app"
+          xcrun stapler validate "dist/Krellbot.app"
+
           echo "signed=true" >> "$GITHUB_OUTPUT"
-          echo "macos Developer ID + notarization completed"
+          echo "app=dist/Krellbot.app" >> "$GITHUB_OUTPUT"
+          echo "macos Developer ID + notarization + staple completed"
 
       - name: Sign Windows Authenticode
         if: >-
@@ -470,7 +490,7 @@ jobs:
             detail="unsigned_signing_not_requested"
           elif [ "${platform}" = "macos" ] && [ "${MACOS_SIGNED}" = "true" ]; then
             signed="true"
-            detail="developer_id_notarized"
+            detail="developer_id_notarized_stapled_app"
           elif [ "${platform}" = "windows" ] && [ "${WINDOWS_SIGNED}" = "true" ]; then
             signed="true"
             detail="authenticode"
@@ -530,18 +550,29 @@ jobs:
             KRELLBOT_VERSION="${GITHUB_REF_NAME}"
           fi
           URL="${KRELLBOT_RELEASE_BASE_URL}${KRELLBOT_VERSION}/${{ matrix.archive_name }}"
+          # Signed macOS ships a stapled Krellbot.app zip. Unsigned macOS
+          # (and all other platforms) keep the one-dir archive contract.
           uv run python -c "
           import json
           from pathlib import Path
-          from scripts.release_archive import build_archive
-          m = build_archive(
-              Path('dist/krellbot'),
-              Path('${ARCHIVE}'),
-              version='${KRELLBOT_VERSION}',
-              platform_tag='${{ matrix.platform_tag }}',
-              arch='${{ matrix.arch }}',
-              url='${URL}',
-          )
+          from scripts.release_archive import build_archive, build_macos_app_archive
+          archive = Path('${ARCHIVE}')
+          version = '${KRELLBOT_VERSION}'
+          arch = '${{ matrix.arch }}'
+          platform = '${{ matrix.platform_tag }}'
+          url = '${URL}'
+          app = Path('dist/Krellbot.app')
+          if platform == 'macos' and app.is_dir():
+              m = build_macos_app_archive(app, archive, version=version, arch=arch, url=url)
+          else:
+              m = build_archive(
+                  Path('dist/krellbot'),
+                  archive,
+                  version=version,
+                  platform_tag=platform,
+                  arch=arch,
+                  url=url,
+              )
           print(json.dumps(m, indent=2, sort_keys=True))
           " | tee "artifacts/manifest-${{ matrix.platform_tag }}-${{ matrix.arch }}.json"
 

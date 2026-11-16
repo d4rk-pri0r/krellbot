@@ -69,7 +69,10 @@ def test_unsigned_release_notes_path_still_present() -> None:
 def test_codesign_only_under_secrets_gated_macos_step() -> None:
     text = _read_workflow()
     assert "codesign" in text, "macOS signing step must invoke codesign when gated on"
-    assert "Sign macOS Developer ID Application and notarize" in text
+    assert "Sign macOS Developer ID Application, notarize, and staple" in text
+    assert "scripts/macos_app_bundle.py" in text
+    assert "stapler staple" in text
+    assert "Krellbot.app" in text
     assert "APPLE_DEVELOPER_ID_P12_BASE64" in text
     assert "required secrets are missing" in text
     # PR path must not require signing.
@@ -78,6 +81,14 @@ def test_codesign_only_under_secrets_gated_macos_step() -> None:
         r"steps\.signing\.outputs\.requested\s*==\s*'true'",
         text,
     ), "codesign step must gate on steps.signing.outputs.requested"
+
+
+def test_signing_doc_describes_app_staple_not_onedir_zip() -> None:
+    text = SIGNING_DOC.read_text(encoding="utf-8")
+    assert "Krellbot.app" in text
+    assert "stapled" in text.lower()
+    assert "Stapling is claimed only for the `.app`" in text
+    assert "krellbot-cloud" in text
 
 
 def test_signtool_only_under_secrets_gated_windows_step() -> None:
@@ -131,7 +142,7 @@ def test_release_notes_helper_unsigned_and_signed_paths() -> None:
             encoding="utf-8",
         )
         signed = build_notes(root=root, sha="abc")
-        assert "Developer ID-signed and notarized" in signed
+        assert "Developer ID-signed, notarized, stapled Krellbot.app" in signed
         assert "Authenticode-signed" in signed
         assert "prerelease" in signed.lower()
         assert "Unsigned" not in signed

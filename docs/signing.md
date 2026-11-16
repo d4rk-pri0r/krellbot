@@ -23,9 +23,32 @@ publication decision (M13.3), not this workflow alone.
 When signing is **requested** and a required secret is missing, the
 platform job **fails closed** with a clear error naming the missing
 secret. When signing is **not** requested, the workflow produces the
-existing checksum-pinned unsigned archives.
+existing checksum-pinned unsigned archives (macOS stays a one-dir zip).
 
 Workflow: `.github/workflows/release-frozen.yml`.
+
+## macOS artifact shape
+
+| Signing requested? | Release zip contents |
+| --- | --- |
+| No | PyInstaller **one-dir** tree (`krellbot` + `_internal/`, same as today). |
+| Yes | Stapled **`Krellbot.app`** at the zip root (`Krellbot.app/Contents/…`). |
+
+Signed path (secrets present):
+
+1. Freeze one-dir at `dist/krellbot`.
+2. Wrap into `dist/Krellbot.app` (`scripts/macos_app_bundle.py`):
+   `Contents/MacOS/krellbot` + `_internal/`, plus `Contents/Info.plist`
+   (`CFBundleIdentifier`, `LSMinimumSystemVersion`, version keys).
+3. Deep codesign nested Mach-O, then the `.app`, with hardened runtime,
+   timestamp, and `scripts/macos_entitlements.plist`.
+4. Zip the `.app` for submit → `notarytool … --wait` →
+   `xcrun stapler staple` + `stapler validate` on the `.app`.
+5. Ship `krellbot-macos-*.zip` of the **stapled** `.app` (SHA-256
+   manifest unchanged in shape).
+
+**Stapling is claimed only for the `.app`.** Do not claim stapling for
+a bare one-dir zip or for the outer download zip file itself.
 
 ## Required GitHub Actions secrets (names only)
 
@@ -60,23 +83,20 @@ Workflow: `.github/workflows/release-frozen.yml`.
 
 **Unsigned / not notarized builds (signing not requested or secrets absent):**
 
+- Artifact is still the one-dir zip.
 - First launch may show Gatekeeper “cannot be opened because the
   developer cannot be verified.”
 - Operator path: System Settings → Privacy & Security → Open Anyway,
   or right-click → Open on the launcher after install.
 - Installer still verifies the HTTPS-pinned SHA-256 **before** extract.
 
-**Developer ID–signed and notarized builds (secrets present, signing requested):**
+**Developer ID–signed, notarized, stapled `.app` (secrets present, signing requested):**
 
-- Gatekeeper should accept the binary after the notarization ticket is
-  recorded for those content hashes.
-- This product ships a **zip of a PyInstaller one-dir tree**, not a
-  `.app` / `.pkg` / `.dmg`. Apple’s stapler applies to those bundle
-  types; for zip-distributed onedirs Gatekeeper performs an **online**
-  notarization ticket check. Do not claim “stapled” for the zip.
-- If notarization was skipped or failed, treat the build as unsigned
-  for user messaging — the workflow fails closed rather than publishing
-  a half-signed macOS cut when signing was requested.
+- Release zip contains `Krellbot.app/…` after a successful staple.
+- Gatekeeper can validate offline via the stapled ticket on the `.app`.
+- Stapling applies to the `.app` bundle only — not to the outer `.zip`.
+- If notarization or staple fails, the job fails closed (no half-signed
+  macOS cut when signing was requested).
 
 ## SmartScreen (Windows) — expected behavior
 
@@ -111,15 +131,37 @@ platform code-signed:
 - Honesty rule: do not claim a Linux publisher signature product that
   is not produced by the release workflow.
 
+## krellbot-cloud installer contract (caveat)
+
+Unsigned macOS zips keep the historical **one-dir** layout that the
+site installer (`krellbot-cloud`) already stages.
+
+**Signed macOS zips change the payload layout** to a top-level
+`Krellbot.app`. Before enabling `KRELLBOT_SIGN_RELEASE` for real macOS
+users, `krellbot-cloud` must:
+
+1. After SHA-256 verify + extract, detect `Krellbot.app/` (vs top-level
+   `krellbot` + `_internal/`).
+2. Stage either the whole `.app` or
+   `Krellbot.app/Contents/MacOS/{krellbot,_internal}` into the version
+   directory the launcher expects.
+3. Point the managed `krellbot` launcher at
+   `…/Krellbot.app/Contents/MacOS/krellbot` (or an equivalent shim).
+4. Keep the HTTPS-pinned SHA-256 check **before** extract; the digest
+   is of the zip bytes, not of an inner member.
+
+Until that cloud change lands, leave `KRELLBOT_SIGN_RELEASE` unset so
+macOS continues to publish one-dir unsigned zips.
+
 ## Release channel honesty
 
 - Unsigned or partially unsigned tag publishes keep `--prerelease` and
   notes that say **Unsigned** / **Not notarized** / **Not
   Authenticode-signed** when markers show no macOS+Windows signatures.
 - When both macOS and Windows markers report signed, notes may say
-  Developer ID + notarized and Authenticode, while still labeling the
-  GitHub Release a **prerelease** until the owner flips
-  `ARTIFACTS_SIGNED` / publication approval.
+  Developer ID + notarized + stapled `.app` and Authenticode, while
+  still labeling the GitHub Release a **prerelease** until the owner
+  flips `ARTIFACTS_SIGNED` / publication approval.
 - `PAPER_ONLY_RELEASE` stays `True` independently of signing.
 
 ## Operator checklist (owner)
@@ -127,6 +169,7 @@ platform code-signed:
 1. Create Apple Developer ID Application cert + App Store Connect API key; export `.p12` / `.p8`.
 2. Obtain Windows Authenticode certificate; export `.pfx`.
 3. Paste **only** into GitHub → Settings → Secrets and variables → Actions using the names above.
-4. Set variable `KRELLBOT_SIGN_RELEASE=true` when ready for signed tag builds.
-5. Cut a `v*` tag (or dispatch with `sign_release=true`) and confirm signing-status artifacts.
-6. Only then consider flipping `ARTIFACTS_SIGNED` and M13.3 publication — not before.
+4. Update `krellbot-cloud` to accept stapled `Krellbot.app` zips (see caveat above).
+5. Set variable `KRELLBOT_SIGN_RELEASE=true` when ready for signed tag builds.
+6. Cut a `v*` tag (or dispatch with `sign_release=true`) and confirm signing-status artifacts + staple.
+7. Only then consider flipping `ARTIFACTS_SIGNED` and M13.3 publication — not before.

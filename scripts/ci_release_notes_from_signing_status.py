@@ -33,7 +33,7 @@ def build_notes(*, root: Path, sha: str) -> str:
     base = f"Checksum-pinned build from {sha}."
     if macos_signed and windows_signed:
         return (
-            f"{base} macOS: Developer ID-signed and notarized. "
+            f"{base} macOS: Developer ID-signed, notarized, stapled Krellbot.app. "
             f"Windows: Authenticode-signed. Linux: checksum-pinned ({linux_policy}); "
             "no platform code signature. Still a prerelease — not GA."
         )

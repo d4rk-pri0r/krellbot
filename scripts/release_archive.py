@@ -316,6 +316,60 @@ def _sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
+def _validate_macos_app(app: Path) -> None:
+    """Raise if ``app`` is not a usable Krellbot.app bundle."""
+
+    if not app.is_dir() or not app.name.endswith(".app"):
+        raise FileNotFoundError(f"macOS app bundle directory required: {app}")
+    exe = app / "Contents" / "MacOS" / "krellbot"
+    if not exe.is_file():
+        raise FileNotFoundError(f"required executable missing: {exe}")
+    plist = app / "Contents" / "Info.plist"
+    if not plist.is_file():
+        raise FileNotFoundError(f"required Info.plist missing: {plist}")
+    resolved_app = app.resolve()
+    for member in app.rglob("*"):
+        if member.is_symlink():
+            try:
+                target = member.resolve()
+            except OSError as exc:
+                raise ValueError(f"dangling symlink in app: {member.relative_to(app)}") from exc
+            if not target.exists() or not target.is_relative_to(resolved_app):
+                raise ValueError(f"escaping or dangling symlink in app: {member.relative_to(app)}")
+        try:
+            relative = member.relative_to(app)
+        except ValueError as exc:
+            raise ValueError(f"unsafe app member (not under app): {member}") from exc
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"unsafe app member: {relative}")
+
+
+def _write_zip_prefixed(root: Path, output: Path, *, archive_root_name: str) -> None:
+    """Zip ``root`` so every member is under ``archive_root_name/``."""
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.exists():
+        output.unlink()
+    is_windows = sys.platform == "win32"
+    with zipfile.ZipFile(
+        output,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+        allowZip64=False,
+    ) as zf:
+        for src, member_name in _iter_archive_members(root):
+            prefixed = f"{archive_root_name}/{member_name}"
+            data = src.read_bytes()
+            info = zipfile.ZipInfo(filename=prefixed, date_time=_ZIP_DETERMINISTIC_DATE)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            if is_windows:
+                mode = 0o644
+            else:
+                mode = src.stat().st_mode & 0o7777
+            info.external_attr = (mode & 0xFFFF) << 16
+            zf.writestr(info, data)
+
+
 def build_archive(
     dist: Path,
     output: Path,
@@ -357,6 +411,43 @@ def build_archive(
     manifest["sha256"] = digest
     manifest["size"] = size
 
+    return manifest
+
+
+def build_macos_app_archive(
+    app: Path,
+    output: Path,
+    *,
+    version: str,
+    arch: str,
+    url: str,
+) -> dict[str, str | int]:
+    """Archive a stapled (or unsigned) ``Krellbot.app`` with installer manifest.
+
+    Zip members are rooted at the ``.app`` directory name (e.g.
+    ``Krellbot.app/Contents/MacOS/krellbot``). Same manifest shape as
+    ``build_archive``. Callers must keep the krellbot-cloud install
+    contract honest when flipping signed macOS cuts to this layout.
+    """
+
+    _validate_tags(os_tag="macos", arch=arch)
+    _validate_macos_app(app)
+    _validate_url(url, filename=output.name)
+
+    manifest: dict[str, str | int] = {
+        "url": url,
+        "filename": output.name,
+        "size": 0,
+        "os": "macos",
+        "arch": arch,
+        "version": version,
+        "sha256": "",
+    }
+    _write_zip_prefixed(app, output, archive_root_name=app.name)
+    digest = _sha256_of(output)
+    size = output.stat().st_size
+    manifest["sha256"] = digest
+    manifest["size"] = size
     return manifest
 
 
