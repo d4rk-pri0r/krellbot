@@ -1,9 +1,12 @@
 /**
  * M5.2 Packs browse + one-click install (KRELL-SIGNAL-20261010).
  *
- * Playwright route fakes for catalogue / install / library only — no
- * real signed envelopes, network catalogue fetch, or exchange calls.
- * Session/CSRF still come from the guarded workstation.
+ * Playwright route fakes for catalogue / install / library / community
+ * index — no real signed envelopes, network catalogue or community-index
+ * fetch, or exchange calls. Session/CSRF still come from the guarded
+ * workstation. Community index must be stubbed: PacksView mounts the
+ * honesty panel which GETs /api/v1/community/index, and the real handler
+ * would DNS raw.githubusercontent.com (journey net-guard refuses).
  */
 import { test, expect } from "./journey-harness/journey-harness";
 import { clickNav } from "../journeys/helpers/journey-steps";
@@ -44,6 +47,23 @@ async function stubPackApis(page: import("@playwright/test").Page): Promise<void
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(CATALOGUE),
+    });
+  });
+
+  // M17.4 honesty panel auto-loads community index; keep it loopback-only.
+  await page.route("**/api/v1/community/index", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        schema_version: "1",
+        index_url: "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/main/index.json",
+        packs: [],
+      }),
     });
   });
 
