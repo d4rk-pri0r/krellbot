@@ -64,6 +64,12 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
       },
       path: `packs/community/${pack_id}.json`,
     })),
+    openCommunityPack: vi.fn(async () => ({
+      schema_version: "1",
+      source: "community" as const,
+      path: "",
+      pack: {},
+    })),
     ...overrides,
   };
 }

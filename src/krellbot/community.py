@@ -111,6 +111,25 @@ def installed_rows(home: Path) -> list[dict]:
     return rows
 
 
+def read_installed(home: Path, pack_id: str) -> dict:
+    """Return the installed community pack dict for ``pack_id``.
+
+    FS open/read lives in ``extensions.install.read_installed_json`` which
+    uses ``os.scandir`` + ``openat(dir_fd, listing_name)`` so the opened
+    path comes from the directory listing, not a request-tainted join.
+    """
+    from krellbot.extensions import install as kb_extensions_install
+
+    return kb_extensions_install.read_installed_json(home, pack_id)
+
+
+def installed_path(home: Path, pack_id: str) -> Path:
+    """Return the listing-matched path for an installed community pack id."""
+    from krellbot.extensions import install as kb_extensions_install
+
+    return kb_extensions_install.confined_installed_path(home, pack_id)
+
+
 def _validate_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.netloc != ALLOWED_HOST:
@@ -245,7 +264,9 @@ __all__ = [
     "UrllibBytesTransport",
     "fetch_index",
     "install",
+    "installed_path",
     "installed_rows",
     "list_installed",
+    "read_installed",
     "resolve_transport",
 ]

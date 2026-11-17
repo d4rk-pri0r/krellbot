@@ -234,6 +234,7 @@ describe("createPacksHttpClient", () => {
     expect(typeof client.install).toBe("function");
     expect(typeof client.listCommunityIndex).toBe("function");
     expect(typeof client.installCommunity).toBe("function");
+    expect(typeof client.openCommunityPack).toBe("function");
     expect(await client.listInstalled()).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/packs",

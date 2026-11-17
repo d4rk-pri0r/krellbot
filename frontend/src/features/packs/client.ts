@@ -117,7 +117,15 @@ export type PackLibraryClient = {
   redeemActivation(key: string): Promise<ActivationRedeemResult>;
 };
 
-/** First-class Packs destination client: library + catalogue + community index. */
+/** Opened community pack from ``GET /api/v1/community/packs/{id}``. */
+export type CommunityPackDocument = {
+  schema_version: string;
+  source: "community";
+  path: string;
+  pack: Record<string, unknown>;
+};
+
+/** First-class Packs destination client: library + catalogue + community. */
 export type PacksClient = PackLibraryClient & {
   listCatalogue(): Promise<CatalogueDocument>;
   install(pack_id: string): Promise<PackInstallResult>;
@@ -125,6 +133,8 @@ export type PacksClient = PackLibraryClient & {
   listCommunityIndex(): Promise<CommunityIndexDocument>;
   /** One-click install from the community index into ``packs/community/``. */
   installCommunity(pack_id: string): Promise<CommunityInstallResult>;
+  /** Open an installed community pack for Strategies validate-before-arm. */
+  openCommunityPack(pack_id: string): Promise<CommunityPackDocument>;
 };
 
 async function getJson(url: string): Promise<PackRow[]> {
@@ -412,6 +422,36 @@ async function postInstall(pack_id: string): Promise<PackInstallResult> {
   };
 }
 
+async function getCommunityPack(packId: string): Promise<CommunityPackDocument> {
+  const response = await fetch(
+    `/api/v1/community/packs/${encodeURIComponent(packId)}`,
+    {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        "X-Krellbot-CSRF": getCsrf(),
+      },
+    },
+  );
+  if (!response.ok) {
+    throw new PackLibraryHttpError(
+      response.status,
+      `community pack open failed: ${response.status}`,
+    );
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  const pack =
+    raw.pack && typeof raw.pack === "object"
+      ? (raw.pack as Record<string, unknown>)
+      : {};
+  return {
+    schema_version: typeof raw.schema_version === "string" ? raw.schema_version : "1",
+    source: "community",
+    path: typeof raw.path === "string" ? raw.path : "",
+    pack,
+  };
+}
+
 export function createHttpClient(): PacksClient {
   return {
     listInstalled(): Promise<PackRow[]> {
@@ -431,6 +471,9 @@ export function createHttpClient(): PacksClient {
     },
     installCommunity(pack_id: string): Promise<CommunityInstallResult> {
       return postCommunityInstall(pack_id);
+    },
+    openCommunityPack(pack_id: string): Promise<CommunityPackDocument> {
+      return getCommunityPack(pack_id);
     },
   };
 }

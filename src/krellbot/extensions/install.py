@@ -188,6 +188,155 @@ def _confined_json_path(base_dir: Path, pack_id: str) -> str:
     return fullpath
 
 
+def _listing_name_for_pack_id(pack_id: str) -> str:
+    """Return the ``*.json`` filename used only for equality against scandir.
+
+    The request id is never joined into a path expression — callers open
+    ``entry.name`` from ``os.scandir`` / ``openat(dir_fd, …)`` instead.
+    """
+    import os.path
+
+    safe_id = _safe_pack_id(pack_id)
+    wanted = os.path.basename(f"{safe_id}.json")
+    if (
+        not wanted
+        or wanted != f"{safe_id}.json"
+        or os.path.basename(wanted) != wanted
+        or not wanted.endswith(".json")
+        or wanted.startswith(".")
+        or wanted in {".", ".."}
+    ):
+        from krellbot import community as kb_community
+
+        raise kb_community.InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    return wanted
+
+
+def _scandir_match(install_dir: Path, wanted_name: str) -> tuple[str, str] | None:
+    """Return ``(entry.name, entry.path)`` for a listing match, or None.
+
+    ``wanted_name`` is comparison-only. Both returned strings come from
+    ``os.scandir`` (directory listing), never from a request path join.
+    """
+    try:
+        with os.scandir(install_dir) as entries:
+            for entry in entries:
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                # Listing-derived name/path — trusted open source.
+                if entry.name == wanted_name:
+                    return entry.name, entry.path
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    return None
+
+
+def _read_bytes_via_listing(
+    install_dir: Path,
+    matched_name: str,
+    matched_entry_path: str,
+) -> bytes:
+    """Open a scandir-matched file without joining a request id.
+
+    POSIX: ``openat(dir_fd, matched_name)``. Windows refuses ``os.open`` on
+    directories / ``dir_fd``, so open the scandir ``entry.path`` instead —
+    still listing-derived, not a request-tainted join.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+
+    if os.name == "nt":
+        fd = os.open(matched_entry_path, flags)
+        try:
+            chunks: list[bytes] = []
+            while True:
+                block = os.read(fd, 65536)
+                if not block:
+                    break
+                chunks.append(block)
+            return b"".join(chunks)
+        finally:
+            os.close(fd)
+
+    dir_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    dir_fd = os.open(str(install_dir), dir_flags)
+    try:
+        fd = os.open(matched_name, flags, dir_fd=dir_fd)
+        try:
+            chunks = []
+            while True:
+                block = os.read(fd, 65536)
+                if not block:
+                    break
+                chunks.append(block)
+            return b"".join(chunks)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(dir_fd)
+
+
+def read_installed_json(home: Path, pack_id: str) -> dict:
+    """Read an installed community pack via scandir (+ dirfd on POSIX).
+
+    Does **not** join the request id into a path. Flow:
+
+    1. Validate id shape (``_safe_pack_id``) for equality matching only.
+    2. ``os.scandir`` the community install dir; pick ``entry.name`` / ``.path``.
+    3. Open that listing-derived name (``openat`` on POSIX; ``entry.path`` on
+       Windows where directory ``dir_fd`` opens are refused).
+
+    Raises ``IndexError_`` when missing / unreadable and
+    ``InstallPayloadError`` when the id is not a single path segment.
+    """
+    from krellbot import community as kb_community
+
+    safe_id = _safe_pack_id(pack_id)
+    wanted_name = _listing_name_for_pack_id(safe_id)
+    install_dir = Path(home) / "packs" / "community"
+
+    matched = _scandir_match(install_dir, wanted_name)
+    if matched is None:
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}")
+    matched_name, matched_entry_path = matched
+
+    try:
+        raw = _read_bytes_via_listing(install_dir, matched_name, matched_entry_path)
+    except FileNotFoundError as exc:
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}") from exc
+    except OSError as exc:
+        raise kb_community.IndexError_(f"community pack unreadable: {safe_id!r}") from exc
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise kb_community.IndexError_(f"community pack unreadable: {safe_id!r}") from exc
+    if not isinstance(data, dict):
+        raise kb_community.IndexError_(f"community pack unreadable: {safe_id!r}")
+    embedded = data.get("id")
+    if embedded != safe_id:
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}")
+    return data
+
+
+def confined_installed_path(home: Path, pack_id: str) -> Path:
+    """Return the on-disk path for a listing-matched community pack id.
+
+    Resolves via ``os.scandir`` so the path comes from the directory listing
+    (``entry.path``), not a request join.
+    """
+    from krellbot import community as kb_community
+
+    safe_id = _safe_pack_id(pack_id)
+    wanted_name = _listing_name_for_pack_id(safe_id)
+    install_dir = Path(home) / "packs" / "community"
+    matched = _scandir_match(install_dir, wanted_name)
+    if matched is None:
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}")
+    _matched_name, matched_entry_path = matched
+    return Path(matched_entry_path)
+
+
 def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
     """Stage `body` in a temp dir, validate, atomic-rename to install dir.
 

@@ -1398,6 +1398,36 @@ def create_app(
                         },
                         status_code=403,
                     )
+            else:
+                # Trusted resolve under home packs / packs/community only —
+                # never join a client-supplied directory (CodeQL). Same
+                # basename confinement as live.arm; community installs live
+                # under packs/community/.
+                if not isinstance(pack_path, str):
+                    return JSONResponse({"detail": "invalid body"}, status_code=400)
+                basename = _client_pack_basename(pack_path)
+                if basename is None:
+                    return JSONResponse({"detail": "invalid body"}, status_code=400)
+                candidates = (
+                    s.home / "packs" / basename,
+                    s.home / "packs" / "community" / basename,
+                    s.home / "packs" / "catalog" / basename,
+                )
+                resolved = next((path for path in candidates if path.is_file()), None)
+                if resolved is None:
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "pack_not_found",
+                            "ok": False,
+                            "message": "pack not found",
+                            "effect": "refused",
+                            "revision_before": None,
+                            "revision_after": None,
+                        },
+                        status_code=404,
+                    )
+                pack_path = resolved
             result = service.arm(
                 Path(pack_path),
                 venue=inner["venue"],
@@ -3264,6 +3294,60 @@ def create_app(
             "packs": kb_community.installed_rows(s.home),
         }
         return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/v1/community/packs/{pack_id}")
+    async def community_pack_open(request: Request, pack_id: str) -> Response:
+        """Open an installed community pack for Strategies validate-before-arm.
+
+        Same session gate as ``GET /api/v1/community/packs``. Reads
+        ``<home>/packs/community/<id>.json`` through ``community.read_installed``
+        (basename-confined). Returns the pack object plus ``source: community``
+        so the UI never pretends this is a signed catalogue SKU. Missing ids
+        are 404; bad ids are 400.
+        """
+        import os.path
+
+        from krellbot import community as kb_community
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        # CodeQL-recognized sanitizer at the API boundary (same as install):
+        # basename strips directory components before any FS open.
+        raw_pack_id = pack_id
+        safe_id = os.path.basename(raw_pack_id)
+        if not safe_id or safe_id != raw_pack_id or os.path.basename(safe_id) != safe_id or safe_id in {".", ".."}:
+            return JSONResponse({"detail": "pack_id is required"}, status_code=400)
+
+        try:
+            pack = kb_community.read_installed(s.home, safe_id)
+        except kb_community.InstallPayloadError:
+            return JSONResponse({"detail": "pack_id is required"}, status_code=400)
+        except kb_community.IndexError_:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "code": "pack_not_found",
+                    "message": "community pack not installed",
+                },
+                status_code=404,
+            )
+
+        # Closed relative path from sanitized id only — never echo a
+        # request-derived filesystem string.
+        rel_path = f"packs/community/{os.path.basename(safe_id)}.json"
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "source": "community",
+                "pack": pack,
+                "path": rel_path,
+            },
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/v1/community/index")
     async def community_index(request: Request) -> Response:
