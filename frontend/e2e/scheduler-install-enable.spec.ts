@@ -152,6 +152,14 @@ test("Operations scheduler panel install/enable happy path and unavailable copy 
     .getByRole("button", { name: "Operations", exact: true })
     .click();
 
+  // M18.4: Scheduler lives under Advanced — expand before asserting.
+  const schedulerToggle = page.getByTestId("ops-scheduler-panel-toggle");
+  await expect(schedulerToggle).toBeVisible();
+  if ((await schedulerToggle.getAttribute("aria-expanded")) !== "true") {
+    await schedulerToggle.click();
+  }
+  await expect(schedulerToggle).toHaveAttribute("aria-expanded", "true");
+
   const panel = page.getByTestId("ops-scheduler");
   await expect(panel).toBeVisible();
   await expect(page.getByTestId("ops-scheduler-status")).toHaveText("Not installed.");

@@ -96,6 +96,14 @@ test("Operations shows unresolved orders with client order ID, age, and last loo
     .click();
   await expect(page.getByTestId("operations-view")).toBeVisible();
 
+  // M18.4: Unresolved orders lives under Advanced — expand before asserting.
+  const unresolvedToggle = page.getByTestId("ops-unresolved-orders-panel-toggle");
+  await expect(unresolvedToggle).toBeVisible();
+  if ((await unresolvedToggle.getAttribute("aria-expanded")) !== "true") {
+    await unresolvedToggle.click();
+  }
+  await expect(unresolvedToggle).toHaveAttribute("aria-expanded", "true");
+
   const panel = page.getByTestId("ops-unresolved-orders");
   await expect(panel).toBeVisible();
   await expect(page.getByTestId("ops-unresolved-empty")).toHaveText("No unresolved orders.");

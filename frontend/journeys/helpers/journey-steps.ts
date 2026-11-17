@@ -43,6 +43,19 @@ export async function clickNav(page: Page, label: string): Promise<void> {
     .click();
 }
 
+/**
+ * Expand a DisclosureSection by its `data-testid` root (toggle is `${id}-toggle`).
+ * M18.4 collapses Operations Advanced panels by default.
+ */
+export async function expandDisclosure(page: Page, panelTestId: string): Promise<void> {
+  const toggle = page.getByTestId(`${panelTestId}-toggle`);
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
 /** Open the technical JSON disclosure and return the textarea locator. */
 export async function openTechnicalJson(page: Page): Promise<Locator> {
   const details = page.getByTestId("editor-technical-section");

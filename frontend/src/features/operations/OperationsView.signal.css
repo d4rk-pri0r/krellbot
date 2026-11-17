@@ -26,7 +26,7 @@
 
 .kbot-ops {
   display: grid;
-  gap: 16px;
+  gap: var(--space-stack, 12px);
   align-content: start;
   min-width: 0;
   max-width: 100%;
@@ -110,7 +110,15 @@
 
 .kbot-ops .kbot-ops__body {
   display: grid;
-  gap: 16px;
+  gap: var(--space-stack, 12px);
+  align-content: start;
+  min-width: 0;
+}
+
+/* M18.4 — dense first viewport: status, kill, fleet/alerts above the fold. */
+.kbot-ops .kbot-ops__first-viewport {
+  display: grid;
+  gap: var(--space-stack, 12px);
   align-content: start;
   min-width: 0;
 }
@@ -119,10 +127,10 @@
 
 .kbot-ops .kbot-ops__panel {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   align-content: start;
   min-width: 0;
-  padding: 14px 16px 16px;
+  padding: 12px 14px 14px;
   background: var(--surface, #14222e);
   border: 1px solid var(--line, #22465d);
   border-radius: var(--radius-panel, 11px);
@@ -340,6 +348,13 @@
 }
 
 /* ============ grouped alerts ============ */
+
+.kbot-ops .kbot-ops__alert-groups {
+  max-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-width: 0;
+}
 
 .kbot-ops .kbot-ops__alerts,
 .kbot-ops .kbot-ops__alert-group-rows {
