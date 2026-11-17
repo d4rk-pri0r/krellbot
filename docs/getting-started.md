@@ -141,6 +141,10 @@ krellbot setup <license-key>
 
 A pack you write does not need that key.
 
+To share an unpaid community pack (separate from paid catalogue SKUs), see
+the authoring checklist in
+[community.md](community.md#authoring-checklist).
+
 ## What a window is
 
 A window is the dates the chart covers. A return without those dates is not a result you can read.
