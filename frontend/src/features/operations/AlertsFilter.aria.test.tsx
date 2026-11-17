@@ -20,7 +20,11 @@ function mount() {
 }
 
 function controls() {
-  return [screen.getByTestId("ops-alerts-filter-severity"), screen.getByTestId("ops-alerts-filter-query")];
+  return [
+    screen.getByTestId("ops-alerts-filter-severity"),
+    screen.getByTestId("ops-alerts-filter-kind"),
+    screen.getByTestId("ops-alerts-filter-query"),
+  ];
 }
 
 function expectNoDescription() {
@@ -40,13 +44,17 @@ function expectEmptyDescription() {
 }
 
 describe("AlertsFilter accessible controls", () => {
-  it("names both controls explicitly and associates visible labels with stable input ids", () => {
+  it("names filter controls explicitly and associates visible labels with stable input ids", () => {
     mount();
     const severity = screen.getByRole("combobox", { name: "Filter alerts by severity" });
-    const query = screen.getByRole("textbox", { name: "Search alerts by code or venue" });
+    const kind = screen.getByRole("combobox", { name: "Filter alerts by kind" });
+    const query = screen.getByRole("textbox", {
+      name: "Search alerts by code, venue, or kind",
+    });
     for (const [control, stem, name] of [
       [severity, "severity", "Filter alerts by severity"],
-      [query, "query", "Search alerts by code or venue"],
+      [kind, "kind", "Filter alerts by kind"],
+      [query, "query", "Search alerts by code, venue, or kind"],
     ] as const) {
       expect(control.id).toBe(`ops-alerts-filter-${stem}-input`);
       expect(control.getAttribute("aria-label")).toBe(name);
@@ -57,9 +65,9 @@ describe("AlertsFilter accessible controls", () => {
     expectNoDescription();
   });
 
-  it("describes both controls only while no rows match, and removes wiring on query recovery and clear", () => {
+  it("describes filter controls only while no rows match, and removes wiring on query recovery and clear", () => {
     mount();
-    const [severity, query] = controls();
+    const [severity, kind, query] = controls();
     expectNoDescription();
     fireEvent.change(query, { target: { value: "no-such-local-fixture" } });
     expectEmptyDescription();
@@ -67,6 +75,7 @@ describe("AlertsFilter accessible controls", () => {
     expectNoDescription();
     expect(screen.getByTestId("visible").textContent).toBe("1:false");
     fireEvent.change(severity, { target: { value: "warning" } });
+    fireEvent.change(kind, { target: { value: "live_refused" } });
     fireEvent.change(query, { target: { value: "missing" } });
     expectEmptyDescription();
     fireEvent.click(screen.getByTestId("ops-alerts-filter-clear"));
@@ -75,7 +84,7 @@ describe("AlertsFilter accessible controls", () => {
 
   it("removes descriptions when the source alert list becomes empty or starts matching", () => {
     const view = mount();
-    fireEvent.change(controls()[1], { target: { value: "missing" } });
+    fireEvent.change(controls()[2], { target: { value: "missing" } });
     expectEmptyDescription();
     view.rerender(<AlertsFilter alerts={[]}>{() => null}</AlertsFilter>);
     expectNoDescription();

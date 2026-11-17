@@ -487,6 +487,16 @@
   min-width: 0;
 }
 
+.kbot-ops .kbot-ops__alerts-unread {
+  margin: 0;
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text, #e9f0f5);
+}
+
 .kbot-ops .kbot-ops__alerts-filter label {
   display: grid;
   gap: 4px;
