@@ -55,6 +55,12 @@ function makeClient(): PacksClient {
       library = [pack];
       return { ok: true, pack };
     }),
+    listCommunityIndex: vi.fn(async () => ({
+      schema_version: "1",
+      index_url: "",
+      packs: [],
+      fetched_at: null,
+    })),
   };
 }
 

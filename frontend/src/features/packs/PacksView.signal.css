@@ -30,3 +30,43 @@
   font-size: 14px;
   line-height: 1.45;
 }
+
+.kbot-packs-view__sources {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-width: 52rem;
+}
+
+.kbot-packs-view__sources li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kbot-packs-view__source-badge {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.kbot-packs-view__source-badge--signed {
+  color: var(--seafoam);
+}
+
+.kbot-packs-view__source-badge--community {
+  color: var(--caution-text);
+}
+
+.kbot-packs-view__source-badge--starter {
+  color: var(--muted);
+}
+
+.kbot-packs-view__source-copy {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}

@@ -706,11 +706,15 @@ export function WorkstationShell({
     if (packClient === undefined) {
       return createPacksHttpClient();
     }
-    if ("listCatalogue" in packClient && "install" in packClient) {
+    if (
+      "listCatalogue" in packClient &&
+      "install" in packClient &&
+      "listCommunityIndex" in packClient
+    ) {
       return packClient as PacksClient;
     }
     // Legacy PackLibraryClient injects still work for the Strategies
-    // toggle; Packs destination gets an honest empty catalogue stub.
+    // toggle; Packs destination gets an honest empty catalogue / community stub.
     return {
       ...packClient,
       listCatalogue: async () => ({
@@ -723,6 +727,12 @@ export function WorkstationShell({
         ok: false,
         code: "unavailable",
         message: "install unavailable",
+      }),
+      listCommunityIndex: async () => ({
+        schema_version: "1",
+        index_url: "",
+        packs: [],
+        fetched_at: null,
       }),
     };
   }, [packClient]);

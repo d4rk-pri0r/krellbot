@@ -1,0 +1,112 @@
+/*
+ * Community pack index browse (honesty lane — not signed catalogue).
+ * Contract: KRELL-SIGNAL-20261010.
+ */
+
+.kbot-community-index {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.kbot-community-index__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kbot-community-index__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-community-index__refresh {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+
+.kbot-community-index__helper {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 52rem;
+}
+
+.kbot-community-index__source {
+  display: inline-block;
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--caution-text);
+}
+
+.kbot-community-index__meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.kbot-community-index__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+.kbot-community-index__row {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.kbot-community-index__row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-community-index__label {
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kbot-community-index__id,
+.kbot-community-index__author {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.kbot-community-index__empty,
+.kbot-community-index__loading,
+.kbot-community-index__failed {
+  margin: 0;
+  color: var(--muted);
+}
+
+.kbot-community-index__error {
+  margin: 0;
+  color: var(--caution-text);
+  font-size: 13px;
+}

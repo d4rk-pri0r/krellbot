@@ -232,6 +232,7 @@ describe("createPacksHttpClient", () => {
     expect(typeof client.redeemActivation).toBe("function");
     expect(typeof client.listCatalogue).toBe("function");
     expect(typeof client.install).toBe("function");
+    expect(typeof client.listCommunityIndex).toBe("function");
     expect(await client.listInstalled()).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/packs",
@@ -239,6 +240,51 @@ describe("createPacksHttpClient", () => {
     );
     expect(fetchMock.mock.calls.every(([url]) => url !== "/api/v1/packs/rollback")).toBe(
       true,
+    );
+  });
+});
+
+describe("packs client listCommunityIndex", () => {
+  it("GETs /api/v1/community/index and adapts closed rows with fetch time", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        index_url:
+          "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/main/index.json",
+        packs: [
+          {
+            id: "trend-follow",
+            url: "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/main/packs/trend-follow.json",
+            author: "community-example",
+            label: "Trend follow",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const doc = await createHttpClient().listCommunityIndex();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/community/index",
+      expect.objectContaining({ method: "GET", credentials: "include" }),
+    );
+    expect(doc.index_url).toContain("krellbot-community-packs");
+    expect(doc.packs).toEqual([
+      {
+        id: "trend-follow",
+        url: "https://raw.githubusercontent.com/d4rk-pri0r/krellbot-community-packs/main/packs/trend-follow.json",
+        author: "community-example",
+        label: "Trend follow",
+      },
+    ]);
+    expect(typeof doc.fetched_at).toBe("string");
+    expect(doc.fetched_at).not.toBeNull();
+  });
+
+  it("throws PackLibraryHttpError on community index refusal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, 502));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpClient().listCommunityIndex()).rejects.toBeInstanceOf(
+      PackLibraryHttpError,
     );
   });
 });

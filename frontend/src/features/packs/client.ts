@@ -55,6 +55,22 @@ export type PackInstallResult = {
   pack?: PackRow;
 };
 
+/** Closed community index row from ``GET /api/v1/community/index``. */
+export type CommunityIndexPack = {
+  id: string;
+  url: string;
+  author: string | null;
+  label: string | null;
+};
+
+export type CommunityIndexDocument = {
+  schema_version: string;
+  index_url: string;
+  packs: CommunityIndexPack[];
+  /** Client-side fetch time (ISO); optional honesty metadata for M17.4. */
+  fetched_at: string | null;
+};
+
 export class PackLibraryHttpError extends Error {
   readonly status: number;
 
@@ -76,10 +92,12 @@ export type PackLibraryClient = {
   redeemActivation(key: string): Promise<ActivationRedeemResult>;
 };
 
-/** First-class Packs destination client: library + catalogue browse/install. */
+/** First-class Packs destination client: library + catalogue + community index. */
 export type PacksClient = PackLibraryClient & {
   listCatalogue(): Promise<CatalogueDocument>;
   install(pack_id: string): Promise<PackInstallResult>;
+  /** Browse the allow-listed community index (not the signed catalogue). */
+  listCommunityIndex(): Promise<CommunityIndexDocument>;
 };
 
 async function getJson(url: string): Promise<PackRow[]> {
@@ -213,6 +231,48 @@ async function postRedeemActivation(key: string): Promise<ActivationRedeemResult
   return adaptRedeemResult(await response.json());
 }
 
+function adaptCommunityIndexPack(raw: Record<string, unknown>): CommunityIndexPack | null {
+  const id = typeof raw.id === "string" ? raw.id : "";
+  const url = typeof raw.url === "string" ? raw.url : "";
+  if (!id || !url) {
+    return null;
+  }
+  return {
+    id,
+    url,
+    author: typeof raw.author === "string" ? raw.author : null,
+    label: typeof raw.label === "string" ? raw.label : null,
+  };
+}
+
+async function getCommunityIndex(url: string): Promise<CommunityIndexDocument> {
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    throw new PackLibraryHttpError(
+      response.status,
+      `community index failed: ${response.status}`,
+    );
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  const packsRaw = Array.isArray(raw.packs) ? raw.packs : [];
+  const packs = packsRaw
+    .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+    .map(adaptCommunityIndexPack)
+    .filter((entry): entry is CommunityIndexPack => entry !== null);
+  return {
+    schema_version: typeof raw.schema_version === "string" ? raw.schema_version : "1",
+    index_url: typeof raw.index_url === "string" ? raw.index_url : "",
+    packs,
+    fetched_at: new Date().toISOString(),
+  };
+}
+
 async function postInstall(pack_id: string): Promise<PackInstallResult> {
   const response = await fetch("/api/v1/packs/install", {
     method: "POST",
@@ -275,6 +335,9 @@ export function createHttpClient(): PacksClient {
     },
     install(pack_id: string): Promise<PackInstallResult> {
       return postInstall(pack_id);
+    },
+    listCommunityIndex(): Promise<CommunityIndexDocument> {
+      return getCommunityIndex("/api/v1/community/index");
     },
   };
 }
