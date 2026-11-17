@@ -114,61 +114,59 @@ def installed_rows(home: Path) -> list[dict]:
 def read_installed(home: Path, pack_id: str) -> dict:
     """Return the installed community pack dict for ``pack_id``.
 
-    Uses ``os.path.basename`` (CodeQL-recognized sanitizer) so a request
-    id never reaches a path expression. Raises ``IndexError_`` when the
-    pack is missing and ``InstallPayloadError`` when the id is not a
-    single path segment. The returned dict is the on-disk pack body used
-    to open a Strategies draft (validate-before-arm), never executed.
+    Same CodeQL idiom as M17.2 / ``extensions.install``: ``_safe_pack_id``
+    (basename) then ``_confined_json_path`` (normpath + startswith), then
+    ``os.open`` on the confined string — never ``Path``/`read_text` with a
+    request-tainted expression. Raises ``IndexError_`` when missing and
+    ``InstallPayloadError`` when the id is not a single path segment.
     """
-    import os.path
+    import os
 
-    if type(pack_id) is not str or not pack_id:
-        raise InstallPayloadError("community pack id is not a single path segment: ''")
-    # CodeQL-recognized sanitizer: basename strips directory components.
-    name = os.path.basename(pack_id)
-    windows_drive = len(name) >= 2 and name[1] == ":" and name[0].isalpha()
-    if (
-        not name
-        or name != pack_id
-        or os.path.basename(name) != name
-        or "\x00" in pack_id
-        or "/" in pack_id
-        or "\\" in pack_id
-        or windows_drive
-        or name in {".", ".."}
-    ):
-        raise InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    from krellbot.extensions import install as kb_extensions_install
 
+    safe_id = kb_extensions_install._safe_pack_id(pack_id)
     community_dir = Path(home) / "packs" / "community"
-    filename = os.path.basename(f"{name}.json")
-    if not filename.endswith(".json") or filename.startswith("."):
-        raise InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
-    base_path = os.path.realpath(str(community_dir))
-    fullpath = os.path.normpath(os.path.join(base_path, filename))
-    if fullpath != base_path and not fullpath.startswith(base_path + os.sep):
-        raise InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    fullpath = kb_extensions_install._confined_json_path(community_dir, safe_id)
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     try:
-        data = json.loads(Path(fullpath).read_text(encoding="utf-8"))
+        fd = os.open(fullpath, flags)
     except FileNotFoundError as exc:
-        raise IndexError_(f"community pack not installed: {name!r}") from exc
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise IndexError_(f"community pack unreadable: {name!r}") from exc
+        raise IndexError_(f"community pack not installed: {safe_id!r}") from exc
+    except OSError as exc:
+        raise IndexError_(f"community pack unreadable: {safe_id!r}") from exc
+    try:
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(fd, 65536)
+            if not block:
+                break
+            chunks.append(block)
+        raw = b"".join(chunks)
+    finally:
+        os.close(fd)
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise IndexError_(f"community pack unreadable: {safe_id!r}") from exc
     if not isinstance(data, dict):
-        raise IndexError_(f"community pack unreadable: {name!r}")
+        raise IndexError_(f"community pack unreadable: {safe_id!r}")
     embedded = data.get("id")
-    if embedded != name:
-        raise IndexError_(f"community pack not installed: {name!r}")
+    if embedded != safe_id:
+        raise IndexError_(f"community pack not installed: {safe_id!r}")
     return data
 
 
 def installed_path(home: Path, pack_id: str) -> Path:
-    """Return the confined path for an installed community pack id."""
-    import os.path
+    """Return the confined path for an installed community pack id.
 
-    # Force the same refusal rules as ``read_installed``.
-    read_installed(home, pack_id)
-    name = os.path.basename(pack_id)
-    return Path(home) / "packs" / "community" / f"{name}.json"
+    Validates the id with ``_safe_pack_id`` / ``_confined_json_path`` (same
+    as ``read_installed``) so a request string never reaches a Path join.
+    """
+    from krellbot.extensions import install as kb_extensions_install
+
+    safe_id = kb_extensions_install._safe_pack_id(pack_id)
+    community_dir = Path(home) / "packs" / "community"
+    return Path(kb_extensions_install._confined_json_path(community_dir, safe_id))
 
 
 def _validate_url(url: str) -> None:
