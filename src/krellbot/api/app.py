@@ -695,7 +695,69 @@ def _fleet_detail_href(*, venue: str, pair: str) -> str:
     return "/?" + urlencode({"view": "workstation", "venue": venue, "pair": pair})
 
 
-def _fleet_armed_view(home: Path) -> dict:
+def _fleet_row_for_record(record: kb_config.ArmedPack, tick_index: dict) -> dict:
+    """Closed fleet row for one armed record + optional journal tick evidence."""
+
+    key = (record.venue, record.pack_id, record.pair)
+    tick = tick_index.get(key)
+    if tick is None:
+        last_tick_ts_ms = None
+        last_refusal_code = None
+        last_tick_result = "no tick yet"
+    else:
+        last_tick_ts_ms = int(tick["last_tick_ts_ms"])
+        last_refusal_code = None
+        if tick["_refusals"]:
+            last_refusal_code = max(tick["_refusals"], key=lambda item: item[0])[1]
+        last_tick_result = _fleet_last_tick_result(
+            ticks_total=int(tick["ticks_total"]),
+            last_refusal_code=last_refusal_code,
+        )
+    return {
+        "venue": record.venue,
+        "pair": record.pair,
+        "mode": record.mode,
+        "pack_id": record.pack_id,
+        "entries_paused": bool(record.entries_paused),
+        "last_tick_ts_ms": last_tick_ts_ms,
+        "last_tick_result": last_tick_result,
+        "last_refusal_code": last_refusal_code,
+        "detail_href": _fleet_detail_href(venue=record.venue, pair=record.pair),
+    }
+
+
+def _fleet_group_rows(deployments: list[dict]) -> list[dict]:
+    """Group fleet rows by ``(venue, pair)`` for multi-pair supervision.
+
+    One-pack-per-(venue,pair) means each group normally has a single
+    deployment; the grouping still surfaces pair/venue as the fleet's
+    primary axis so the UI never collapses to ``armed[0]``.
+    """
+
+    buckets: dict[tuple[str, str], list[dict]] = {}
+    order: list[tuple[str, str]] = []
+    for row in deployments:
+        key = (str(row["venue"]), str(row["pair"]))
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(row)
+    return [
+        {
+            "venue": venue,
+            "pair": pair,
+            "deployments": buckets[(venue, pair)],
+        }
+        for venue, pair in order
+    ]
+
+
+def _fleet_armed_view(
+    home: Path,
+    *,
+    venue: str | None = None,
+    pair: str | None = None,
+) -> dict:
     """Build the closed-shape armed fleet list with last tick time/result.
 
     Every armed config record becomes one row. Last-tick fields come from
@@ -704,54 +766,43 @@ def _fleet_armed_view(home: Path) -> dict:
     ``last_tick_result: "no tick yet"``. ``detail_href`` is the relative
     deep link the workstation uses to open that market's status detail.
     Cash, quantity, stop, cap, and pack path stay off the wire.
+
+    Optional ``venue`` / ``pair`` filters narrow ``deployments`` and
+    ``groups`` without collapsing the fleet to ``armed[0]``.
+    ``armed_count`` always reports the unfiltered armed total so a
+    filtered miss still discloses that other markets are armed.
     """
 
     home = Path(home)
+    venue_filter = (venue or "").strip() or None
+    pair_filter = (pair or "").strip() or None
     try:
         config = kb_config.load_config(home)
     except (OSError, ValueError):
         return {
             "schema_version": SCHEMA_VERSION,
             "armed": False,
+            "armed_count": 0,
             "deployments": [],
+            "groups": [],
         }
 
+    armed_count = len(config.armed)
     tick_index = _fleet_tick_index(home) if config.armed else {}
     deployments: list[dict] = []
     for record in config.armed:
-        key = (record.venue, record.pack_id, record.pair)
-        tick = tick_index.get(key)
-        if tick is None:
-            last_tick_ts_ms = None
-            last_refusal_code = None
-            last_tick_result = "no tick yet"
-        else:
-            last_tick_ts_ms = int(tick["last_tick_ts_ms"])
-            last_refusal_code = None
-            if tick["_refusals"]:
-                last_refusal_code = max(tick["_refusals"], key=lambda item: item[0])[1]
-            last_tick_result = _fleet_last_tick_result(
-                ticks_total=int(tick["ticks_total"]),
-                last_refusal_code=last_refusal_code,
-            )
-        deployments.append(
-            {
-                "venue": record.venue,
-                "pair": record.pair,
-                "mode": record.mode,
-                "pack_id": record.pack_id,
-                "entries_paused": bool(record.entries_paused),
-                "last_tick_ts_ms": last_tick_ts_ms,
-                "last_tick_result": last_tick_result,
-                "last_refusal_code": last_refusal_code,
-                "detail_href": _fleet_detail_href(venue=record.venue, pair=record.pair),
-            }
-        )
+        if venue_filter is not None and record.venue != venue_filter:
+            continue
+        if pair_filter is not None and record.pair != pair_filter:
+            continue
+        deployments.append(_fleet_row_for_record(record, tick_index))
 
     return {
         "schema_version": SCHEMA_VERSION,
         "armed": bool(deployments),
+        "armed_count": armed_count,
         "deployments": deployments,
+        "groups": _fleet_group_rows(deployments),
     }
 
 
@@ -2291,8 +2342,11 @@ def create_app(
         session cookie + loopback Origin + loopback Host, no CSRF. One
         row per armed config record joins the closed armed identity with
         journal last-tick time/result and a relative ``detail_href`` deep
-        link into the Workstation status surface. Cash, quantity, stop,
-        cap, and pack path never appear on the wire.
+        link into the Workstation status surface. Optional ``venue`` /
+        ``pair`` query params filter the list; ``groups`` always keys
+        rows by ``(venue, pair)`` so multi-pair fleets never collapse to
+        ``armed[0]``. ``armed_count`` is the unfiltered armed total.
+        Cash, quantity, stop, cap, and pack path never appear on the wire.
         """
 
         s = _state(request.app)
@@ -2300,7 +2354,11 @@ def create_app(
         if denied is not None:
             return denied
 
-        body = _fleet_armed_view(s.home)
+        body = _fleet_armed_view(
+            s.home,
+            venue=request.query_params.get("venue"),
+            pair=request.query_params.get("pair"),
+        )
 
         return JSONResponse(
             body,
