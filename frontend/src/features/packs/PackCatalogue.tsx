@@ -12,6 +12,7 @@ import type {
   PacksClient,
 } from "./client";
 import { PackLibraryHttpError } from "./client";
+import { PACK_SOURCES, SIGNED_CATALOGUE_BADGE } from "./packSources";
 import "./PackCatalogue.signal.css";
 
 export type PackCatalogueProps = {
@@ -120,11 +121,12 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
     <section
       className="kbot-pack-catalogue"
       role="region"
-      aria-label="Strategy Pack catalogue"
+      aria-label="Signed Strategy Pack catalogue"
       data-testid="pack-catalogue-panel"
+      data-pack-source="signed_catalogue"
     >
       <header className="kbot-pack-catalogue__head">
-        <h2 className="kbot-pack-catalogue__title">Browse catalogue</h2>
+        <h2 className="kbot-pack-catalogue__title">Browse signed catalogue</h2>
         <button
           type="button"
           className="kbot-pack-catalogue__refresh"
@@ -137,10 +139,16 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
           {refreshing ? "Refreshing…" : "Refresh catalogue"}
         </button>
       </header>
-      <p className="kbot-pack-catalogue__helper">
-        Signed free and paid Strategy Packs. One-click install queues a free
-        pack into the local library (bucket and version shown below). Paid
-        packs need activation redeem before install.
+      <p
+        className="kbot-pack-catalogue__source"
+        data-testid="pack-catalogue-source-badge"
+      >
+        {SIGNED_CATALOGUE_BADGE}
+      </p>
+      <p className="kbot-pack-catalogue__helper" data-testid="pack-catalogue-honesty">
+        {PACK_SOURCES.signed_catalogue.honesty} One-click install queues a free
+        pack into the local library (bucket and version shown below). This lane
+        is not the community index and not starter examples.
       </p>
       {document !== null ? (
         <p className="kbot-pack-catalogue__meta" data-testid="pack-catalogue-version">

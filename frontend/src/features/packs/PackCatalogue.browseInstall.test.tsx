@@ -66,6 +66,12 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
       ok: true,
       pack: installedRow(pack_id, "1.0.0"),
     })),
+    listCommunityIndex: vi.fn(async () => ({
+      schema_version: "1",
+      index_url: "",
+      packs: [],
+      fetched_at: null,
+    })),
     ...overrides,
   };
 }

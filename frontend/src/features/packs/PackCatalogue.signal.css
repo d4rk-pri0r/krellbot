@@ -32,6 +32,16 @@
   min-height: 44px;
 }
 
+.kbot-pack-catalogue__source {
+  display: inline-block;
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--seafoam);
+}
+
 .kbot-pack-catalogue__helper {
   margin: 0;
   color: var(--muted);
