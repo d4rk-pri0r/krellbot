@@ -83,3 +83,11 @@ def list_mode_catalogue_rows() -> list[dict]:
             }
         )
     return out
+
+
+def modes_document() -> dict:
+    """API body for ``GET /api/v1/packs/modes``."""
+    return {
+        "schema_version": "1",
+        "modes": list_mode_catalogue_rows(),
+    }

@@ -37,6 +37,27 @@ vi.mock("../features/studio/executionEdit", () => ({
   DRAFTS_PATH: "/api/v1/strategies/drafts/",
 }));
 
+vi.mock("../features/studio/modePackClient", () => ({
+  fetchModePacks: async () => ({
+    schema_version: "1",
+    modes: [
+      {
+        id: "mode-dca",
+        label: "DCA",
+        description: "Built-in DCA. no profit or return claim.",
+        pack: {
+          id: "mode-dca",
+          timeframe: "1d",
+          indicators: { anchor: { fn: "sma", src: "close", len: 2 } },
+          entry: ["anchor", ">", 0],
+          exit: ["close", "<=", 0],
+          mode: { kind: "dca" },
+        },
+      },
+    ],
+  }),
+}));
+
 type CapturedReactFlowProps = {
   onConnect?: OnConnect;
   nodes?: Node[];
@@ -304,6 +325,36 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
     expect(screen.getByTestId("studio-node-count").textContent).toBe("200");
     expect(getCaptured().nodes).toHaveLength(200);
     window.history.pushState({}, "", "/");
+  });
+});
+
+describe("WorkstationShell — built-in mode pack studio (M15.5)", () => {
+  it("loads mode-dca as readable nodes and drops demo n0/n1/n2", async () => {
+    const strategy = makeStrategyClient();
+    render(
+      <WorkstationShell
+        paperClient={makePaperClient()}
+        researchClient={makeResearchClient()}
+        strategyClient={strategy}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    // Demo nodes before a mode is picked.
+    expect((getCaptured().nodes ?? []).map((n) => n.id)).toEqual(
+      expect.arrayContaining(["n0", "n1", "n2"]),
+    );
+    fireEvent.click(await screen.findByTestId("studio-mode-pack-mode-dca"));
+    await vi.waitFor(() => {
+      expect(screen.getByTestId("studio-pack-id").textContent).toBe("mode-dca");
+    });
+    const ids = (getCaptured().nodes ?? []).map((node) => node.id);
+    expect(ids).toEqual(
+      expect.arrayContaining(["pack", "anchor", "entry", "exit"]),
+    );
+    expect(ids).not.toContain("n0");
+    expect(ids).not.toContain("n1");
+    expect(ids).not.toContain("n2");
+    expect(strategy.create).toHaveBeenCalled();
   });
 });
 
