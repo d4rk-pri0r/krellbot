@@ -143,6 +143,13 @@ export function LivePreflight(): JSX.Element {
             <option value="kraken">kraken</option>
           </select>
         </label>
+        <p
+          className="kbot-feature__live-preflight-root__hint"
+          data-testid="live-preflight-paper-only-venues"
+        >
+          This paper-only release does not offer qualified Binance live. Use
+          paper arm for binance / BTCUSDT; live preflight stays Kraken-only.
+        </p>
         <label
           className="kbot-feature__live-preflight-root__field"
           htmlFor="live-preflight-revision-input"

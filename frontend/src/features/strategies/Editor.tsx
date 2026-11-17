@@ -578,7 +578,8 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                 >
                   This pack is not supported by the form (it uses features outside
                   the guided subset: indicators, ATR/pct stops, single-level
-                  all/any confirm nesting, and up to two kraken/coinbase markets).
+                  all/any confirm nesting, and up to two kraken/coinbase/binance
+                  paper markets).
                   Edit it as JSON below; the form will not rewrite it. Imported
                   pack ownership is not verified.
                 </p>

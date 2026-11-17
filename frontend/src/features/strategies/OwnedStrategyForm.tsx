@@ -75,6 +75,7 @@ const RECIPE_LABELS: Record<RecipeName, string> = {
 const VENUE_LABELS: Record<Venue, string> = {
   kraken: "Kraken",
   coinbase: "Coinbase",
+  binance: "Binance (paper)",
 };
 
 const STOP_KIND_LABELS: Record<StopKind, string> = {
