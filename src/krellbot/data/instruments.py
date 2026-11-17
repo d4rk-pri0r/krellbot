@@ -2,10 +2,11 @@
 
 This module is the metadata layer the paper venue consults to load trading
 rules for one (venue, pair). It reaches public, unauthenticated endpoints
-only — Kraken `AssetPairs` and the Coinbase Advanced public product. It
-never POSTs, never hits a private/order endpoint, and never imports a
-venue-specific auth path. A `None` transport refuses to operate instead of
-silently falling through to `urllib`.
+only — Kraken `AssetPairs`, the Coinbase Advanced public product, and
+Binance spot `exchangeInfo`. It never POSTs, never hits a private/order
+endpoint, and never imports a venue-specific auth path. A `None`
+transport refuses to operate instead of silently falling through to
+`urllib`.
 
 Provenance (`endpoint`, `retrieved_at`, `source_version`, `payload_sha256`)
 is recorded on every record so a downstream consumer can see the source
@@ -23,8 +24,9 @@ labeled cache, not production truth.
 
 Production paper ticks call `ensure_instrument_rules` before evaluating
 entries so armed pairs (including the wave Kraken BTC/USD spelling
-``XXBTZUSD`` and the wave Coinbase BTC/USD product ``BTC-USD``) are
-fetched from public AssetPairs / product metadata and written into that
+``XXBTZUSD``, the wave Coinbase BTC/USD product ``BTC-USD``, and the
+wave Binance BTC/USDT symbol ``BTCUSDT``) are fetched from public
+AssetPairs / product / exchangeInfo metadata and written into that
 snapshot. Without that write, a non-SUI paper arm journals
 ``metadata_refusal`` for missing rules forever.
 
@@ -58,6 +60,10 @@ PAPER_WAVE_KRAKEN_BTC_USD = "XXBTZUSD"
 # Advanced Trade public product metadata uses this exact ``product_id``.
 PAPER_WAVE_COINBASE_BTC_USD = "BTC-USD"
 
+# Wave Binance BTC/USDT symbol for the Binance paper-arm path (M14.3 / M14.4).
+# Spot exchangeInfo uses this exact concatenated ``symbol`` spelling.
+PAPER_WAVE_BINANCE_BTC_USDT = "BTCUSDT"
+
 SCHEMA_VERSION = "1"
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h
 
@@ -81,6 +87,7 @@ REFUSAL_CODES = frozenset(
 # Publisher endpoints. Documented in NS05 report.md.
 KRAKEN_ASSET_PAIRS_URL = "https://api.kraken.com/0/public/AssetPairs"
 COINBASE_PRODUCT_URL = "https://api.coinbase.com/api/v3/brokerage/market/products"
+BINANCE_EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
 
 SNAPSHOT_FILENAME = "instrument-rules.json"
 
@@ -160,7 +167,7 @@ class InstrumentRulesV1:
             raise ValueError("instrument: canonical_pair must be a non-empty string")
         if not isinstance(self.venue_symbol, str) or not self.venue_symbol:
             raise ValueError("instrument: venue_symbol must be a non-empty string")
-        if self.venue not in ("kraken", "coinbase"):
+        if self.venue not in ("kraken", "coinbase", "binance"):
             raise ValueError(f"instrument: unsupported venue {self.venue!r}")
 
 
@@ -216,6 +223,8 @@ class InstrumentMetadataClient:
             return self._fetch_kraken(canonical_pair)
         if venue == "coinbase":
             return self._fetch_coinbase(canonical_pair)
+        if venue == "binance":
+            return self._fetch_binance(canonical_pair)
         raise InstrumentMetadataError(
             METADATA_UNAVAILABLE,
             venue,
@@ -395,6 +404,111 @@ class InstrumentMetadataClient:
             price_increment=quote_increment,
             source={
                 "endpoint": COINBASE_PRODUCT_URL,
+                "retrieved_at": retrieved_at,
+                "source_version": payload_sha256[:16],
+                "payload_sha256": payload_sha256,
+            },
+            usable_until=usable_until,
+        )
+
+    # ---- internal: Binance ---------------------------------------------
+
+    def _fetch_binance(self, canonical_pair: str) -> InstrumentRulesV1:
+        url = f"{BINANCE_EXCHANGE_INFO_URL}?symbol={urllib.parse.quote(canonical_pair)}"
+        payload = self._transport.get(url, {}) or {}
+        if not isinstance(payload, dict):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "binance",
+                canonical_pair,
+                "instrument: binance exchangeInfo body is not a JSON object",
+            )
+        # Binance error bodies use numeric ``code`` plus ``msg``.
+        if payload.get("code") not in (None, 0, "0"):
+            raise InstrumentMetadataError(
+                METADATA_UNAVAILABLE,
+                "binance",
+                canonical_pair,
+                "instrument: binance exchangeInfo refused the request",
+            )
+
+        symbol_row = _find_binance_symbol(payload, canonical_pair)
+        if symbol_row is None:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                "binance",
+                canonical_pair,
+                "instrument: binance exchangeInfo response did not contain the requested symbol",
+            )
+        venue_symbol = str(symbol_row.get("symbol") or "")
+        if venue_symbol != canonical_pair:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                "binance",
+                canonical_pair,
+                "instrument: binance exchangeInfo returned a different symbol than requested",
+            )
+
+        filters = symbol_row.get("filters") if isinstance(symbol_row.get("filters"), list) else []
+        lot = _binance_filter(filters, "LOT_SIZE")
+        price = _binance_filter(filters, "PRICE_FILTER")
+        notional = _binance_filter(filters, "NOTIONAL") or _binance_filter(filters, "MIN_NOTIONAL")
+        if lot is None or price is None:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "binance",
+                canonical_pair,
+                "instrument: binance exchangeInfo missing LOT_SIZE or PRICE_FILTER",
+            )
+        try:
+            min_quantity = _required_decimal_string(lot, "minQty")
+            quantity_increment = _required_decimal_string(lot, "stepSize")
+            price_increment = _required_decimal_string(price, "tickSize")
+            if notional is None:
+                raise KeyError("minNotional")
+            min_notional = _required_decimal_string(notional, "minNotional")
+        except (KeyError, ValueError) as exc:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "binance",
+                canonical_pair,
+                "instrument: binance exchangeInfo payload missing required fields",
+            ) from exc
+
+        if (
+            Decimal(min_quantity) <= 0
+            or Decimal(min_notional) <= 0
+            or Decimal(quantity_increment) <= 0
+            or Decimal(price_increment) <= 0
+        ):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "binance",
+                canonical_pair,
+                "instrument: binance minima and increments must be positive",
+            )
+
+        base_asset = str(symbol_row.get("baseAsset") or "")
+        quote_asset = str(symbol_row.get("quoteAsset") or "")
+
+        retrieved_at = _unix_to_iso(self._clock())
+        usable_until = _unix_to_iso(self._clock() + self._ttl_seconds)
+        payload_bytes = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
+
+        return InstrumentRulesV1(
+            schema_version=SCHEMA_VERSION,
+            venue="binance",
+            canonical_pair=canonical_pair,
+            venue_symbol=venue_symbol,
+            base_asset=base_asset,
+            quote_asset=quote_asset,
+            min_quantity=min_quantity,
+            min_notional=min_notional,
+            quantity_increment=quantity_increment,
+            price_increment=price_increment,
+            source={
+                "endpoint": BINANCE_EXCHANGE_INFO_URL,
                 "retrieved_at": retrieved_at,
                 "source_version": payload_sha256[:16],
                 "payload_sha256": payload_sha256,
@@ -636,6 +750,32 @@ def _decimals_to_increment(decimals: int) -> str:
     if decimals <= 0:
         return "1"
     return "0." + "0" * (decimals - 1) + "1"
+
+
+def _find_binance_symbol(payload: dict, canonical_pair: str) -> dict | None:
+    """Return the exchangeInfo symbol object matching ``canonical_pair``.
+
+    Accepts either the full ``symbols`` list shape or a single-symbol
+    object at the top level (some test fakes).
+    """
+    symbols = payload.get("symbols")
+    if isinstance(symbols, list):
+        matches = [
+            item for item in symbols if isinstance(item, dict) and str(item.get("symbol") or "") == canonical_pair
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+    if str(payload.get("symbol") or "") == canonical_pair and isinstance(payload, dict):
+        return payload
+    return None
+
+
+def _binance_filter(filters: list, name: str) -> dict | None:
+    for item in filters:
+        if isinstance(item, dict) and item.get("filterType") == name:
+            return item
+    return None
 
 
 def _find_kraken_row(result: dict, canonical_pair: str) -> tuple[dict | None, str | None]:
