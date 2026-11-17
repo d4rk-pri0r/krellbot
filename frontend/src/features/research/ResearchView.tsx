@@ -59,6 +59,8 @@ const NOT_SET = "not set";
 const EMPTY_STATE_COPY =
   "No research run yet. Submit a window to populate this view.";
 const LOCAL_PREVIEW_COPY = "Local preview only — live trading unavailable";
+const RESULT_HONESTY_COPY =
+  "Backtest / pinned fixture — not live market performance.";
 const SUBMITTING_STATE_COPY = "Submitting research run…";
 const RESEARCH_EXPORT_RESULT_BUSY_LABEL = "Exporting result\u2026";
 const RESEARCH_RUN_BUSY_LABEL = "Running\u2026";
@@ -1245,6 +1247,12 @@ function ResultPanel({
   ];
   return (
     <div className="kbot-research__result" data-testid="research-result">
+      <p
+        className="kbot-research__result-honesty"
+        data-testid="research-result-honesty"
+      >
+        {RESULT_HONESTY_COPY}
+      </p>
       <div
         className="kbot-research__result-context"
         data-testid="research-result-context"
