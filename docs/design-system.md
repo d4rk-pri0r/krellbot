@@ -61,6 +61,13 @@ contextual / advanced), the capability→destination map, and the shared
 Signal contract; it does not replace palette, typography, or shell rules
 here.
 
+## First-viewport density
+
+Measurable first-viewport goals for Workspace home, Workstation, Operations,
+and Packs (1440×900 and ~390×844), plus fixture/demo honesty rules, live in
+`docs/ui-density.md`. That contract extends this Signal document; composition
+passes must not invent Learn, live P&L, or fabricated market performance.
+
 ## Shell composition
 
 The local application shell is **compact, horizontal and product-led**
