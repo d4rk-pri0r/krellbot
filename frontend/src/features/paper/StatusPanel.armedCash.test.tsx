@@ -97,6 +97,33 @@ describe("StatusPanel just-armed free cash honesty", () => {
     );
     expect(sentence.textContent).not.toContain("free cash 0");
   });
+
+  it("labels Binance BTCUSDT free cash as USDT, not SDT", async () => {
+    render(
+      <StatusPanel
+        client={makeClient({
+          getStatus: vi.fn().mockResolvedValue(
+            armedStatus({ venue: "binance", pair: "BTCUSDT", pack_id: "binance-btc" }),
+          ),
+          getPosition: vi.fn().mockResolvedValue(
+            filledPosition({
+              venue: "binance",
+              pair: "BTCUSDT",
+              free_cash: "900.0",
+              holdings: [{ symbol: "BTC", qty: "0.01" }],
+              as_of_run: "binance:binance-btc:BTCUSDT",
+            }),
+          ),
+        })}
+      />,
+    );
+
+    const sentence = await screen.findByTestId("paper-position");
+    expect(sentence.textContent).toBe(
+      "Owned position: 0.01 BTC — free cash 900.0 USDT",
+    );
+    expect(sentence.textContent).not.toContain(" SDT");
+  });
 });
 
 describe("StatusPanel multi-deploy clarity", () => {
