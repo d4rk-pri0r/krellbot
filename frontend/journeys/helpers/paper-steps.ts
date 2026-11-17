@@ -27,7 +27,25 @@ export function tickPaper(journey: JourneyScope, closes: number[]) {
 }
 
 export function paperRefresh(page: Page) {
-  return page.getByTestId("paper-status-panel").locator(":scope > .kbot-paper-status__body > .kbot-paper-status__actions").getByRole("button", {name:"Refresh status", exact:true});
+  // Actions live under the first-viewport operator summary (M18.3); do not
+  // require them to be a direct child of `__body`.
+  return page
+    .getByTestId("paper-status-panel")
+    .locator(".kbot-paper-status__actions")
+    .getByRole("button", {name: "Refresh status", exact: true});
+}
+
+/**
+ * M18.3 collapses Armed paper run records under Advanced. Expand before
+ * asserting row visibility in journeys.
+ */
+export async function expandArmedRecords(page: Page): Promise<void> {
+  const toggle = page.getByTestId("paper-armed-records-disclosure-toggle");
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
 export function quantity(text: string): number {
   const found = text.match(/(?:Position\s*)?(-?\d+(?:\.\d+)?)/i);
