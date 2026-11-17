@@ -9,7 +9,7 @@
  * (grant, expiry, revoke, wrong-pair refusal against the fake transport).
  */
 import { test, expect } from "../e2e/journey-harness/journey-harness";
-import { clickNav } from "./helpers/journey-steps";
+import { clickNav, expandDisclosure } from "./helpers/journey-steps";
 
 test.beforeEach(async ({ journey }) => {
   await journey.page.goto(journey.workstation.baseURL);
@@ -21,6 +21,9 @@ test("J8.1 While this build is paper-only, the Live authorization panel is visib
 }) => {
   const page = journey.page;
   await clickNav(page, "Operations");
+
+  // M18.4: Live authorization lives under Advanced — expand before asserting.
+  await expandDisclosure(page, "ops-live-authorization-panel");
 
   const panel = page.getByTestId("ops-live-authorization");
   await expect(panel).toBeVisible();
