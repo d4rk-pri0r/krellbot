@@ -90,7 +90,9 @@ lint. A mode pack missing required fields is refused.
 
 Shipped mode packs live under `src/krellbot/packs/modes/` as
 `mode-<kind>.json` and load through `krellbot.packs.mode_packs` (package
-data only; no hidden CLI scheduler).
+data only; no hidden CLI scheduler). `GET /api/v1/packs/starters` lists
+them under the additive `modes` array (same row shape as `examples`).
+DCA paper-arms on the Kraken wave pair `XXBTZUSD` behind fakes.
 
 ## Honesty
 

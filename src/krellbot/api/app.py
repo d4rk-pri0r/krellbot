@@ -2479,15 +2479,17 @@ def create_app(
 
         Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
         session cookie + loopback Origin + loopback Host, no CSRF
-        required. The body is the frozen catalogue document from
+        required. The body is the catalogue document from
         ``krellbot.packs.catalogue`` — ``schema_version``,
-        ``catalogue_version``, and ``examples`` rows carrying exactly
-        ``id``, ``label``, ``description``, ``pack``. The examples are
-        ordinary valid DSL packs served from package resources. The
-        route is read-only: it installs nothing, validates no user
-        draft, arms nothing, starts nothing, overwrites nothing, and
-        edits no state. A user turns a starter into an owned editable
-        copy by POSTing ``pack`` through the existing drafts route.
+        ``catalogue_version``, ``examples`` rows, and additive ``modes``
+        rows for built-in trading-mode packs. Each row carries exactly
+        ``id``, ``label``, ``description``, ``pack``. The examples and
+        modes are ordinary valid DSL packs served from package
+        resources. The route is read-only: it installs nothing,
+        validates no user draft, arms nothing, starts nothing,
+        overwrites nothing, and edits no state. A user turns a starter
+        or mode into an owned editable copy by POSTing ``pack`` through
+        the existing drafts route.
         """
 
         s = _state(request.app)
