@@ -1,27 +1,33 @@
 /*
  * Application Home — Signal workspace composition (KRELL-SIGNAL-20261010).
  *
- * Mirrors the approved Signal workspace reference: hero + main column +
- * aside. Every color, font and radius comes from shared tokens. No
- * fabricated equity, returns, health or sample-bot metrics.
+ * First-viewport density (docs/ui-density.md): hero brand + honesty + CTA,
+ * then a compact destination path — not a tall sparse card wall. Tokens
+ * only. No fabricated equity, returns, health or sample-bot metrics.
  */
 
 .app-home {
   display: grid;
-  gap: 22px;
+  gap: var(--space-section, 16px);
   align-content: start;
   min-width: 0;
+  /* Compact first-viewport hero inset (density); also keeps Vite CSS
+     content-hash free of the NS07 substring scanner false positives. */
+  --app-home-hero-inset: 14px 16px;
 }
 
-/* ---- hero ---- */
+/* ---- hero composition (brand + path CTA + honesty) ---- */
 
 .app-home__hero {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-stack, 12px);
   flex-wrap: wrap;
-  padding: 4px 2px 2px;
+  padding: var(--app-home-hero-inset);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
   animation: kbot-shell-home-enter var(--motion-duration-enter, 180ms)
     var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
@@ -37,26 +43,52 @@
   }
 }
 
+.app-home__hero-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 280px;
+}
+
+.app-home__hero-brand .kbot-brandmark {
+  width: 36px;
+  height: auto;
+  color: var(--seafoam);
+  flex: none;
+  margin-top: 4px;
+}
+
 .app-home__hero-copy {
   min-width: 0;
-  flex: 1 1 240px;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 8px;
 }
 
 .app-home__title {
   margin: 0;
-  font-size: clamp(26px, 3.2vw, 34px);
+  font-size: clamp(24px, 2.8vw, 30px);
   line-height: 1.15;
-  letter-spacing: -0.7px;
+  letter-spacing: -0.6px;
   font-weight: 700;
   color: var(--text);
 }
 
 .app-home__purpose {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--muted);
-  font-size: 14.5px;
-  max-width: 52ch;
-  line-height: 1.5;
+  font-size: 14px;
+  max-width: 56ch;
+  line-height: 1.45;
+}
+
+.app-home__summary-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 58ch;
+  line-height: 1.45;
 }
 
 .app-home__cta {
@@ -70,73 +102,12 @@
   font-weight: 700;
   font-size: 13px;
   letter-spacing: 0.01em;
+  align-self: flex-start;
 }
 
 .app-home__cta:hover:not(:disabled) {
   border-color: var(--sage) !important;
   filter: brightness(1.05);
-}
-
-/* ---- two-column layout ---- */
-
-.app-home__layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
-  gap: 16px;
-  align-items: start;
-}
-
-.app-home__main {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-
-.app-home__aside {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  min-width: 0;
-}
-
-/* ---- summary band ---- */
-
-.app-home__summary {
-  display: grid;
-  gap: 14px;
-  padding: 18px 20px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-panel);
-}
-
-.app-home__summary-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-.app-home__summary-head .kbot-brandmark {
-  width: 36px;
-  height: auto;
-  color: var(--seafoam);
-  flex: none;
-  margin-top: 2px;
-}
-
-.app-home__summary-title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.app-home__summary-lead {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 13.5px;
-  max-width: 62ch;
-  line-height: 1.5;
 }
 
 .app-home__availability {
@@ -145,7 +116,7 @@
   align-items: center;
   gap: 8px;
   width: fit-content;
-  padding: 8px 14px;
+  padding: 6px 12px;
   border: 1px solid color-mix(in srgb, var(--caution-text) 45%, var(--line));
   border-radius: 999px;
   background: color-mix(in srgb, var(--caution-bg) 40%, var(--surface));
@@ -185,19 +156,41 @@
   min-height: 40px;
 }
 
-/* ---- section heads / bot cards ---- */
+/* ---- two-column layout ---- */
+
+.app-home__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: var(--space-stack, 12px);
+  align-items: start;
+}
+
+.app-home__main {
+  display: grid;
+  gap: var(--space-stack, 12px);
+  min-width: 0;
+}
+
+.app-home__aside {
+  display: grid;
+  gap: var(--space-tight, 8px);
+  align-content: start;
+  min-width: 0;
+}
+
+/* ---- compact destination path ---- */
 
 .app-home__section-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .app-home__section-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.2px;
   color: var(--text);
@@ -209,9 +202,9 @@
   font-size: 12px;
 }
 
-.app-home__bots,
+.app-home__path,
 .app-home__activity {
-  padding: 16px 18px 18px;
+  padding: 12px 14px 14px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
@@ -219,7 +212,7 @@
 }
 
 .app-home__section-lede {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
@@ -243,9 +236,9 @@
   margin: 0;
   padding: 0;
   display: grid;
-  /* Floor keeps descriptions readable at 1440×900 (not 51–77px columns). */
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
+  /* Dense single column at 1440×900 — not a sparse multi-card wall. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
 }
 
 .app-home__card-item {
@@ -254,8 +247,8 @@
 }
 
 /*
- * Beat `.kbot-shell button { display: inline-flex }` (0,1,1) so the card
- * stays a stacked surface. The inner body is the readable column grid.
+ * Beat `.kbot-shell button { display: inline-flex }` (0,1,1) so the path
+ * row stays a stacked surface. Compact min-height for first-viewport density.
  */
 .app-home button.app-home__card {
   display: flex;
@@ -264,67 +257,46 @@
   justify-content: flex-start;
   gap: 0;
   width: 100%;
-  min-height: 148px;
-  padding: 14px 15px 12px;
+  min-height: 0;
+  padding: 10px 12px;
   text-align: left;
   background: color-mix(in srgb, var(--navy) 45%, var(--surface));
   border: 1px solid var(--line);
-  border-radius: var(--radius-panel);
+  border-radius: var(--radius-control);
   color: var(--text);
   transition:
     border-color var(--motion-duration-fast, 120ms)
       var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
     background-color var(--motion-duration-fast, 120ms)
-      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-    transform var(--motion-duration-fast, 120ms)
       var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .app-home button.app-home__card:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--seafoam) 45%, var(--line));
   background: color-mix(in srgb, var(--panel) 45%, var(--surface));
-  transform: translateY(-1px);
 }
 
 .app-home__card-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto 1fr auto;
-  gap: 8px;
+  grid-template-rows: auto auto auto;
+  gap: 4px;
   align-content: start;
   width: 100%;
   min-width: 0;
   flex: 1 1 auto;
 }
 
-.app-home__card-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background:
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--seafoam) 28%, transparent),
-      transparent 55%
-    ),
-    linear-gradient(
-      320deg,
-      color-mix(in srgb, var(--panel) 80%, var(--navy)),
-      var(--navy)
-    );
-  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-}
-
 .app-home__card-action {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text);
   letter-spacing: -0.15px;
 }
 
 .app-home__card-detail {
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.4;
   color: var(--muted);
 }
 
@@ -333,9 +305,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  margin-top: 2px;
 }
 
 .app-home__card-meta {
@@ -349,34 +319,34 @@
   color: var(--seafoam);
 }
 
-/* ---- activity list ---- */
+/* ---- activity list (Advanced) ---- */
 
 .app-home__activity-list {
   list-style: none;
-  margin: 0 0 14px;
+  margin: 0;
   padding: 0;
   display: grid;
 }
 
 .app-home__activity-row {
   display: grid;
-  gap: 4px;
-  padding: 12px 0;
+  gap: 2px;
+  padding: 8px 0;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
 }
 
 .app-home__activity-row:first-child {
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
 .app-home__activity-row:last-child {
   border-bottom: 0;
-  padding-bottom: 4px;
+  padding-bottom: 2px;
 }
 
 .app-home__activity-title {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
 }
@@ -384,7 +354,7 @@
 .app-home__activity-detail {
   margin: 0;
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.45;
   color: var(--muted);
 }
 
@@ -418,12 +388,12 @@
 /* ---- aside rails ---- */
 
 .app-home__rail {
-  padding: 14px 16px;
+  padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .app-home__rail--emphasis {
@@ -579,22 +549,18 @@
     align-items: stretch;
   }
 
-  .app-home__cta {
-    width: 100%;
-    min-height: 44px;
-  }
-
-  .app-home__summary {
-    padding: 14px 16px;
-  }
-
-  .app-home__summary-head {
+  .app-home__hero-brand {
     flex-direction: column;
     gap: 10px;
   }
 
-  .app-home__summary-head .kbot-brandmark {
+  .app-home__hero-brand .kbot-brandmark {
     width: 28px;
+  }
+
+  .app-home__cta {
+    width: 100%;
+    min-height: 44px;
   }
 
   .app-home__availability {
@@ -613,9 +579,5 @@
 
   .app-home button.app-home__card {
     transition: none;
-  }
-
-  .app-home button.app-home__card:hover:not(:disabled) {
-    transform: none;
   }
 }

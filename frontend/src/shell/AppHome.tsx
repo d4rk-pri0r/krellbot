@@ -16,17 +16,13 @@ import "./AppHome.signal.css";
 /**
  * Application Home — Signal workspace composition (KRELL-SIGNAL-20261010).
  *
- * A welcoming workspace overview that routes a new user to the areas
- * this build actually supports. It is informational navigation only:
- * it renders before authenticated data loads, claims no connection,
- * account, license or market state, and never gates on engine
- * telemetry. Operational views keep their own bootstrap gates.
- *
- * Layout mirrors the approved Signal workspace reference (main column +
- * aside) without inventing equity, returns, health, or sample bots.
+ * First-viewport density (docs/ui-density.md): one composition with brand
+ * signal, one short path into work, and status honesty — not a tall stack
+ * of sparse cards. Informational navigation only: no fabricated equity,
+ * returns, health, or sample bots. Advanced rails stay collapsed.
  */
 
-type HomeCard = {
+type HomePath = {
   view: View;
   action: string;
   detail: string;
@@ -34,44 +30,39 @@ type HomeCard = {
   meta: string;
 };
 
-const HOME_CARDS: ReadonlyArray<HomeCard> = [
+const HOME_PATH: ReadonlyArray<HomePath> = [
   {
     view: "workstation",
     action: "Paper workstation",
-    detail:
-      "Check the paper engine status, last runs and stop controls.",
+    detail: "Status, last runs, and stop controls.",
     testid: "app-home-card-workstation",
     meta: "Paper · local",
   },
   {
     view: "strategies",
     action: "Create or open a strategy",
-    detail:
-      "Write or paste a strategy pack, save a draft, and reopen it from your library.",
+    detail: "Write or paste a pack, save, and reopen from the library.",
     testid: "app-home-card-strategies",
     meta: "Author · library",
   },
   {
     view: "studio",
     action: "Open Studio",
-    detail:
-      "See a saved strategy as a graph of indicators, entries and exits.",
+    detail: "Inspect a saved strategy as a graph.",
     testid: "app-home-card-studio",
     meta: "Graph · edit",
   },
   {
     view: "research",
     action: "Explore research",
-    detail:
-      "Run a backtest over your own dataset and read the recorded evidence.",
+    detail: "Backtest your own dataset and read recorded evidence.",
     testid: "app-home-card-research",
     meta: "Backtest · evidence",
   },
   {
     view: "operations",
     action: "Operations",
-    detail:
-      "Review alerts and the kill switch for the local workstation.",
+    detail: "Alerts and the kill switch for this machine.",
     testid: "app-home-card-operations",
     meta: "Alerts · controls",
   },
@@ -205,50 +196,25 @@ export function AppHome({
       data-testid="app-home"
       aria-labelledby="app-home-title"
     >
-      <header className="app-home__hero">
-        <div className="app-home__hero-copy">
-          <h1 className="app-home__title" id="app-home-title">
-            Your workspace
-          </h1>
-          <p className="app-home__purpose">
-            A clear view of your strategies, paper bots, and next decisions.
-            Start with paper on this machine — live trading stays unavailable
-            in this release.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="app-home__cta"
-          data-testid="app-home-cta-paper"
-          onClick={() => {
-            onNavigate("workstation");
-          }}
-        >
-          Open paper workstation
-        </button>
-      </header>
-
-      <div className="app-home__layout">
-        <div className="app-home__main">
-          <section
-            className="app-home__summary"
-            aria-labelledby="app-home-summary-title"
-          >
-            <div className="app-home__summary-head">
-              <BrandMark />
-              <div>
-                <h2
-                  className="app-home__summary-title"
-                  id="app-home-summary-title"
-                >
-                  Local preview
-                </h2>
-                <p className="app-home__summary-lead">
-                  Build, inspect and paper-test strategy packs on this machine.
-                  Every area below is real navigation in this application.
-                </p>
-              </div>
-            </div>
+      <header
+        className="app-home__hero"
+        data-testid="app-home-first-viewport"
+      >
+        <div className="app-home__hero-brand">
+          <BrandMark />
+          <div className="app-home__hero-copy">
+            <h1 className="app-home__title" id="app-home-title">
+              Your workspace
+            </h1>
+            <p className="app-home__purpose">
+              A clear view of your strategies, paper bots, and next decisions.
+              Start with paper on this machine — live trading stays unavailable
+              in this release.
+            </p>
+            <p className="app-home__summary-lead">
+              Build, inspect and paper-test strategy packs on this machine.
+              Every area below is real navigation in this application.
+            </p>
             <p
               className="app-home__availability"
               data-testid="app-home-availability"
@@ -306,7 +272,10 @@ export function AppHome({
                       Or paste a short-lived reconnect token from a browser that
                       already has a local session — no process restart needed.
                     </p>
-                    <label className="app-home__reconnect-label" htmlFor="app-home-reconnect-token">
+                    <label
+                      className="app-home__reconnect-label"
+                      htmlFor="app-home-reconnect-token"
+                    >
                       Reconnect token
                     </label>
                     <input
@@ -334,7 +303,10 @@ export function AppHome({
                       Join with reconnect token
                     </button>
                     {pasteError !== null ? (
-                      <p data-testid="app-home-reconnect-paste-error" role="alert">
+                      <p
+                        data-testid="app-home-reconnect-paste-error"
+                        role="alert"
+                      >
                         {pasteError}
                       </p>
                     ) : null}
@@ -342,22 +314,37 @@ export function AppHome({
                 ) : null}
               </div>
             ) : null}
-          </section>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="app-home__cta"
+          data-testid="app-home-cta-paper"
+          onClick={() => {
+            onNavigate("workstation");
+          }}
+        >
+          Open paper workstation
+        </button>
+      </header>
 
+      <div className="app-home__layout">
+        <div className="app-home__main">
           <section
-            className="app-home__bots"
-            aria-labelledby="app-home-bots-title"
+            className="app-home__path"
+            aria-labelledby="app-home-path-title"
+            data-testid="app-home-path"
           >
             <div className="app-home__section-head">
-              <h2 className="app-home__section-title" id="app-home-bots-title">
+              <h2 className="app-home__section-title" id="app-home-path-title">
                 Where to work
               </h2>
               <p className="app-home__section-meta">
-                {HOME_CARDS.length} areas
+                {HOME_PATH.length} areas · compact path
               </p>
             </div>
             <ul className="app-home__cards">
-              {HOME_CARDS.map((card) => (
+              {HOME_PATH.map((card) => (
                 <li key={card.view} className="app-home__card-item">
                   <button
                     type="button"
@@ -368,12 +355,11 @@ export function AppHome({
                     }}
                   >
                     {/*
-                      Single stacked body: shell buttons are inline-flex,
-                      which otherwise lays mark/action/detail/footer in a
-                      row and squeezes descriptions into ~51–77px columns.
+                      Single stacked body: shell buttons are inline-flex;
+                      keep one readable column so descriptions stay usable
+                      at 1440×900 (dense rows, not a sparse card wall).
                     */}
                     <span className="app-home__card-body">
-                      <span className="app-home__card-mark" aria-hidden="true" />
                       <span className="app-home__card-action">{card.action}</span>
                       <span className="app-home__card-detail">{card.detail}</span>
                       <span className="app-home__card-footer">
@@ -391,6 +377,7 @@ export function AppHome({
             className="app-home__activity"
             aria-labelledby="app-home-works-title"
             role="region"
+            data-testid="app-home-works"
           >
             <h2 className="app-home__section-title" id="app-home-works-title">
               What works here
@@ -467,7 +454,7 @@ export function AppHome({
             summary="Optional trade-only key material for later live work. Storing a key does not enable live trading."
             badge="Advanced"
             badgeTone="advanced"
-            defaultOpen={true}
+            defaultOpen={false}
             storageKey="krellbot.disclosure.home.keys"
             bare
             data-testid="app-home-keys-rail"
