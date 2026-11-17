@@ -135,7 +135,9 @@ def base_quote(pair: str) -> tuple[str, str]:
     Mirrors the paper venue's pair split so the owned-position projection
     and the engine agree on which balance is this market's holding.
     Coinbase product ids use ``BASE-QUOTE`` (wave paper arm: ``BTC-USD``);
-    Kraken-style compact pairs like ``SUIUSD`` strip a trailing ``USD``.
+    Binance-class compact symbols strip longer stablecoin suffixes first
+    (``BTCUSDT`` → BTC/USDT); Kraken-style compact pairs like ``SUIUSD``
+    strip a trailing ``USD``.
     """
     if not pair:
         return ("", "")
@@ -143,8 +145,9 @@ def base_quote(pair: str) -> tuple[str, str]:
         base, _, quote = pair.partition("-")
         if base and quote and "-" not in quote:
             return base, quote
-    if pair.endswith("USD"):
-        return pair[: -len("USD")], "USD"
+    for quote in ("USDT", "USDC", "USD"):
+        if pair.endswith(quote) and len(pair) > len(quote):
+            return pair[: -len(quote)], quote
     if len(pair) >= 6:
         return pair[:-3], pair[-3:]
     return pair, ""

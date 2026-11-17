@@ -1026,6 +1026,8 @@ def _fee_bps_for_venue(venue: str) -> int:
         return 40
     if venue == "coinbase":
         return 120
+    if venue == "binance":
+        return 10
     return 0
 
 
@@ -1121,8 +1123,10 @@ def _base_quote(pair: str) -> tuple[str, str]:
     """Split a venue pair into ``(base, quote)``.
 
     Matches ``venues.paper._base_quote`` / ``application.paper.base_quote``:
-    Coinbase ``BASE-QUOTE`` product ids (wave paper arm ``BTC-USD``) and
-    Kraken-style compact pairs that strip a trailing ``USD``.
+    Coinbase ``BASE-QUOTE`` product ids (wave paper arm ``BTC-USD``),
+    Binance-class compact symbols that strip ``USDT``/``USDC`` before
+    ``USD`` (wave paper arm ``BTCUSDT``), and Kraken-style compact pairs
+    that strip a trailing ``USD``.
     """
     if not pair:
         return ("", "")
@@ -1130,8 +1134,9 @@ def _base_quote(pair: str) -> tuple[str, str]:
         base, _, quote = pair.partition("-")
         if base and quote and "-" not in quote:
             return base, quote
-    if pair.endswith("USD"):
-        return pair[: -len("USD")], "USD"
+    for quote in ("USDT", "USDC", "USD"):
+        if pair.endswith(quote) and len(pair) > len(quote):
+            return pair[: -len(quote)], quote
     if len(pair) >= 6:
         return pair[:-3], pair[-3:]
     return pair, ""
