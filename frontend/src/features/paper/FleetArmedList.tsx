@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 import "./FleetArmedList.signal.css";
 import { UnresolvedOrdersList } from "../operations/UnresolvedOrdersList";
 import type { OperationsClient } from "../operations/client";
@@ -22,15 +22,25 @@ export type FleetArmedListProps = {
   /** Optional navigate hook used by the shell for in-app deep links. */
   onOpenDetail?: (href: string, venue: string, pair: string) => void;
   /**
+   * When provided, selecting a fleet row reports the closed armed identity
+   * so the Workstation Inspector stays truthful (M7.4 / M16.2).
+   */
+  onSelectionChange?: (row: FleetArmedDeployment | null) => void;
+  /**
    * When provided, the fleet management surface mounts the same
-   * UnresolvedOrdersList used on Operations (read-only parity).
+   * UnresolvedOrdersList used on Operations (read-only parity) and shows
+   * an unresolved summary count in the fleet header.
    */
   unresolvedClient?: Pick<OperationsClient, "listUnresolvedOrders">;
 };
 
 type LoadState =
   | { kind: "loading" }
-  | { kind: "ready"; deployments: FleetArmedDeployment[] }
+  | {
+      kind: "ready";
+      deployments: FleetArmedDeployment[];
+      armed_count: number;
+    }
   | { kind: "unavailable" };
 
 type RowActionKind = "pause" | "resume" | "disarm";
@@ -41,6 +51,10 @@ function rowKey(row: FleetArmedDeployment): string {
 
 function fleetCountLabel(count: number): string {
   return count === 1 ? "1 armed deployment" : `${count} armed deployments`;
+}
+
+function unresolvedSummaryLabel(count: number): string {
+  return count === 1 ? "1 unresolved order" : `${count} unresolved orders`;
 }
 
 function entriesChipTone(entries_paused: boolean): string {
@@ -72,6 +86,7 @@ function actionLabel(kind: RowActionKind): string {
 export function FleetArmedList({
   client,
   onOpenDetail,
+  onSelectionChange,
   unresolvedClient,
 }: FleetArmedListProps): JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
@@ -82,6 +97,8 @@ export function FleetArmedList({
   const [rowActionError, setRowActionError] = useState<string | null>(null);
   /** Row that last started an action — kept after settle so errors stay on that row. */
   const rowActionKeyRef = useRef<string | null>(null);
+  const [selected, setSelected] = useState<FleetArmedDeployment | null>(null);
+  const [unresolvedCount, setUnresolvedCount] = useState<number | null>(null);
 
   const canListFleet =
     typeof client === "object" &&
@@ -92,6 +109,11 @@ export function FleetArmedList({
   const canResume = typeof client.resumeEntries === "function";
   const canDisarm = typeof client.disarm === "function";
   const canMutate = canPause || canResume || canDisarm;
+
+  const showUnresolved =
+    unresolvedClient !== undefined &&
+    unresolvedClient !== null &&
+    typeof unresolvedClient.listUnresolvedOrders === "function";
 
   useEffect(() => {
     if (!canListFleet) {
@@ -106,7 +128,14 @@ export function FleetArmedList({
         if (cancelled) {
           return;
         }
-        setState({ kind: "ready", deployments: view.deployments });
+        setState({
+          kind: "ready",
+          deployments: view.deployments,
+          armed_count:
+            typeof view.armed_count === "number"
+              ? view.armed_count
+              : view.deployments.length,
+        });
         setLastError(null);
       })
       .catch((err: unknown) => {
@@ -121,6 +150,66 @@ export function FleetArmedList({
     };
   }, [client, canListFleet]);
 
+  useEffect(() => {
+    const listUnresolved = unresolvedClient?.listUnresolvedOrders;
+    if (typeof listUnresolved !== "function") {
+      setUnresolvedCount(null);
+      return;
+    }
+    let cancelled = false;
+    listUnresolved()
+      .then((rows) => {
+        if (!cancelled) {
+          setUnresolvedCount(rows.length);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUnresolvedCount(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [unresolvedClient]);
+
+  // Keep selection truthful after a refresh: drop it when the arm is gone,
+  // otherwise refresh the selected snapshot from the new list.
+  useEffect(() => {
+    if (state.kind !== "ready" || selected === null) {
+      return;
+    }
+    const next = state.deployments.find((row) => rowKey(row) === rowKey(selected));
+    if (next === undefined) {
+      setSelected(null);
+      onSelectionChange?.(null);
+      return;
+    }
+    if (
+      next.entries_paused !== selected.entries_paused ||
+      next.pack_id !== selected.pack_id ||
+      next.last_tick_ts_ms !== selected.last_tick_ts_ms ||
+      next.last_tick_result !== selected.last_tick_result
+    ) {
+      setSelected(next);
+      onSelectionChange?.(next);
+    }
+  }, [state, selected, onSelectionChange]);
+
+  const applyReadyView = (view: {
+    deployments: FleetArmedDeployment[];
+    armed_count?: number;
+  }): void => {
+    setState({
+      kind: "ready",
+      deployments: view.deployments,
+      armed_count:
+        typeof view.armed_count === "number"
+          ? view.armed_count
+          : view.deployments.length,
+    });
+  };
+
   const refresh = async (): Promise<void> => {
     if (!canListFleet || inFlight) {
       return;
@@ -128,8 +217,17 @@ export function FleetArmedList({
     setInFlight(true);
     try {
       const view = await client.listFleet();
-      setState({ kind: "ready", deployments: view.deployments });
+      applyReadyView(view);
       setLastError(null);
+      const listUnresolved = unresolvedClient?.listUnresolvedOrders;
+      if (typeof listUnresolved === "function") {
+        try {
+          const rows = await listUnresolved();
+          setUnresolvedCount(rows.length);
+        } catch {
+          // Keep the last known summary; refresh failure is surfaceable via list.
+        }
+      }
     } catch (err) {
       setLastError(err instanceof Error ? err.message : String(err));
       if (state.kind !== "ready") {
@@ -148,6 +246,25 @@ export function FleetArmedList({
     if (typeof window !== "undefined") {
       window.location.assign(row.detail_href);
     }
+  };
+
+  const selectRow = (row: FleetArmedDeployment): void => {
+    const next =
+      selected !== null && rowKey(selected) === rowKey(row) ? null : row;
+    setSelected(next);
+    onSelectionChange?.(next);
+    setRowActionError(null);
+  };
+
+  const handleRowKeyDown = (
+    event: KeyboardEvent<HTMLTableRowElement>,
+    row: FleetArmedDeployment,
+  ): void => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    selectRow(row);
   };
 
   const runRowAction = async (
@@ -184,7 +301,7 @@ export function FleetArmedList({
       setRowActionKind(null);
       try {
         const view = await client.listFleet();
-        setState({ kind: "ready", deployments: view.deployments });
+        applyReadyView(view);
         setLastError(null);
       } catch (err) {
         // A confirmed command must not be reported as failed when only its readback fails.
@@ -198,10 +315,7 @@ export function FleetArmedList({
   };
 
   const rows = state.kind === "ready" ? state.deployments : [];
-  const showUnresolved =
-    unresolvedClient !== undefined &&
-    unresolvedClient !== null &&
-    typeof unresolvedClient.listUnresolvedOrders === "function";
+  const armedCount = state.kind === "ready" ? state.armed_count : 0;
 
   return (
     <section
@@ -215,7 +329,15 @@ export function FleetArmedList({
           <h2 className="kbot-fleet__title">Armed fleet</h2>
           {state.kind === "ready" ? (
             <p className="kbot-fleet__count" data-testid="fleet-armed-count">
-              {fleetCountLabel(rows.length)}
+              {fleetCountLabel(armedCount)}
+            </p>
+          ) : null}
+          {showUnresolved && unresolvedCount !== null ? (
+            <p
+              className="kbot-fleet__unresolved-summary"
+              data-testid="fleet-unresolved-summary"
+            >
+              {unresolvedSummaryLabel(unresolvedCount)}
             </p>
           ) : null}
         </div>
@@ -300,15 +422,29 @@ export function FleetArmedList({
                   {rows.map((row) => {
                     const tone = entriesChipTone(row.entries_paused);
                     const key = rowKey(row);
+                    const isSelected =
+                      selected !== null && rowKey(selected) === key;
                     const rowBusy =
                       rowActionInFlight && rowActionKeyRef.current === key;
                     return (
                       <tr
                         key={key}
-                        className="kbot-fleet__row"
+                        className={`kbot-fleet__row${
+                          isSelected ? " kbot-fleet__row--selected" : ""
+                        }`}
                         data-testid="fleet-armed-row"
                         data-venue={row.venue}
                         data-pair={row.pair}
+                        data-selected={isSelected ? "true" : undefined}
+                        tabIndex={0}
+                        aria-selected={isSelected}
+                        aria-label={`Select fleet arm ${row.venue} ${row.pair}`}
+                        onClick={() => {
+                          selectRow(row);
+                        }}
+                        onKeyDown={(event) => {
+                          handleRowKeyDown(event, row);
+                        }}
                       >
                         <td>
                           <span className="kbot-fleet__market">
@@ -354,6 +490,7 @@ export function FleetArmedList({
                             href={row.detail_href}
                             data-testid="fleet-armed-detail-link"
                             onClick={(event) => {
+                              event.stopPropagation();
                               if (
                                 event.defaultPrevented ||
                                 event.button !== 0 ||
@@ -376,6 +513,9 @@ export function FleetArmedList({
                             <div
                               className="kbot-fleet__row-actions"
                               data-testid="fleet-armed-row-actions"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                              }}
                             >
                               {canPause ? (
                                 <button
@@ -451,6 +591,94 @@ export function FleetArmedList({
                 </tbody>
               </table>
             </div>
+            {selected !== null ? (
+              <div
+                className="kbot-fleet__selected"
+                data-testid="fleet-armed-selected"
+                aria-label="Selected fleet arm"
+              >
+                <p className="kbot-fleet__selected-title">
+                  Selected arm: {selected.venue} · {selected.pair}
+                </p>
+                <dl className="kbot-fleet__selected-meta">
+                  <div>
+                    <dt>Pack</dt>
+                    <dd data-testid="fleet-armed-selected-pack">{selected.pack_id}</dd>
+                  </div>
+                  <div>
+                    <dt>Last tick</dt>
+                    <dd data-testid="fleet-armed-selected-tick">
+                      {formatTickTime(selected.last_tick_ts_ms)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Result</dt>
+                    <dd data-testid="fleet-armed-selected-result">
+                      {selected.last_tick_result}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Entries</dt>
+                    <dd data-testid="fleet-armed-selected-entries">
+                      {selected.entries_paused ? "Entries paused" : "Entries active"}
+                    </dd>
+                  </div>
+                </dl>
+                {canMutate ? (
+                  <div
+                    className="kbot-fleet__selected-actions"
+                    data-testid="fleet-armed-selected-actions"
+                  >
+                    {canPause ? (
+                      <button
+                        type="button"
+                        className="kbot-fleet__row-action"
+                        data-testid="fleet-armed-selected-pause"
+                        aria-label={`Pause entries on selected ${selected.venue} ${selected.pair}`}
+                        disabled={
+                          rowActionInFlight || selected.entries_paused === true
+                        }
+                        onClick={() => {
+                          void runRowAction(selected, "pause");
+                        }}
+                      >
+                        Pause entries
+                      </button>
+                    ) : null}
+                    {canResume ? (
+                      <button
+                        type="button"
+                        className="kbot-fleet__row-action"
+                        data-testid="fleet-armed-selected-resume"
+                        aria-label={`Resume entries on selected ${selected.venue} ${selected.pair}`}
+                        disabled={
+                          rowActionInFlight || selected.entries_paused === false
+                        }
+                        onClick={() => {
+                          void runRowAction(selected, "resume");
+                        }}
+                      >
+                        Resume entries
+                      </button>
+                    ) : null}
+                    {canDisarm ? (
+                      <button
+                        type="button"
+                        className="kbot-fleet__row-action"
+                        data-testid="fleet-armed-selected-disarm"
+                        aria-label={`Disarm selected ${selected.venue} ${selected.pair}`}
+                        disabled={rowActionInFlight}
+                        onClick={() => {
+                          void runRowAction(selected, "disarm");
+                        }}
+                      >
+                        Disarm
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {lastError !== null ? (
               <p className="kbot-fleet__error" data-testid="fleet-armed-error">
                 {lastError}

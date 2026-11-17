@@ -181,14 +181,25 @@ export type FleetArmedDeployment = {
   detail_href: string;
 };
 
-export type FleetArmedView = {
-  schema_version: string;
-  armed: boolean;
+/** One ``(venue, pair)`` group from the multi-pair fleet API (M16.1). */
+export type FleetArmedGroup = {
+  venue: string;
+  pair: string;
   deployments: FleetArmedDeployment[];
 };
 
+export type FleetArmedView = {
+  schema_version: string;
+  armed: boolean;
+  /** Unfiltered armed total; present on M16.1+ wire. */
+  armed_count?: number;
+  deployments: FleetArmedDeployment[];
+  /** Deployments keyed by ``(venue, pair)``; empty when none armed. */
+  groups?: FleetArmedGroup[];
+};
+
 export type FleetArmedClient = {
-  listFleet(): Promise<FleetArmedView>;
+  listFleet(select?: { venue?: string; pair?: string }): Promise<FleetArmedView>;
 };
 
 /** One owned holding from the persisted paper state file. */
@@ -595,6 +606,36 @@ async function getArmedJson(url: string): Promise<PaperArmedView> {
   return adaptArmedView(raw);
 }
 
+function adaptFleetDeployment(row: Record<string, unknown>): FleetArmedDeployment | null {
+  if (
+    typeof row.venue !== "string" ||
+    typeof row.pair !== "string" ||
+    typeof row.mode !== "string" ||
+    typeof row.pack_id !== "string" ||
+    typeof row.entries_paused !== "boolean" ||
+    typeof row.last_tick_result !== "string" ||
+    typeof row.detail_href !== "string"
+  ) {
+    return null;
+  }
+  const lastTick =
+    typeof row.last_tick_ts_ms === "number" && Number.isFinite(row.last_tick_ts_ms)
+      ? row.last_tick_ts_ms
+      : null;
+  return {
+    venue: row.venue,
+    pair: row.pair,
+    mode: row.mode,
+    pack_id: row.pack_id,
+    entries_paused: row.entries_paused,
+    last_tick_ts_ms: lastTick,
+    last_tick_result: row.last_tick_result,
+    last_refusal_code:
+      typeof row.last_refusal_code === "string" ? row.last_refusal_code : null,
+    detail_href: row.detail_href,
+  };
+}
+
 function adaptFleetView(raw: Record<string, unknown>): FleetArmedView {
   const schema_version =
     typeof raw.schema_version === "string" ? raw.schema_version : "1";
@@ -604,44 +645,67 @@ function adaptFleetView(raw: Record<string, unknown>): FleetArmedView {
     if (entry === null || typeof entry !== "object") {
       continue;
     }
-    const row = entry as Record<string, unknown>;
-    if (
-      typeof row.venue !== "string" ||
-      typeof row.pair !== "string" ||
-      typeof row.mode !== "string" ||
-      typeof row.pack_id !== "string" ||
-      typeof row.entries_paused !== "boolean" ||
-      typeof row.last_tick_result !== "string" ||
-      typeof row.detail_href !== "string"
-    ) {
-      continue;
+    const adapted = adaptFleetDeployment(entry as Record<string, unknown>);
+    if (adapted !== null) {
+      deployments.push(adapted);
     }
-    const lastTick =
-      typeof row.last_tick_ts_ms === "number" && Number.isFinite(row.last_tick_ts_ms)
-        ? row.last_tick_ts_ms
-        : null;
-    deployments.push({
-      venue: row.venue,
-      pair: row.pair,
-      mode: row.mode,
-      pack_id: row.pack_id,
-      entries_paused: row.entries_paused,
-      last_tick_ts_ms: lastTick,
-      last_tick_result: row.last_tick_result,
-      last_refusal_code:
-        typeof row.last_refusal_code === "string" ? row.last_refusal_code : null,
-      detail_href: row.detail_href,
-    });
   }
+  const groups: FleetArmedGroup[] = [];
+  if (Array.isArray(raw.groups)) {
+    for (const entry of raw.groups) {
+      if (entry === null || typeof entry !== "object") {
+        continue;
+      }
+      const group = entry as Record<string, unknown>;
+      if (typeof group.venue !== "string" || typeof group.pair !== "string") {
+        continue;
+      }
+      const groupRows = Array.isArray(group.deployments) ? group.deployments : [];
+      const adaptedRows: FleetArmedDeployment[] = [];
+      for (const row of groupRows) {
+        if (row === null || typeof row !== "object") {
+          continue;
+        }
+        const adapted = adaptFleetDeployment(row as Record<string, unknown>);
+        if (adapted !== null) {
+          adaptedRows.push(adapted);
+        }
+      }
+      groups.push({
+        venue: group.venue,
+        pair: group.pair,
+        deployments: adaptedRows,
+      });
+    }
+  }
+  const armed_count =
+    typeof raw.armed_count === "number" && Number.isFinite(raw.armed_count)
+      ? Math.max(0, Math.trunc(raw.armed_count))
+      : deployments.length;
   return {
     schema_version,
     armed: deployments.length > 0,
+    armed_count,
     deployments,
+    groups,
   };
 }
 
-async function listFleet(): Promise<FleetArmedView> {
-  const response = await fetch("/api/v1/paper/fleet", {
+async function listFleet(select?: {
+  venue?: string;
+  pair?: string;
+}): Promise<FleetArmedView> {
+  const params = new URLSearchParams();
+  if (select?.venue) {
+    params.set("venue", select.venue);
+  }
+  if (select?.pair) {
+    params.set("pair", select.pair);
+  }
+  const query = params.toString();
+  const path =
+    query.length > 0 ? `/api/v1/paper/fleet?${query}` : "/api/v1/paper/fleet";
+  const response = await fetch(path, {
     method: "GET",
     credentials: "include",
     headers: {

@@ -52,7 +52,8 @@
   color: var(--text, #e9f0f5);
 }
 
-.kbot-fleet .kbot-fleet__count {
+.kbot-fleet .kbot-fleet__count,
+.kbot-fleet .kbot-fleet__unresolved-summary {
   display: inline-flex;
   align-items: center;
   padding: 3px 9px;
@@ -66,6 +67,10 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+.kbot-fleet .kbot-fleet__unresolved-summary {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 40%, var(--line, #22465d));
 }
 
 .kbot-fleet .kbot-fleet__action {
@@ -163,10 +168,58 @@
 
 .kbot-fleet .kbot-fleet__row {
   min-height: 44px;
+  cursor: pointer;
 }
 
 .kbot-fleet .kbot-fleet__row:hover {
   background: color-mix(in srgb, var(--seafoam, #a8d8d1) 5%, transparent);
+}
+
+.kbot-fleet .kbot-fleet__row--selected {
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 12%, var(--panel, #18354a));
+  outline: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+}
+
+.kbot-fleet .kbot-fleet__selected {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel, #18354a) 70%, var(--surface, #14222e));
+}
+
+.kbot-fleet .kbot-fleet__selected-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-fleet .kbot-fleet__selected-meta {
+  display: grid;
+  gap: 6px 16px;
+  margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.kbot-fleet .kbot-fleet__selected-meta dt {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-fleet .kbot-fleet__selected-meta dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-fleet .kbot-fleet__selected-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .kbot-fleet .kbot-fleet__market {
