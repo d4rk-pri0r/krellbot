@@ -8,6 +8,7 @@ import hmac
 import json
 import sys
 import time
+import urllib.error
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -92,6 +93,7 @@ class _AppState:
     live_transport: object = field(default=None)  # test spy override for live.preflight
     keys_transport: object = field(default=None)  # injectable venue transport for keys routes
     catalogue_transport: object = field(default=None)  # injectable signed-catalogue fetch
+    community_transport: object = field(default=None)  # injectable community index/pack bytes
     keys_allow_fake_backend: bool = False  # tests-only FakeKeyring opt-in
     scheduler_supervisor: object = None  # PlatformSupervisor; tests inject FakeSupervisor
     scheduler_write_root: Path | None = None  # defaults to Path.home()
@@ -2957,6 +2959,186 @@ def create_app(
                 "Content-Disposition": 'attachment; filename="research-result.json"',
                 "Cache-Control": "no-store",
             },
+        )
+
+    # ---- community packs list / index / install (M17.2) -----------------
+
+    @app.get("/api/v1/community/packs")
+    async def community_packs_list(request: Request) -> Response:
+        """List installed community packs under ``<home>/packs/community/``.
+
+        Same session gate as ``GET /api/v1/packs`` (``_gate_get``): session
+        cookie + loopback Origin + loopback Host, no CSRF required. Body is
+        closed rows from ``community.installed_rows`` — ``id`` plus optional
+        ``version`` / ``label`` / ``author`` / ``origin``. Empty home returns
+        ``[]``. No network call.
+        """
+
+        from krellbot import community as kb_community
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "packs": kb_community.installed_rows(s.home),
+        }
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/v1/community/index")
+    async def community_index(request: Request) -> Response:
+        """Browse the allow-listed upstream community index via injectable transport.
+
+        Same session gate as ``GET /api/v1/packs`` (``_gate_get``). Fetches
+        ``community.INDEX_URL`` through ``community_transport`` (production
+        uses ``UrllibBytesTransport``). Returns closed rows with ``id``,
+        ``url``, and optional ``author`` / ``label``. Malformed indexes
+        return 502; transport failures return 502. Browse does not install.
+        """
+
+        from krellbot import community as kb_community
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        transport = kb_community.resolve_transport(s.community_transport)
+        try:
+            packs = kb_community.fetch_index(transport=transport)
+        except kb_community.IndexError_:
+            return JSONResponse(
+                {"detail": "community index rejected"},
+                status_code=502,
+            )
+        except (OSError, urllib.error.URLError):
+            return JSONResponse(
+                {"detail": "community index unreachable"},
+                status_code=502,
+            )
+
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "index_url": kb_community.INDEX_URL,
+                "packs": packs,
+            },
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/v1/community/install")
+    async def community_install(request: Request) -> Response:
+        """Install a community pack by id from the allow-listed index.
+
+        Same state-change gate as other POSTs (``_gate_state_change``):
+        session cookie + CSRF + loopback Origin. Body is
+        ``{"pack_id": "<id>"}``. Uses injectable ``community_transport``.
+        Foreign URLs, missing ids, oversized/invalid payloads, and
+        transport failures map to closed refusal codes — never echoes
+        exception text that may contain paths.
+        """
+
+        from krellbot import community as kb_community
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        import os.path
+
+        raw_pack_id = payload.get("pack_id")
+        if not isinstance(raw_pack_id, str) or not raw_pack_id:
+            nested = payload.get("payload")
+            if isinstance(nested, dict):
+                raw_pack_id = nested.get("pack_id")
+        if not isinstance(raw_pack_id, str) or not raw_pack_id:
+            return JSONResponse({"detail": "pack_id is required"}, status_code=400)
+
+        # CodeQL-recognized sanitizer at the API boundary: basename strips
+        # directory components before any install / path join.
+        pack_id = os.path.basename(raw_pack_id)
+        if not pack_id or pack_id != raw_pack_id or os.path.basename(pack_id) != pack_id or pack_id in {".", ".."}:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": "payload_refused",
+                    "message": "community pack payload refused",
+                },
+                status_code=400,
+            )
+
+        transport = kb_community.resolve_transport(s.community_transport)
+        try:
+            path = kb_community.install(pack_id, transport=transport, home=s.home)
+        except kb_community.ForeignUrlError:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": "foreign_url",
+                    "message": "community pack url is not allow-listed",
+                },
+                status_code=403,
+            )
+        except kb_community.IndexError_ as exc:
+            missing = "not found" in str(exc)
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": "pack_not_found" if missing else "index_rejected",
+                    "message": ("community pack not found in index" if missing else "community index rejected"),
+                },
+                status_code=404 if missing else 502,
+            )
+        except kb_community.InstallPayloadError:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": "payload_refused",
+                    "message": "community pack payload refused",
+                },
+                status_code=400,
+            )
+        except (OSError, urllib.error.URLError):
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": "unreachable",
+                    "message": "community pack unreachable",
+                },
+                status_code=502,
+            )
+
+        rows = kb_community.installed_rows(s.home)
+        row = next((r for r in rows if r.get("id") == pack_id), {"id": pack_id})
+        # Closed relative path from sanitized id only — never echo a
+        # request-derived filesystem string.
+        rel_path = f"packs/community/{os.path.basename(pack_id)}.json"
+        if path.name != os.path.basename(f"{pack_id}.json"):
+            rel_path = path.name
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "ok": True,
+                "pack": row,
+                "path": rel_path,
+            },
+            status_code=200,
         )
 
     # ---- pack catalogue one-click install (M5.2) ------------------------
