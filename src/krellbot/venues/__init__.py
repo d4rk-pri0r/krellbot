@@ -1,4 +1,4 @@
-"""Venue adapters: a base protocol, a Kraken adapter, and a Coinbase adapter.
+"""Venue adapters: base protocol plus Kraken, Coinbase, and Binance spot.
 
 `Venue` lives in `krellbot.venues.base`. Every adapter accepts Decimal for
 size/price, and `qty`/`stop` are quantized to the venue's lot/price decimals
@@ -21,6 +21,7 @@ from .base import (
 
 __all__ = [
     "Balance",
+    "BinanceVenue",
     "CoinbaseVenue",
     "Fill",
     "KeyPerms",
@@ -41,6 +42,11 @@ def __dir__() -> list[str]:
 
 def __getattr__(name: str) -> object:
     """Load remote adapters only when their public re-export is requested."""
+    if name == "BinanceVenue":
+        from .binance import BinanceVenue
+
+        globals()[name] = BinanceVenue
+        return BinanceVenue
     if name == "CoinbaseVenue":
         from .coinbase import CoinbaseVenue
 
