@@ -46,6 +46,7 @@ from krellbot.venues.base import (
 STATE_FILENAME_TEMPLATE = "paper-{venue}.json"
 KRAKEN_TAKER_BPS = 40
 COINBASE_TAKER_BPS = 120
+BINANCE_TAKER_BPS = 10
 SLIPPAGE_BPS = 5
 
 
@@ -54,7 +55,22 @@ class InsufficientQuoteCash(ValueError):
 
 
 def _fee_bps_for(venue: str) -> int:
-    return KRAKEN_TAKER_BPS if venue == "kraken" else COINBASE_TAKER_BPS
+    if venue == "kraken":
+        return KRAKEN_TAKER_BPS
+    if venue == "binance":
+        return BINANCE_TAKER_BPS
+    return COINBASE_TAKER_BPS
+
+
+def _seed_quote_asset(venue: str) -> str:
+    """Quote asset used when seeding paper starting cash for a venue.
+
+    Binance wave paper markets are USDT-quoted (``BTCUSDT``). Kraken and
+    Coinbase wave paper markets seed ``USD``.
+    """
+    if venue == "binance":
+        return "USDT"
+    return "USD"
 
 
 def _state_path(home: Path, venue: str) -> Path:
@@ -116,7 +132,7 @@ class PaperVenue:
         # Scalar-bearing files retain their bytes on construction (#111).
         # Persist the seeded map with the next snapshot or state mutation.
         if starting_cash is not None and not self._state.get("seeded"):
-            self._state["balances"]["USD"] = starting_cash
+            self._state["balances"][_seed_quote_asset(venue)] = starting_cash
             self._state["seeded"] = True
             self._persist()
 
@@ -558,7 +574,10 @@ def _base_quote(pair: str) -> tuple[str, str]:
     """Split a venue pair into ``(base, quote)``.
 
     Coinbase product ids use ``BASE-QUOTE`` (wave paper arm: ``BTC-USD``).
-    Kraken-style compact pairs like ``SUIUSD`` strip a trailing ``USD``.
+    Binance-class compact symbols strip longer stablecoin suffixes first
+    (``BTCUSDT`` → BTC/USDT) so a trailing ``USD`` match does not yield
+    ``BTCU`` / ``SDT``. Kraken-style compact pairs like ``SUIUSD`` strip
+    a trailing ``USD``.
     """
     if not pair:
         return ("", "")
@@ -566,8 +585,9 @@ def _base_quote(pair: str) -> tuple[str, str]:
         base, _, quote = pair.partition("-")
         if base and quote and "-" not in quote:
             return base, quote
-    if pair.endswith("USD"):
-        return pair[: -len("USD")], "USD"
+    for quote in ("USDT", "USDC", "USD"):
+        if pair.endswith(quote) and len(pair) > len(quote):
+            return pair[: -len(quote)], quote
     if len(pair) >= 6:
         return pair[:-3], pair[-3:]
     return pair, ""

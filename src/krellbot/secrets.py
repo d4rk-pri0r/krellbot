@@ -18,7 +18,7 @@ from pathlib import Path
 
 from krellbot import paths, sanitize
 
-VENUES = {"kraken", "coinbase"}
+VENUES = {"kraken", "coinbase", "binance"}
 
 
 def _is_windows() -> bool:
@@ -56,7 +56,7 @@ def _check_file_mode(path: Path, venue: str) -> None:
 def get(venue: str) -> tuple[str, str]:
     """Return (key, secret) for venue. Raises on partial env / corrupt keyring."""
     if venue not in VENUES:
-        raise ValueError("venue must be one of: kraken, coinbase")
+        raise ValueError(f"venue must be one of: {', '.join(sorted(VENUES))}")
 
     ven = venue.upper()
     env_key = os.environ.get(f"KRELLBOT_{ven}_KEY")
@@ -90,7 +90,7 @@ def get(venue: str) -> tuple[str, str]:
 def store(venue: str, key: str, secret: str) -> str:
     """Persist (key, secret) for venue to the keyring. Returns backend name."""
     if venue not in VENUES:
-        raise ValueError("venue must be one of: kraken, coinbase")
+        raise ValueError(f"venue must be one of: {', '.join(sorted(VENUES))}")
 
     sanitize.register_secret(key, secret)
 
