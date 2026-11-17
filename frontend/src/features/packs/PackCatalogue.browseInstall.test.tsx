@@ -77,6 +77,12 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
       code: "unused",
       message: "unused",
     })),
+    openCommunityPack: vi.fn(async () => ({
+      schema_version: "1",
+      source: "community" as const,
+      path: "",
+      pack: {},
+    })),
     ...overrides,
   };
 }

@@ -712,7 +712,8 @@ export function WorkstationShell({
       "listCatalogue" in packClient &&
       "install" in packClient &&
       "listCommunityIndex" in packClient &&
-      "installCommunity" in packClient
+      "installCommunity" in packClient &&
+      "openCommunityPack" in packClient
     ) {
       return packClient as PacksClient;
     }
@@ -741,6 +742,12 @@ export function WorkstationShell({
         ok: false,
         code: "unavailable",
         message: "community install unavailable",
+      }),
+      openCommunityPack: async () => ({
+        schema_version: "1",
+        source: "community" as const,
+        path: "",
+        pack: {},
       }),
     };
   }, [packClient]);

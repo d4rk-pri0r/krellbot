@@ -111,6 +111,66 @@ def installed_rows(home: Path) -> list[dict]:
     return rows
 
 
+def read_installed(home: Path, pack_id: str) -> dict:
+    """Return the installed community pack dict for ``pack_id``.
+
+    Uses ``os.path.basename`` (CodeQL-recognized sanitizer) so a request
+    id never reaches a path expression. Raises ``IndexError_`` when the
+    pack is missing and ``InstallPayloadError`` when the id is not a
+    single path segment. The returned dict is the on-disk pack body used
+    to open a Strategies draft (validate-before-arm), never executed.
+    """
+    import os.path
+
+    if type(pack_id) is not str or not pack_id:
+        raise InstallPayloadError("community pack id is not a single path segment: ''")
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_id)
+    windows_drive = len(name) >= 2 and name[1] == ":" and name[0].isalpha()
+    if (
+        not name
+        or name != pack_id
+        or os.path.basename(name) != name
+        or "\x00" in pack_id
+        or "/" in pack_id
+        or "\\" in pack_id
+        or windows_drive
+        or name in {".", ".."}
+    ):
+        raise InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+
+    community_dir = Path(home) / "packs" / "community"
+    filename = os.path.basename(f"{name}.json")
+    if not filename.endswith(".json") or filename.startswith("."):
+        raise InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    base_path = os.path.realpath(str(community_dir))
+    fullpath = os.path.normpath(os.path.join(base_path, filename))
+    if fullpath != base_path and not fullpath.startswith(base_path + os.sep):
+        raise InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    try:
+        data = json.loads(Path(fullpath).read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise IndexError_(f"community pack not installed: {name!r}") from exc
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise IndexError_(f"community pack unreadable: {name!r}") from exc
+    if not isinstance(data, dict):
+        raise IndexError_(f"community pack unreadable: {name!r}")
+    embedded = data.get("id")
+    if embedded != name:
+        raise IndexError_(f"community pack not installed: {name!r}")
+    return data
+
+
+def installed_path(home: Path, pack_id: str) -> Path:
+    """Return the confined path for an installed community pack id."""
+    import os.path
+
+    # Force the same refusal rules as ``read_installed``.
+    read_installed(home, pack_id)
+    name = os.path.basename(pack_id)
+    return Path(home) / "packs" / "community" / f"{name}.json"
+
+
 def _validate_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.netloc != ALLOWED_HOST:
@@ -245,7 +305,9 @@ __all__ = [
     "UrllibBytesTransport",
     "fetch_index",
     "install",
+    "installed_path",
     "installed_rows",
     "list_installed",
+    "read_installed",
     "resolve_transport",
 ]
