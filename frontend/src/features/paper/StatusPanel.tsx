@@ -233,10 +233,29 @@ function unknownMessage(command: CommandName, reason: unknown): string {
  * decimal strings are never re-formatted or zero-trimmed, so the sentence
  * is evidence about the persisted `paper-<venue>.json`, not a computation.
  */
+/** Quote asset from a venue pair spelling (mirrors paper ``base_quote``). */
+function quoteAssetFromPair(pair: string | undefined): string {
+  if (pair === undefined || pair === "") {
+    return "";
+  }
+  if (pair.includes("-")) {
+    const parts = pair.split("-");
+    if (parts.length === 2 && parts[0] !== "" && parts[1] !== "") {
+      return parts[1];
+    }
+  }
+  for (const quote of ["USDT", "USDC", "USD"] as const) {
+    if (pair.endsWith(quote) && pair.length > quote.length) {
+      return quote;
+    }
+  }
+  return pair.length >= 3 ? pair.slice(-3) : "";
+}
+
 function positionSentence(position: PaperPosition): string {
   const parts = (position.holdings ?? []).map((row) => `${row.qty} ${row.symbol}`);
   const owned = parts.length > 0 ? parts.join(", ") : "no open position";
-  const quote = position.pair !== undefined ? position.pair.slice(-3) : "";
+  const quote = quoteAssetFromPair(position.pair);
   const cash =
     position.free_cash !== undefined
       ? `${position.free_cash}${quote !== "" ? ` ${quote}` : ""}`
