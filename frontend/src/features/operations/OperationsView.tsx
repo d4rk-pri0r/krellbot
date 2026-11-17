@@ -830,7 +830,7 @@ export function OperationsView({
           summary="Orders awaiting reconcile — never blindly resubmitted."
           badge="Advanced"
           badgeTone="advanced"
-          defaultOpen={false}
+          defaultOpen={true}
           storageKey="krellbot.disclosure.ops.unresolved"
           data-testid="ops-unresolved-orders-panel"
         >

@@ -44,7 +44,8 @@ Navigation destinations (`?view=`) stay stable. Capabilities relocated only via 
 | Workspace orientation / next step | `home` | Essential hero + primary path |
 | Paper arm / pause entries / resume / disarm / raise stop | `workstation` | Essential status + primary arm/controls |
 | Synthetic paper rehearsal | `workstation` (inside Paper status) | Primary (paper/test-run controls) |
-| Armed fleet list + unresolved orders | `workstation` and `operations` | Essential |
+| Armed fleet list | `workstation` and `operations` | Essential |
+| Unresolved orders (ops panel) | `operations` | Advanced (open by default; collapsible) |
 | Last paper runs + fills detail | `workstation` | Primary list; row expands detail |
 | Portfolio / equity history | `workstation` | Advanced |
 | Armed paper run records | `workstation` | Advanced (open by default; fleet is primary) |

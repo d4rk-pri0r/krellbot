@@ -467,7 +467,7 @@ export function AppHome({
             summary="Optional trade-only key material for later live work. Storing a key does not enable live trading."
             badge="Advanced"
             badgeTone="advanced"
-            defaultOpen={false}
+            defaultOpen={true}
             storageKey="krellbot.disclosure.home.keys"
             bare
             data-testid="app-home-keys-rail"
