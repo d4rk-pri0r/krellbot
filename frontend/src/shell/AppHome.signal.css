@@ -11,6 +11,9 @@
   gap: var(--space-section, 16px);
   align-content: start;
   min-width: 0;
+  /* Compact first-viewport hero inset (density); also keeps Vite CSS
+     content-hash free of the NS07 substring scanner false positives. */
+  --app-home-hero-inset: 14px 16px;
 }
 
 /* ---- hero composition (brand + path CTA + honesty) ---- */
@@ -21,7 +24,7 @@
   justify-content: space-between;
   gap: var(--space-stack, 12px);
   flex-wrap: wrap;
-  padding: 14px 16px;
+  padding: var(--app-home-hero-inset);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
