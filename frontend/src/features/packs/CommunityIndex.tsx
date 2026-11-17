@@ -5,13 +5,20 @@ import {
   useState,
   type JSX,
 } from "react";
-import type { CommunityIndexDocument, PacksClient } from "./client";
+import type {
+  CommunityIndexDocument,
+  CommunityIndexPack,
+  CommunityInstallResult,
+  PacksClient,
+} from "./client";
 import { PackLibraryHttpError } from "./client";
 import { COMMUNITY_BADGE, PACK_SOURCES } from "./packSources";
 import "./CommunityIndex.signal.css";
 
 export type CommunityIndexProps = {
   client: PacksClient;
+  /** Fired after a successful community install so the library can refresh. */
+  onInstalled?: (result: CommunityInstallResult) => void;
 };
 
 function failureMessage(err: unknown): string {
@@ -21,16 +28,42 @@ function failureMessage(err: unknown): string {
   return "Community index failed";
 }
 
+/** Closed, user-facing copy for typed community install refusal codes. */
+export function communityInstallFailureCopy(
+  code: string | undefined,
+  fallback?: string,
+): string {
+  switch (code) {
+    case "foreign_url":
+      return "Foreign URL refused — pack host is not allow-listed.";
+    case "payload_refused":
+      return "Payload refused — oversized body or validate fail.";
+    case "pack_not_found":
+      return "Community pack not found in the index.";
+    case "index_rejected":
+      return "Community index rejected.";
+    case "unreachable":
+      return "Community pack unreachable.";
+    default:
+      return fallback ?? "Community install refused.";
+  }
+}
+
 /**
- * Browse-only community index with source honesty.
- * Install journey is M17.5 — this panel must never claim ed25519 / paid SKU.
- * Contract: KRELL-SIGNAL-20261010.
+ * Community index browse + one-click install into ``packs/community/``.
+ * Never claims ed25519 / paid SKU. Contract: KRELL-SIGNAL-20261010.
  */
-export function CommunityIndex({ client }: CommunityIndexProps): JSX.Element {
+export function CommunityIndex({
+  client,
+  onInstalled,
+}: CommunityIndexProps): JSX.Element {
   const [document, setDocument] = useState<CommunityIndexDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [installingId, setInstallingId] = useState<string | null>(null);
+  const [installFeedback, setInstallFeedback] = useState<Record<string, string>>({});
   const requestSeq = useRef(0);
+  const installSeq = useRef(0);
 
   const load = useCallback((): void => {
     const seq = (requestSeq.current += 1);
@@ -57,6 +90,51 @@ export function CommunityIndex({ client }: CommunityIndexProps): JSX.Element {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleInstall = useCallback(
+    (pack: CommunityIndexPack): void => {
+      const seq = (installSeq.current += 1);
+      setInstallingId(pack.id);
+      setInstallFeedback((prev) => {
+        const next = { ...prev };
+        delete next[pack.id];
+        return next;
+      });
+      client
+        .installCommunity(pack.id)
+        .then((result) => {
+          if (seq !== installSeq.current) return;
+          if (result.ok) {
+            const version = result.pack?.version ?? "—";
+            const author = result.pack?.author ?? pack.author ?? "—";
+            const path = result.path ?? "packs/community/";
+            setInstallFeedback((prev) => ({
+              ...prev,
+              [pack.id]: `Installed · ${result.pack?.id ?? pack.id} · ${version} · author ${author} · ${path}`,
+            }));
+            onInstalled?.(result);
+            return;
+          }
+          setInstallFeedback((prev) => ({
+            ...prev,
+            [pack.id]: communityInstallFailureCopy(result.code, result.message),
+          }));
+        })
+        .catch((err: unknown) => {
+          if (seq !== installSeq.current) return;
+          setInstallFeedback((prev) => ({
+            ...prev,
+            [pack.id]: failureMessage(err),
+          }));
+        })
+        .finally(() => {
+          if (seq === installSeq.current) {
+            setInstallingId(null);
+          }
+        });
+    },
+    [client, onInstalled],
+  );
 
   const packs = document?.packs ?? [];
   const meta = PACK_SOURCES.community;
@@ -90,7 +168,8 @@ export function CommunityIndex({ client }: CommunityIndexProps): JSX.Element {
         {COMMUNITY_BADGE}
       </p>
       <p className="kbot-community-index__helper" data-testid="community-index-honesty">
-        {meta.honesty}
+        {meta.honesty} One-click install writes under packs/community/ after
+        allow-list checks.
       </p>
       {document !== null ? (
         <p className="kbot-community-index__meta" data-testid="community-index-meta">
@@ -114,43 +193,77 @@ export function CommunityIndex({ client }: CommunityIndexProps): JSX.Element {
           </p>
         ) : (
           <ul className="kbot-community-index__list" data-testid="community-index-list">
-            {packs.map((pack) => (
-              <li
-                key={pack.id}
-                className="kbot-community-index__row"
-                data-testid={`community-index-row-${pack.id}`}
-                data-pack-source="community"
-              >
-                <div className="kbot-community-index__row-head">
-                  <span
-                    className="kbot-community-index__label"
-                    data-testid={`community-index-label-${pack.id}`}
-                  >
-                    {pack.label ?? pack.id}
-                  </span>
-                  <span
-                    className="kbot-community-index__source"
-                    data-testid={`community-index-source-${pack.id}`}
-                  >
-                    {COMMUNITY_BADGE}
-                  </span>
-                </div>
-                <span
-                  className="kbot-community-index__id"
-                  data-testid={`community-index-id-${pack.id}`}
+            {packs.map((pack) => {
+              const busy = installingId === pack.id;
+              const feedback = installFeedback[pack.id];
+              const isError =
+                feedback !== undefined && !feedback.startsWith("Installed");
+              return (
+                <li
+                  key={pack.id}
+                  className="kbot-community-index__row"
+                  data-testid={`community-index-row-${pack.id}`}
+                  data-pack-source="community"
                 >
-                  {pack.id}
-                </span>
-                {pack.author ? (
+                  <div className="kbot-community-index__row-head">
+                    <span
+                      className="kbot-community-index__label"
+                      data-testid={`community-index-label-${pack.id}`}
+                    >
+                      {pack.label ?? pack.id}
+                    </span>
+                    <span
+                      className="kbot-community-index__source"
+                      data-testid={`community-index-source-${pack.id}`}
+                    >
+                      {COMMUNITY_BADGE}
+                    </span>
+                  </div>
                   <span
-                    className="kbot-community-index__author"
-                    data-testid={`community-index-author-${pack.id}`}
+                    className="kbot-community-index__id"
+                    data-testid={`community-index-id-${pack.id}`}
                   >
-                    author {pack.author}
+                    {pack.id}
                   </span>
-                ) : null}
-              </li>
-            ))}
+                  {pack.author ? (
+                    <span
+                      className="kbot-community-index__author"
+                      data-testid={`community-index-author-${pack.id}`}
+                    >
+                      author {pack.author}
+                    </span>
+                  ) : null}
+                  <div className="kbot-community-index__actions">
+                    <button
+                      type="button"
+                      className="kbot-community-index__install"
+                      data-testid={`community-index-install-${pack.id}`}
+                      disabled={busy}
+                      aria-disabled={busy}
+                      aria-busy={busy}
+                      onClick={() => {
+                        handleInstall(pack);
+                      }}
+                    >
+                      {busy ? "Installing…" : "Install"}
+                    </button>
+                    {feedback ? (
+                      <p
+                        className={
+                          isError
+                            ? "kbot-community-index__error"
+                            : "kbot-community-index__status"
+                        }
+                        role={isError ? "alert" : "status"}
+                        data-testid={`community-index-install-status-${pack.id}`}
+                      >
+                        {feedback}
+                      </p>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
         {error !== null ? (

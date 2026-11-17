@@ -72,6 +72,11 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
       packs: [],
       fetched_at: null,
     })),
+    installCommunity: vi.fn(async () => ({
+      ok: false,
+      code: "unused",
+      message: "unused",
+    })),
     ...overrides,
   };
 }

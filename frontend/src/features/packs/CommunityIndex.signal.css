@@ -98,6 +98,42 @@
   overflow-wrap: anywhere;
 }
 
+.kbot-community-index__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.kbot-community-index__install {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--action-primary-bg);
+  color: var(--navy);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.kbot-community-index__install:disabled,
+.kbot-community-index__install[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-community-index__install:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.kbot-community-index__status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .kbot-community-index__empty,
 .kbot-community-index__loading,
 .kbot-community-index__failed {

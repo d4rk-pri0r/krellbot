@@ -2,7 +2,7 @@ import { useCallback, useState, type JSX } from "react";
 import { CommunityIndex } from "./CommunityIndex";
 import { PackCatalogue } from "./PackCatalogue";
 import { PackLibrary } from "./PackLibrary";
-import type { PackInstallResult, PacksClient } from "./client";
+import type { PacksClient } from "./client";
 import { PACK_SOURCES } from "./packSources";
 import "./PacksView.signal.css";
 
@@ -11,7 +11,7 @@ export type PacksViewProps = {
 };
 
 /**
- * First-class Packs destination: signed catalogue, community index honesty,
+ * First-class Packs destination: signed catalogue, community browse/install,
  * and local library. Starters live on Strategies — never conflated here.
  * Contract: KRELL-SIGNAL-20261010.
  */
@@ -19,7 +19,7 @@ export function PacksView({ client }: PacksViewProps): JSX.Element {
   // Bumping the key remounts PackLibrary so it re-reads after install.
   const [libraryEpoch, setLibraryEpoch] = useState(0);
 
-  const handleInstalled = useCallback((_result: PackInstallResult): void => {
+  const handleInstalled = useCallback((): void => {
     setLibraryEpoch((value) => value + 1);
   }, []);
 
@@ -64,7 +64,7 @@ export function PacksView({ client }: PacksViewProps): JSX.Element {
         </ul>
       </header>
       <PackCatalogue client={client} onInstalled={handleInstalled} />
-      <CommunityIndex client={client} />
+      <CommunityIndex client={client} onInstalled={handleInstalled} />
       <PackLibrary key={libraryEpoch} client={client} />
     </div>
   );

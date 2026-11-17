@@ -61,6 +61,11 @@ function makeClient(): PacksClient {
       packs: [],
       fetched_at: null,
     })),
+    installCommunity: vi.fn(async () => ({
+      ok: false,
+      code: "unused",
+      message: "unused",
+    })),
   };
 }
 

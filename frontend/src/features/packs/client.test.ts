@@ -233,6 +233,7 @@ describe("createPacksHttpClient", () => {
     expect(typeof client.listCatalogue).toBe("function");
     expect(typeof client.install).toBe("function");
     expect(typeof client.listCommunityIndex).toBe("function");
+    expect(typeof client.installCommunity).toBe("function");
     expect(await client.listInstalled()).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/packs",
@@ -286,6 +287,66 @@ describe("packs client listCommunityIndex", () => {
     await expect(createHttpClient().listCommunityIndex()).rejects.toBeInstanceOf(
       PackLibraryHttpError,
     );
+  });
+});
+
+describe("packs client installCommunity", () => {
+  it("POSTs /api/v1/community/install and returns id/version/author/path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        ok: true,
+        pack: {
+          id: "trend-follow",
+          version: "1.0.0",
+          label: "Trend follow",
+          author: "community-example",
+          origin: "Community pack. Unverified. No guarantee.",
+        },
+        path: "packs/community/trend-follow.json",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const csrfMock = vi
+      .spyOn(await import("../../session"), "getCsrf")
+      .mockReturnValue("csrf-community");
+    try {
+      const result = await createHttpClient().installCommunity("trend-follow");
+      expect(result.ok).toBe(true);
+      expect(result.pack?.id).toBe("trend-follow");
+      expect(result.pack?.author).toBe("community-example");
+      expect(result.path).toBe("packs/community/trend-follow.json");
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("/api/v1/community/install");
+      expect(init.method).toBe("POST");
+      expect(JSON.parse(String(init.body))).toEqual({ pack_id: "trend-follow" });
+      expect((init.headers as Record<string, string>)["X-Krellbot-CSRF"]).toBe(
+        "csrf-community",
+      );
+    } finally {
+      csrfMock.mockRestore();
+    }
+  });
+
+  it("returns foreign_url without throwing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          schema_version: "1",
+          ok: false,
+          code: "foreign_url",
+          message: "community pack url is not allow-listed",
+        },
+        403,
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await createHttpClient().installCommunity("trend-follow");
+    expect(result).toEqual({
+      ok: false,
+      code: "foreign_url",
+      message: "community pack url is not allow-listed",
+    });
   });
 });
 
