@@ -39,9 +39,71 @@
       "minItems": 1,
       "maxItems": 4,
       "items": { "$ref": "#/$defs/market" }
-    }
+    },
+    "mode": { "$ref": "#/$defs/mode" }
   },
   "$defs": {
+    "mode": {
+      "oneOf": [
+        { "$ref": "#/$defs/mode_dca" },
+        { "$ref": "#/$defs/mode_grid" },
+        { "$ref": "#/$defs/mode_rebalance" }
+      ]
+    },
+    "mode_dca": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "dca" }
+      }
+    },
+    "mode_grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "levels"],
+      "properties": {
+        "kind": { "const": "grid" },
+        "levels": { "type": "integer", "minimum": 2, "maximum": 50 }
+      }
+    },
+    "mode_rebalance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "targets", "threshold_pct"],
+      "properties": {
+        "kind": { "const": "rebalance" },
+        "threshold_pct": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/mode_target" }
+        }
+      }
+    },
+    "mode_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "weight_pct"],
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16,
+          "pattern": "^[A-Z0-9]{1,16}$"
+        },
+        "weight_pct": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        }
+      }
+    },
     "indicators": {
       "type": "object",
       "minProperties": 1,
