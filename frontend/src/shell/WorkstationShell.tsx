@@ -1432,7 +1432,6 @@ export function WorkstationShell({
                 client={paperFleet}
                 onOpenDetail={handleFleetOpenDetail}
                 onSelectionChange={handleFleetSelection}
-                unresolvedClient={operations}
               />
               <OperationsView client={operations} />
             </>
