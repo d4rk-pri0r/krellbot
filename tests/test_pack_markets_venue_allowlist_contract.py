@@ -3,8 +3,8 @@
 Undocumented venue ids must not be accepted by pack validate. Every venue id
 in the pack JSON Schema enum must appear in ``docs/pack-format.md``. The
 Binance-class spot id ``binance`` and its concatenated ``BASEQUOTE`` pair
-spelling (wave pair ``BTCUSDT``) are named in that doc even before the schema
-enum admits them (admission is a later pack-validate task).
+spelling (wave pair ``BTCUSDT``) are named in that doc; the schema enum must
+stay a subset of the documented allow-list.
 """
 
 from __future__ import annotations
