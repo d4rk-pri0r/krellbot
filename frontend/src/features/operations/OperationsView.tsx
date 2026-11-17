@@ -31,6 +31,11 @@ import {
   createHomeExportHttpClient,
   type HomeExportClient,
 } from "./homeExportClient";
+import { HomeRestorePanel } from "./HomeRestorePanel";
+import {
+  createHomeRestoreHttpClient,
+  type HomeRestoreClient,
+} from "./homeRestoreClient";
 import { SchedulerPanel } from "./SchedulerPanel";
 import { UnresolvedOrdersList } from "./UnresolvedOrdersList";
 import { JournalBrowsePanel } from "./JournalBrowsePanel";
@@ -72,6 +77,8 @@ export type OperationsViewProps = {
   notificationsClient?: NotificationsClient;
   /** Local home backup download (M16.5). Defaults to HTTP client. */
   homeExportClient?: HomeExportClient;
+  /** Local home restore with fence honesty (M16.6). Defaults to HTTP client. */
+  homeRestoreClient?: HomeRestoreClient;
 };
 
 function rowId(venue: string, pair: string): string {
@@ -257,6 +264,7 @@ export function OperationsView({
   client,
   notificationsClient,
   homeExportClient,
+  homeRestoreClient,
 }: OperationsViewProps): JSX.Element {
   const defaultNotificationsClient = useMemo(
     () => createNotificationsHttpClient(),
@@ -265,6 +273,8 @@ export function OperationsView({
   const notifications = notificationsClient ?? defaultNotificationsClient;
   const defaultHomeExportClient = useMemo(() => createHomeExportHttpClient(), []);
   const homeExport = homeExportClient ?? defaultHomeExportClient;
+  const defaultHomeRestoreClient = useMemo(() => createHomeRestoreHttpClient(), []);
+  const homeRestore = homeRestoreClient ?? defaultHomeRestoreClient;
   const [killReason, setKillReason] = useState<string>("");
   const killInFlight = useRef(false);
   const [killPending, setKillPending] = useState(false);
@@ -881,6 +891,18 @@ export function OperationsView({
           data-testid="ops-home-export-panel"
         >
           <HomeExportPanel client={homeExport} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Home restore"
+          summary="Restore a local backup into an empty home. Engages the restore fence; never live-ready on paper-only."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={false}
+          storageKey="krellbot.disclosure.ops.home-restore"
+          data-testid="ops-home-restore-panel"
+        >
+          <HomeRestorePanel client={homeRestore} />
         </DisclosureSection>
 
         <DisclosureSection
