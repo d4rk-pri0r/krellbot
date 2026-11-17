@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from importlib import resources
 
-from krellbot.pack.modes import MODE_IDS, MODE_KINDS
+from krellbot.pack.modes import MODE_IDS, MODE_KINDS, MODE_LABELS
 
 _MODES_PACKAGE = "krellbot.packs.modes"
 
@@ -58,3 +58,28 @@ def load_mode_pack(kind: str) -> dict:
     if not isinstance(mode, dict) or mode.get("kind") != kind:
         raise ModePackError(f"{filename!r} must declare mode.kind {kind!r}")
     return pack
+
+
+def list_mode_catalogue_rows() -> list[dict]:
+    """Return starters-shaped rows for each shipped built-in mode pack.
+
+    Each row is ``{"id", "label", "description", "pack"}``. Read-only;
+    no install or arm. Descriptions refuse profit/return claims.
+    """
+    out: list[dict] = []
+    for kind in available_mode_kinds():
+        pack = load_mode_pack(kind)
+        label = str(pack.get("label") or MODE_LABELS[kind])
+        out.append(
+            {
+                "id": str(pack["id"]),
+                "label": label,
+                "description": (
+                    f"Built-in {MODE_LABELS[kind]} trading mode. "
+                    "Preset pack shape; no profit or return claim. "
+                    "Not live market performance."
+                ),
+                "pack": pack,
+            }
+        )
+    return out

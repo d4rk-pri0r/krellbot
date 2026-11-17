@@ -7,16 +7,19 @@ the order and the human-facing metadata of the catalogue. The loader is
 read-only: it never writes under ``KRELLBOT_HOME`` and it never
 validates user drafts.
 
-Contract (frozen):
+Contract (frozen examples; additive modes):
 
     GET /api/v1/packs/starters ->
         {"schema_version": "1",
          "catalogue_version": "1",
-         "examples": [{"id", "label", "description", "pack"}, ...]}
+         "examples": [{"id", "label", "description", "pack"}, ...],
+         "modes": [{"id", "label", "description", "pack"}, ...]}
 
 The examples are ordinary valid DSL packs the existing validator
-accepts. ``list_examples`` is the whole surface; there is no install,
-validate-user-draft, arm, start, overwrite, or edit verb here.
+accepts. ``modes`` lists shipped built-in trading-mode packs (DCA /
+grid / rebalance as available). ``list_examples`` covers starters;
+``mode_packs.list_mode_catalogue_rows`` covers modes. There is no
+install, validate-user-draft, arm, start, overwrite, or edit verb here.
 """
 
 from __future__ import annotations
@@ -86,10 +89,17 @@ def list_examples() -> list[dict]:
 
 
 def catalogue_document() -> dict:
-    """Return the frozen API body for ``GET /api/v1/packs/starters``."""
+    """Return the API body for ``GET /api/v1/packs/starters``.
+
+    ``examples`` stays the frozen educational starter list. ``modes`` is
+    additive: shipped built-in trading-mode packs from package data.
+    """
+
+    from krellbot.packs import mode_packs
 
     return {
         "schema_version": SCHEMA_VERSION,
         "catalogue_version": CATALOGUE_VERSION,
         "examples": list_examples(),
+        "modes": mode_packs.list_mode_catalogue_rows(),
     }
