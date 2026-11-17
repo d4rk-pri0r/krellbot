@@ -26,8 +26,9 @@ export function PacksView({ client }: PacksViewProps): JSX.Element {
       <header className="kbot-packs-view__head">
         <h1 className="kbot-packs-view__title">Packs</h1>
         <p className="kbot-packs-view__lede">
-          Browse the signed Strategy Pack catalogue and install into the local
-          library. Bucket and version come from the workstation — never invented.
+          Browse the signed catalogue and install into the local library. Free
+          and user-authored strategies work without a paid account. Bucket and
+          version come from the workstation — never invented.
         </p>
       </header>
       <PackCatalogue client={client} onInstalled={handleInstalled} />

@@ -732,9 +732,10 @@ export function ResearchView({
       <h1 className="kbot-shell__heading">Research</h1>
       <div className="kbot-research__intro">
         <p>
-          Configure a backtest, run it against the local engine, then read the
-          stored receipt and inspect or export its trace. Results come only
-          from completed research jobs; nothing here is a live trading result.
+          Configure a backtest over a dataset you provide, run it on this
+          machine, then read the stored receipt and export its trace. Backtest
+          and fixture results are not market performance, and nothing here is a
+          live trading result.
         </p>
       </div>
 

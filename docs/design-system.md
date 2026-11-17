@@ -52,6 +52,15 @@ from those nine tokens. Prefer semantic roles in component CSS.
   stay unmistakable and distinct from both. Live activation, refusal and
   kill-switch surfaces must never render as success-colored.
 
+## Progressive disclosure
+
+Owner-directed composition and disclosure rules (essential / primary /
+contextual / advanced), the capability→destination map, and the shared
+`DisclosureSection` pattern live in
+`docs/design-guide-progressive-disclosure.md`. That guide extends this
+Signal contract; it does not replace palette, typography, or shell rules
+here.
+
 ## Shell composition
 
 The local application shell is **compact, horizontal and product-led**

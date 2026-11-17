@@ -47,6 +47,14 @@
 
 /* ============ header ============ */
 
+.kbot-ops .kbot-ops__pagesub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 62ch;
+}
+
 .kbot-ops .kbot-ops__head {
   display: flex;
   align-items: flex-start;

@@ -61,6 +61,11 @@
   /* --- shape/spacing --- */
   --radius-panel: 11px;
   --radius-control: 7px;
+  /* Progressive disclosure / composition density (UI redesign) */
+  --space-section: 16px;
+  --space-stack: 12px;
+  --space-tight: 8px;
+  --space-page-x: 22px;
 
   /* --- motion (intentional shell enters; honor prefers-reduced-motion) --- */
   --motion-duration-fast: 120ms;

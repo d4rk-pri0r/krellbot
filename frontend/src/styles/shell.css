@@ -250,10 +250,23 @@
 
 .kbot-shell__main {
   display: grid;
-  gap: 16px;
+  gap: var(--space-section, 16px);
   align-content: start;
   min-width: 0;
-  padding: 4px 22px 0;
+  padding: 4px var(--space-page-x, 22px) 0;
+}
+
+/* Disclosure sections already carry panel chrome; avoid double frames. */
+.kbot-shell__main > .kbot-disclosure {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 0;
+}
+
+.kbot-shell__main .kbot-disclosure .kbot-disclosure {
+  /* Nested bare disclosures inside a feature panel. */
+  margin-top: var(--space-stack, 12px);
 }
 
 .kbot-shell__pagehead {
