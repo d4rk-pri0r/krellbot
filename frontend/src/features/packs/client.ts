@@ -71,6 +71,31 @@ export type CommunityIndexDocument = {
   fetched_at: string | null;
 };
 
+/** Closed installed community pack row from ``POST /api/v1/community/install``. */
+export type CommunityInstalledPack = {
+  id: string;
+  version: string | null;
+  label: string | null;
+  author: string | null;
+  origin: string | null;
+};
+
+export type CommunityInstallCode =
+  | "foreign_url"
+  | "pack_not_found"
+  | "index_rejected"
+  | "payload_refused"
+  | "unreachable"
+  | string;
+
+export type CommunityInstallResult = {
+  ok: boolean;
+  code?: CommunityInstallCode;
+  message?: string;
+  pack?: CommunityInstalledPack;
+  path?: string;
+};
+
 export class PackLibraryHttpError extends Error {
   readonly status: number;
 
@@ -98,6 +123,8 @@ export type PacksClient = PackLibraryClient & {
   install(pack_id: string): Promise<PackInstallResult>;
   /** Browse the allow-listed community index (not the signed catalogue). */
   listCommunityIndex(): Promise<CommunityIndexDocument>;
+  /** One-click install from the community index into ``packs/community/``. */
+  installCommunity(pack_id: string): Promise<CommunityInstallResult>;
 };
 
 async function getJson(url: string): Promise<PackRow[]> {
@@ -273,6 +300,69 @@ async function getCommunityIndex(url: string): Promise<CommunityIndexDocument> {
   };
 }
 
+function adaptCommunityInstalledPack(
+  raw: Record<string, unknown>,
+): CommunityInstalledPack | null {
+  const id = typeof raw.id === "string" ? raw.id : "";
+  if (!id) {
+    return null;
+  }
+  return {
+    id,
+    version: typeof raw.version === "string" ? raw.version : null,
+    label: typeof raw.label === "string" ? raw.label : null,
+    author: typeof raw.author === "string" ? raw.author : null,
+    origin: typeof raw.origin === "string" ? raw.origin : null,
+  };
+}
+
+async function postCommunityInstall(pack_id: string): Promise<CommunityInstallResult> {
+  const response = await fetch("/api/v1/community/install", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: JSON.stringify({ pack_id }),
+  });
+  let raw: Record<string, unknown> = {};
+  try {
+    raw = (await response.json()) as Record<string, unknown>;
+  } catch {
+    raw = {};
+  }
+  const code = typeof raw.code === "string" ? raw.code : undefined;
+  const message =
+    typeof raw.message === "string"
+      ? raw.message
+      : typeof raw.detail === "string"
+        ? raw.detail
+        : undefined;
+  if (!response.ok || raw.ok !== true) {
+    return {
+      ok: false,
+      ...(code !== undefined ? { code } : { code: `http_${response.status}` }),
+      ...(message !== undefined
+        ? { message }
+        : { message: `community install failed: ${response.status}` }),
+    };
+  }
+  const packRaw = raw.pack;
+  const pack =
+    packRaw && typeof packRaw === "object"
+      ? adaptCommunityInstalledPack(packRaw as Record<string, unknown>)
+      : undefined;
+  const path = typeof raw.path === "string" ? raw.path : undefined;
+  return {
+    ok: true,
+    ...(code !== undefined ? { code } : {}),
+    ...(message !== undefined ? { message } : {}),
+    ...(pack !== undefined && pack !== null ? { pack } : {}),
+    ...(path !== undefined ? { path } : {}),
+  };
+}
+
 async function postInstall(pack_id: string): Promise<PackInstallResult> {
   const response = await fetch("/api/v1/packs/install", {
     method: "POST",
@@ -338,6 +428,9 @@ export function createHttpClient(): PacksClient {
     },
     listCommunityIndex(): Promise<CommunityIndexDocument> {
       return getCommunityIndex("/api/v1/community/index");
+    },
+    installCommunity(pack_id: string): Promise<CommunityInstallResult> {
+      return postCommunityInstall(pack_id);
     },
   };
 }

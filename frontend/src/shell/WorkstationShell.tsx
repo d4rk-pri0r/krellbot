@@ -710,7 +710,8 @@ export function WorkstationShell({
     if (
       "listCatalogue" in packClient &&
       "install" in packClient &&
-      "listCommunityIndex" in packClient
+      "listCommunityIndex" in packClient &&
+      "installCommunity" in packClient
     ) {
       return packClient as PacksClient;
     }
@@ -734,6 +735,11 @@ export function WorkstationShell({
         index_url: "",
         packs: [],
         fetched_at: null,
+      }),
+      installCommunity: async () => ({
+        ok: false,
+        code: "unavailable",
+        message: "community install unavailable",
       }),
     };
   }, [packClient]);

@@ -74,6 +74,11 @@ function makeClient(): PacksClient {
     listCatalogue: vi.fn(async () => CATALOGUE),
     install: vi.fn(async () => ({ ok: false, code: "unused", message: "unused" })),
     listCommunityIndex: vi.fn(async () => COMMUNITY),
+    installCommunity: vi.fn(async () => ({
+      ok: false,
+      code: "unused",
+      message: "unused",
+    })),
   };
 }
 
