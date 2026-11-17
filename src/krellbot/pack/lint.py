@@ -24,6 +24,7 @@ from typing import Any
 import jsonschema
 
 from . import indicators as ind
+from .modes import check_mode_contract
 
 _LEGACY_KEYS = ("id", "public_label")
 _MAX_DEPTH = 3
@@ -73,8 +74,12 @@ def check(pack: Any) -> list[dict]:
             field = _field_for(sub)
             errors.append({"field": field, "message": sub.message})
     if errors:
+        # Still refuse reserved mode ids that omit `mode` even when the rest of
+        # the pack already fails schema (contract is closed for mode packs).
+        errors.extend(check_mode_contract(pack))
         return errors
     errors.extend(_semantic_checks(pack))
+    errors.extend(check_mode_contract(pack))
     return errors
 
 

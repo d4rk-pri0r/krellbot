@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import evaluate, indicators
+from . import evaluate, indicators, modes
 from .lint import check, is_legacy, lint_pack
 from .model import Candle, Target
 
@@ -27,6 +27,7 @@ __all__ = [
     "is_legacy",
     "lint_pack",
     "load_pack",
+    "modes",
     "run",
 ]
 

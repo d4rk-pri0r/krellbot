@@ -10,13 +10,16 @@ do not run. New packs include `schema_version: 1` and follow the DSL below.
 ## DSL packs
 
 Required keys: `schema_version`, `id`, `version`, `label`, `author`, `timeframe`,
-`indicators`, `entry`, `exit`, `risk`, `markets`. Optional: `origin`.
+`indicators`, `entry`, `exit`, `risk`, `markets`. Optional: `origin`, `mode`.
 
 - `schema_version` is `1`.
 - `id` is lowercase letters, digits, and dashes; 1 to 32 characters.
 - `version` is `MAJOR.MINOR.PATCH`.
 - `timeframe` is `1h`, `4h`, or `1d`.
 - `label`, `author`, `origin` are at most 120 characters each.
+- `mode` is optional trading-mode metadata (`dca` / `grid` / `rebalance`). Packs
+  without `mode` stay valid. Built-in mode ids, labels, and validation rules are
+  documented in [Trading-mode packs](trading-modes.md).
 - `indicators` is a map of names to whitelist functions: `sma`, `ema`, `wma`,
   `vwma`, `stdev`, `roc`, `efficiency_ratio`, `hma`, `power_mean`, `atr`,
   `highest`, `lowest`, `roofing_filter`. Each has its own `len` (2 to 600).
