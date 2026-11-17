@@ -128,24 +128,64 @@ def _validate_raw_json_identity(body: bytes, pack_id: str) -> None:
         )
 
 
-def _validate_pack_id(pack_id: str) -> None:
-    """Refuse a requested id that is not exactly one path segment.
+def _safe_pack_id(pack_id: str) -> str:
+    """Return a single path-segment pack id, or raise InstallPayloadError.
 
-    The id names both the staged file and the installed file, so any
-    separator or parent reference would let the write escape the
-    staging and install directories. Raises the typed
-    `kb_community.InstallPayloadError` before either directory is
-    touched.
+    Uses ``os.path.basename`` (CodeQL-recognized sanitizer) so directory
+    components never reach a path expression. The id names both the
+    staged file and the installed file.
     """
+    import os.path
+
     from krellbot import community as kb_community
 
+    if type(pack_id) is not str or not pack_id:
+        raise kb_community.InstallPayloadError("community pack id is not a single path segment: ''")
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    name = os.path.basename(pack_id)
     # Both separators are refused regardless of host OS: a backslash id is
     # a literal name on POSIX but a path separator on Windows, and a
     # drive-relative id ("C:pack") has no separator at all yet still
     # names a location outside the staging/install directories there.
-    windows_drive = len(pack_id) >= 2 and pack_id[1] == ":" and pack_id[0].isalpha()
-    if "\x00" in pack_id or "/" in pack_id or "\\" in pack_id or windows_drive or pack_id in {".", ".."}:
+    windows_drive = len(name) >= 2 and name[1] == ":" and name[0].isalpha()
+    if (
+        not name
+        or name != pack_id
+        or os.path.basename(name) != name
+        or "\x00" in pack_id
+        or "/" in pack_id
+        or "\\" in pack_id
+        or windows_drive
+        or name in {".", ".."}
+    ):
         raise kb_community.InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    return name
+
+
+def _confined_json_path(base_dir: Path, pack_id: str) -> str:
+    """Return ``base_dir/<basename(pack_id).json>`` after CodeQL path guards.
+
+    ``pack_id`` must already be a single path segment. Uses
+    ``os.path.basename`` + ``normpath`` + ``startswith`` containment —
+    the idiom CodeQL documents for ``py/path-injection`` — then returns
+    the checked path string for ``os.open`` / ``os.replace``.
+    """
+    import os.path
+
+    from krellbot import community as kb_community
+
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    # Basename the full filename (id + closed ``.json`` suffix).
+    name = os.path.basename(f"{pack_id}.json")
+    if not name or name in {".", ".."} or os.path.basename(name) != name:
+        raise kb_community.InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    if not name.endswith(".json") or name.startswith("."):
+        raise kb_community.InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    base_path = os.path.realpath(str(base_dir))
+    fullpath = os.path.normpath(os.path.join(base_path, name))
+    if fullpath != base_path and not fullpath.startswith(base_path + os.sep):
+        raise kb_community.InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    return fullpath
 
 
 def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
@@ -162,9 +202,11 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
     which is atomic on POSIX. The mode is `0o600` because the staged
     file is opened with that mode at create time.
     """
+    import os.path
+
     from krellbot import community as kb_community
 
-    _validate_pack_id(pack_id)
+    pack_id = _safe_pack_id(pack_id)
     if not isinstance(body, (bytes, bytearray)):
         raise kb_community.InstallPayloadError(f"community pack body must be bytes, got {type(body).__name__}")
     if len(body) > MAX_BODY_BYTES:
@@ -182,20 +224,20 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
 
     with tempfile.TemporaryDirectory(prefix="krellbot-install-") as staging_root:
         staging_dir = Path(staging_root)
-        staged_file = staging_dir / f"{pack_id}.json"
+        staged_path = _confined_json_path(staging_dir, pack_id)
 
         # Write body to the staged file with restrictive perms (0o600).
         # O_BINARY is a no-op on POSIX but matters on Windows so the
         # bytes on disk match the body verbatim.
         flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
-        fd = os.open(str(staged_file), flags, 0o600)
+        fd = os.open(staged_path, flags, 0o600)
         try:
             os.write(fd, body)
             os.fsync(fd)
         except BaseException:
             os.close(fd)
             try:
-                os.unlink(staged_file)
+                os.unlink(staged_path)
             except FileNotFoundError:
                 pass
             raise
@@ -212,8 +254,8 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
         # atomic rename. A failure before this line leaves the previous
         # installed file (if any) unchanged.
         install_dir.mkdir(parents=True, exist_ok=True)
-        destination = install_dir / f"{pack_id}.json"
-        os.replace(staged_file, destination)
+        destination_path = _confined_json_path(install_dir, pack_id)
+        os.replace(staged_path, destination_path)
 
         # fsync the install directory so the rename is durable across a
         # power loss. POSIX-only; ignored on failure (best effort).
@@ -229,11 +271,14 @@ def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
 
         # Production install path writes the configured sidecar the
         # pack-library classifier expects (installed+ready, not armed).
+        # Pass only the basename-sanitized segment so request strings
+        # never reach pack-library path joins (CodeQL).
         from krellbot.application import pack_library as pack_library_app
 
+        safe_id = os.path.basename(pack_id)
         try:
-            pack_library_app.mark_configured(Path(home), pack_id)
+            pack_library_app.mark_configured(Path(home), safe_id)
         except pack_library_app.InstallRefused:
             pass
 
-        return destination
+        return Path(destination_path)

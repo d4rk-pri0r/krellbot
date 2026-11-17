@@ -2933,13 +2933,29 @@ def create_app(
         if not isinstance(payload, dict):
             return JSONResponse({"detail": "invalid body"}, status_code=400)
 
-        pack_id = payload.get("pack_id")
-        if not isinstance(pack_id, str) or not pack_id:
+        import os.path
+
+        raw_pack_id = payload.get("pack_id")
+        if not isinstance(raw_pack_id, str) or not raw_pack_id:
             nested = payload.get("payload")
             if isinstance(nested, dict):
-                pack_id = nested.get("pack_id")
-        if not isinstance(pack_id, str) or not pack_id:
+                raw_pack_id = nested.get("pack_id")
+        if not isinstance(raw_pack_id, str) or not raw_pack_id:
             return JSONResponse({"detail": "pack_id is required"}, status_code=400)
+
+        # CodeQL-recognized sanitizer at the API boundary: basename strips
+        # directory components before any install / path join.
+        pack_id = os.path.basename(raw_pack_id)
+        if not pack_id or pack_id != raw_pack_id or os.path.basename(pack_id) != pack_id or pack_id in {".", ".."}:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": "payload_refused",
+                    "message": "community pack payload refused",
+                },
+                status_code=400,
+            )
 
         transport = kb_community.resolve_transport(s.community_transport)
         try:
@@ -2988,12 +3004,17 @@ def create_app(
 
         rows = kb_community.installed_rows(s.home)
         row = next((r for r in rows if r.get("id") == pack_id), {"id": pack_id})
+        # Closed relative path from sanitized id only — never echo a
+        # request-derived filesystem string.
+        rel_path = f"packs/community/{os.path.basename(pack_id)}.json"
+        if path.name != os.path.basename(f"{pack_id}.json"):
+            rel_path = path.name
         return JSONResponse(
             {
                 "schema_version": SCHEMA_VERSION,
                 "ok": True,
                 "pack": row,
-                "path": str(path.relative_to(s.home)) if path.is_relative_to(s.home) else path.name,
+                "path": rel_path,
             },
             status_code=200,
         )

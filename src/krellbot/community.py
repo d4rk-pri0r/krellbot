@@ -178,24 +178,54 @@ def install(
     that entry's `url`. The URL must be on `raw.githubusercontent.com` and
     under `/d4rk-pri0r/krellbot-community-packs/`. Bytes are written verbatim
     so the pack's `author` field is preserved unchanged.
+
+    Lookup uses the request id for equality only. After the body is fetched,
+    FS ops use the index entry's own ``id`` after a CodeQL-recognized
+    ``os.path.basename`` sanitizer (same pattern as catalogue install). A
+    non-single-segment id is refused with ``InstallPayloadError`` before any
+    destination write — after the allow-listed fetches, matching confinement
+    tests that pin transport call order.
     """
+    import os.path
+
     home = Path(home) if home is not None else kb_paths.home()
     packs = _parse_index_body(transport.get(INDEX_URL))
     entry = next(
-        (p for p in packs if p.get("id") == pack_id),
+        (p for p in packs if isinstance(p, dict) and p.get("id") == pack_id),
         None,
     )
     if entry is None:
+        raise IndexError_(f"community pack not found in index: {pack_id!r}")
+    # Use the index's own id for FS ops so the request string never reaches
+    # path joins (CodeQL). Equality with the request id is required first.
+    index_id = entry.get("id")
+    if not isinstance(index_id, str) or index_id != pack_id:
         raise IndexError_(f"community pack not found in index: {pack_id!r}")
     url = entry.get("url")
     if not isinstance(url, str) or not url:
         raise IndexError_(f"community pack {pack_id!r} has no url")
     _validate_url(url)
     body = transport.get(url)
+    # CodeQL-recognized sanitizer: basename strips directory components.
+    # Refuse (do not strip-and-continue) when the index id is not already
+    # a single path segment — same contract as atomic_install.
+    safe_id = os.path.basename(index_id)
+    windows_drive = len(safe_id) >= 2 and safe_id[1] == ":" and safe_id[0].isalpha()
+    if (
+        not safe_id
+        or safe_id != index_id
+        or os.path.basename(safe_id) != safe_id
+        or "\x00" in index_id
+        or "/" in index_id
+        or "\\" in index_id
+        or windows_drive
+        or safe_id in {".", ".."}
+    ):
+        raise InstallPayloadError(f"community pack id is not a single path segment: {index_id!r}")
     kb_paths.ensure_layout()
     from krellbot.extensions import install as kb_extensions_install
 
-    return kb_extensions_install.atomic_install(home=home, pack_id=pack_id, body=body)
+    return kb_extensions_install.atomic_install(home=home, pack_id=safe_id, body=body)
 
 
 def resolve_transport(transport: Transport | None) -> Transport:
