@@ -176,7 +176,9 @@ def test_fleet_empty_returns_disarmed_shape(home: Path) -> None:
     assert _read_json(body) == {
         "schema_version": "1",
         "armed": False,
+        "armed_count": 0,
         "deployments": [],
+        "groups": [],
     }
 
 
