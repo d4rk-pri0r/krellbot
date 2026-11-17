@@ -96,3 +96,11 @@ Do not invent a return. A number without dates is not a result.
 ```
 
 The packs we maintain are not in this repository.
+
+## Community pack submissions
+
+To publish an unpaid community pack (not a signed catalogue SKU), follow the
+authoring checklist in [community.md](community.md#authoring-checklist):
+schema_version 1 DSL with required `author` / `origin`, size limits, index
+entry shape, and the allow-listed `raw.githubusercontent.com` URL prefix for
+`d4rk-pri0r/krellbot-community-packs`.
