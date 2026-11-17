@@ -395,6 +395,7 @@ INSTALLER_FILES = (
 # from GET /api/v1/packs/starters before these flags existed.
 _RUNTIME_DATA_PACKAGES = (
     "krellbot.packs.examples",
+    "krellbot.packs.modes",
     "krellbot.pack",
     "krellbot.application.rehearsal_resources",
 )

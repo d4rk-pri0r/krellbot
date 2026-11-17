@@ -60,6 +60,7 @@ _INSTALLER_FILES = (
 # (schema.json) or run rehearsal fixtures (rehearsal_resources).
 _RUNTIME_DATA_PACKAGES = (
     "krellbot.packs.examples",
+    "krellbot.packs.modes",
     "krellbot.pack",
     "krellbot.application.rehearsal_resources",
 )

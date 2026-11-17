@@ -1,8 +1,10 @@
-"""Shipped free starter packs (read-only educational examples).
+"""Shipped free starter packs and built-in trading-mode packs.
 
 Public surface:
     * ``catalogue`` - loads the starter examples from package resources
       (``krellbot.packs.examples``) for ``GET /api/v1/packs/starters``.
+    * ``mode_packs`` - loads built-in DCA/grid/rebalance packs from
+      ``krellbot.packs.modes`` (read-only package data).
 
 The examples are ordinary valid DSL packs. They are project-authored
 read-only catalogue entries: nothing here installs a pack, writes under
@@ -13,6 +15,6 @@ existing draft flow (``POST /api/v1/strategies/drafts``).
 
 from __future__ import annotations
 
-from . import catalogue
+from . import catalogue, mode_packs
 
-__all__ = ["catalogue"]
+__all__ = ["catalogue", "mode_packs"]
