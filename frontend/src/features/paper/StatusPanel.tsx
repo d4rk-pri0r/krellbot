@@ -14,6 +14,7 @@ import { RehearsalPanel } from "./RehearsalPanel";
 import type { RehearsalClient } from "./rehearsalClient";
 import { summarizePaperCommandRefusal } from "./paperCommandRefusalSummary";
 import "./StatusPanel.position.css";
+import "./StatusPanel.signal.css";
 
 export type {
   PaperArmDraftSummary,
@@ -1017,6 +1018,16 @@ export function StatusPanel({
       </p>
     ) : null;
 
+  const nextActionLabel = paperControls
+    ? "Next: pause entries, resume, or disarm"
+    : state.status === null
+      ? "Next: waiting for paper status"
+      : state.unavailable
+        ? "Next: retry paper status"
+        : state.status?.armed
+          ? "Next: controls unavailable"
+          : "Next: arm a paper pack";
+
   return (
     <section
       className="kbot-paper-status"
@@ -1027,8 +1038,18 @@ export function StatusPanel({
     >
       <header className="kbot-paper-status__head">
         <h2 className="kbot-paper-status__title">Paper status</h2>
+        <p
+          className="kbot-paper-status__next"
+          data-testid="paper-status-next-action"
+        >
+          {nextActionLabel}
+        </p>
       </header>
       <div className="kbot-paper-status__body">
+        <div
+          className="kbot-paper-status__first-viewport"
+          data-testid="paper-workstation-first-viewport"
+        >
         {paperControls ? (
           <>
             <p
@@ -1256,14 +1277,26 @@ export function StatusPanel({
             Checking paper status…
           </p>
         ) : (
-          // Confirmed unarmed: offer the arm form.
+          // Confirmed unarmed: offer the arm form + honest empty chart
+          // (no fabricated series when no journal exists).
           <>
             <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
               No pack armed
             </p>
+            <div
+              className="kbot-paper-chart kbot-paper-chart--honest-empty"
+              data-testid="paper-chart-honest-empty"
+              aria-label="Paper chart empty"
+            >
+              <p className="kbot-paper-chart__empty">
+                No journal series yet. Arm a paper pack to plot P&L from
+                recorded fills — never fabricated.
+              </p>
+            </div>
             <ArmForm client={client} onArmConfirmed={handleArmConfirmed} />
           </>
         )}
+        </div>
         {/* The isolated synthetic rehearsal surface is mounted exactly once
             outside the armed/unarmed paper branch: its own client, commands
             and disclosure stay accessible whatever the ordinary paper pack

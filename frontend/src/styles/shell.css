@@ -299,23 +299,30 @@
 .kbot-shell__workstation {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
-  gap: 16px;
+  gap: var(--space-stack, 12px);
   align-items: start;
 }
 
 .kbot-shell__workstation-main {
   display: grid;
-  gap: 16px;
+  gap: var(--space-stack, 12px);
   min-width: 0;
 }
 
 .kbot-shell__workstation-aside {
   display: grid;
-  gap: 12px;
+  gap: var(--space-tight, 8px);
   align-content: start;
   min-width: 0;
   position: sticky;
   top: 76px;
+}
+
+/* M18.3 — denser first-viewport composition for paper workstation. */
+.kbot-shell__workstation-main > .kbot-paper-status,
+.kbot-shell__workstation-main > .kbot-fleet,
+.kbot-shell__workstation-main > .kbot-workstation-alerts {
+  padding: 12px 14px;
 }
 
 @media (max-width: 920px) {
