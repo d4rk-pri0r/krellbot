@@ -16,6 +16,7 @@ import type { View } from "./Navigation";
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   vi.restoreAllMocks();
 });
 

@@ -1,13 +1,11 @@
 /**
- * Application Home card layout — KRELL-SIGNAL-20261010.
+ * Application Home first-viewport density — KRELL-SIGNAL-20261010 /
+ * docs/ui-density.md (M18.2).
  *
- * Pins the structure and shipped CSS that keep workspace card
- * descriptions readable at 1440×900. Shell buttons are inline-flex; a
- * flat four-child card laid those children in a row and squeezed
- * descriptions into ~51–77px columns. The stacked card body + higher
- * specificity display rules prevent that regression.
- *
- * jsdom has no layout engine, so width proofs read the real stylesheet.
+ * Pins the 1440×900 composition: brand + honesty + sage CTA in one hero,
+ * compact single-column destination path (not a sparse card wall), and
+ * Advanced rails collapsed by default. jsdom has no layout engine, so
+ * width/density proofs read the shipped stylesheet.
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -20,7 +18,10 @@ import { AppHome } from "./AppHome";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 function absentKeysClient(): KeysClient {
   return {
@@ -66,8 +67,33 @@ const CARD_TESTIDS = [
   "app-home-card-operations",
 ] as const;
 
-describe("home card layout at 1440×900", () => {
-  it("wraps each card's copy in a single stacked body column", () => {
+describe("home first-viewport composition at 1440×900", () => {
+  it("keeps brand, honesty, CTA, and compact path in one first-viewport composition", () => {
+    render(
+      <AppHome
+        onNavigate={() => {}}
+        keysClient={absentKeysClient()}
+        versionClient={previewVersionClient()}
+      />,
+    );
+    const first = screen.getByTestId("app-home-first-viewport");
+    expect(first.classList.contains("app-home__hero")).toBe(true);
+    expect(first.querySelector(".kbot-brandmark")).not.toBeNull();
+    expect(first.contains(screen.getByTestId("app-home-availability"))).toBe(
+      true,
+    );
+    expect(first.contains(screen.getByTestId("app-home-cta-paper"))).toBe(true);
+    expect(
+      screen.getByTestId("app-home-availability").textContent,
+    ).toMatch(/Local preview/i);
+    expect(screen.getByTestId("app-home-path")).toBeTruthy();
+    expect(screen.getByTestId("app-home-works")).toBeTruthy();
+    expect(screen.getByTestId("app-home-keys-rail").getAttribute("data-open")).toBe(
+      "0",
+    );
+  });
+
+  it("wraps each path row's copy in a single stacked body column", () => {
     render(
       <AppHome
         onNavigate={() => {}}
@@ -87,7 +113,7 @@ describe("home card layout at 1440×900", () => {
     }
   });
 
-  it("beats shell inline-flex so cards stack and keep a readable min track", () => {
+  it("ships dense single-column path CSS instead of a sparse card wall", () => {
     const css = stripComments(readStylesheet());
 
     expect(css).toMatch(
@@ -98,6 +124,9 @@ describe("home card layout at 1440×900", () => {
     );
     expect(css).toMatch(
       /\.app-home\s+button\.app-home__card\s*\{[^}]*align-items:\s*stretch/,
+    );
+    expect(css).toMatch(
+      /\.app-home\s+button\.app-home__card\s*\{[^}]*min-height:\s*0/,
     );
 
     expect(css).toMatch(
@@ -111,7 +140,10 @@ describe("home card layout at 1440×900", () => {
     );
 
     expect(css).toMatch(
-      /\.app-home__cards\s*\{[^}]*grid-template-columns:\s*repeat\(\s*auto-fit,\s*minmax\(260px,\s*1fr\)\s*\)/,
+      /\.app-home__cards\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+    );
+    expect(css).not.toMatch(
+      /\.app-home__cards\s*\{[^}]*minmax\(260px,\s*1fr\)/,
     );
   });
 });
