@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "mode-dca",
+  "version": "1.0.0",
+  "label": "DCA",
+  "author": "krellbot",
+  "origin": "Built-in DCA mode pack. Interval is timeframe; slice size is risk.max_account_pct. Not live market performance.",
+  "timeframe": "1d",
+  "indicators": {
+    "anchor": {"fn": "sma", "src": "close", "len": 2}
+  },
+  "entry": {
+    "all": [
+      ["close", ">", 0],
+      ["anchor", ">", 0]
+    ]
+  },
+  "exit": ["close", "<=", 0],
+  "risk": {
+    "max_account_pct": 5,
+    "stop": {"type": "pct", "pct": 15}
+  },
+  "markets": [{"venue": "kraken", "pair": "SUIUSD"}],
+  "mode": {"kind": "dca"}
+}

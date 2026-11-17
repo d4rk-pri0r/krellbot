@@ -86,6 +86,12 @@ Mode contract rules (id ↔ kind, required `origin`, rebalance weight sum, and
 reserved-id without `mode`) live in `krellbot.pack.modes` and run as part of
 lint. A mode pack missing required fields is refused.
 
+## Built-in files
+
+Shipped mode packs live under `src/krellbot/packs/modes/` as
+`mode-<kind>.json` and load through `krellbot.packs.mode_packs` (package
+data only; no hidden CLI scheduler).
+
 ## Honesty
 
 - Mode packs are presets / teaching shapes, not performance claims.
