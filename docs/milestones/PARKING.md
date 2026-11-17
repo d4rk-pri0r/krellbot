@@ -11,3 +11,12 @@ One line per item. Nothing here is work until the owner moves it into a mileston
 - CI Windows 3.13 flake: `tests/test_installer_wrapper_vs_engine.py` module fixture times out on SSL read fetching `https://krellbot.dev/api/install?os=linux` (seen on #522 tip 4b5ed77; other matrix cells green).
 - `tests/test_ns07_assets.py::test_no_cdn_references` matches bare substring `cdn` inside Vite content-hashes (e.g. `index-Cdn….css` in `dist/index.html`); tighten to host-like tokens when that test is next touched.
 - `docs/getting-started.md` Uninstall section still shows top-level `krellbot uninstall` like the pre-M13.8 `docs/cli.md` claim; align with cli.md honesty when that page is next touched.
+- README still says live arm is CLI-only; AGENTS.md / SECURITY.md / docs/live.md own web live arm — tracked as M19.5 (do not “fix” ad hoc outside that task).
+- Hosting operator exchange keys (cloud key custody) — explicitly out of P0–P4; never promote without a custody redesign.
+- Paid ads for trading signals — restricted channels; out of P0–P4 growth plan.
+- Personalized / individualized trading advice framing — packs stay tools; out of scope.
+- CLI user-facing feature expansion — AGENTS.md web-only surface; keep CLI as plumbing.
+- More than one live venue before P4 — Coinbase/Binance live wait; M14 paper breadth may continue without expanding live qualification.
+- Exchange-native free AI agent tooling parity race — spike only in M22.5; no cloud-key me-too product.
+- Multi-pack reservation / breaking one-pack-per-(venue,pair) before independent qualification (still true post-M16).
+- Learn top-nav / Learn view (Signal artboard) — still do not invent in cockpit.
