@@ -47,6 +47,7 @@ import {
   GraphCanvas,
   type GraphCanvasNode,
 } from "../features/studio/GraphCanvas";
+import { ModePackPicker } from "../features/studio/ModePackPicker";
 import { nodesFromPack } from "../features/studio/packNodes";
 import {
   addIndicatorNode,
@@ -1256,6 +1257,43 @@ export function WorkstationShell({
                 </p>
               </div>
             </div>
+            {!plainWorkload ? (
+              <ModePackPicker
+                onPick={(pack) => {
+                  const body = pack as Record<string, unknown>;
+                  setStudioGraphError(null);
+                  setStudioSaveError(null);
+                  setStudioSaveOutcome(null);
+                  setSelectedNodeId(null);
+                  setConnections(
+                    edgesFromPack(body).map(
+                      (edge) =>
+                        ({
+                          source: edge.source,
+                          target: edge.target,
+                        }) as Connection,
+                    ),
+                  );
+                  setEditedPack(body);
+                  // Create an owned draft so Save execution can validate IR.
+                  void client
+                    .create(pack)
+                    .then((summary) => {
+                      setSavedRevision({
+                        revision_id: summary.revision_id,
+                        state: summary.state,
+                        bytes: JSON.stringify(pack),
+                      });
+                      setEditorEpoch((epoch) => epoch + 1);
+                    })
+                    .catch((err: unknown) => {
+                      setStudioGraphError(
+                        err instanceof Error ? err.message : String(err),
+                      );
+                    });
+                }}
+              />
+            ) : null}
             <GraphCanvas
               nodes={studioNodes as GraphCanvasNode[]}
               edges={connections.flatMap((connection, index) => {
@@ -1292,8 +1330,8 @@ export function WorkstationShell({
                 for load testing, not a saved strategy.
               </p>
             ) : null}
-            {savedPack && !plainWorkload ? (
-              <p data-testid="studio-pack-id">{String(savedPack.id ?? "")}</p>
+            {workingPack && !plainWorkload ? (
+              <p data-testid="studio-pack-id">{String(workingPack.id ?? "")}</p>
             ) : null}
             {studioRevisionId ? (
               <p data-testid="studio-revision-id">

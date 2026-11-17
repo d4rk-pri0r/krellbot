@@ -2691,6 +2691,33 @@ def create_app(
             )
         return JSONResponse(body, status_code=200)
 
+    @app.get("/api/v1/packs/modes")
+    async def packs_modes(request: Request) -> Response:
+        """Return shipped built-in trading-mode packs (DCA / grid / rebalance).
+
+        Same session gate as ``GET /api/v1/packs/starters`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF. Body is
+        ``{"schema_version": "1", "modes": [{"id","label","description","pack"}, ...]}``
+        for every mode JSON present under ``krellbot.packs.modes``. Read-only;
+        Studio loads these as real graphs (not demo nodes).
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        from krellbot.packs import mode_packs
+
+        try:
+            body = mode_packs.modes_document()
+        except mode_packs.ModePackError as exc:
+            return JSONResponse(
+                {"detail": f"mode catalogue unavailable: {exc}"},
+                status_code=500,
+            )
+        return JSONResponse(body, status_code=200)
+
     @app.get("/api/v1/catalogue")
     async def catalogue_list(request: Request) -> Response:
         """Fetch and verify the signed Strategy Pack catalogue (free + paid).
