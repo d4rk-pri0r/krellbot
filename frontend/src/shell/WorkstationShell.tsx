@@ -15,6 +15,7 @@ import type {
   PaperRunsClient,
   PaperArmedClient,
   FleetArmedClient,
+  FleetArmedDeployment,
   PaperStatusSelect,
 } from "../features/paper/client";
 import { StatusPanel } from "../features/paper/StatusPanel";
@@ -742,6 +743,26 @@ export function WorkstationShell({
     [],
   );
 
+  /** Fleet row selection → Inspector deployment context (M16.2 / M7.4). */
+  const handleFleetSelection = useCallback(
+    (row: FleetArmedDeployment | null): void => {
+      if (row === null) {
+        setInspectorSelection(null);
+        return;
+      }
+      setInspectorSelection(
+        selectionFromDeployment({
+          venue: row.venue,
+          pair: row.pair,
+          mode: row.mode,
+          pack_id: row.pack_id,
+          entries_paused: row.entries_paused,
+        }),
+      );
+    },
+    [],
+  );
+
   const handlePositionSelect = useCallback(
     (position: PaperPosition | null): void => {
       setInspectorSelection(
@@ -1079,6 +1100,7 @@ export function WorkstationShell({
                     <FleetArmedList
                       client={paperFleet}
                       onOpenDetail={handleFleetOpenDetail}
+                      onSelectionChange={handleFleetSelection}
                       unresolvedClient={operations}
                     />
                     <LastRunsPanel client={paperRuns} />
@@ -1409,6 +1431,7 @@ export function WorkstationShell({
               <FleetArmedList
                 client={paperFleet}
                 onOpenDetail={handleFleetOpenDetail}
+                onSelectionChange={handleFleetSelection}
               />
               <OperationsView client={operations} />
             </>
