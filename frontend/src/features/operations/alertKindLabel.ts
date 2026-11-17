@@ -19,6 +19,11 @@ const KNOWN_LABELS: Record<string, string> = {
   rate_limited: "Rate limited",
   circuit_open: "Circuit open",
   metadata_refusal: "Metadata refusal",
+  tick_failure: "Tick failure",
+  scheduler_stale: "Scheduler stale",
+  unresolved_order_aging: "Unresolved order aging",
+  restore_fence: "Restore fence",
+  kill_switch: "Kill switch",
 };
 
 function fallbackLabel(value: string): string {
