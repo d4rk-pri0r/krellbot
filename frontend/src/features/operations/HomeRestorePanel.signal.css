@@ -1,0 +1,84 @@
+/*
+ * Home restore panel — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ * Namespaced under `.kbot-ops__home-restore`.
+ */
+
+.kbot-ops__home-restore {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__home-restore *,
+.kbot-ops__home-restore *::before,
+.kbot-ops__home-restore *::after {
+  box-sizing: border-box;
+}
+
+.kbot-ops__home-restore .kbot-ops__home-restore-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kbot-ops__home-restore .kbot-ops__panel-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__home-restore .kbot-ops__home-restore-helper,
+.kbot-ops__home-restore .kbot-ops__home-restore-fence,
+.kbot-ops__home-restore .kbot-ops__home-restore-feedback,
+.kbot-ops__home-restore .kbot-ops__home-restore-error,
+.kbot-ops__home-restore .kbot-ops__home-restore-live-ready {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 62ch;
+}
+
+.kbot-ops__home-restore .kbot-ops__home-restore-helper,
+.kbot-ops__home-restore .kbot-ops__home-restore-fence,
+.kbot-ops__home-restore .kbot-ops__home-restore-live-ready {
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__home-restore .kbot-ops__home-restore-error {
+  color: var(--coral, #cc9689);
+}
+
+.kbot-ops__home-restore .kbot-ops__home-restore-feedback {
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-ops__home-restore .kbot-ops__home-restore-file-label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__home-restore .kbot-ops__home-restore-button {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 6px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-ops__home-restore .kbot-ops__home-restore-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

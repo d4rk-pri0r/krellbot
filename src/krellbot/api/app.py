@@ -1774,6 +1774,189 @@ def create_app(
             },
         )
 
+    @app.post("/api/v1/home/restore")
+    async def home_restore(request: Request) -> Response:
+        """Restore a home backup archive with honest restore fencing.
+
+        Same state-change gate as ``POST /api/v1/home/export`` (session +
+        CSRF + loopback Origin/Host). Body is the gzip archive bytes
+        (``application/gzip`` or ``application/octet-stream``).
+
+        Corrupt archives are refused and leave the live home untouched.
+        A successful restore into an empty home engages the restore fence
+        (entries paused / kill switch). While ``PAPER_ONLY_RELEASE`` is
+        True the response never claims ``live_ready``. Non-empty homes
+        are refused after archive validation so a good home is never
+        destroyed by a restore attempt.
+        """
+
+        import tempfile
+
+        from krellbot.storage import home_backup
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        payload = await request.body()
+        if not payload:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": "bad_input",
+                    "message": "home restore requires an archive body",
+                    "live_ready": False,
+                    "paper_only_release": bool(release_policy.PAPER_ONLY_RELEASE),
+                    "fence_engaged": False,
+                    "applied": False,
+                },
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        paper_only = bool(release_policy.PAPER_ONLY_RELEASE)
+
+        def _honesty(
+            *,
+            fence_engaged: bool,
+            kill_reason: str | None,
+            applied: bool,
+            code: str,
+            message: str,
+            ok: bool,
+            status_code: int,
+            extra: dict | None = None,
+        ) -> JSONResponse:
+            body: dict = {
+                "schema_version": SCHEMA_VERSION,
+                "ok": ok,
+                "code": code,
+                "message": message,
+                "fence_engaged": fence_engaged,
+                "kill_reason": kill_reason,
+                "entries_paused": bool(fence_engaged),
+                # Restore surface never claims live-ready (paper-only or fenced).
+                "live_ready": False,
+                "paper_only_release": paper_only,
+                "applied": applied,
+            }
+            if extra:
+                body.update(extra)
+            return JSONResponse(
+                body,
+                status_code=status_code,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        def _home_empty(home: Path) -> bool:
+            if not home.exists():
+                return True
+            if not home.is_dir():
+                return False
+            try:
+                next(home.iterdir())
+            except StopIteration:
+                return True
+            return False
+
+        with tempfile.TemporaryDirectory(prefix="krellbot-home-restore-") as tmp:
+            archive = Path(tmp) / "upload.tar.gz"
+            archive.write_bytes(payload)
+
+            # Validate (and preview fence) into an empty staging home first so
+            # a corrupt archive never touches the live workstation home.
+            preview = Path(tmp) / "preview-home"
+            try:
+                home_backup.restore(archive, preview)
+            except home_backup.BackupError as exc:
+                code = getattr(exc, "code", "archive_corrupt")
+                if not isinstance(code, str) or not code:
+                    code = "archive_corrupt"
+                return _honesty(
+                    fence_engaged=False,
+                    kill_reason=None,
+                    applied=False,
+                    code=code,
+                    message="home restore refused; workstation home untouched",
+                    ok=False,
+                    status_code=400,
+                )
+            except OSError:
+                return _honesty(
+                    fence_engaged=False,
+                    kill_reason=None,
+                    applied=False,
+                    code="restore_failed",
+                    message="home restore failed; workstation home untouched",
+                    ok=False,
+                    status_code=500,
+                )
+
+            preview_kill = live_gate.kill_state(preview)
+            preview_reason = preview_kill.reason if preview_kill.engaged else None
+
+            if not _home_empty(s.home):
+                return _honesty(
+                    fence_engaged=True,
+                    kill_reason=preview_reason,
+                    applied=False,
+                    code="home_not_empty",
+                    message=(
+                        "archive validated; restore not applied because the "
+                        "workstation home is not empty. Stop the workstation, "
+                        "point KRELLBOT_HOME at an empty directory, then restore. "
+                        "A successful restore engages the kill switch and pauses "
+                        "live entries; this paper-only release is never live-ready."
+                    ),
+                    ok=False,
+                    status_code=409,
+                    extra={"validated": True},
+                )
+
+            try:
+                home_backup.restore(archive, s.home)
+            except home_backup.BackupError as exc:
+                code = getattr(exc, "code", "archive_corrupt")
+                if not isinstance(code, str) or not code:
+                    code = "archive_corrupt"
+                return _honesty(
+                    fence_engaged=False,
+                    kill_reason=None,
+                    applied=False,
+                    code=code,
+                    message="home restore refused; workstation home untouched",
+                    ok=False,
+                    status_code=400,
+                )
+            except OSError:
+                return _honesty(
+                    fence_engaged=False,
+                    kill_reason=None,
+                    applied=False,
+                    code="restore_failed",
+                    message="home restore failed; workstation home untouched",
+                    ok=False,
+                    status_code=500,
+                )
+
+        kill = live_gate.kill_state(s.home)
+        return _honesty(
+            fence_engaged=bool(kill.engaged),
+            kill_reason=kill.reason if kill.engaged else None,
+            applied=True,
+            code="home_restored",
+            message=(
+                "home restored; restore fence engaged (entries paused / kill "
+                "switch). This paper-only release is not live-ready."
+                if paper_only
+                else "home restored; restore fence engaged (entries paused / kill switch)."
+            ),
+            ok=True,
+            status_code=200,
+        )
+
     @app.get("/api/v1/operations/deployments")
     async def operations_deployment_history(request: Request) -> Response:
         """Return the closed-shape deployment history rows (read-only).
