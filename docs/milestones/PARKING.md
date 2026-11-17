@@ -9,3 +9,12 @@ One line per item. Nothing here is work until the owner moves it into a mileston
 - CI frontend flake: `Editor.ownedSeedIdentity.test.tsx` intermittently misses `[data-testid="editor-revision-id"]` under full suite load (seen on #426; passes alone locally; main tip green).
 - CI macOS flake: `tests/test_int01_workstation_launch.py` intermittently times out (`test_workstation_serves_index_with_bootstrap_meta` HTTP TimeoutError / `test_workstation_missing_index_exits_2_with_build_hint` subprocess TimeoutExpired) under full suite (seen on #450; Ubuntu/Windows green; main tip green).
 - `docs/getting-started.md` Uninstall section still shows top-level `krellbot uninstall` like the pre-M13.8 `docs/cli.md` claim; align with cli.md honesty when that page is next touched.
+- README still says live arm is CLI-only; AGENTS.md / SECURITY.md / docs/live.md own web live arm — tracked as M19.5 (do not “fix” ad hoc outside that task).
+- Hosting operator exchange keys (cloud key custody) — explicitly out of P0–P4; never promote without a custody redesign.
+- Paid ads for trading signals — restricted channels; out of P0–P4 growth plan.
+- Personalized / individualized trading advice framing — packs stay tools; out of scope.
+- CLI user-facing feature expansion — AGENTS.md web-only surface; keep CLI as plumbing.
+- More than one live venue before P4 — Coinbase/Binance live wait; M14 paper breadth may continue without expanding live qualification.
+- Exchange-native free AI agent tooling parity race — spike only in M22.5; no cloud-key me-too product.
+- Multi-pack reservation / breaking one-pack-per-(venue,pair) before independent qualification (still true post-M16).
+- Learn top-nav / Learn view (Signal artboard) — still do not invent in cockpit.

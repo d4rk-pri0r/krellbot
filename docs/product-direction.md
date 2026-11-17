@@ -2,48 +2,101 @@
 
 ## Goal
 
-Krellbot is the local trading workstation for serious crypto automation: author a strategy, reproduce its research, explain its decisions, operate it under explicit controls, and extend it without renting the core engine.
+Krellbot is **self-custody crypto automation with guardrails and receipts**.
+The open-source Python engine and local React workstation run on the
+operator’s machine. Krellbot **never receives exchange keys**. Execution is
+deterministic under declared inputs; every material decision leaves a
+receipt in the local journal.
 
-The open-source Python engine and professional local GUI are the product. The website sells optional premium capabilities and distributes packages; it is not a prerequisite in the trading loop. Kraken/Coinbase spot is the existing execution foundation, not evidence of qualified live operation.
+The website distributes the engine and sells optional premium capabilities.
+It is not in the trading loop and never holds operator funds or venue
+credentials.
 
-The complete target joins strategy definition → costed research → decision explanation → paper deployment → controlled live promotion → monitoring/recovery → export. A graph editor or monitoring console alone does not complete it.
+## Who it is for
 
-## Delivery sequence
+1. **Primary:** the self-directed trader who wants automation they can
+   inspect, reproduce, and operate under explicit controls.
+2. **Secondary:** newcomers who can follow a paper-first path without
+   inventing live performance or needing a paid account for free starters.
 
-1. BUILD coherent workstation journeys: author, validate, research pinned data, inspect decisions, paper-deploy/observe, pause/restart, and export. Preserve safeguards and prove changed enabled paths with behavior/error tests and applicable regression/type/build checks.
-2. HARDEN a frozen functional candidate using a bounded scope and named findings. Do not turn routine development into an indefinite audit campaign.
-3. QUALIFY risky capabilities before enabling them: ownership, reconciliation, no blind resubmission, accounting, transactions, recovery and data preservation. Real trading, billing, credentials, signing, publication and production actions require separate owner approval.
+## Earn (disclosed)
 
-Functional, hardened, capability-qualified, packaged and published are distinct states. A research/paper preview is a checkpoint, not a replacement for the full workstation goal.
+Monetization is optional and separate from the free engine:
 
-## Preserved requirements
+1. **Exchange fee share / referral** — disclosed attribution when an
+   operator creates or links an exchange account through a Krellbot
+   referral path.
+2. **Pro packs + key-blind remote alerts** — paid strategy packs and
+   alerts that never require sending exchange keys off-machine.
+3. **Creator signed packs** — revenue share on signed packs sold through
+   the catalogue; pack format stays open so operators can author their
+   own without paying.
 
-- One shared application/domain implementation for GUI and CLI; no separate GUI trading semantics.
-- Free and user-authored strategies work without a paid account. Existing purchased rights are preserved; pricing changes require the owner.
-- Credentials stay at the execution boundary. Telemetry is opt-in and egress is disclosed accurately.
-- Billing/store failure must not prevent risk reduction, exits, historical export or diagnostics.
-- Deterministic execution under declared inputs; generative AI does not choose orders or override risk in the execution path.
-- Unknown order outcome means reconcile, never blindly resubmit.
-- User actions have typed results, state transitions, audit records and truthful error presentation.
-- Preserve strategy-owned versus external inventory separation and the one-pack-per-(venue,pair) restriction until reservations/ownership are independently qualified.
-- Preserve v1 JSON strategy semantics while extending the versioned strategy representation.
-- Extend the frozen distribution incrementally; no mandatory desktop-shell rewrite.
+## Non-negotiable rules
 
-## Milestone targets (not completion claims)
+- Exchange credentials live in the **OS keychain only** (see
+  `SECURITY.md`); never plaintext product storage for new stores.
+- Never present backtests, fixtures, or rehearsals as **market
+  performance**.
+- No returns promises. Packs are tools, **not personalized advice**.
+- **Live arm only by a human in the web workstation** (typed confirmation).
+  The CLI stays plumbing — launcher, scheduler entry, diagnostics — not a
+  user feature surface (`AGENTS.md`).
+- Telemetry stays **opt-in** and egress is disclosed accurately
+  (`docs/telemetry.md`).
+- Unknown order outcome means **reconcile, never blindly resubmit**.
+- Preserve strategy-owned versus external inventory separation and
+  Decimal accounting.
+- Billing/store failure must not prevent risk reduction, exits,
+  historical export, or diagnostics.
+- `PAPER_ONLY_RELEASE` stays `True` until an explicit owner flip after the
+  live phase gate (see `docs/milestones/M20.md` / Phase P1).
 
-- Reconciled compatible base.
-- Workstation preview: free edit/validate, pinned-data backtest, inspect v1 evidence, paper arm/observe, pause entries and export.
-- Research/editor candidate: reproducible experiments, shared traces, typed temporal graph, robust research.
-- Operator beta: durable execution/recovery, qualified live GUI, supervision and restore.
-- Optional paid extensions: exact SKU/version rights, trusted package installation/update, website/local integration and separately authorized billing.
-- Certified release: exact-head CI/build, truthful platform/signing posture, operational evidence and explicit publication approval.
+## Delivery sequence (phases)
+
+Phases are milestone files `M19`–`M23` (P0–P4). In-flight `M14`–`M18` are
+not rewritten by this roadmap; finish or park them on their own terms.
+Do not start phase engineering until the owner merges the roadmap PR.
+
+| Phase | Milestone | Theme | Gate (summary) |
+| --- | --- | --- | --- |
+| P0 | M19 | Evidence / trust | Outsider installs with no platform warning and can reproduce a pack |
+| P1 | M20 | Live from web (Kraken) | Outsider places a live order using only the web workstation |
+| P2 | M21 | Paid 1.0 | 10 paying customers + day-30 retention evidence |
+| P3 | M22 | Agent-ready | Agent completes paper path; policy refuse is journaled |
+| P4 | M23 | Distribution | 100 paying + a second revenue line > $1k/mo |
+
+Explicitly out of scope for these phases: hosting operator keys; more
+than one live venue before P4; paid ads for signals; personalized advice;
+CLI user features.
+
+## Preserved engineering requirements
+
+- One shared application/domain implementation for GUI and CLI plumbing;
+  no separate GUI trading semantics.
+- Free and user-authored strategies work without a paid account.
+- Deterministic execution; generative AI does not choose orders or
+  override risk in the execution path.
+- User actions have typed results, state transitions, audit records, and
+  truthful error presentation.
+- Preserve v1 JSON strategy semantics while extending the versioned
+  representation.
+- Extend the frozen distribution incrementally; no mandatory
+  desktop-shell rewrite.
+- UI work follows `docs/design-system.md` (contract
+  `KRELL-SIGNAL-20261010`).
+
+## Market context
+
+See `docs/market-position.md` (one page). Ambiguity resolves toward
+**custody, correctness, and honesty**.
 
 ## Design reference (KRELL-SIGNAL-20261010)
 
-All product UI work follows the owner-approved Signal + Krell Asset Pack v2
-design, contract `KRELL-SIGNAL-20261010`. The portable design contract lives
-in `docs/design-system.md`; its tokens, fonts, shell composition and asset
-rules are binding for every new or newly scoped frontend task. Reference
-compositions are consulted from the approved reference kit (staged outside
-this repository); this document does not duplicate reference paths or private
-host locations.
+All product UI work follows the owner-approved Signal + Krell Asset Pack
+v2 design, contract `KRELL-SIGNAL-20261010`. The portable design contract
+lives in `docs/design-system.md`; its tokens, fonts, shell composition
+and asset rules are binding for every new or newly scoped frontend task.
+Reference compositions are consulted from the approved reference kit
+(staged outside this repository); this document does not duplicate
+reference paths or private host locations.
