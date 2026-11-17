@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "mode-rebalance",
+  "version": "1.0.0",
+  "label": "Rebalance",
+  "author": "krellbot",
+  "origin": "Built-in rebalance mode pack. Strategy-owned inventory only.",
+  "timeframe": "1d",
+  "indicators": {
+    "sma20": {"fn": "sma", "src": "close", "len": 20}
+  },
+  "entry": ["close", ">", "sma20"],
+  "exit": ["close", "<", "sma20"],
+  "risk": {
+    "max_account_pct": 25,
+    "stop": {"type": "pct", "pct": 5}
+  },
+  "markets": [{"venue": "kraken", "pair": "BTCUSD"}],
+  "mode": {
+    "kind": "rebalance",
+    "threshold_pct": 5,
+    "targets": [
+      {"symbol": "BTC", "weight_pct": 60},
+      {"symbol": "USD", "weight_pct": 40}
+    ]
+  }
+}
