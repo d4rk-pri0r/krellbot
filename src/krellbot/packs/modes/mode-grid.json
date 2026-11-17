@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "mode-grid",
+  "version": "1.0.0",
+  "label": "Grid",
+  "author": "krellbot",
+  "origin": "Built-in grid mode. Long-only DSL; not a venue grid bot. Not live performance.",
+  "timeframe": "1h",
+  "mode": {
+    "kind": "grid",
+    "levels": 5
+  },
+  "indicators": {
+    "band_high": {"fn": "highest", "src": "close", "len": 20},
+    "band_low": {"fn": "lowest", "src": "close", "len": 20}
+  },
+  "entry": ["close", "<=", "band_low"],
+  "exit": ["close", ">=", "band_high"],
+  "risk": {
+    "max_account_pct": 20,
+    "stop": {"type": "pct", "pct": 5}
+  },
+  "markets": [{"venue": "kraken", "pair": "SUIUSD"}]
+}
