@@ -9,13 +9,14 @@ explicit ``Transport``; ``None`` refuses rather than defaulting to
 from __future__ import annotations
 
 from decimal import Decimal
+from urllib.parse import urlparse
 
 import pytest
 from fakes.fake_binance import FakeBinanceTransport
 
 from krellbot.release_policy import PaperOnlyReleaseError
 from krellbot.venues.base import WithdrawCapableError
-from krellbot.venues.binance import BASE_URL, BinanceVenue, HttpTransport, sign_query
+from krellbot.venues.binance import API_HOST, BASE_URL, BinanceVenue, HttpTransport, sign_query
 
 pytestmark = pytest.mark.usefixtures("live_capable_release")
 
@@ -90,7 +91,11 @@ def test_binance_snapshot_balances_and_open_orders() -> None:
     assert len(truth.open_orders) == 1
     assert truth.open_orders[0].stop_price == Decimal(90000)
     assert truth.recent_fills[0].side == "buy"
-    assert all(c.url.startswith(BASE_URL) or "api.binance.com" in c.url for c in transport.calls)
+    for call in transport.calls:
+        parsed = urlparse(call.url)
+        assert parsed.scheme == "https"
+        assert parsed.hostname == API_HOST
+        assert call.url.startswith(BASE_URL)
 
 
 def test_binance_place_entry_with_stop_uses_signed_posts() -> None:
