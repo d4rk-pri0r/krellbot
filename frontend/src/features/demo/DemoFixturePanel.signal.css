@@ -1,0 +1,80 @@
+/*
+ * Demo/fixture seed panel — KRELL-SIGNAL-20261010 / docs/ui-density.md (M18.5).
+ * Caution-toned badge; never sage success for fixture metrics.
+ */
+
+.kbot-demo-fixture {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-demo-fixture__badge {
+  margin: 0;
+  width: fit-content;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--caution-text) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--caution-bg) 40%, var(--surface));
+  color: var(--caution-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kbot-demo-fixture__copy,
+.kbot-demo-fixture__message,
+.kbot-demo-fixture__label,
+.kbot-demo-fixture__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.kbot-demo-fixture__label {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.kbot-demo-fixture__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.kbot-demo-fixture__row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--navy) 35%, var(--surface));
+}
+
+.kbot-demo-fixture__row-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-demo-fixture__row-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.kbot-demo-fixture__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kbot-demo-fixture__error {
+  margin: 0;
+  color: var(--danger-text);
+  font-size: 12.5px;
+}

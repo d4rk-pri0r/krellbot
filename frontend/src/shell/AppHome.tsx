@@ -2,6 +2,7 @@ import { useRef, useState, type JSX } from "react";
 import type { VersionClient } from "../api/version";
 import { BrandMark } from "../components/brand/BrandMark";
 import { DisclosureSection } from "../components/disclosure/DisclosureSection";
+import { DemoFixturePanel } from "../features/demo/DemoFixturePanel";
 import { KeysOnboardingPanel } from "../features/keys/KeysOnboardingPanel";
 import {
   createKeysHttpClient,
@@ -468,6 +469,23 @@ export function AppHome({
               <KeysOnboardingPanel
                 client={keys}
                 venue="coinbase"
+                enabled={!sessionPending && !sessionFailed}
+              />
+            </div>
+          </DisclosureSection>
+
+          <DisclosureSection
+            title="Demo fixture seed"
+            summary="Opt-in labeled fixture/demo rows for local preview — never live P&L or soak proof."
+            badge="Advanced"
+            badgeTone="advanced"
+            defaultOpen={false}
+            storageKey="krellbot.disclosure.home.demo-fixture"
+            bare
+            data-testid="app-home-demo-fixture"
+          >
+            <div className="app-home__rail app-home__rail--nested">
+              <DemoFixturePanel
                 enabled={!sessionPending && !sessionFailed}
               />
             </div>
