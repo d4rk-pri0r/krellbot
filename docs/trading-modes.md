@@ -99,6 +99,14 @@ Shipped mode packs live under `src/krellbot/packs/modes/` as
 `mode-<kind>.json` and load through `krellbot.packs.mode_packs` (package
 data only; no hidden CLI scheduler).
 
+## Research pins
+
+Mode packs run through the existing Research path against pinned fixture
+CSV (`tests/fixtures/candles/mode_research_pin_1h.csv` /
+`mode_research_pin_1d.csv`). Receipt detail sets `data_source: pinned_csv`
+when offline CSV is used. UI copy labels results as backtest / pinned
+fixture — not live market performance.
+
 ## Honesty
 
 - Mode packs are presets / teaching shapes, not performance claims.

@@ -399,6 +399,9 @@ class ResearchService:
             "bar_count": len(candles),
             "trade_count": bt.trade_count,
             "trace": trace,
+            # Honesty label for Research UI: CSV pins are backtest/fixture,
+            # never live market performance.
+            "data_source": "pinned_csv" if request.dataset_csv is not None else "fetch",
         }
         return ResearchResult(ok=True, legacy_receipt=receipt, detail=detail, refusal=None)
 
