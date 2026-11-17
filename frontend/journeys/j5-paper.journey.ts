@@ -1,7 +1,7 @@
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
 import {test, expect} from "../e2e/journey-harness/journey-harness";
-import {armPaper, tickPaper, paperRefresh, holdRehearsal, quantity} from "./helpers/paper-steps";
+import {armPaper, tickPaper, paperRefresh, holdRehearsal, quantity, expandArmedRecords} from "./helpers/paper-steps";
 import {clickNav, pickStarter, saveJson, validateRevision, SMA_CROSS_FIXTURE_JSON, readJournalTicks} from "./helpers/journey-steps";
 
 test.beforeEach(async ({journey}) => {await journey.page.goto(journey.workstation.baseURL); await journey.waitForSessionReady(journey.page);});
@@ -11,6 +11,7 @@ test("J5.1 I can arm a validated strategy in paper mode with a starting balance.
   await armPaper(page,"2500");
   await clickNav(page,"Workstation");
   await expect(page.getByTestId("paper-status-entries")).toContainText(/active/i);
+  await expandArmedRecords(page);
   const row = page.getByTestId("paper-armed-row").first();
   await expect(row).toBeVisible();
   expect(await row.getAttribute("data-venue")).toBe("kraken");
@@ -37,7 +38,9 @@ test("J5.2 Arming a second strategy on the same venue and pair is refused, and t
   await editor.getByLabel(/^venue$/i).fill("kraken"); await editor.getByLabel(/balance/i).fill("1000");
   await editor.getByRole("button",{name:/^arm$/i}).click();
   await expect(page.getByTestId("editor-arm-error")).toContainText(/over_reserved|already armed/i);
-  await clickNav(page,"Workstation"); await expect(page.getByTestId("paper-armed-row")).toHaveCount(1);
+  await clickNav(page,"Workstation");
+  await expandArmedRecords(page);
+  await expect(page.getByTestId("paper-armed-row")).toHaveCount(1);
 });
 
 test("J5.3 As paper ticks run, the status shows position, cash, resting stop and trade history, and all of them match the paper journal", async ({journey}) => {
@@ -68,7 +71,7 @@ test("J5.3 As paper ticks run, the status shows position, cash, resting stop and
 test("J5.4 The status shows when it last updated. If a read fails or the data goes stale, it says so instead of showing old numbers as current", async ({journey}) => {
   const page=journey.page; await armPaper(page); await clickNav(page,"Workstation");
   await expect(page.getByTestId("paper-position")).toBeVisible();
-  const statusText=(await page.getByTestId("paper-status-panel").locator(":scope > .kbot-paper-status__body > p").allInnerTexts()).join("\n");
+  const statusText=(await page.getByTestId("paper-status-panel").locator(".kbot-paper-status__body p").allInnerTexts()).join("\n");
   // Journey gap: https://github.com/d4rk-pri0r/krellbot/issues/101
   test.fail(true, "https://github.com/d4rk-pri0r/krellbot/issues/101");
   expect.soft(statusText,"ordinary paper status needs a visible last-updated/as-of time").toMatch(/(?:updated|as.of|checked).*(?:\d|just now)/i);

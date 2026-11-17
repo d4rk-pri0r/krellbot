@@ -1,0 +1,119 @@
+/*
+ * Paper StatusPanel first-viewport density — KRELL-SIGNAL-20261010 /
+ * docs/ui-density.md (M18.3).
+ *
+ * Dense operator summary above the fold: status, next action, chart or
+ * honest empty. Tokens only. Never invent series when no journal exists.
+ */
+
+.kbot-paper-status {
+  display: grid;
+  gap: var(--space-tight, 8px);
+  align-content: start;
+  min-width: 0;
+}
+
+.kbot-paper-status__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.kbot-paper-status__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-paper-status__next {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--seafoam);
+}
+
+.kbot-paper-status__body {
+  display: grid;
+  gap: var(--space-stack, 12px);
+  min-width: 0;
+}
+
+.kbot-paper-status__first-viewport {
+  display: grid;
+  gap: var(--space-tight, 8px);
+  align-content: start;
+  min-width: 0;
+}
+
+.kbot-paper-status__entries,
+.kbot-paper-status__pack,
+.kbot-paper-status__multi {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.kbot-paper-status__pack,
+.kbot-paper-status__multi {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.kbot-paper-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.kbot-paper-status__empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.kbot-paper-chart--honest-empty {
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--navy) 35%, var(--surface));
+}
+
+.kbot-paper-chart--honest-empty .kbot-paper-chart__empty {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Compact chart panels in the first viewport (armed). */
+.kbot-paper-status__first-viewport .kbot-paper-chart {
+  gap: 8px;
+}
+
+.kbot-paper-status__first-viewport .kbot-paper-chart__panel {
+  padding: 10px 12px 12px;
+}
+
+.kbot-paper-status__first-viewport .kbot-paper-chart__svg {
+  min-height: 120px;
+}
+
+@media (max-width: 640px) {
+  .kbot-paper-status__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kbot-paper-status__actions .kbot-paper-status__action,
+  .kbot-paper-status__actions button {
+    min-height: 44px;
+  }
+}
