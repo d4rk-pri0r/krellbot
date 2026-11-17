@@ -437,7 +437,7 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
           </p>
         ) : rows.length === 0 ? (
           <p className="kbot-pack-library__empty" data-testid="pack-library-empty">
-            No packs.
+            No packs. Install from the catalogue above or redeem an activation.
           </p>
         ) : visibleRows.length === 0 ? (
           <p

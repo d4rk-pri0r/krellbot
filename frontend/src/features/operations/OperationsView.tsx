@@ -48,8 +48,10 @@ const PROMO_DEFERRED_TEXT = "Promotion to live is owner-deferred.";
 const KILL_RELEASED_TEXT = "Kill switch: released";
 const KILL_HELPER =
   "Engaging stops new entries and all live sends. It does not sell or disarm.";
-const NO_ALERTS_TEXT = "No alerts.";
-const NO_DEPLOYMENTS_TEXT = "No deployments.";
+const NO_ALERTS_TEXT =
+  "No alerts. Refresh after a refusal or pause if you expect one.";
+const NO_DEPLOYMENTS_TEXT =
+  "No deployments. Arm a paper pack from the Workstation.";
 const PROMO_REVISION_ID = "deployment";
 const STALE_PREFIX = "Operations state may be stale";
 const STALE_SUFFIX =
@@ -520,6 +522,10 @@ export function OperationsView({
         </p>
       ) : null}
       <div className="kbot-ops__body">
+        <div
+          className="kbot-ops__first-viewport"
+          data-testid="ops-first-viewport"
+        >
         <div className="kbot-ops__status" data-testid="ops-status-banner">
           <section
             className="kbot-ops__panel kbot-ops__panel--status"
@@ -844,13 +850,14 @@ export function OperationsView({
           </AlertsFilter>
           <AlertsCsvExport alerts={view.alerts} />
         </section>
+        </div>
 
         <DisclosureSection
           title="Unresolved orders"
           summary="Orders awaiting reconcile — never blindly resubmitted."
           badge="Advanced"
           badgeTone="advanced"
-          defaultOpen={true}
+          defaultOpen={false}
           storageKey="krellbot.disclosure.ops.unresolved"
           data-testid="ops-unresolved-orders-panel"
         >
@@ -862,7 +869,7 @@ export function OperationsView({
           summary="Optional OS hourly tick unit. Paper ticks only in this release."
           badge="Advanced"
           badgeTone="advanced"
-          defaultOpen={true}
+          defaultOpen={false}
           storageKey="krellbot.disclosure.ops.scheduler"
           data-testid="ops-scheduler-panel"
         >
@@ -910,7 +917,7 @@ export function OperationsView({
           summary="Grant or revoke live venue authorization. Paper-only releases refuse grants."
           badge="Advanced"
           badgeTone="advanced"
-          defaultOpen={true}
+          defaultOpen={false}
           storageKey="krellbot.disclosure.ops.live-auth"
           data-testid="ops-live-authorization-panel"
         >

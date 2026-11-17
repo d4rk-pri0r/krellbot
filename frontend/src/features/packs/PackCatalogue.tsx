@@ -168,7 +168,7 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
           </p>
         ) : packs.length === 0 ? (
           <p className="kbot-pack-catalogue__empty" data-testid="pack-catalogue-empty">
-            No catalogue packs.
+            No catalogue packs. Refresh the catalogue or check the signed feed.
           </p>
         ) : (
           <ul className="kbot-pack-catalogue__list" data-testid="pack-catalogue-list">
