@@ -32,6 +32,11 @@ as fixture / demo / rehearsal (or an equivalent opt-in badge). Rules:
 5. Telemetry stays opt-in. Backtest or fixture results are never framed as live
    market performance.
 
+**Opt-in helper:** `krellbot.application.demo_fixture_seed` plus
+`GET/POST /api/v1/demo-fixture` (and Workspace Advanced → Demo fixture seed).
+Requires explicit confirm to enable; clear restores an empty honest home.
+See `tests/test_demo_fixture_seed_honesty.py`.
+
 These honesty rules bind every M18 composition pass and any later density work.
 
 ## Per-view first-viewport goals

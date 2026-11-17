@@ -1710,6 +1710,70 @@ def create_app(
             headers={"Cache-Control": "no-store"},
         )
 
+    @app.get("/api/v1/demo-fixture")
+    async def demo_fixture_get(request: Request) -> Response:
+        """Return opt-in demo/fixture seed status (M18.5).
+
+        Same session gate as ``GET /api/v1/operations`` (``_gate_get``).
+        Default fresh homes report enabled=false (empty/honest). Fixture
+        metrics never claim live performance or soak proof.
+        """
+
+        from krellbot.application import demo_fixture_seed as kb_demo_fixture
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = kb_demo_fixture.get_status(s.home)
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/demo-fixture/seed")
+    async def demo_fixture_seed(request: Request) -> Response:
+        """Opt-in enable the labeled demo/fixture seed (M18.5).
+
+        Same state-change gate as ``POST /api/v1/commands``. Requires
+        ``{"confirm": true}`` in the JSON body. Refuses to present
+        fixture metrics as live or soak proof.
+        """
+
+        from krellbot.application import demo_fixture_seed as kb_demo_fixture
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        confirm = payload.get("confirm") is True
+        body = kb_demo_fixture.seed(s.home, confirm=confirm)
+        status = 200 if body.get("ok") else 400
+        return JSONResponse(body, status_code=status, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/demo-fixture/clear")
+    async def demo_fixture_clear(request: Request) -> Response:
+        """Clear the demo/fixture seed; restore empty/honest home (M18.5).
+
+        Same state-change gate as ``POST /api/v1/commands``.
+        """
+
+        from krellbot.application import demo_fixture_seed as kb_demo_fixture
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        body = kb_demo_fixture.clear(s.home)
+        status = 200 if body.get("ok") else 500
+        return JSONResponse(body, status_code=status, headers={"Cache-Control": "no-store"})
+
     @app.post("/api/v1/home/export")
     async def home_export(request: Request) -> Response:
         """Create a local home backup archive and return it as a download.
