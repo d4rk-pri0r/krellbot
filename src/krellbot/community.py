@@ -114,10 +114,9 @@ def installed_rows(home: Path) -> list[dict]:
 def read_installed(home: Path, pack_id: str) -> dict:
     """Return the installed community pack dict for ``pack_id``.
 
-    FS open/read lives in ``extensions.install.read_installed_json`` next to
-    the CodeQL-recognized ``_safe_pack_id`` / ``_confined_json_path`` helpers
-    (same sink module as M17.2 ``atomic_install``). This wrapper never
-    builds a path expression from the request id.
+    FS open/read lives in ``extensions.install.read_installed_json`` which
+    uses ``os.scandir`` + ``openat(dir_fd, listing_name)`` so the opened
+    path comes from the directory listing, not a request-tainted join.
     """
     from krellbot.extensions import install as kb_extensions_install
 
@@ -125,7 +124,7 @@ def read_installed(home: Path, pack_id: str) -> dict:
 
 
 def installed_path(home: Path, pack_id: str) -> Path:
-    """Return the confined path for an installed community pack id."""
+    """Return the listing-matched path for an installed community pack id."""
     from krellbot.extensions import install as kb_extensions_install
 
     return kb_extensions_install.confined_installed_path(home, pack_id)

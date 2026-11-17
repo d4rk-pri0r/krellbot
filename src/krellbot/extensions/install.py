@@ -188,28 +188,94 @@ def _confined_json_path(base_dir: Path, pack_id: str) -> str:
     return fullpath
 
 
-def read_installed_json(home: Path, pack_id: str) -> dict:
-    """Read ``<home>/packs/community/<id>.json`` after CodeQL path guards.
+def _listing_name_for_pack_id(pack_id: str) -> str:
+    """Return the ``*.json`` filename used only for equality against scandir.
 
-    Same-module sink as ``atomic_install``: ``_safe_pack_id`` then
-    ``_confined_json_path`` then ``os.open`` / ``os.read``. Cross-module
-    callers must not open the path themselves — CodeQL does not treat
-    helper returns as sanitized across module boundaries.
+    The request id is never joined into a path expression — callers open
+    ``entry.name`` from ``os.scandir`` / ``openat(dir_fd, …)`` instead.
+    """
+    import os.path
+
+    safe_id = _safe_pack_id(pack_id)
+    wanted = os.path.basename(f"{safe_id}.json")
+    if (
+        not wanted
+        or wanted != f"{safe_id}.json"
+        or os.path.basename(wanted) != wanted
+        or not wanted.endswith(".json")
+        or wanted.startswith(".")
+        or wanted in {".", ".."}
+    ):
+        from krellbot import community as kb_community
+
+        raise kb_community.InstallPayloadError(f"community pack id is not a single path segment: {pack_id!r}")
+    return wanted
+
+
+def _scandir_match_name(install_dir: Path, wanted_name: str) -> str | None:
+    """Return the listing-derived filename equal to ``wanted_name``, or None.
+
+    ``wanted_name`` is comparison-only. The returned string is always an
+    ``os.scandir`` ``entry.name`` (directory listing), never a request join.
+    """
+    try:
+        with os.scandir(install_dir) as entries:
+            for entry in entries:
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                # Listing-derived name — trusted source for openat.
+                name = entry.name
+                if name == wanted_name:
+                    return name
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    return None
+
+
+def read_installed_json(home: Path, pack_id: str) -> dict:
+    """Read an installed community pack via dirfd + scandir (CodeQL-safe).
+
+    Does **not** join the request id into a path. Flow:
+
+    1. Validate id shape (``_safe_pack_id``) for equality matching only.
+    2. ``os.scandir`` the community install dir; pick ``entry.name``.
+    3. ``os.open(name, …, dir_fd=…)`` so the open path comes from the
+       directory listing, not from a request-tainted expression.
+
+    Raises ``IndexError_`` when missing / unreadable and
+    ``InstallPayloadError`` when the id is not a single path segment.
     """
     import os
-    import os.path
 
     from krellbot import community as kb_community
 
     safe_id = _safe_pack_id(pack_id)
+    wanted_name = _listing_name_for_pack_id(safe_id)
     install_dir = Path(home) / "packs" / "community"
-    fullpath = _confined_json_path(install_dir, safe_id)
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+
+    matched_name = _scandir_match_name(install_dir, wanted_name)
+    if matched_name is None:
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}")
+
+    dir_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     try:
-        fd = os.open(fullpath, flags)
+        dir_fd = os.open(str(install_dir), dir_flags)
     except FileNotFoundError as exc:
         raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}") from exc
     except OSError as exc:
+        raise kb_community.IndexError_(f"community pack unreadable: {safe_id!r}") from exc
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        # Open listing-derived name relative to the install dir fd only.
+        fd = os.open(matched_name, flags, dir_fd=dir_fd)
+    except FileNotFoundError as exc:
+        os.close(dir_fd)
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}") from exc
+    except OSError as exc:
+        os.close(dir_fd)
         raise kb_community.IndexError_(f"community pack unreadable: {safe_id!r}") from exc
     try:
         chunks: list[bytes] = []
@@ -221,6 +287,7 @@ def read_installed_json(home: Path, pack_id: str) -> dict:
         raw = b"".join(chunks)
     finally:
         os.close(fd)
+        os.close(dir_fd)
     try:
         data = json.loads(raw.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -234,10 +301,21 @@ def read_installed_json(home: Path, pack_id: str) -> dict:
 
 
 def confined_installed_path(home: Path, pack_id: str) -> Path:
-    """Return the confined community install path for a sanitized pack id."""
+    """Return the on-disk path for a listing-matched community pack id.
+
+    Resolves via ``os.scandir`` so the path segment comes from the directory
+    listing (same dataflow as ``read_installed_json``), not a request join.
+    """
+    from krellbot import community as kb_community
+
     safe_id = _safe_pack_id(pack_id)
+    wanted_name = _listing_name_for_pack_id(safe_id)
     install_dir = Path(home) / "packs" / "community"
-    return Path(_confined_json_path(install_dir, safe_id))
+    matched_name = _scandir_match_name(install_dir, wanted_name)
+    if matched_name is None:
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}")
+    # matched_name is scandir entry.name; join only listing-derived segment.
+    return install_dir / matched_name
 
 
 def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
