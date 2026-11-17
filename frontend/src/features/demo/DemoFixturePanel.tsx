@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import {
   createDemoFixtureHttpClient,
   type DemoFixtureClient,
@@ -15,19 +15,45 @@ export type DemoFixturePanelProps = {
  * Opt-in local demo/fixture seed controls (M18.5 / docs/ui-density.md).
  * When enabled, shows a Fixture demo badge and labeled rehearsal rows —
  * never live P&L or soak proof.
+ *
+ * Status is fetched only while the Advanced disclosure body is open (or
+ * when mounted outside a disclosure). Collapsed mount must not hit the
+ * network — shell bootstrap tests stub a closed allow-list of routes.
  */
 export function DemoFixturePanel({
   client,
   enabled = true,
 }: DemoFixturePanelProps): JSX.Element {
+  const rootRef = useRef<HTMLElement | null>(null);
+  // Start closed; open after we see no disclosure parent (standalone) or
+  // the Advanced body is un-hidden — avoids bootstrap fetches while collapsed.
+  const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [status, setStatus] = useState<DemoFixtureStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const api = client ?? createDemoFixtureHttpClient();
 
   useEffect(() => {
-    if (!enabled) {
-      setStatus(null);
+    const node = rootRef.current;
+    const body = node?.closest(".kbot-disclosure__body") as HTMLElement | null;
+    if (!body) {
+      setDisclosureOpen(true);
+      return;
+    }
+    const sync = (): void => {
+      setDisclosureOpen(!body.hasAttribute("hidden"));
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(body, { attributes: true, attributeFilter: ["hidden"] });
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !disclosureOpen) {
+      if (!enabled) setStatus(null);
       return;
     }
     let cancelled = false;
@@ -45,7 +71,7 @@ export function DemoFixturePanel({
     return () => {
       cancelled = true;
     };
-  }, [api, enabled]);
+  }, [api, enabled, disclosureOpen]);
 
   async function runSeed(): Promise<void> {
     if (busy) return;
@@ -77,7 +103,13 @@ export function DemoFixturePanel({
 
   if (!enabled) {
     return (
-      <p className="kbot-demo-fixture__empty" data-testid="demo-fixture-waiting">
+      <p
+        ref={(node) => {
+          rootRef.current = node;
+        }}
+        className="kbot-demo-fixture__empty"
+        data-testid="demo-fixture-waiting"
+      >
         Waiting for the local session…
       </p>
     );
@@ -87,6 +119,9 @@ export function DemoFixturePanel({
 
   return (
     <section
+      ref={(node) => {
+        rootRef.current = node;
+      }}
       className="kbot-demo-fixture"
       data-testid="demo-fixture-panel"
       aria-label="Demo fixture seed"
