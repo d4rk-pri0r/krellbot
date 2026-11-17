@@ -114,59 +114,21 @@ def installed_rows(home: Path) -> list[dict]:
 def read_installed(home: Path, pack_id: str) -> dict:
     """Return the installed community pack dict for ``pack_id``.
 
-    Same CodeQL idiom as M17.2 / ``extensions.install``: ``_safe_pack_id``
-    (basename) then ``_confined_json_path`` (normpath + startswith), then
-    ``os.open`` on the confined string — never ``Path``/`read_text` with a
-    request-tainted expression. Raises ``IndexError_`` when missing and
-    ``InstallPayloadError`` when the id is not a single path segment.
+    FS open/read lives in ``extensions.install.read_installed_json`` next to
+    the CodeQL-recognized ``_safe_pack_id`` / ``_confined_json_path`` helpers
+    (same sink module as M17.2 ``atomic_install``). This wrapper never
+    builds a path expression from the request id.
     """
-    import os
-
     from krellbot.extensions import install as kb_extensions_install
 
-    safe_id = kb_extensions_install._safe_pack_id(pack_id)
-    community_dir = Path(home) / "packs" / "community"
-    fullpath = kb_extensions_install._confined_json_path(community_dir, safe_id)
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
-    try:
-        fd = os.open(fullpath, flags)
-    except FileNotFoundError as exc:
-        raise IndexError_(f"community pack not installed: {safe_id!r}") from exc
-    except OSError as exc:
-        raise IndexError_(f"community pack unreadable: {safe_id!r}") from exc
-    try:
-        chunks: list[bytes] = []
-        while True:
-            block = os.read(fd, 65536)
-            if not block:
-                break
-            chunks.append(block)
-        raw = b"".join(chunks)
-    finally:
-        os.close(fd)
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise IndexError_(f"community pack unreadable: {safe_id!r}") from exc
-    if not isinstance(data, dict):
-        raise IndexError_(f"community pack unreadable: {safe_id!r}")
-    embedded = data.get("id")
-    if embedded != safe_id:
-        raise IndexError_(f"community pack not installed: {safe_id!r}")
-    return data
+    return kb_extensions_install.read_installed_json(home, pack_id)
 
 
 def installed_path(home: Path, pack_id: str) -> Path:
-    """Return the confined path for an installed community pack id.
-
-    Validates the id with ``_safe_pack_id`` / ``_confined_json_path`` (same
-    as ``read_installed``) so a request string never reaches a Path join.
-    """
+    """Return the confined path for an installed community pack id."""
     from krellbot.extensions import install as kb_extensions_install
 
-    safe_id = kb_extensions_install._safe_pack_id(pack_id)
-    community_dir = Path(home) / "packs" / "community"
-    return Path(kb_extensions_install._confined_json_path(community_dir, safe_id))
+    return kb_extensions_install.confined_installed_path(home, pack_id)
 
 
 def _validate_url(url: str) -> None:

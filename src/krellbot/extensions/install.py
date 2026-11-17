@@ -188,6 +188,58 @@ def _confined_json_path(base_dir: Path, pack_id: str) -> str:
     return fullpath
 
 
+def read_installed_json(home: Path, pack_id: str) -> dict:
+    """Read ``<home>/packs/community/<id>.json`` after CodeQL path guards.
+
+    Same-module sink as ``atomic_install``: ``_safe_pack_id`` then
+    ``_confined_json_path`` then ``os.open`` / ``os.read``. Cross-module
+    callers must not open the path themselves — CodeQL does not treat
+    helper returns as sanitized across module boundaries.
+    """
+    import os
+    import os.path
+
+    from krellbot import community as kb_community
+
+    safe_id = _safe_pack_id(pack_id)
+    install_dir = Path(home) / "packs" / "community"
+    fullpath = _confined_json_path(install_dir, safe_id)
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(fullpath, flags)
+    except FileNotFoundError as exc:
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}") from exc
+    except OSError as exc:
+        raise kb_community.IndexError_(f"community pack unreadable: {safe_id!r}") from exc
+    try:
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(fd, 65536)
+            if not block:
+                break
+            chunks.append(block)
+        raw = b"".join(chunks)
+    finally:
+        os.close(fd)
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise kb_community.IndexError_(f"community pack unreadable: {safe_id!r}") from exc
+    if not isinstance(data, dict):
+        raise kb_community.IndexError_(f"community pack unreadable: {safe_id!r}")
+    embedded = data.get("id")
+    if embedded != safe_id:
+        raise kb_community.IndexError_(f"community pack not installed: {safe_id!r}")
+    return data
+
+
+def confined_installed_path(home: Path, pack_id: str) -> Path:
+    """Return the confined community install path for a sanitized pack id."""
+    safe_id = _safe_pack_id(pack_id)
+    install_dir = Path(home) / "packs" / "community"
+    return Path(_confined_json_path(install_dir, safe_id))
+
+
 def atomic_install(home: Path, pack_id: str, body: bytes) -> Path:
     """Stage `body` in a temp dir, validate, atomic-rename to install dir.
 

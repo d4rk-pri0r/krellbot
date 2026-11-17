@@ -3305,6 +3305,7 @@ def create_app(
         so the UI never pretends this is a signed catalogue SKU. Missing ids
         are 404; bad ids are 400.
         """
+        import os.path
 
         from krellbot import community as kb_community
 
@@ -3313,8 +3314,15 @@ def create_app(
         if denied is not None:
             return denied
 
+        # CodeQL-recognized sanitizer at the API boundary (same as install):
+        # basename strips directory components before any FS open.
+        raw_pack_id = pack_id
+        safe_id = os.path.basename(raw_pack_id)
+        if not safe_id or safe_id != raw_pack_id or os.path.basename(safe_id) != safe_id or safe_id in {".", ".."}:
+            return JSONResponse({"detail": "pack_id is required"}, status_code=400)
+
         try:
-            pack = kb_community.read_installed(s.home, pack_id)
+            pack = kb_community.read_installed(s.home, safe_id)
         except kb_community.InstallPayloadError:
             return JSONResponse({"detail": "pack_id is required"}, status_code=400)
         except kb_community.IndexError_:
@@ -3327,12 +3335,15 @@ def create_app(
                 status_code=404,
             )
 
+        # Closed relative path from sanitized id only — never echo a
+        # request-derived filesystem string.
+        rel_path = f"packs/community/{os.path.basename(safe_id)}.json"
         return JSONResponse(
             {
                 "schema_version": SCHEMA_VERSION,
                 "source": "community",
                 "pack": pack,
-                "path": f"packs/community/{pack.get('id', pack_id)}.json",
+                "path": rel_path,
             },
             status_code=200,
             headers={"Cache-Control": "no-store"},
