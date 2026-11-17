@@ -39,7 +39,7 @@ type EntriesSentence = "Entries active" | "Entries paused";
 type CommandName = "pause" | "resume" | "disarm" | "raise_stop";
 
 /** Arm venues offered by the paper surface (paper mode only). */
-const ARM_VENUES: readonly string[] = ["kraken"];
+const ARM_VENUES: readonly string[] = ["kraken", "coinbase", "binance"];
 
 const DEFAULT_PAPER_BALANCE = "1000";
 

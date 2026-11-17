@@ -183,13 +183,25 @@ describe("explainPack unsupported and malformed inputs", () => {
       JSON.stringify({
         ...supportedPack,
         timeframe: "5m",
-        markets: [{ venue: "binance", pair: "SUIUSDT" }],
+        markets: [{ venue: "not_a_venue", pair: "SUIUSDT" }],
       }),
       "rev-x",
     );
     expect(result.timeframe.supported).toBe(false);
     expect(result.markets[0].supported).toBe(false);
     expect(result.markets[0].text).toContain("unsupported market");
+  });
+
+  it("treats binance BTCUSDT as a supported paper market", () => {
+    const result = explainPack(
+      JSON.stringify({
+        ...supportedPack,
+        markets: [{ venue: "binance", pair: "BTCUSDT" }],
+      }),
+      "rev-x",
+    );
+    expect(result.markets[0].supported).toBe(true);
+    expect(result.markets[0].text).toMatch(/binance/i);
   });
 
   it("reports deep nesting as unsupported rather than guessing", () => {
