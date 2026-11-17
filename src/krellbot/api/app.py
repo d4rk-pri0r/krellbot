@@ -2711,9 +2711,11 @@ def create_app(
 
         try:
             body = mode_packs.modes_document()
-        except mode_packs.ModePackError as exc:
+        except mode_packs.ModePackError:
+            # Do not interpolate exception text into the wire body (CodeQL:
+            # information exposure through an exception).
             return JSONResponse(
-                {"detail": f"mode catalogue unavailable: {exc}"},
+                {"detail": "mode catalogue unavailable"},
                 status_code=500,
             )
         return JSONResponse(body, status_code=200)
