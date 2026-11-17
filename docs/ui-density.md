@@ -93,6 +93,10 @@ Composition PRs name a unit/visual assertion for the view at **1440×900** (and
 narrow where claimed). Prefer behavior-named tests. Journey/e2e density pins
 follow M7.6 patterns without inventing live performance fixtures.
 
+Chromium geometry smoke (M18.6): `frontend/e2e/density-first-viewport-smoke.spec.ts`
+pins Workspace home + Workstation first-viewport density at **1440×900** via
+`getBoundingClientRect` (same class as M7.6 starter-home layout smoke).
+
 ## Out of scope
 
 - Inventing a Learn view (see `docs/milestones/PARKING.md`).
