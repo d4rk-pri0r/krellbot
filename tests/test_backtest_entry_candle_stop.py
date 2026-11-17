@@ -65,7 +65,16 @@ RECEIPT_KEYS = {
     "metrics",
     "equity_curve",
 }
-DETAIL_KEYS = {"schema_version", "venue", "pair", "tf", "bar_count", "trade_count", "trace"}
+DETAIL_KEYS = {
+    "schema_version",
+    "venue",
+    "pair",
+    "tf",
+    "bar_count",
+    "trade_count",
+    "trace",
+    "data_source",
+}
 TRACE_KEYS = {"bar_ts", "warmup", "input", "indicators", "conditions", "target"}
 
 
@@ -203,6 +212,7 @@ def test_entry_candle_stop_breach_closes_fresh_long_same_candle(
     assert detail["tf"] == receipt["tf"]
     assert detail["bar_count"] == len(candles) == 4
     assert detail["trade_count"] == metrics["trade_count"] == 1
+    assert detail["data_source"] == "pinned_csv"
 
     # The trace explains evaluator output only; it names the stop the engine
     # must honour on the very next bar's open fill.
@@ -255,6 +265,7 @@ def _scenario(tmp_path, monkeypatch, bars, *, pack=None, fee_bps=0, slippage_bps
     assert isinstance(receipt, dict)
     assert set(receipt) == RECEIPT_KEYS
     assert set(result.detail) == DETAIL_KEYS
+    assert result.detail["data_source"] == "pinned_csv"
     assert all(set(row) == TRACE_KEYS for row in result.detail["trace"])
     assert result.detail["bar_count"] == len(records)
     assert receipt["metrics"]["trade_count"] == result.detail["trade_count"] == bt.trade_count
