@@ -1163,7 +1163,8 @@ export function StatusPanel({
                 branch: the closed-shape status read never carries the
                 current stop, so there is nothing to prefill and no
                 below-current check client-side — the backend's
-                invalid_stop refusal is the single validator. */}
+                invalid_stop refusal is the single validator. Kept
+                visible as contextual detail next to pause/disarm. */}
             <div
               className="kbot-paper-status__raise-stop"
               data-testid="paper-raise-stop"
@@ -1266,7 +1267,9 @@ export function StatusPanel({
         {/* The isolated synthetic rehearsal surface is mounted exactly once
             outside the armed/unarmed paper branch: its own client, commands
             and disclosure stay accessible whatever the ordinary paper pack
-            state is, and it never remounts on a paper state transition. */}
+            state is, and it never remounts on a paper state transition.
+            Kept visible (not Advanced): paper/test-run journeys treat
+            Start/Pause/Stop as primary controls. */}
         <RehearsalPanel client={rehearsalClient} />
       </div>
     </section>

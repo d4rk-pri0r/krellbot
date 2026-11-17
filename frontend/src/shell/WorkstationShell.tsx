@@ -78,6 +78,7 @@ import {
   type ReconnectIssue,
 } from "../session";
 import { Wordmark } from "../components/brand/Wordmark";
+import { DisclosureSection } from "../components/disclosure/DisclosureSection";
 import { AppHome } from "./AppHome";
 import { CommandPalette } from "./CommandPalette";
 import {
@@ -1057,8 +1058,9 @@ export function WorkstationShell({
               <div className="kbot-shell__pagehead-copy">
                 <h1 className="kbot-shell__heading">Paper workstation</h1>
                 <p className="kbot-shell__pagesub">
-                  Arm a paper bot, watch last runs, and pause entries without
-                  leaving this machine.
+                  Arm a pack with simulated funds, watch last runs, and pause
+                  entries or disarm. Pause entries stops new entries — it does
+                  not sell or disarm.
                 </p>
               </div>
             </div>
@@ -1080,18 +1082,6 @@ export function WorkstationShell({
                       unresolvedClient={operations}
                     />
                     <LastRunsPanel client={paperRuns} />
-                    <PortfolioHistoryPanel client={portfolio} />
-                    {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
-                        an injected legacy client without listArmed renders the
-                        truthful unavailable state instead of crashing. */}
-                    <ArmedRecordsList
-                      client={
-                        paper as PaperClient &
-                          PaperRunsClient &
-                          PaperArmedClient
-                      }
-                      onSelectionChange={handleDeploymentSelection}
-                    />
                     <WorkstationAlerts
                       client={operations}
                       selectedId={
@@ -1101,6 +1091,38 @@ export function WorkstationShell({
                       }
                       onSelect={handleAlertSelect}
                     />
+                    <DisclosureSection
+                      title="Portfolio history"
+                      summary="Journal and fill evidence across deployments — empty until there are known starting balances."
+                      badge="Advanced"
+                      badgeTone="advanced"
+                      defaultOpen={false}
+                      storageKey="krellbot.disclosure.paper.portfolio"
+                      data-testid="paper-portfolio-disclosure"
+                    >
+                      <PortfolioHistoryPanel client={portfolio} />
+                    </DisclosureSection>
+                    {/* The shell factory returns PaperClient & PaperRunsClient & PaperArmedClient;
+                        an injected legacy client without listArmed renders the
+                        truthful unavailable state instead of crashing. */}
+                    <DisclosureSection
+                      title="Armed paper run records"
+                      summary="Per-run armed records for selection into the inspector."
+                      badge="Advanced"
+                      badgeTone="advanced"
+                      defaultOpen={true}
+                      storageKey="krellbot.disclosure.paper.armed-records"
+                      data-testid="paper-armed-records-disclosure"
+                    >
+                      <ArmedRecordsList
+                        client={
+                          paper as PaperClient &
+                            PaperRunsClient &
+                            PaperArmedClient
+                        }
+                        onSelectionChange={handleDeploymentSelection}
+                      />
+                    </DisclosureSection>
                   </>
                 ) : (
                   <p
@@ -1119,6 +1141,16 @@ export function WorkstationShell({
         ) : null}
         {active === "strategies" ? (
           <>
+            <div className="kbot-shell__pagehead">
+              <div className="kbot-shell__pagehead-copy">
+                <h1 className="kbot-shell__heading">Strategies</h1>
+                <p className="kbot-shell__pagesub">
+                  Write or paste a strategy pack, validate it, and save a draft
+                  on this machine. Open Library to reopen or copy a saved
+                  revision.
+                </p>
+              </div>
+            </div>
             <button
               type="button"
               className="kbot-shell__library-toggle"
@@ -1182,6 +1214,16 @@ export function WorkstationShell({
         ) : null}
         {active === "studio" ? (
           <>
+            <div className="kbot-shell__pagehead">
+              <div className="kbot-shell__pagehead-copy">
+                <h1 className="kbot-shell__heading">Strategy studio</h1>
+                <p className="kbot-shell__pagesub">
+                  Inspect a saved pack as a graph of indicators, entries and
+                  exits. Save execution only after the graph matches the pack
+                  you intend to paper-arm.
+                </p>
+              </div>
+            </div>
             <GraphCanvas
               nodes={studioNodes as GraphCanvasNode[]}
               edges={connections.flatMap((connection, index) => {

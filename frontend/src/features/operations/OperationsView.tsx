@@ -6,6 +6,7 @@ import {
   useState,
   type JSX,
 } from "react";
+import { DisclosureSection } from "../../components/disclosure/DisclosureSection";
 import "./OperationsView.signal.css";
 import { AlertsFilter } from "./AlertsFilter";
 import { DeploymentHistory } from "./DeploymentHistory";
@@ -470,6 +471,10 @@ export function OperationsView({
       <header className="kbot-ops__head">
         <div className="kbot-ops__head-titles">
           <h2 className="kbot-ops__title">Operations</h2>
+          <p className="kbot-ops__pagesub">
+            Live status, kill switch, and deployment controls first. Scheduler,
+            notifications, journal, and live authorization stay under Advanced.
+          </p>
           <p className="kbot-ops__read-age" data-testid="ops-last-read-age">
             {lastSuccessAgeMs === null
               ? LAST_READ_NEVER_TEXT
@@ -727,56 +732,6 @@ export function OperationsView({
 
         <section
           className="kbot-ops__panel"
-          aria-label="Scheduler"
-          data-testid="ops-scheduler-panel"
-        >
-          <SchedulerPanel client={client} />
-        </section>
-
-        <section
-          className="kbot-ops__panel"
-          aria-label="Notifications"
-          data-testid="ops-notifications-panel"
-        >
-          <NotificationsPanel client={notifications} />
-        </section>
-
-        <section
-          className="kbot-ops__panel"
-          aria-label="Live authorization"
-          data-testid="ops-live-authorization-panel"
-        >
-          <LiveAuthorizationPanel client={client} />
-        </section>
-
-        <section
-          className="kbot-ops__panel"
-          aria-label="Unresolved orders"
-          data-testid="ops-unresolved-orders-panel"
-        >
-          <UnresolvedOrdersList client={client} />
-        </section>
-
-        <section
-          className="kbot-ops__panel"
-          aria-label="Journal"
-          data-testid="ops-journal-panel"
-        >
-          <JournalBrowsePanel client={client} />
-        </section>
-
-        <section
-          className="kbot-ops__panel"
-          aria-label="Deployment history"
-          data-testid="ops-deployment-history"
-        >
-          <div className="kbot-ops__scroll" data-testid="ops-history-scroll">
-            <DeploymentHistory client={client} />
-          </div>
-        </section>
-
-        <section
-          className="kbot-ops__panel"
           aria-label="Alerts"
           data-testid="ops-alerts-panel"
         >
@@ -870,7 +825,91 @@ export function OperationsView({
           <AlertsCsvExport alerts={view.alerts} />
         </section>
 
-        <AcknowledgedAlertsList client={client} />
+        <DisclosureSection
+          title="Unresolved orders"
+          summary="Orders awaiting reconcile — never blindly resubmitted."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={true}
+          storageKey="krellbot.disclosure.ops.unresolved"
+          data-testid="ops-unresolved-orders-panel"
+        >
+          <UnresolvedOrdersList client={client} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Scheduler"
+          summary="Optional OS hourly tick unit. Paper ticks only in this release."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={true}
+          storageKey="krellbot.disclosure.ops.scheduler"
+          data-testid="ops-scheduler-panel"
+        >
+          <SchedulerPanel client={client} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Notifications"
+          summary="Opt-in desktop or email alerts. Off until you save settings."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={false}
+          storageKey="krellbot.disclosure.ops.notifications"
+          data-testid="ops-notifications-panel"
+        >
+          <NotificationsPanel client={notifications} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Live authorization"
+          summary="Grant or revoke live venue authorization. Paper-only releases refuse grants."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={true}
+          storageKey="krellbot.disclosure.ops.live-auth"
+          data-testid="ops-live-authorization-panel"
+        >
+          <LiveAuthorizationPanel client={client} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Journal"
+          summary="Browse local journal records for diagnostics and export."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={false}
+          storageKey="krellbot.disclosure.ops.journal"
+          data-testid="ops-journal-panel"
+        >
+          <JournalBrowsePanel client={client} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Deployment history"
+          summary="Past deployment records for this workstation home."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={false}
+          storageKey="krellbot.disclosure.ops.history"
+          data-testid="ops-deployment-history"
+        >
+          <div className="kbot-ops__scroll" data-testid="ops-history-scroll">
+            <DeploymentHistory client={client} />
+          </div>
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Acknowledged alerts"
+          summary="Previously acknowledged alert rows for review."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={false}
+          storageKey="krellbot.disclosure.ops.ack-alerts"
+          data-testid="ops-ack-alerts-disclosure"
+        >
+          <AcknowledgedAlertsList client={client} />
+        </DisclosureSection>
       </div>
     </section>
   );

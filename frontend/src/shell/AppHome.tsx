@@ -1,6 +1,7 @@
 import { useRef, useState, type JSX } from "react";
 import type { VersionClient } from "../api/version";
 import { BrandMark } from "../components/brand/BrandMark";
+import { DisclosureSection } from "../components/disclosure/DisclosureSection";
 import { KeysOnboardingPanel } from "../features/keys/KeysOnboardingPanel";
 import {
   createKeysHttpClient,
@@ -78,16 +79,16 @@ const HOME_CARDS: ReadonlyArray<HomeCard> = [
 
 const ACTIVITY_ROWS: ReadonlyArray<{ title: string; detail: string }> = [
   {
-    title: "Author a strategy pack",
+    title: "1. Author a strategy",
     detail: "Create or paste rules, validate them, and save a draft locally.",
   },
   {
-    title: "Inspect decisions in Studio",
+    title: "2. Inspect in Studio",
     detail: "Open a saved pack as a graph before you paper-arm it.",
   },
   {
-    title: "Paper-arm and observe",
-    detail: "Run on this machine with simulated funds and review last runs.",
+    title: "3. Paper-arm and watch",
+    detail: "Use simulated funds on this machine; pause entries or disarm when needed.",
   },
 ];
 
@@ -211,6 +212,8 @@ export function AppHome({
           </h1>
           <p className="app-home__purpose">
             A clear view of your strategies, paper bots, and next decisions.
+            Start with paper on this machine — live trading stays unavailable
+            in this release.
           </p>
         </div>
         <button
@@ -221,7 +224,7 @@ export function AppHome({
             onNavigate("workstation");
           }}
         >
-          <span aria-hidden="true">+</span> New paper bot
+          Open paper workstation
         </button>
       </header>
 
@@ -387,10 +390,16 @@ export function AppHome({
           <section
             className="app-home__activity"
             aria-labelledby="app-home-works-title"
+            role="region"
           >
             <h2 className="app-home__section-title" id="app-home-works-title">
               What works here
             </h2>
+            <p className="app-home__section-lede">
+              Author and validate strategy packs, run research on your own
+              dataset, inspect graphs in Studio, then paper-arm and observe.
+              Nothing here places real orders.
+            </p>
             <ul className="app-home__activity-list">
               {ACTIVITY_ROWS.map((row) => (
                 <li key={row.title} className="app-home__activity-row">
@@ -400,13 +409,6 @@ export function AppHome({
                   </div>
                 </li>
               ))}
-            </ul>
-            <ul className="app-home__note-list app-home__note-list--compact">
-              <li>Creating, editing and validating your own strategy packs.</li>
-              <li>Reopening saved drafts and copying them as new drafts.</li>
-              <li>Research runs over a dataset you provide.</li>
-              <li>Graph editing for saved packs in Studio.</li>
-              <li>Paper status, last runs and stop controls.</li>
             </ul>
           </section>
         </div>
@@ -434,17 +436,71 @@ export function AppHome({
               {sessionLabel}
             </p>
             <p className="app-home__rail-copy">
-              Live trading stays unavailable in this paper-only release. Link a
-              trade-only Kraken or Coinbase key below when you are ready.
+              Live trading stays unavailable in this paper-only release.
             </p>
-            {!sessionPending && !sessionFailed && onIssueReconnect ? (
-              <div
-                className="app-home__reconnect"
-                data-testid="app-home-reconnect"
+            <div className="app-home__rail-links">
+              <button
+                type="button"
+                className="app-home__rail-link"
+                data-testid="app-home-rail-packs"
+                onClick={() => {
+                  onNavigate("packs");
+                }}
               >
+                Browse packs →
+              </button>
+              <button
+                type="button"
+                className="app-home__rail-link"
+                data-testid="app-home-rail-ops"
+                onClick={() => {
+                  onNavigate("operations");
+                }}
+              >
+                Open operations →
+              </button>
+            </div>
+          </section>
+
+          <DisclosureSection
+            title="Exchange keys"
+            summary="Optional trade-only key material for later live work. Storing a key does not enable live trading."
+            badge="Advanced"
+            badgeTone="advanced"
+            defaultOpen={true}
+            storageKey="krellbot.disclosure.home.keys"
+            bare
+            data-testid="app-home-keys-rail"
+          >
+            <div className="app-home__rail app-home__rail--emphasis app-home__rail--nested">
+              <KeysOnboardingPanel
+                client={keys}
+                venue="kraken"
+                enabled={!sessionPending && !sessionFailed}
+              />
+              <KeysOnboardingPanel
+                client={keys}
+                venue="coinbase"
+                enabled={!sessionPending && !sessionFailed}
+              />
+            </div>
+          </DisclosureSection>
+
+          {!sessionPending && !sessionFailed && onIssueReconnect ? (
+            <DisclosureSection
+              title="Reconnect another browser"
+              summary="Short-lived token or QR for a second browser on this machine."
+              badge="Advanced"
+              badgeTone="advanced"
+              defaultOpen={false}
+              storageKey="krellbot.disclosure.home.reconnect"
+              bare
+              data-testid="app-home-reconnect"
+            >
+              <div className="app-home__rail app-home__rail--nested">
                 <p className="app-home__rail-copy">
-                  Invite another browser on this machine with a short-lived
-                  token or QR. The one-time bootstrap stays spent.
+                  Invite another browser on this machine. The one-time bootstrap
+                  stays spent.
                 </p>
                 <button
                   type="button"
@@ -455,7 +511,9 @@ export function AppHome({
                     void issueReconnect();
                   }}
                 >
-                  {reconnectBusy ? "Creating reconnect code…" : "Show reconnect code →"}
+                  {reconnectBusy
+                    ? "Creating reconnect code…"
+                    : "Show reconnect code →"}
                 </button>
                 {reconnectError !== null ? (
                   <p
@@ -497,79 +555,23 @@ export function AppHome({
                   </div>
                 ) : null}
               </div>
-            ) : null}
-          </section>
+            </DisclosureSection>
+          ) : null}
 
-          <section
-            className="app-home__rail app-home__rail--emphasis"
-            aria-label="Exchange keys"
-            data-testid="app-home-keys-rail"
-          >
-            <KeysOnboardingPanel
-              client={keys}
-              venue="kraken"
-              enabled={!sessionPending && !sessionFailed}
-            />
-            <KeysOnboardingPanel
-              client={keys}
-              venue="coinbase"
-              enabled={!sessionPending && !sessionFailed}
-            />
-          </section>
-
-          <section
-            className="app-home__rail"
-            aria-labelledby="app-home-packs-rail-title"
-          >
-            <h2 className="app-home__rail-title" id="app-home-packs-rail-title">
-              Strategy packs
-            </h2>
-            <p className="app-home__rail-copy">
-              Browse installed and available packs from the Strategies view.
-            </p>
-            <button
-              type="button"
-              className="app-home__rail-link"
-              data-testid="app-home-rail-packs"
-              onClick={() => {
-                onNavigate("strategies");
-              }}
-            >
-              Explore your packs →
-            </button>
-          </section>
-
-          <section className="app-home__rail" aria-labelledby="app-home-ops-rail-title">
-            <h2 className="app-home__rail-title" id="app-home-ops-rail-title">
-              Operations
-            </h2>
-            <p className="app-home__note-copy">
-              Nothing here places real orders. When an area cannot reach the
-              local service it shows its own unavailable or error state instead
-              of example results. Navigation still works offline.
-            </p>
-            <button
-              type="button"
-              className="app-home__rail-link"
-              data-testid="app-home-rail-ops"
-              onClick={() => {
-                onNavigate("operations");
-              }}
-            >
-              See operations →
-            </button>
-          </section>
-
-          <section
-            className="app-home__rail"
-            aria-label="About this build"
+          <DisclosureSection
+            title="About this build"
+            summary="Version, channel, and signing honesty for this local preview."
+            badge="Advanced"
+            badgeTone="advanced"
+            defaultOpen={false}
+            storageKey="krellbot.disclosure.home.about"
+            bare
             data-testid="app-home-about-rail"
           >
-            <AboutPanel
-              client={versionClient}
-              enabled={!sessionPending}
-            />
-          </section>
+            <div className="app-home__rail app-home__rail--nested">
+              <AboutPanel client={versionClient} enabled={!sessionPending} />
+            </div>
+          </DisclosureSection>
         </aside>
       </div>
     </section>
