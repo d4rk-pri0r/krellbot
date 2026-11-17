@@ -47,7 +47,7 @@ Navigation destinations (`?view=`) stay stable. Capabilities relocated only via 
 | Armed fleet list + unresolved orders | `workstation` and `operations` | Essential |
 | Last paper runs + fills detail | `workstation` | Primary list; row expands detail |
 | Portfolio / equity history | `workstation` | Advanced |
-| Armed paper run records | `workstation` | Advanced (detail list; fleet is primary) |
+| Armed paper run records | `workstation` | Advanced (open by default; fleet is primary) |
 | Paper alerts (compact) | `workstation` | Essential |
 | Selection inspector | `workstation` aside | Contextual |
 | Strategy author / validate / library | `strategies` | Primary editor; Library toggle |

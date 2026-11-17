@@ -1110,7 +1110,7 @@ export function WorkstationShell({
                       summary="Per-run armed records for selection into the inspector."
                       badge="Advanced"
                       badgeTone="advanced"
-                      defaultOpen={false}
+                      defaultOpen={true}
                       storageKey="krellbot.disclosure.paper.armed-records"
                       data-testid="paper-armed-records-disclosure"
                     >
