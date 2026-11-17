@@ -57,6 +57,13 @@ outside the long-only DSL decision.
 "mode": { "kind": "grid", "levels": 5 }
 ```
 
+Built-in pack: `src/krellbot/packs/modes/mode-grid.json` (package resource
+`krellbot.packs.modes`). It is an ordinary schema_version 1 pack: last-bar
+long/flat with `highest` / `lowest` band edges, `mode.levels` as declarative
+metadata, and `risk.max_account_pct` for sizing. Honest limits versus a full
+exchange grid bot stay as above — long-only DSL until shorting is independently
+qualified; `levels` does not invent resting ladder orders on the venue.
+
 ### Rebalance (`kind: "rebalance"`)
 
 Requires:
@@ -96,4 +103,7 @@ data only; no hidden CLI scheduler).
 
 - Mode packs are presets / teaching shapes, not performance claims.
 - Grid is long-only DSL until shorting is independently qualified.
+- The built-in grid pack is **not** a full exchange grid bot (no short /
+  leverage / futures grids, no venue-native grid API, no hidden multi-order
+  ladder beyond the long-only DSL decision).
 - Do not present mode Research or fixture metrics as live market performance.
