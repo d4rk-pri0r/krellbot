@@ -26,6 +26,11 @@ import {
   createNotificationsHttpClient,
   type NotificationsClient,
 } from "./notificationsClient";
+import { HomeExportPanel } from "./HomeExportPanel";
+import {
+  createHomeExportHttpClient,
+  type HomeExportClient,
+} from "./homeExportClient";
 import { SchedulerPanel } from "./SchedulerPanel";
 import { UnresolvedOrdersList } from "./UnresolvedOrdersList";
 import { JournalBrowsePanel } from "./JournalBrowsePanel";
@@ -65,6 +70,8 @@ export type OperationsViewProps = {
   client: OperationsClient;
   /** Opt-in alert notification settings (M9.4). Defaults to HTTP client. */
   notificationsClient?: NotificationsClient;
+  /** Local home backup download (M16.5). Defaults to HTTP client. */
+  homeExportClient?: HomeExportClient;
 };
 
 function rowId(venue: string, pair: string): string {
@@ -249,12 +256,15 @@ function renderLiveBanner(live: OperationsViewModel["live"]): JSX.Element {
 export function OperationsView({
   client,
   notificationsClient,
+  homeExportClient,
 }: OperationsViewProps): JSX.Element {
   const defaultNotificationsClient = useMemo(
     () => createNotificationsHttpClient(),
     [],
   );
   const notifications = notificationsClient ?? defaultNotificationsClient;
+  const defaultHomeExportClient = useMemo(() => createHomeExportHttpClient(), []);
+  const homeExport = homeExportClient ?? defaultHomeExportClient;
   const [killReason, setKillReason] = useState<string>("");
   const killInFlight = useRef(false);
   const [killPending, setKillPending] = useState(false);
@@ -859,6 +869,18 @@ export function OperationsView({
           data-testid="ops-notifications-panel"
         >
           <NotificationsPanel client={notifications} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Home export"
+          summary="Download a local home backup archive. Store downtime does not block export."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={false}
+          storageKey="krellbot.disclosure.ops.home-export"
+          data-testid="ops-home-export-panel"
+        >
+          <HomeExportPanel client={homeExport} />
         </DisclosureSection>
 
         <DisclosureSection
