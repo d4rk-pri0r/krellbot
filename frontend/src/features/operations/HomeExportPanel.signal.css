@@ -1,0 +1,72 @@
+/*
+ * Home export panel — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ * Namespaced under `.kbot-ops__home-export`.
+ */
+
+.kbot-ops__home-export {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__home-export *,
+.kbot-ops__home-export *::before,
+.kbot-ops__home-export *::after {
+  box-sizing: border-box;
+}
+
+.kbot-ops__home-export .kbot-ops__home-export-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kbot-ops__home-export .kbot-ops__panel-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-ops__home-export .kbot-ops__home-export-helper,
+.kbot-ops__home-export .kbot-ops__home-export-feedback,
+.kbot-ops__home-export .kbot-ops__home-export-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 62ch;
+}
+
+.kbot-ops__home-export .kbot-ops__home-export-helper {
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops__home-export .kbot-ops__home-export-error {
+  color: var(--coral, #cc9689);
+}
+
+.kbot-ops__home-export .kbot-ops__home-export-feedback {
+  color: var(--sage, #b3dda8);
+}
+
+.kbot-ops__home-export .kbot-ops__home-export-button {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 6px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-ops__home-export .kbot-ops__home-export-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

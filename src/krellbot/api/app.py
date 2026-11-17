@@ -1657,6 +1657,70 @@ def create_app(
             headers={"Cache-Control": "no-store"},
         )
 
+    @app.post("/api/v1/home/export")
+    async def home_export(request: Request) -> Response:
+        """Create a local home backup archive and return it as a download.
+
+        Same state-change gate as ``POST /api/v1/commands`` (session +
+        CSRF + loopback Origin/Host). Uses ``storage.home_backup.create``
+        into a temporary path outside the data home so the archive never
+        nests inside itself. Billing/store status is never consulted —
+        export stays available when the store is down (product-direction).
+        Secrets already excluded by ``home_backup`` stay off the wire.
+        """
+
+        import tempfile
+
+        from krellbot.storage import home_backup
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        now = _app_now(s)
+        filename = f"krellbot-home-{now}.tar.gz"
+        try:
+            with tempfile.TemporaryDirectory(prefix="krellbot-home-export-") as tmp:
+                archive = Path(tmp) / filename
+                home_backup.create(s.home, archive, now=now)
+                payload = archive.read_bytes()
+        except home_backup.BackupError as exc:
+            code = getattr(exc, "code", "backup_refused")
+            if not isinstance(code, str) or not code:
+                code = "backup_refused"
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": code,
+                    "message": "home export refused",
+                },
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
+        except OSError:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "code": "export_failed",
+                    "message": "home export failed",
+                },
+                status_code=500,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        return Response(
+            content=payload,
+            media_type="application/gzip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+                "X-Krellbot-Home-Export": "1",
+            },
+        )
+
     @app.get("/api/v1/operations/deployments")
     async def operations_deployment_history(request: Request) -> Response:
         """Return the closed-shape deployment history rows (read-only).
