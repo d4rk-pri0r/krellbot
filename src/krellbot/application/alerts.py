@@ -16,6 +16,14 @@ Sources (all read-only):
      count and ``first_ts`` / ``last_ts``. A ``metadata_refusal`` tick
      must never be a silent skip: it surfaces as an unacknowledged
      Operations alert.
+  4. Scheduler / tick supervision (M16.3): durable ``service/last_error``
+     ⇒ ``tick_failure``; armed venues whose last journal tick is older
+     than ``doctor.TICK_STALE_SECONDS`` ⇒ ``scheduler_stale``.
+  5. Unresolved order aging (M16.3): operational ledger orders awaiting
+     reconcile whose age is at least ``UNRESOLVED_AGING_SECONDS`` ⇒
+     ``unresolved_order_aging``.
+  6. Restore fence (M16.3): kill switch engaged with the home-restore
+     reason ⇒ typed ``restore_fence`` (in addition to ``kill_switch``).
 
 Alerts are deduped, severity-sorted (critical first), and ordered by
 ``last_ts`` descending inside each severity band. Acknowledgements
@@ -35,6 +43,7 @@ from pathlib import Path
 
 from krellbot import paths as kb_paths
 from krellbot.application import live_gate
+from krellbot.doctor import TICK_STALE_SECONDS
 
 SCHEMA_VERSION = "1"
 ACK_FILE = "alerts-ack.json"
@@ -43,6 +52,16 @@ REASON_LIVE_REFUSED = "live_refused"
 REASON_STORE_REFUSED = "store_refused"
 INTENT_REFUSED_KEY = "intent_refused"
 METADATA_REFUSAL_KEY = "metadata_refusal"
+
+KIND_TICK_FAILURE = "tick_failure"
+KIND_SCHEDULER_STALE = "scheduler_stale"
+KIND_UNRESOLVED_ORDER_AGING = "unresolved_order_aging"
+KIND_RESTORE_FENCE = "restore_fence"
+
+# Unresolved orders older than this surface as operator-supervision alerts.
+UNRESOLVED_AGING_SECONDS = 3600
+
+RESTORE_FENCE_REASON_PREFIX = "home restored"
 
 SEVERITY_CRITICAL = "critical"
 SEVERITY_WARNING = "warning"
@@ -395,6 +414,130 @@ def _order(alerts: list[Alert]) -> list[Alert]:
     )
 
 
+def _collect_tick_failure(home: Path, *, now: int) -> list[Alert]:
+    """Surface a durable scheduler ``last_error`` as ``tick_failure``."""
+
+    from krellbot.service import supervise as kb_supervise
+
+    message = kb_supervise.get_last_error(home)
+    if message is None:
+        return []
+    code = message if len(message) <= 64 else message[:61] + "..."
+    return [
+        Alert(
+            id=_alert_id(KIND_TICK_FAILURE, code, None, None),
+            kind=KIND_TICK_FAILURE,
+            severity=SEVERITY_CRITICAL,
+            code=code,
+            venue=None,
+            pair=None,
+            count=1,
+            first_ts=now,
+            last_ts=now,
+            acknowledged=False,
+        )
+    ]
+
+
+def _collect_scheduler_stale(home: Path, *, now: int) -> list[Alert]:
+    """Warn when an armed venue's last tick is older than the stale threshold.
+
+    Uses the same journal scan as scheduler supervision
+    (``supervise.last_tick_ts``) and ``doctor.TICK_STALE_SECONDS``. A
+    venue that has never ticked is not treated as stale here — that is
+    a just-armed fleet state, not a missed scheduler wake.
+    """
+
+    from krellbot import config as kb_config
+    from krellbot.service import supervise as kb_supervise
+
+    try:
+        cfg = kb_config.load_config(home)
+    except (OSError, ValueError):
+        return []
+    venues = sorted({record.venue for record in cfg.armed})
+    out: list[Alert] = []
+    for venue in venues:
+        last = kb_supervise.last_tick_ts(home, venue)
+        if last is None:
+            continue
+        age = int(now) - int(last)
+        if age < int(TICK_STALE_SECONDS):
+            continue
+        out.append(
+            Alert(
+                id=_alert_id(KIND_SCHEDULER_STALE, "tick_stale", venue, None),
+                kind=KIND_SCHEDULER_STALE,
+                severity=SEVERITY_WARNING,
+                code="tick_stale",
+                venue=venue,
+                pair=None,
+                count=1,
+                first_ts=int(last),
+                last_ts=int(now),
+                acknowledged=False,
+            )
+        )
+    return out
+
+
+def _collect_unresolved_order_aging(home: Path, *, now: int) -> list[Alert]:
+    """Warn for each unresolved order whose age meets the aging threshold."""
+
+    from krellbot.application import operations as operations_view_app
+
+    rows = operations_view_app.list_unresolved_orders(home, now=now)
+    out: list[Alert] = []
+    for row in rows:
+        age = row.get("age_seconds")
+        if not isinstance(age, int) or age < UNRESOLVED_AGING_SECONDS:
+            continue
+        coid = row.get("client_order_id")
+        if not isinstance(coid, str) or not coid:
+            continue
+        out.append(
+            Alert(
+                id=_alert_id(KIND_UNRESOLVED_ORDER_AGING, coid, None, None),
+                kind=KIND_UNRESOLVED_ORDER_AGING,
+                severity=SEVERITY_WARNING,
+                code=coid,
+                venue=None,
+                pair=None,
+                count=1,
+                first_ts=int(now) - int(age),
+                last_ts=int(now),
+                acknowledged=False,
+            )
+        )
+    return out
+
+
+def _collect_restore_fence(home: Path, *, now: int) -> list[Alert]:
+    """Typed alert when the kill switch was engaged by a home restore fence."""
+
+    state = live_gate.kill_state(home)
+    if not state.engaged:
+        return []
+    reason = state.reason or ""
+    if not reason.startswith(RESTORE_FENCE_REASON_PREFIX):
+        return []
+    ts = state.engaged_at if state.engaged_at is not None else now
+    return [
+        Alert(
+            id=_alert_id(KIND_RESTORE_FENCE, "restore_fence_engaged", None, None),
+            kind=KIND_RESTORE_FENCE,
+            severity=SEVERITY_CRITICAL,
+            code="restore_fence_engaged",
+            venue=None,
+            pair=None,
+            count=1,
+            first_ts=ts,
+            last_ts=ts,
+            acknowledged=False,
+        )
+    ]
+
+
 def collect(home: Path, *, now: int) -> list[Alert]:
     """Collect alerts from every read-only source and return them in a
     stable order.
@@ -407,6 +550,10 @@ def collect(home: Path, *, now: int) -> list[Alert]:
       * ``<home>/journal/*.jsonl`` tick records with a refusal reason
         (``live_refused``, ``store_refused``, ``intent_refused``, or
         ``metadata_refusal``)
+      * scheduler ``last_error`` (``tick_failure``) and stale last-tick
+        gaps (``scheduler_stale``)
+      * aged unresolved orders (``unresolved_order_aging``)
+      * restore-fence kill reason (``restore_fence``)
 
     The function never creates any file. An empty home yields ``[]``
     and leaves the filesystem untouched.
@@ -414,8 +561,12 @@ def collect(home: Path, *, now: int) -> list[Alert]:
 
     alerts: list[Alert] = []
     alerts.extend(_collect_kill_switch(Path(home), now=now))
+    alerts.extend(_collect_restore_fence(Path(home), now=now))
     alerts.extend(_collect_needs_reconcile(Path(home)))
     alerts.extend(_collect_journal_refusals(Path(home)))
+    alerts.extend(_collect_tick_failure(Path(home), now=now))
+    alerts.extend(_collect_scheduler_stale(Path(home), now=now))
+    alerts.extend(_collect_unresolved_order_aging(Path(home), now=now))
     acks = _load_acks(Path(home))
     alerts = _apply_acks(alerts, acks)
     return _order(alerts)
@@ -454,8 +605,13 @@ def acknowledge(home: Path, alert_id: str, *, now: int) -> Alert:
 
 __all__ = [
     "ACK_FILE",
+    "KIND_RESTORE_FENCE",
+    "KIND_SCHEDULER_STALE",
+    "KIND_TICK_FAILURE",
+    "KIND_UNRESOLVED_ORDER_AGING",
     "SEVERITY_CRITICAL",
     "SEVERITY_WARNING",
+    "UNRESOLVED_AGING_SECONDS",
     "Alert",
     "acknowledge",
     "collect",
