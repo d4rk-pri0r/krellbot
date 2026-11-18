@@ -143,9 +143,5 @@ def test_no_cdn_references(built_dist: Path) -> None:
 def test_shell_promise_text_present(built_dist: Path) -> None:
     """Built artefacts keep the title marker and the Run-path CTA."""
     payload = "\n".join(path.read_text(encoding="utf-8") for path in _iter_built_files(built_dist))
-    assert SHELL_TITLE_MARKER in payload, (
-        f"expected {SHELL_TITLE_MARKER!r} in built artefacts under {built_dist}"
-    )
-    assert SHELL_RUN_CTA in payload, (
-        f"expected {SHELL_RUN_CTA!r} in built artefacts under {built_dist}"
-    )
+    assert SHELL_TITLE_MARKER in payload, f"expected {SHELL_TITLE_MARKER!r} in built artefacts under {built_dist}"
+    assert SHELL_RUN_CTA in payload, f"expected {SHELL_RUN_CTA!r} in built artefacts under {built_dist}"
