@@ -67,8 +67,8 @@ Do not start phase engineering until the owner merges the roadmap PR.
 | P4 | M23 | Distribution | 100 paying + a second revenue line > $1k/mo |
 
 Explicitly out of scope for these phases: hosting operator keys; more
-than one live venue before P4; paid ads for signals; personalized advice;
-CLI user features.
+than two qualified live venues (P4 ships Kraken + Coinbase; Binance stays
+paper); paid ads for signals; personalized advice; CLI user features.
 
 ## Preserved engineering requirements
 

@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type JSX } from "react";
+import {
+  QUALIFIED_LIVE_VENUES,
+  type QualifiedLiveVenue,
+} from "../../markets/qualifiedLiveVenues";
 import { getCsrf } from "../../session";
 import { summarizePreflightCode } from "./preflightCodeLabel";
 import "./LivePreflight.signal.css";
@@ -22,7 +26,11 @@ export type LivePreflightResult = {
 };
 
 type PreflightMode = "sandbox" | "live";
-type PreflightVenue = "kraken";
+type PreflightVenue = QualifiedLiveVenue;
+
+function isPreflightVenue(value: string): value is PreflightVenue {
+  return (QUALIFIED_LIVE_VENUES as readonly string[]).includes(value);
+}
 
 export function LivePreflight(): JSX.Element {
   const [venue, setVenue] = useState<PreflightVenue>("kraken");
@@ -41,9 +49,12 @@ export function LivePreflight(): JSX.Element {
     setPending(false);
   };
 
-  const handleVenueChange = (_event: ChangeEvent<HTMLSelectElement>): void => {
+  const handleVenueChange = (event: ChangeEvent<HTMLSelectElement>): void => {
     invalidate();
-    setVenue("kraken");
+    const next = event.target.value;
+    if (isPreflightVenue(next)) {
+      setVenue(next);
+    }
   };
 
   const handleRevisionChange = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -140,15 +151,21 @@ export function LivePreflight(): JSX.Element {
             value={venue}
             onChange={handleVenueChange}
           >
-            <option value="kraken">kraken</option>
+            {QUALIFIED_LIVE_VENUES.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
           </select>
         </label>
         <p
           className="kbot-feature__live-preflight-root__hint"
           data-testid="live-preflight-paper-only-venues"
         >
-          This paper-only release does not offer qualified Binance live. Use
-          paper arm for binance / BTCUSDT; live preflight stays Kraken-only.
+          Qualified live venues are kraken and coinbase (BTC-USD wave), still
+          behind live gates and this paper-only release. Binance is paper-only —
+          use paper arm for binance / BTCUSDT; do not claim qualified Binance
+          live.
         </p>
         <label
           className="kbot-feature__live-preflight-root__field"

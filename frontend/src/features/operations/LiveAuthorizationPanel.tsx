@@ -6,10 +6,19 @@ import type {
   OperationsClient,
 } from "./client";
 import {
+  COINBASE_BTC_USD_VENUE_SYMBOL,
+  COINBASE_WAVE_PAIR_OPTIONS,
+  coinbaseWavePairLabel,
+} from "../../markets/coinbaseBtcUsd";
+import {
   KRAKEN_BTC_USD_VENUE_SYMBOL,
   KRAKEN_WAVE_PAIR_OPTIONS,
   krakenWavePairLabel,
 } from "../../markets/krakenBtcUsd";
+import {
+  QUALIFIED_LIVE_VENUES,
+  type QualifiedLiveVenue,
+} from "../../markets/qualifiedLiveVenues";
 
 const PANEL_TITLE = "Live authorization";
 const LOADING_TEXT = "Loading live authorization…";
@@ -24,10 +33,36 @@ const GRANT_LABEL = "Grant authorization";
 const REVOKE_LABEL = "Revoke authorization";
 const PAPER_ONLY_HEADING = "Live authorization is disabled in this paper-only release.";
 const HELPER_TEXT =
-  "Authorizes one exact venue and pair until expiry. Replaces the CLI typed LIVE prompt. Grant the stored Kraken venue symbol XXBTZUSD for BTC/USD — not BTC/USD, BTCUSD, or XBTUSD.";
-const DEFAULT_VENUE = "kraken";
+  "Authorizes one exact venue and pair until expiry. Replaces the CLI typed LIVE prompt. For Kraken BTC/USD grant XXBTZUSD (not BTC/USD, BTCUSD, or XBTUSD). For Coinbase BTC/USD grant BTC-USD. Binance is paper-only and is not a live grant venue.";
+const DEFAULT_VENUE: QualifiedLiveVenue = "kraken";
 const DEFAULT_PAIR = KRAKEN_BTC_USD_VENUE_SYMBOL;
 const DEFAULT_HOURS = "24";
+
+function isQualifiedLiveVenue(value: string): value is QualifiedLiveVenue {
+  return (QUALIFIED_LIVE_VENUES as readonly string[]).includes(value);
+}
+
+function defaultPairForVenue(venue: QualifiedLiveVenue): string {
+  return venue === "coinbase" ? COINBASE_BTC_USD_VENUE_SYMBOL : KRAKEN_BTC_USD_VENUE_SYMBOL;
+}
+
+type LiveAuthPairOption = {
+  readonly venueSymbol: string;
+  readonly label: string;
+};
+
+function pairOptionsForVenue(venue: QualifiedLiveVenue): readonly LiveAuthPairOption[] {
+  if (venue === "coinbase") {
+    return COINBASE_WAVE_PAIR_OPTIONS.map((option) => ({
+      venueSymbol: option.venueSymbol,
+      label: coinbaseWavePairLabel(option.venueSymbol),
+    }));
+  }
+  return KRAKEN_WAVE_PAIR_OPTIONS.map((option) => ({
+    venueSymbol: option.venueSymbol,
+    label: krakenWavePairLabel(option.venueSymbol),
+  }));
+}
 
 export type LiveAuthorizationPanelProps = {
   client: OperationsClient;
@@ -56,7 +91,7 @@ export function LiveAuthorizationPanel({ client }: LiveAuthorizationPanelProps):
   const [view, setView] = useState<LiveAuthorizationView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [venue, setVenue] = useState(DEFAULT_VENUE);
+  const [venue, setVenue] = useState<QualifiedLiveVenue>(DEFAULT_VENUE);
   const [pair, setPair] = useState(DEFAULT_PAIR);
   const [hours, setHours] = useState(DEFAULT_HOURS);
   const [confirmation, setConfirmation] = useState("");
@@ -225,14 +260,26 @@ export function LiveAuthorizationPanel({ client }: LiveAuthorizationPanelProps):
               <label className="kbot-ops__live-auth-label" htmlFor="ops-live-auth-venue">
                 {VENUE_LABEL}
               </label>
-              <input
+              <select
                 id="ops-live-auth-venue"
                 data-testid="ops-live-auth-venue"
-                type="text"
                 value={venue}
                 disabled={controlsDisabled}
-                onChange={(event) => setVenue(event.target.value)}
-              />
+                onChange={(event) => {
+                  const next = event.target.value;
+                  if (!isQualifiedLiveVenue(next)) {
+                    return;
+                  }
+                  setVenue(next);
+                  setPair(defaultPairForVenue(next));
+                }}
+              >
+                {QUALIFIED_LIVE_VENUES.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="kbot-ops__live-auth-row">
               <label className="kbot-ops__live-auth-label" htmlFor="ops-live-auth-pair">
@@ -245,9 +292,9 @@ export function LiveAuthorizationPanel({ client }: LiveAuthorizationPanelProps):
                 disabled={controlsDisabled}
                 onChange={(event) => setPair(event.target.value)}
               >
-                {KRAKEN_WAVE_PAIR_OPTIONS.map((option) => (
+                {pairOptionsForVenue(venue).map((option) => (
                   <option key={option.venueSymbol} value={option.venueSymbol}>
-                    {krakenWavePairLabel(option.venueSymbol)}
+                    {option.label}
                   </option>
                 ))}
               </select>

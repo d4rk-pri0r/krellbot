@@ -64,8 +64,10 @@ paper+preflight path relies on:
 - `check_key() -> KeyPerms`
 
 Adapters live under `src/krellbot/venues/` (`kraken.py`, `coinbase.py`,
-`binance.py`). Qualified live remains owner-gated; agents keep
-`PAPER_ONLY_RELEASE` True.
+`binance.py`). Qualified live venues for the distribution product path are
+`kraken` and `coinbase` (see `docs/live.md`); `binance` stays paper-only.
+Qualified live remains owner-gated behind `PAPER_ONLY_RELEASE`; agents keep
+that flag True.
 
 The engine never reads a pack file as code. Indicators and stops are computed
 locally. The engine evaluates the last bar only and returns a single decision:

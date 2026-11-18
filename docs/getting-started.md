@@ -21,14 +21,19 @@ An API key is a password your exchange gives to a program. Krellbot uses it to a
 
 ## Turn trade on. Turn withdraw off.
 
-You need a Kraken account before a pack can place an order. You do not need one to read these docs or to install the client.
+You need an exchange account before a pack can place a **live** order. You do
+not need one to read these docs, install the client, or run **paper**.
 
-When you create the Kraken key:
+Qualified live venues for this distribution cut are **Kraken** and
+**Coinbase** (wave pair `BTC-USD`). Both stay behind the workstation live
+grant and the paper-only release rail until the owner flips
+`PAPER_ONLY_RELEASE`. Binance is paper-only — do not create a Binance key
+expecting qualified live.
+
+When you create a Kraken or Coinbase key:
 
 - Trade permission on.
-- Withdraw permission off.
-
-Coinbase is not ready. Do not make a Coinbase key for this client yet.
+- Withdraw / transfer permission off.
 
 ## Install the free client
 
