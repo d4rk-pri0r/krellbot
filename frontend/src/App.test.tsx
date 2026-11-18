@@ -199,9 +199,12 @@ async function runResearchToCompletion(): Promise<void> {
 }
 
 describe("App shell", () => {
-  it("renders the paper workstation heading", () => {
+  it("renders the beginner AppHome front door", () => {
     render(<App />);
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByText("Paper trading on this computer")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Start with a free paper strategy/i }),
+    ).toBeDefined();
   });
 
   it("renders the live-orders unavailable status", () => {
