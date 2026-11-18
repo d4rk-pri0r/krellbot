@@ -8,6 +8,11 @@ import {
   createKeysHttpClient,
   type KeysClient,
 } from "../features/keys/client";
+import { ReferralDisclosurePanel } from "../features/referral/ReferralDisclosurePanel";
+import {
+  createReferralHttpClient,
+  type ReferralClient,
+} from "../features/referral/client";
 import type { ReconnectIssue } from "../session";
 import { AboutPanel } from "./AboutPanel";
 import type { View } from "./Navigation";
@@ -97,6 +102,8 @@ type AppHomeProps = {
   onRecoverSession?: () => Promise<{ ok: boolean; error?: string }>;
   /** Injectable keys client; defaults to the loopback HTTP client. */
   keysClient?: KeysClient;
+  /** Injectable referral client; defaults to the loopback HTTP client. */
+  referralClient?: ReferralClient;
   /** Injectable version/about client; defaults to the loopback HTTP client. */
   versionClient?: VersionClient;
   /**
@@ -116,6 +123,7 @@ export function AppHome({
   sessionFailed = false,
   onRecoverSession,
   keysClient,
+  referralClient,
   versionClient,
   onIssueReconnect,
   onRedeemReconnect,
@@ -127,6 +135,11 @@ export function AppHome({
     fallbackKeysRef.current = createKeysHttpClient();
   }
   const keys = keysClient ?? fallbackKeysRef.current!;
+  const fallbackReferralRef = useRef<ReferralClient | null>(null);
+  if (fallbackReferralRef.current === null && referralClient === undefined) {
+    fallbackReferralRef.current = createReferralHttpClient();
+  }
+  const referral = referralClient ?? fallbackReferralRef.current!;
   const [reconnectOffer, setReconnectOffer] = useState<ReconnectIssue | null>(null);
   const [reconnectBusy, setReconnectBusy] = useState(false);
   const [reconnectError, setReconnectError] = useState<string | null>(null);
@@ -449,6 +462,24 @@ export function AppHome({
               </button>
             </div>
           </section>
+
+          <DisclosureSection
+            title="Exchange fee share / referral"
+            summary="Disclosed attribution when an operator creates or links an exchange account through a Krellbot referral path."
+            badge="Settings"
+            badgeTone="advanced"
+            defaultOpen={false}
+            storageKey="krellbot.disclosure.home.referral"
+            bare
+            data-testid="app-home-referral-rail"
+          >
+            <div className="app-home__rail app-home__rail--nested">
+              <ReferralDisclosurePanel
+                client={referral}
+                enabled={!sessionPending && !sessionFailed}
+              />
+            </div>
+          </DisclosureSection>
 
           <DisclosureSection
             title="Exchange keys"

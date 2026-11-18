@@ -40,6 +40,14 @@
   line-height: 1.45;
 }
 
+.kbot-packs-view__referral {
+  margin: 0;
+  max-width: 48rem;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .kbot-packs-view__sources {
   list-style: none;
   margin: 4px 0 0;

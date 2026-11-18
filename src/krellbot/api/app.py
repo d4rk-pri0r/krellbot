@@ -99,6 +99,7 @@ class _AppState:
     scheduler_write_root: Path | None = None  # defaults to Path.home()
     scheduler_executable: str | None = None  # defaults to sys.executable
     alert_notifier: object = None  # Notifier; tests inject FakeNotifier
+    referral_transport: object = None  # referral.Transport; tests inject FakeTransport
 
 
 def _app_now(s: _AppState) -> int:
@@ -1737,6 +1738,79 @@ def create_app(
         return JSONResponse(
             {**body, "ok": True, "code": "notifications_updated"},
             status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/referral")
+    async def referral_status_get(request: Request) -> Response:
+        """Return disclosed referral / fee-share status and local receipts (M23.1).
+
+        Same session gate as ``GET /api/v1/notifications`` (``_gate_get``).
+        Copy matches product-direction earn rule (1). Never carries
+        exchange credentials or license keys.
+        """
+
+        from krellbot import referral as kb_referral
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = kb_referral.status(s.home)
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/referral/attribute")
+    async def referral_attribute_post(request: Request) -> Response:
+        """Record local referral receipt and post to the server seam (M23.1).
+
+        Same state-change gate as ``POST /api/v1/commands``. Accepts
+        ``kind`` of ``exchange_signup`` or ``pack_purchase``. Tests inject
+        ``referral_transport`` on app state so CI never egresses.
+        """
+
+        from krellbot import referral as kb_referral
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        kind = payload.get("kind", "")
+        if not isinstance(kind, str):
+            kind = ""
+        venue = payload.get("venue", "")
+        if not isinstance(venue, str):
+            venue = ""
+        pack_id = payload.get("pack_id", "")
+        if not isinstance(pack_id, str):
+            pack_id = ""
+
+        # Explicit Settings/Packs attribution: use injected fake in tests,
+        # otherwise the real HTTPS seam. Redeem side-effects stay local-only
+        # unless a transport was injected (see activation redeem below).
+        transport = s.referral_transport
+        if transport is None:
+            transport = kb_referral.UrllibTransport()
+        outcome = kb_referral.attribute(
+            s.home,
+            kind=kind,
+            venue=venue,
+            pack_id=pack_id,
+            transport=transport,
+            now=_app_now(s),
+        )
+        status_code = 200 if outcome.ok else 400
+        return JSONResponse(
+            kb_referral.outcome_dict(outcome),
+            status_code=status_code,
             headers={"Cache-Control": "no-store"},
         )
 
@@ -3612,6 +3686,17 @@ def create_app(
             "message": outcome.message,
             "catalog_downloaded": outcome.catalog_downloaded,
         }
+        # Disclosed pack-purchase referral attribution (M23.1). Local
+        # receipt + injectable server seam; never includes the key.
+        if outcome.status in {"paid", "grace"}:
+            from krellbot import referral as kb_referral
+
+            kb_referral.attribute(
+                s.home,
+                kind="pack_purchase",
+                transport=s.referral_transport,
+                now=_app_now(s),
+            )
         return JSONResponse(body, status_code=200)
 
     return app
