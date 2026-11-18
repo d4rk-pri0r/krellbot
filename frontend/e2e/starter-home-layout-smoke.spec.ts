@@ -1,37 +1,44 @@
 /**
- * Visual regression smoke for Application Home cards and the starter
- * picker at 1440×900 (M7.6 / KRELL-SIGNAL-20261010).
+ * Visual regression smoke for Application Home first-viewport composition
+ * and the starter picker at 1440×900 (M7.6 / KRELL-SIGNAL-20261010 / M24).
  *
- * jsdom cannot measure layout, so M7.1 pinned the shipped CSS. This
- * Chromium smoke reads real getBoundingClientRect geometry from the
- * production bundle (screenshot-equivalent layout proof; same class as
- * ``alerts-search-touch.spec.ts``) and fails when the pre-fix
- * regressions return:
+ * Beginner home (M24.2): first viewport is hero + one sage CTA — peer
+ * destination cards live under Advanced “All areas” (collapsed by default).
+ * This Chromium smoke reads real getBoundingClientRect geometry from the
+ * production bundle and fails when:
  *
- *   - home card descriptions squeezed into ~51–77px columns
+ *   - the hero CTA is crushed or missing above the fold
+ *   - Advanced path cards (when expanded) squeeze descriptions into ~51–77px
  *   - starter titles stacked one letter per line
  *   - Use action crushed to ~26px
  *
  * No CSS mocks, no backend mocks: fresh guarded workstation per run.
+ * Do not assert geometry on collapsed Advanced cards (width 0 is expected).
  */
 import { test, expect } from "./journey-harness/journey-harness";
 import { clickNav } from "../journeys/helpers/journey-steps";
 
 const VIEWPORT = { width: 1440, height: 900 } as const;
 
-/** Floor above the pre-fix ~51–77px description columns. */
+/** Floor for the sage primary CTA in the hero. */
+const MIN_HOME_CTA_WIDTH_PX = 180;
+/** Floor above the pre-fix ~51–77px description columns (expanded Advanced). */
 const MIN_HOME_DETAIL_WIDTH_PX = 120;
 /** Floor above the pre-fix ~0px / letter-stack starter labels. */
 const MIN_STARTER_LABEL_WIDTH_PX = 80;
 /** Floor above the pre-fix ~26px Use button. */
 const MIN_USE_WIDTH_PX = 40;
 const MIN_USE_HEIGHT_PX = 34;
+/** Hero must stay a real first-viewport composition, not a stub. */
+const MIN_HERO_HEIGHT_PX = 80;
+const MAX_FIRST_VIEWPORT_BOTTOM_PX = 720;
 
 type Box = {
   width: number;
   height: number;
   top: number;
   left: number;
+  bottom: number;
 };
 
 type HomeCardGeometry = {
@@ -62,13 +69,37 @@ async function settle(page: import("@playwright/test").Page): Promise<void> {
   );
 }
 
+async function boxFor(
+  page: import("@playwright/test").Page,
+  testId: string,
+): Promise<Box> {
+  return page.evaluate((id) => {
+    const el = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+    if (!el) {
+      throw new Error(`missing [data-testid="${id}"]`);
+    }
+    const r = el.getBoundingClientRect();
+    return {
+      width: r.width,
+      height: r.height,
+      top: r.top,
+      left: r.left,
+      bottom: r.bottom,
+    };
+  }, testId);
+}
+
 async function measureHomeCards(
   page: import("@playwright/test").Page,
 ): Promise<HomeCardGeometry[]> {
   return page.evaluate(() => {
     const cards = Array.from(
       document.querySelectorAll<HTMLElement>('[data-testid^="app-home-card-"]'),
-    );
+    ).filter((card) => {
+      const rect = card.getBoundingClientRect();
+      // Skip collapsed Advanced content (zero laid-out size).
+      return rect.width > 0 && rect.height > 0;
+    });
     return cards.map((card) => {
       const detail = card.querySelector<HTMLElement>(".app-home__card-detail");
       const action = card.querySelector<HTMLElement>(".app-home__card-action");
@@ -85,12 +116,14 @@ async function measureHomeCards(
           height: cardRect.height,
           top: cardRect.top,
           left: cardRect.left,
+          bottom: cardRect.bottom,
         },
         detail: {
           width: detailRect.width,
           height: detailRect.height,
           top: detailRect.top,
           left: detailRect.left,
+          bottom: detailRect.bottom,
         },
         bodyChildCount: body.children.length,
         detailBelowAction: detailRect.top >= actionRect.bottom - 1,
@@ -132,6 +165,7 @@ async function measureStarterItem(
         height: labelRect.height,
         top: labelRect.top,
         left: labelRect.left,
+        bottom: labelRect.bottom,
         whiteSpace: labelStyle.whiteSpace,
         overflowWrap: labelStyle.overflowWrap,
         clientHeight: label.clientHeight,
@@ -142,6 +176,7 @@ async function measureStarterItem(
         height: actionRect.height,
         top: actionRect.top,
         left: actionRect.left,
+        bottom: actionRect.bottom,
         whiteSpace: actionStyle.whiteSpace,
         minHeight: actionStyle.minHeight,
       },
@@ -150,13 +185,14 @@ async function measureStarterItem(
         height: descriptionRect.height,
         top: descriptionRect.top,
         left: descriptionRect.left,
+        bottom: descriptionRect.bottom,
       },
       labelLeftOfAction: labelRect.right <= actionRect.left + 1,
     };
   });
 }
 
-test("home cards and starter picker stay readable at 1440×900", async ({
+test("home first-viewport and starter picker stay readable at 1440×900", async ({
   journey,
 }) => {
   const page = journey.page;
@@ -167,6 +203,53 @@ test("home cards and starter picker stay readable at 1440×900", async ({
 
   const home = page.getByTestId("app-home");
   await expect(home).toBeVisible();
+
+  // Beginner first viewport: hero + CTA (not the demoted Advanced card wall).
+  const first = page.getByTestId("app-home-first-viewport");
+  await expect(first).toBeVisible();
+  await expect(page.getByTestId("app-home-cta-paper")).toBeVisible();
+  await expect(page.getByTestId("app-home-cta-paper")).toContainText(
+    /Start with a free paper strategy/i,
+  );
+  await expect(page.getByTestId("app-home-availability")).toContainText(
+    /Live trading unavailable/i,
+  );
+
+  const hero = await boxFor(page, "app-home-first-viewport");
+  expect(hero.top, "home hero starts near the top").toBeGreaterThanOrEqual(0);
+  expect(
+    hero.bottom,
+    "home hero stays above the fold",
+  ).toBeLessThanOrEqual(MAX_FIRST_VIEWPORT_BOTTOM_PX);
+  expect(hero.height, "home hero is a real composition").toBeGreaterThan(
+    MIN_HERO_HEIGHT_PX,
+  );
+
+  const cta = await boxFor(page, "app-home-cta-paper");
+  expect(
+    cta.width,
+    "sage CTA has a readable width in the first viewport",
+  ).toBeGreaterThanOrEqual(MIN_HOME_CTA_WIDTH_PX);
+  expect(cta.height, "sage CTA is tappable").toBeGreaterThanOrEqual(34);
+
+  // Peer cards are intentionally collapsed under Advanced — pin that, then
+  // expand and measure real laid-out geometry (never assert width on hidden).
+  await expect(page.getByTestId("app-home-path")).toHaveAttribute(
+    "data-open",
+    "0",
+  );
+  const collapsedCards = await measureHomeCards(page);
+  expect(
+    collapsedCards.length,
+    "collapsed Advanced path must not expose laid-out cards",
+  ).toBe(0);
+
+  await page.getByTestId("app-home-path-toggle").click();
+  await expect(page.getByTestId("app-home-path")).toHaveAttribute(
+    "data-open",
+    "1",
+  );
+  await settle(page);
 
   const homeGeometry = await measureHomeCards(page);
   expect(homeGeometry.length).toBeGreaterThanOrEqual(5);
