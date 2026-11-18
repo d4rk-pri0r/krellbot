@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from krellbot.application import packs as packs_app
+from krellbot.application import user_policy
 from krellbot.application.paper import PaperService
 from krellbot.application.research import ResearchRequest, ResearchService
 from krellbot.application.strategy import (
@@ -27,6 +28,7 @@ from krellbot.mcp.errors import (
     invalid_request,
     key_read_refused,
     live_arm_refused,
+    policy_denied,
     unknown_tool,
 )
 
@@ -114,9 +116,25 @@ class McpTools:
         """Return the closed allowlist (no live / keys tools)."""
         return list(ALLOWED_TOOLS)
 
+    def policy_check(self, action: str) -> dict:
+        """Evaluate one closed operator-policy action (does not mutate).
+
+        Used by agents and tests to honor ``paper_arm`` / ``live`` /
+        ``key_export`` without expanding the tool allowlist. Hard MCP
+        refuse codes for live/key tool names stay unchanged (M22.1).
+        """
+        decision = user_policy.ensure_allowed(self._home, str(action))
+        body = decision.to_dict()
+        body["tool"] = "policy_check"
+        if not decision.ok:
+            body["effect"] = "refused"
+        return body
+
     def call(self, tool: str, **params: Any) -> dict:
         """Dispatch one tool; refusals return ``ok=False`` typed dicts (never raise)."""
         normalized = _normalize_tool(tool)
+        # Hard MCP boundaries keep their typed codes (M22.1). Operator
+        # policy further restricts allowlisted verbs such as paper_arm.
         if _is_key_tool(normalized):
             return key_read_refused(normalized).to_dict()
         if _is_live_tool(normalized):
@@ -159,6 +177,7 @@ class McpTools:
             "drafts": drafts,
             "packs": packs,
             "armed": armed,
+            "policy": user_policy.load_policy(self._home).to_dict(),
         }
 
     def _draft(
@@ -262,6 +281,13 @@ class McpTools:
         # MCP boundary refuse before any paper/live service call.
         if str(mode) != "paper":
             return live_arm_refused("paper_arm").to_dict()
+
+        decision = user_policy.ensure_allowed(self._home, user_policy.ACTION_PAPER_ARM)
+        if not decision.ok:
+            body = policy_denied("paper_arm", decision.message).to_dict()
+            body["action"] = user_policy.ACTION_PAPER_ARM
+            return body
+
         if not venue:
             return invalid_request("paper_arm", "paper_arm requires venue").to_dict()
 

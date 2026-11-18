@@ -75,6 +75,7 @@ CODE_STORED_MODE_NOT_PAPER = "stored_mode_not_paper"
 CODE_EXPORTED = "exported"
 CODE_OVER_RESERVED = reservations.CODE_OVER_RESERVED
 CODE_KILL_SWITCH_ENGAGED = "kill_switch_engaged"
+CODE_USER_POLICY_DENIED = "user_policy_denied"
 
 
 @dataclass(frozen=True)
@@ -970,6 +971,17 @@ class PaperService:
             return self._refusal(
                 CODE_INVALID_REQUEST,
                 "live arm is not handled by the paper service",
+                correlation_id,
+                rev_before,
+            )
+
+        from krellbot.application import user_policy as kb_user_policy
+
+        policy = kb_user_policy.ensure_allowed(self._home, kb_user_policy.ACTION_PAPER_ARM)
+        if not policy.ok:
+            return self._refusal(
+                CODE_USER_POLICY_DENIED,
+                policy.message,
                 correlation_id,
                 rev_before,
             )

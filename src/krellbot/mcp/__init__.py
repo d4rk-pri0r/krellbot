@@ -10,6 +10,7 @@ from __future__ import annotations
 from krellbot.mcp.errors import (
     CODE_KEY_READ_REFUSED,
     CODE_LIVE_ARM_REFUSED,
+    CODE_POLICY_DENIED,
     CODE_UNKNOWN_TOOL,
     McpToolRefusal,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "ALLOWED_TOOLS",
     "CODE_KEY_READ_REFUSED",
     "CODE_LIVE_ARM_REFUSED",
+    "CODE_POLICY_DENIED",
     "CODE_UNKNOWN_TOOL",
     "McpToolRefusal",
     "McpTools",
