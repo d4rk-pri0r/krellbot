@@ -2201,9 +2201,7 @@ def create_app(
             "paper_only_release": bool(paper_only),
             "release_policy": live.get("release_policy"),
             "release_policy_code": live.get("release_policy_code"),
-            "release_policy_message": (
-                release_policy.paper_only_message() if paper_only else None
-            ),
+            "release_policy_message": (release_policy.paper_only_message() if paper_only else None),
             # Distinct from paper-only: a grant file may exist and still
             # never make this surface claim the workstation is live-ready.
             "live_grant_active": bool(auth.get("active")),
