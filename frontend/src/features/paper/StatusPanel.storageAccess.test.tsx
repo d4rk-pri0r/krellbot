@@ -405,7 +405,7 @@ describe("StatusPanel optional storage access (browser-local memory is optional,
     await armFromForm();
 
     const unknown = await screen.findByTestId("paper-arm-unknown");
-    expect(unknown.textContent).toMatch(/Arm outcome unknown/i);
+    expect(unknown.textContent).toMatch(/Start paper run outcome unknown/i);
     expect(unknown.textContent).toMatch(/503/);
     expect(screen.queryByTestId("paper-status-pack")).toBeNull();
     await settle(160);

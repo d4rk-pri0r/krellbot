@@ -39,7 +39,7 @@ describe("ArmedRecordsList row actions", () => {
   it.each([false, true])("exposes native, labelled controls matching entries_paused=%s", async (paused) => {
     render(<ArmedRecordsList client={combinedClient([{ ...first, entries_paused: paused }])} />);
     const detail = await openRow();
-    for (const [action, label] of [["pause", "Pause entries on"], ["resume", "Resume entries on"], ["disarm", "Disarm"]] as const) {
+    for (const [action, label] of [["pause", "Pause new buys on"], ["resume", "Resume new buys on"], ["disarm", "Stop paper run"]] as const) {
       const control = button(action);
       expect(control.tagName).toBe("BUTTON");
       expect(control.type).toBe("button");
@@ -76,9 +76,9 @@ describe("ArmedRecordsList row actions", () => {
   });
 
   it.each([
-    ["pause", "pauseEntries", 0, "Pause entries", "Entries active"],
-    ["resume", "resumeEntries", 1, "Resume entries", "Entries paused"],
-    ["disarm", "disarm", 1, "Disarm", "Entries paused"],
+    ["pause", "pauseEntries", 0, "Pause new buys", "Entries active"],
+    ["resume", "resumeEntries", 1, "Resume new buys", "Entries paused"],
+    ["disarm", "disarm", 1, "Stop paper run", "Entries paused"],
   ] as const)("keeps the selected row and chip after %s throws, and allows retry", async (action, method, index, label, chip) => {
     const client = combinedClient();
     client[method].mockRejectedValueOnce(new Error("request failed: 503"));
@@ -111,7 +111,7 @@ describe("ArmedRecordsList row actions", () => {
     render(<ArmedRecordsList client={client} />);
     await openRow();
     fireEvent.click(button("pause"));
-    expect((await screen.findByRole("alert")).textContent).toBe("Pause entries failed: run not owned");
+    expect((await screen.findByRole("alert")).textContent).toBe("Pause new buys failed: run not owned");
     expect(client.listArmed).toHaveBeenCalledTimes(1);
     expect(screen.getAllByTestId("paper-armed-row")).toHaveLength(2);
   });
@@ -154,7 +154,7 @@ describe("ArmedRecordsList row actions", () => {
     expect(screen.queryByTestId("paper-armed-row-action-error")).toBeNull();
     expect(screen.getByTestId("paper-armed-detail").textContent).toContain(second.pair);
     fireEvent.keyDown(screen.getAllByTestId("paper-armed-row")[0], { key: "Enter" });
-    expect(screen.getByTestId("paper-armed-row-action-error").textContent).toBe("Pause entries failed: late offline");
+    expect(screen.getByTestId("paper-armed-row-action-error").textContent).toBe("Pause new buys failed: late offline");
   });
 
   it("distinguishes a confirmed action from a failed list readback", async () => {

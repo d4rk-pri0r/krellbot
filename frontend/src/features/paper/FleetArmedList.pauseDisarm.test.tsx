@@ -86,10 +86,10 @@ describe("FleetArmedList pause/disarm", () => {
       expect(button("resume").disabled).toBe(!paused);
       expect(button("disarm").disabled).toBe(false);
       expect(button("pause").getAttribute("aria-label")).toBe(
-        `Pause entries on ${first.venue} ${first.pair}`,
+        `Pause new buys on ${first.venue} ${first.pair}`,
       );
       expect(button("disarm").getAttribute("aria-label")).toBe(
-        `Disarm ${first.venue} ${first.pair}`,
+        `Stop paper run ${first.venue} ${first.pair}`,
       );
     },
   );
@@ -148,7 +148,7 @@ describe("FleetArmedList pause/disarm", () => {
     fireEvent.click(button("pause"));
     const error = await screen.findByTestId("fleet-armed-row-action-error");
     expect(error.getAttribute("role")).toBe("alert");
-    expect(error.textContent).toBe("Pause entries failed: request failed: 503");
+    expect(error.textContent).toBe("Pause new buys failed: request failed: 503");
     expect(chip.textContent).toBe("Entries active");
     expect(chip.className).toBe(previousClass);
     expect(client.listFleet).toHaveBeenCalledTimes(1);
@@ -168,7 +168,7 @@ describe("FleetArmedList pause/disarm", () => {
     });
     fireEvent.click(button("pause"));
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "Pause entries failed: run not owned",
+      "Pause new buys failed: run not owned",
     );
     expect(client.listFleet).toHaveBeenCalledTimes(1);
   });

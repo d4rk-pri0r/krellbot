@@ -53,7 +53,7 @@ const KILL_HELPER =
 const NO_ALERTS_TEXT =
   "No alerts. Refresh after a refusal or pause if you expect one.";
 const NO_DEPLOYMENTS_TEXT =
-  "No deployments. Arm a paper pack from the Workstation.";
+  "No deployments. Start a paper run from Run.";
 const PROMO_REVISION_ID = "deployment";
 const STALE_PREFIX = "Operations state may be stale";
 const STALE_SUFFIX =
@@ -359,7 +359,7 @@ export function OperationsView({
         // earlier server-confirmed refusal instead of guessing server state.
         setPauseErrors((prev) => ({
           ...prev,
-          [key]: `Pause entries failed: ${
+          [key]: `Pause new buys failed: ${
             err instanceof Error ? err.message : String(err)
           } — ${UNKNOWN_OUTCOME_TEXT}`,
         }));
@@ -677,7 +677,7 @@ export function OperationsView({
                             void handlePause(deployment.venue, deployment.pair);
                           }}
                         >
-                          Pause entries
+                          Pause new buys
                         </button>
                         <button
                           type="button"
@@ -687,7 +687,7 @@ export function OperationsView({
                             void handleResume(deployment.venue, deployment.pair);
                           }}
                         >
-                          Resume entries
+                          Resume new buys
                         </button>
                         <button
                           type="button"

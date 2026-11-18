@@ -1160,11 +1160,11 @@ export function WorkstationShell({
           <>
             <div className="kbot-shell__pagehead">
               <div className="kbot-shell__pagehead-copy">
-                <h1 className="kbot-shell__heading">Paper workstation</h1>
+                <h1 className="kbot-shell__heading">Run</h1>
                 <p className="kbot-shell__pagesub">
-                  Arm a pack with simulated funds, watch last runs, and pause
-                  entries or disarm. Pause entries stops new entries — it does
-                  not sell or disarm.
+                  Start a paper run with simulated funds, watch last runs, and
+                  pause or stop. Pause new buys (doesn&apos;t sell) — it does
+                  not stop the paper run.
                 </p>
               </div>
             </div>

@@ -190,9 +190,9 @@ describe("StatusPanel owned position persistence (backend stoppage + reopen)", (
 });
 
 function fireEventDisarm(): void {
-  // Click the panel's Disarm control (armed branch) via the DOM: the
+  // Click the panel's Stop paper run control (armed branch) via the DOM: the
   // disarm command is mocked to confirm, and the follow-up status read
   // is what flips the panel to the unarmed branch.
-  const button = screen.getByRole("button", { name: /disarm/i });
+  const button = screen.getByRole("button", { name: /^stop paper run$/i });
   button.click();
 }

@@ -180,11 +180,11 @@ function sameArmedMarket(
 }
 
 function commandLabel(command: CommandName | "arm"): string {
-  if (command === "pause") return "Pause";
+  if (command === "pause") return "Pause new buys";
   if (command === "resume") return "Resume";
-  if (command === "arm") return "Arm";
+  if (command === "arm") return "Start paper run";
   if (command === "raise_stop") return "Raise stop";
-  return "Disarm";
+  return "Stop paper run";
 }
 
 /**
@@ -486,9 +486,9 @@ function ArmForm({
         className="kbot-paper-status__arm"
         data-testid="paper-arm-unavailable"
       >
-        <h3 className="kbot-paper-status__arm-title">Arm a paper pack</h3>
+        <h3 className="kbot-paper-status__arm-title">Start a paper run</h3>
         <p className="kbot-paper-status__empty">
-          Arming controls unavailable
+          Start paper run controls unavailable
         </p>
       </div>
     );
@@ -545,7 +545,7 @@ function ArmForm({
 
   return (
     <div className="kbot-paper-status__arm" data-testid="paper-arm-form">
-      <h3 className="kbot-paper-status__arm-title">Arm a paper pack</h3>
+      <h3 className="kbot-paper-status__arm-title">Start a paper run</h3>
       {loadError !== null && drafts === null ? (
         <>
           <p
@@ -691,8 +691,8 @@ function ArmForm({
               role="alert"
               data-testid="paper-arm-unknown"
             >
-              Arm outcome unknown: {unknownOutcome}. Refresh status to see the
-              server state before retrying.
+              Start paper run outcome unknown: {unknownOutcome}. Refresh status
+              to see the server state before retrying.
             </p>
           ) : null}
           {errorMessage !== null ? (
@@ -1051,7 +1051,7 @@ export function StatusPanel({
     ) : null;
 
   const nextActionLabel = paperControls
-    ? "Next: pause entries, resume, or disarm"
+    ? "Next: pause new buys, resume, or stop"
     : state.status === null
       ? "Next: waiting for paper status"
       : state.unavailable
@@ -1178,7 +1178,9 @@ export function StatusPanel({
                   void handlePause();
                 }}
               >
-                {state.pending === "pause" ? "Pausing…" : "Pause entries"}
+                {state.pending === "pause"
+                  ? "Pausing…"
+                  : "Pause new buys (doesn't sell)"}
               </button>
               <button
                 type="button"
@@ -1188,7 +1190,7 @@ export function StatusPanel({
                   void handleResume();
                 }}
               >
-                {state.pending === "resume" ? "Resuming…" : "Resume entries"}
+                {state.pending === "resume" ? "Resuming…" : "Resume new buys"}
               </button>
               <button
                 type="button"
@@ -1198,7 +1200,7 @@ export function StatusPanel({
                   void handleDisarm();
                 }}
               >
-                {state.pending === "disarm" ? "Disarming…" : "Disarm"}
+                {state.pending === "disarm" ? "Stopping…" : "Stop paper run"}
               </button>
               <PaperStatusCsvExport status={state.status} />
               <button
@@ -1321,7 +1323,7 @@ export function StatusPanel({
               aria-label="Paper chart empty"
             >
               <p className="kbot-paper-chart__empty">
-                No journal series yet. Arm a paper pack to plot P&L from
+                No journal series yet. Start a paper run to plot P&L from
                 recorded fills — never fabricated.
               </p>
             </div>

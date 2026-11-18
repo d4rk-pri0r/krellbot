@@ -134,7 +134,7 @@ describe("workstation first-viewport empty vs fixture-seeded", () => {
 
     await screen.findByTestId("paper-status-entries");
     expect(screen.getByTestId("paper-status-next-action").textContent).toMatch(
-      /Next: pause entries, resume, or disarm/i,
+      /Next: pause new buys, resume, or stop/i,
     );
     expect(screen.queryByTestId("paper-chart-honest-empty")).toBeNull();
     await screen.findByTestId("paper-pnl-chart-svg");
@@ -142,7 +142,7 @@ describe("workstation first-viewport empty vs fixture-seeded", () => {
     expect(first.contains(screen.getByTestId("paper-pnl-position-chart"))).toBe(
       true,
     );
-    expect(screen.getByRole("button", { name: /pause entries/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /pause new buys/i })).toBeTruthy();
   });
 
   it("armed empty journal stays unavailable — never fabricates a flat series", async () => {

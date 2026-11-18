@@ -102,26 +102,26 @@ const VIEW_ACTIONS: ReadonlyArray<PaletteAction> = [
 const PAPER_ENTRY_ACTIONS: ReadonlyArray<PaletteAction> = [
   {
     id: "paper-arm",
-    label: "Arm paper pack…",
+    label: "Start paper run…",
     group: "Paper",
     kind: "paper-entry",
-    keywords: "arm paper pack fund workstation",
+    keywords: "arm paper pack fund start run workstation",
     view: "workstation",
   },
   {
     id: "paper-disarm",
-    label: "Disarm paper pack…",
+    label: "Stop paper run…",
     group: "Paper",
     kind: "paper-entry",
-    keywords: "disarm paper pack stop workstation",
+    keywords: "disarm paper pack stop run workstation",
     view: "workstation",
   },
   {
     id: "paper-pause",
-    label: "Pause paper entries…",
+    label: "Pause new buys…",
     group: "Paper",
     kind: "paper-entry",
-    keywords: "pause entries resume workstation",
+    keywords: "pause entries resume buys workstation",
     view: "workstation",
   },
 ];

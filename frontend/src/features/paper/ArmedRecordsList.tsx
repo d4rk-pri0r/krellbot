@@ -132,7 +132,12 @@ export function ArmedRecordsList({
       return;
     }
     const record = selected;
-    const label = kind === "pause" ? "Pause entries" : kind === "resume" ? "Resume entries" : "Disarm";
+    const label =
+      kind === "pause"
+        ? "Pause new buys"
+        : kind === "resume"
+          ? "Resume new buys"
+          : "Stop paper run";
     rowActionKey.current = rowKey(record);
     setRowActionKind(kind);
     setRowActionInFlight(true);
@@ -390,31 +395,31 @@ export function ArmedRecordsList({
                   type="button"
                   className="kbot-paper-armed__row-action"
                   data-testid="paper-armed-row-pause"
-                  aria-label={`Pause entries on ${selected.venue} ${selected.pair}`}
+                  aria-label={`Pause new buys on ${selected.venue} ${selected.pair}`}
                   disabled={rowActionInFlight || !selected || selected.entries_paused === true}
                   onClick={() => { void runRowAction("pause"); }}
                 >
-                  Pause entries
+                  Pause new buys
                 </button>
                 <button
                   type="button"
                   className="kbot-paper-armed__row-action"
                   data-testid="paper-armed-row-resume"
-                  aria-label={`Resume entries on ${selected.venue} ${selected.pair}`}
+                  aria-label={`Resume new buys on ${selected.venue} ${selected.pair}`}
                   disabled={rowActionInFlight || !selected || selected.entries_paused === false}
                   onClick={() => { void runRowAction("resume"); }}
                 >
-                  Resume entries
+                  Resume new buys
                 </button>
                 <button
                   type="button"
                   className="kbot-paper-armed__row-action"
                   data-testid="paper-armed-row-disarm"
-                  aria-label={`Disarm ${selected.venue} ${selected.pair}`}
+                  aria-label={`Stop paper run ${selected.venue} ${selected.pair}`}
                   disabled={rowActionInFlight}
                   onClick={() => { void runRowAction("disarm"); }}
                 >
-                  Disarm
+                  Stop paper run
                 </button>
                 {rowActionError !== null && rowActionKind !== null && rowActionKey.current === rowKey(selected) ? (
                   <p

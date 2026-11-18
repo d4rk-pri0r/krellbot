@@ -249,19 +249,19 @@ describe("WorkstationShell — studio view routing", () => {
     );
   });
 
-  it("clicking Studio mounts the canvas and hides the Paper workstation heading", () => {
+  it("clicking Studio mounts the canvas and hides the Run heading", () => {
     renderShell();
     clickShellNav("Strategy studio");
     expect(screen.getByTestId("react-flow-stub")).toBeDefined();
-    expect(screen.queryByText("Paper workstation")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Run" })).toBeNull();
   });
 
-  it("clicking Workstation after Studio shows the Paper workstation heading again", () => {
+  it("clicking Workstation after Studio shows the Run heading again", () => {
     renderShell();
     clickShellNav("Strategy studio");
-    expect(screen.queryByText("Paper workstation")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Run" })).toBeNull();
     clickShellNav("Run");
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
     expect(screen.queryByTestId("react-flow-stub")).toBeNull();
   });
 

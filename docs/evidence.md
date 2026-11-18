@@ -56,10 +56,10 @@ exchange credentials and no paid pack are required for paper.
    with no arguments, or `krellbot workstation --open`).
 2. Open **Strategies**, pick a free **starter** example that ships with
    the release, then **Save** and **Validate**.
-3. In the paper-arm form, set venue `kraken` and starting paper balance
-   `1000`, then **Arm**. This is simulated cash, not an exchange deposit.
+3. In the paper form, set venue `kraken` and starting paper balance
+   `1000`, then **Start paper run**. This is simulated cash, not an exchange deposit.
 4. Open **Operations**: the deployment must say `paper` and `active`, and
-   live trading must remain disabled. **Workstation** also shows the armed
+   live trading must remain disabled. **Run** also shows the armed
    paper row.
 5. Optional research pin: run a backtest on fixed local data from
    **Research**, then reopen the stored job — that is recorded evidence,

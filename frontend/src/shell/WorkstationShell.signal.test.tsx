@@ -128,7 +128,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     // The workstation operational panels stay unmounted behind Home.
     expect(screen.queryByTestId("paper-status-panel")).toBeNull();
     expect(
-      screen.queryByRole("heading", { name: "Paper workstation" }),
+      screen.queryByRole("heading", { name: "Run" }),
     ).toBeNull();
     expect(screen.queryByTestId("react-flow-stub")).toBeNull();
   });
@@ -159,7 +159,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
 
     clickShellNav("Workspace");
     fireEvent.click(screen.getByTestId("app-home-card-workstation"));
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
 
     clickShellNav("Workspace");
     fireEvent.click(screen.getByTestId("app-home-card-operations"));
@@ -214,7 +214,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
   it("switches views end-to-end without losing the shell", async () => {
     renderShell();
     clickShellNav("Run");
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
 
     clickShellNav("Strategies");
     expect(screen.getByTestId("library-toggle")).toBeDefined();
@@ -236,7 +236,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
 
     // Back to workstation, the paper heading returns.
     clickShellNav("Run");
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
   });
 
   it("keeps the Jobs drawer reachable from the header", async () => {
