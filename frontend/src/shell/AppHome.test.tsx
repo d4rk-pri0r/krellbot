@@ -168,14 +168,15 @@ describe("AppHome — application overview", () => {
     await screen.findByTestId("keys-onboarding-coinbase");
   });
 
-  it("offers a primary CTA into the free paper strategy path", () => {
+  it("offers a primary CTA that opens the home starter chooser", () => {
     const onNavigate = vi.fn();
     renderHome({ onNavigate });
     expect(screen.getByTestId("app-home-cta-paper").textContent).toMatch(
       /Start with a free paper strategy/i,
     );
     fireEvent.click(screen.getByTestId("app-home-cta-paper"));
-    expect(onNavigate).toHaveBeenCalledWith("strategies");
+    expect(screen.getByTestId("paper-starter-chooser")).toBeDefined();
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("offers a secondary text action for operators who already have a pack", () => {

@@ -106,7 +106,7 @@ describe("paper venue picker includes binance", () => {
     fireEvent.change(screen.getByTestId("paper-arm-venue"), {
       target: { value: "binance" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /arm paper pack/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start paper run/i }));
     await waitFor(() => {
       expect(client.arm).toHaveBeenCalled();
     });

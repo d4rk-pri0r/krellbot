@@ -20,6 +20,9 @@ import {
   type ReferralClient,
 } from "../features/referral/client";
 import type { ReconnectIssue } from "../session";
+import { PaperStarterChooser } from "../features/onboarding/PaperStarterChooser";
+import type { StrategyClient } from "../features/strategies/client";
+import type { StarterCatalogue } from "../features/strategies/StarterPicker.client";
 import { AboutPanel } from "./AboutPanel";
 import type { View } from "./Navigation";
 import { ReconnectQr } from "./ReconnectQr";
@@ -131,6 +134,12 @@ type AppHomeProps = {
    * Second browser / failed session: redeem a pasted reconnect token.
    */
   onRedeemReconnect?: (token: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Injectable strategy client for the home starter chooser. */
+  strategyClient?: StrategyClient;
+  /** Starter catalogue loader override (tests). */
+  loadStarters?: () => Promise<StarterCatalogue>;
+  /** After create+validate, hand off to Run with this revision selected. */
+  onStarterReady?: (ready: { revisionId: string; label: string }) => void;
 };
 
 export function AppHome({
@@ -144,7 +153,11 @@ export function AppHome({
   versionClient,
   onIssueReconnect,
   onRedeemReconnect,
+  strategyClient,
+  loadStarters,
+  onStarterReady,
 }: AppHomeProps): JSX.Element {
+  const [chooserOpen, setChooserOpen] = useState(false);
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const recoveryAttempt = useRef(0);
   const fallbackKeysRef = useRef<KeysClient | null>(null);
@@ -347,30 +360,53 @@ export function AppHome({
             ) : null}
           </div>
         </div>
-        <div className="app-home__cta-group">
-          <button
-            type="button"
-            className="app-home__cta"
-            data-testid="app-home-cta-paper"
-            onClick={() => {
-              // M24.3 mounts the home chooser; until then Strategies hosts starters.
-              onNavigate("strategies");
-            }}
-          >
-            Start with a free paper strategy
-          </button>
-          <button
-            type="button"
-            className="app-home__cta-secondary"
-            data-testid="app-home-cta-packs"
-            onClick={() => {
-              onNavigate("packs");
-            }}
-          >
-            I already have a pack
-          </button>
-        </div>
+        {chooserOpen ? null : (
+          <div className="app-home__cta-group">
+            <button
+              type="button"
+              className="app-home__cta"
+              data-testid="app-home-cta-paper"
+              onClick={() => {
+                setChooserOpen(true);
+              }}
+            >
+              Start with a free paper strategy
+            </button>
+            <button
+              type="button"
+              className="app-home__cta-secondary"
+              data-testid="app-home-cta-packs"
+              onClick={() => {
+                onNavigate("packs");
+              }}
+            >
+              I already have a pack
+            </button>
+          </div>
+        )}
       </header>
+
+      {chooserOpen ? (
+        <PaperStarterChooser
+          strategyClient={strategyClient}
+          loadStarters={loadStarters}
+          onDismiss={() => {
+            setChooserOpen(false);
+          }}
+          onBrowsePacks={() => {
+            setChooserOpen(false);
+            onNavigate("packs");
+          }}
+          onReady={(ready) => {
+            setChooserOpen(false);
+            if (onStarterReady) {
+              onStarterReady(ready);
+              return;
+            }
+            onNavigate("workstation");
+          }}
+        />
+      ) : null}
 
       <div className="app-home__layout">
         <div className="app-home__main">

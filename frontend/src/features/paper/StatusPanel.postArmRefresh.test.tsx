@@ -116,7 +116,7 @@ async function armFromForm(): Promise<void> {
   fireEvent.change(screen.getByTestId("paper-arm-balance"), {
     target: { value: "250.50" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /arm paper pack/i }));
+  fireEvent.click(screen.getByRole("button", { name: /start paper run/i }));
 }
 
 describe("StatusPanel post-arm automatic status refresh (Paper tab)", () => {
