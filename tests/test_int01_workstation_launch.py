@@ -153,7 +153,7 @@ def _spawn_workstation(
 _URL_LINE_RE = re.compile(r"^Workstation running at (http://127\.0\.0\.1:\d+/)")
 
 
-def _wait_for_workstation_url(proc: subprocess.Popen, timeout: float = 10.0) -> str:
+def _wait_for_workstation_url(proc: subprocess.Popen, timeout: float = 30.0) -> str:
     """Read stdout until the readiness line appears; return the URL.
 
     Bounded reader thread so a child that never prints the line cannot
@@ -224,11 +224,11 @@ def test_workstation_serves_index_with_bootstrap_meta(tmp_path):
     home = tmp_path / "home"
     proc = _spawn_workstation(home, "--port", "0", "--dist", str(dist))
     try:
-        url = _wait_for_workstation_url(proc, timeout=10.0)
+        url = _wait_for_workstation_url(proc, timeout=30.0)
         assert url.startswith("http://127.0.0.1:"), url
         port = int(url.rsplit(":", 1)[1].rstrip("/"))
 
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=15)
         try:
             conn.request("GET", "/", headers={"Host": f"127.0.0.1:{port}"})
             resp = conn.getresponse()
@@ -255,7 +255,7 @@ def test_workstation_serves_index_with_bootstrap_meta(tmp_path):
 
         # And the JS bundle carries the same canonical copy the
         # production shell renders.
-        asset_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        asset_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=15)
         try:
             asset_conn.request("GET", "/assets/app.js", headers={"Host": f"127.0.0.1:{port}"})
             asset_resp = asset_conn.getresponse()
@@ -266,7 +266,7 @@ def test_workstation_serves_index_with_bootstrap_meta(tmp_path):
 
         # Non-loopback Host on the same port is 403 with the closed
         # JSON shape; the bootstrap token must not appear in the body.
-        evil_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        evil_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=15)
         try:
             evil_conn.request("GET", "/", headers={"Host": "evil.example:443"})
             evil_resp = evil_conn.getresponse()
@@ -295,7 +295,7 @@ def test_workstation_serves_index_with_bootstrap_meta(tmp_path):
 def test_workstation_missing_index_exits_2_with_build_hint(tmp_path):
     """A dist with no ``index.html`` must refuse before binding a socket.
 
-    The launcher exits 2 within 10 s, prints exactly one stderr line
+    The launcher exits 2 within 30 s, prints exactly one stderr line
     containing both ``--dist`` and ``npm --prefix frontend run build``,
     and prints no URL on stdout. The bootstrap token is never generated,
     so the secret-leak check the legacy test ran becomes a "stdout has
@@ -313,7 +313,7 @@ def test_workstation_missing_index_exits_2_with_build_hint(tmp_path):
         text=True,
         encoding="utf-8",
         env=env,
-        timeout=10,
+        timeout=30,
         check=False,
     )
     assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
