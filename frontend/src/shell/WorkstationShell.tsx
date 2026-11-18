@@ -66,6 +66,7 @@ import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
 import "./StudioGraphAuthoring.signal.css";
 import { OperationsView } from "../features/operations/OperationsView";
 import { LiveArmConfirm } from "../features/deployments/LiveArmConfirm";
+import { LiveGuardrails } from "../features/deployments/LiveGuardrails";
 import { LivePreflight } from "../features/deployments/LivePreflight";
 import { createHttpClient as createOperationsHttpClient } from "../features/operations/client";
 import type {
@@ -1568,6 +1569,7 @@ export function WorkstationShell({
         {active === "deployments" ? (
           <>
             <LivePreflight />
+            <LiveGuardrails />
             <LiveArmConfirm />
           </>
         ) : null}

@@ -21,6 +21,7 @@ import { summarizeAlertCode } from "./alertCodeLabel";
 import type { AlertRow, OperationsClient, OperationsViewModel } from "./client";
 import { summarizeAlertSeverity } from "./alertSeverityLabel";
 import { LiveArmConfirm } from "../deployments/LiveArmConfirm";
+import { LiveGuardrails } from "../deployments/LiveGuardrails";
 import { LiveAuthorizationPanel } from "./LiveAuthorizationPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import {
@@ -923,6 +924,18 @@ export function OperationsView({
           data-testid="ops-live-authorization-panel"
         >
           <LiveAuthorizationPanel client={client} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Live guardrails"
+          summary="Active rails before arm: stop, max account pct, kill switch, grant expiry, paper-only."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={false}
+          storageKey="krellbot.disclosure.ops.live-guardrails"
+          data-testid="ops-live-guardrails-panel"
+        >
+          <LiveGuardrails />
         </DisclosureSection>
 
         <DisclosureSection

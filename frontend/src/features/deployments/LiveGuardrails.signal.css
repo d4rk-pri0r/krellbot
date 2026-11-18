@@ -1,0 +1,249 @@
+/*
+ * Live guardrails — Signal (KRELL-SIGNAL-20261010).
+ *
+ * Scoped under `.kbot-feature__live-guardrails-root`. Guardrail / refusal
+ * surfaces use caution/coral — never sage for blocking rails.
+ */
+
+.kbot-feature__live-guardrails-root {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-feature__live-guardrails-root *,
+.kbot-feature__live-guardrails-root *::before,
+.kbot-feature__live-guardrails-root *::after {
+  box-sizing: border-box;
+}
+
+.kbot-feature__live-guardrails-root h2,
+.kbot-feature__live-guardrails-root p {
+  margin: 0;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__refresh {
+  margin: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__refresh:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  align-items: end;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__field {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-width: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__input {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  background: var(--navy, #0e1c29);
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12.5px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 13px;
+  background: color-mix(in srgb, var(--coral, #cc9689) 78%, var(--navy, #0e1c29));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 70%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__result {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--panel, #18354a) 22%, var(--surface, #14222e));
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__result-line {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__live-guardrails-root
+  .kbot-feature__live-guardrails-root__result-line--ok {
+  color: var(--sage, #b3dda8);
+  font-weight: 700;
+}
+
+.kbot-feature__live-guardrails-root
+  .kbot-feature__live-guardrails-root__result-line--refused {
+  color: var(--danger-text, #e0a296);
+  font-weight: 700;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__rails {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__rail {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 40%, var(--surface, #14222e));
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__rail--blocking {
+  border-color: color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__rail-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__rail-state {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-feature__live-guardrails-root
+  .kbot-feature__live-guardrails-root__rail--blocking
+  .kbot-feature__live-guardrails-root__rail-state {
+  color: var(--danger-text, #e0a296);
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__rail-message {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__rail-code {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__error {
+  margin: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, var(--surface, #14222e));
+  border: 1px solid color-mix(in srgb, var(--coral, #cc9689) 45%, var(--line, #22465d));
+  border-radius: var(--radius-control, 7px);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--danger-text, #e0a296);
+  overflow-wrap: anywhere;
+}
+
+.kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__helper {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-feature__live-guardrails-root :is(button, input, select):focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (max-width: 640px) {
+  .kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__input,
+  .kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__action,
+  .kbot-feature__live-guardrails-root .kbot-feature__live-guardrails-root__refresh {
+    min-height: 44px;
+    width: 100%;
+  }
+}
