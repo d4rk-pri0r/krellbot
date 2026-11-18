@@ -73,6 +73,14 @@ function makeClient(): PacksClient {
     })),
     listCatalogue: vi.fn(async () => CATALOGUE),
     install: vi.fn(async () => ({ ok: false, code: "unused", message: "unused" })),
+    startCheckout: vi.fn(async (sku: string) => ({
+      schema_version: "1",
+      status: "paid" as const,
+      message: "checkout paid",
+      sku,
+      entitlements: [sku],
+      session_id: `cs_fake_${sku}`,
+    })),
     listCommunityIndex: vi.fn(async () => COMMUNITY),
     installCommunity: vi.fn(async () => ({
       ok: false,

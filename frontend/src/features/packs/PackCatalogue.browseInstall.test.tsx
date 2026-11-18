@@ -1,5 +1,5 @@
 /**
- * Catalogue browse + one-click install behaviour (M5.2).
+ * Catalogue browse + one-click install / paid checkout behaviour (M5.2 + M21.1).
  * Contract: KRELL-SIGNAL-20261010.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PackCatalogue } from "./PackCatalogue";
 import type {
   CatalogueDocument,
+  CheckoutResult,
   PackInstallResult,
   PackRow,
   PacksClient,
@@ -65,6 +66,14 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
     install: vi.fn(async (pack_id: string): Promise<PackInstallResult> => ({
       ok: true,
       pack: installedRow(pack_id, "1.0.0"),
+    })),
+    startCheckout: vi.fn(async (sku: string): Promise<CheckoutResult> => ({
+      schema_version: "1",
+      status: "paid",
+      message: "checkout paid",
+      sku,
+      entitlements: [sku],
+      session_id: `cs_fake_${sku}`,
     })),
     listCommunityIndex: vi.fn(async () => ({
       schema_version: "1",
@@ -131,20 +140,58 @@ describe("PackCatalogue browse and one-click install", () => {
     expect(onInstalled).toHaveBeenCalledOnce();
   });
 
-  it("surfaces activation_required for paid packs without entitlements", async () => {
-    const install = vi.fn(async (): Promise<PackInstallResult> => ({
-      ok: false,
-      code: "activation_required",
-      message: "paid pack requires activation",
+  it("paid checkout refreshes entitlements on success", async () => {
+    const onCheckoutPaid = vi.fn();
+    const startCheckout = vi.fn(async (): Promise<CheckoutResult> => ({
+      schema_version: "1",
+      status: "paid",
+      message: "checkout paid",
+      sku: "paid-triple-stack",
+      entitlements: ["paid-triple-stack"],
+      session_id: "cs_fake_paid-triple-stack",
     }));
-    render(<PackCatalogue client={makeClient({ install })} />);
+    render(
+      <PackCatalogue
+        client={makeClient({ startCheckout })}
+        onCheckoutPaid={onCheckoutPaid}
+      />,
+    );
     await screen.findByTestId("pack-catalogue-list");
-    fireEvent.click(screen.getByTestId("pack-catalogue-install-paid-triple-stack"));
+    expect(screen.queryByTestId("pack-catalogue-install-paid-triple-stack")).toBeNull();
+    fireEvent.click(screen.getByTestId("pack-catalogue-checkout-paid-triple-stack"));
     await waitFor(() => {
       expect(
-        screen.getByTestId("pack-catalogue-install-status-paid-triple-stack").textContent,
-      ).toMatch(/Activation required/);
+        screen.getByTestId("pack-catalogue-checkout-status-paid-triple-stack").textContent,
+      ).toMatch(/Entitled · entitlements refreshed/);
     });
+    expect(startCheckout).toHaveBeenCalledWith("paid-triple-stack");
+    expect(onCheckoutPaid).toHaveBeenCalledOnce();
+  });
+
+  it("failed checkout leaves a closed message without refreshing entitlements", async () => {
+    const onCheckoutPaid = vi.fn();
+    const startCheckout = vi.fn(async (): Promise<CheckoutResult> => ({
+      schema_version: "1",
+      status: "failed",
+      message: "checkout refused",
+      sku: "paid-triple-stack",
+      entitlements: [],
+      session_id: null,
+    }));
+    render(
+      <PackCatalogue
+        client={makeClient({ startCheckout })}
+        onCheckoutPaid={onCheckoutPaid}
+      />,
+    );
+    await screen.findByTestId("pack-catalogue-list");
+    fireEvent.click(screen.getByTestId("pack-catalogue-checkout-paid-triple-stack"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("pack-catalogue-checkout-status-paid-triple-stack").textContent,
+      ).toMatch(/Checkout refused.*Trading and export stay available/);
+    });
+    expect(onCheckoutPaid).not.toHaveBeenCalled();
   });
 
   it("shows a truthful catalogue failure instead of inventing rows", async () => {

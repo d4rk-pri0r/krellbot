@@ -41,6 +41,16 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
       message: "license not accepted",
       catalog_downloaded: false,
     }),
+    startCheckout: vi.fn().mockResolvedValue({
+      schema_version: "1",
+      status: "paid",
+      message: "checkout paid",
+      sku: "",
+      entitlements: [],
+      session_id: null,
+    }),
+    installCommunity: vi.fn(),
+    openCommunityPack: vi.fn(),
     ...overrides,
   } as PacksClient;
 }

@@ -506,11 +506,16 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
         )
     tier = entry.get("tier")
     if tier == "paid":
-        raise InstallRefused(
-            "activation_required",
-            f"paid pack {pack_id!r} requires activation redeem before install",
-        )
-    if tier != "free":
+        # Live checkout (M21.1) or activation redeem may have recorded a
+        # local SKU entitlement. Without it, refuse — never invent access.
+        from krellbot.application.checkout import has_entitlement
+
+        if not has_entitlement(home, pack_id):
+            raise InstallRefused(
+                "activation_required",
+                f"paid pack {pack_id!r} requires activation redeem before install",
+            )
+    elif tier != "free":
         raise InstallRefused(
             "pack_not_found",
             f"catalogue entry not installable for {pack_id!r}",
@@ -534,7 +539,7 @@ def install_from_catalogue(home: Path, pack_id: str) -> dict[str, Any]:
     marker: dict[str, Any] = {
         "schema_version": "1",
         "pack_id": safe_id,
-        "tier": "free",
+        "tier": "paid" if tier == "paid" else "free",
     }
     version = entry.get("version")
     if isinstance(version, str) and version:

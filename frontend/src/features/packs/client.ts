@@ -30,6 +30,18 @@ export type ActivationRedeemResult = {
   catalog_downloaded: boolean;
 };
 
+/** Closed outcome from ``POST /api/v1/checkout/start`` (fake processor in CI). */
+export type CheckoutStatus = "paid" | "failed" | "unreachable" | "refused";
+
+export type CheckoutResult = {
+  schema_version: string;
+  status: CheckoutStatus;
+  message: string;
+  sku: string;
+  entitlements: string[];
+  session_id: string | null;
+};
+
 export type CatalogueTier = "free" | "paid";
 
 export type CataloguePack = {
@@ -129,6 +141,8 @@ export type CommunityPackDocument = {
 export type PacksClient = PackLibraryClient & {
   listCatalogue(): Promise<CatalogueDocument>;
   install(pack_id: string): Promise<PackInstallResult>;
+  /** Start live checkout for a paid catalogue SKU; refreshes entitlements on paid. */
+  startCheckout(sku: string): Promise<CheckoutResult>;
   /** Browse the allow-listed community index (not the signed catalogue). */
   listCommunityIndex(): Promise<CommunityIndexDocument>;
   /** One-click install from the community index into ``packs/community/``. */
@@ -266,6 +280,52 @@ async function postRedeemActivation(key: string): Promise<ActivationRedeemResult
     );
   }
   return adaptRedeemResult(await response.json());
+}
+
+const CHECKOUT_STATUSES = new Set<CheckoutStatus>([
+  "paid",
+  "failed",
+  "unreachable",
+  "refused",
+]);
+
+function adaptCheckoutResult(raw: unknown): CheckoutResult {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  const statusRaw = typeof body.status === "string" ? body.status : "unreachable";
+  const status: CheckoutStatus = CHECKOUT_STATUSES.has(statusRaw as CheckoutStatus)
+    ? (statusRaw as CheckoutStatus)
+    : "unreachable";
+  const entitlementsRaw = Array.isArray(body.entitlements) ? body.entitlements : [];
+  const entitlements = entitlementsRaw.filter((item): item is string => typeof item === "string");
+  return {
+    schema_version:
+      typeof body.schema_version === "string" ? body.schema_version : "1",
+    status,
+    message:
+      typeof body.message === "string" ? body.message : "checkout unreachable",
+    sku: typeof body.sku === "string" ? body.sku : "",
+    entitlements,
+    session_id: typeof body.session_id === "string" ? body.session_id : null,
+  };
+}
+
+async function postStartCheckout(sku: string): Promise<CheckoutResult> {
+  const response = await fetch("/api/v1/checkout/start", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: JSON.stringify({ sku }),
+  });
+  if (!response.ok) {
+    throw new PackLibraryHttpError(
+      response.status,
+      `checkout start failed: ${response.status}`,
+    );
+  }
+  return adaptCheckoutResult(await response.json());
 }
 
 function adaptCommunityIndexPack(raw: Record<string, unknown>): CommunityIndexPack | null {
@@ -465,6 +525,9 @@ export function createHttpClient(): PacksClient {
     },
     install(pack_id: string): Promise<PackInstallResult> {
       return postInstall(pack_id);
+    },
+    startCheckout(sku: string): Promise<CheckoutResult> {
+      return postStartCheckout(sku);
     },
     listCommunityIndex(): Promise<CommunityIndexDocument> {
       return getCommunityIndex("/api/v1/community/index");

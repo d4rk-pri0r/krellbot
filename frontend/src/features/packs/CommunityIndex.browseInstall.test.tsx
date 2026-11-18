@@ -52,6 +52,14 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
       packs: [],
     })),
     install: vi.fn(async () => ({ ok: false, code: "unused", message: "unused" })),
+    startCheckout: vi.fn(async (sku: string) => ({
+      schema_version: "1",
+      status: "paid" as const,
+      message: "checkout paid",
+      sku,
+      entitlements: [sku],
+      session_id: `cs_fake_${sku}`,
+    })),
     listCommunityIndex: vi.fn(async () => INDEX),
     installCommunity: vi.fn(async (pack_id: string): Promise<CommunityInstallResult> => ({
       ok: true,

@@ -68,7 +68,11 @@ export function PacksView({ client }: PacksViewProps): JSX.Element {
             </li>
           </ul>
         </header>
-        <PackCatalogue client={client} onInstalled={handleInstalled} />
+        <PackCatalogue
+          client={client}
+          onInstalled={handleInstalled}
+          onCheckoutPaid={handleInstalled}
+        />
       </div>
       <CommunityIndex client={client} onInstalled={handleInstalled} />
       <PackLibrary key={libraryEpoch} client={client} />

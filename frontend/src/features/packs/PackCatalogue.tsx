@@ -8,6 +8,7 @@ import {
 import type {
   CatalogueDocument,
   CataloguePack,
+  CheckoutResult,
   PackInstallResult,
   PacksClient,
 } from "./client";
@@ -19,6 +20,8 @@ export type PackCatalogueProps = {
   client: PacksClient;
   /** Fired after a successful install so the library can refresh. */
   onInstalled?: (result: PackInstallResult) => void;
+  /** Fired after paid checkout so entitlements / library can refresh. */
+  onCheckoutPaid?: (result: CheckoutResult) => void;
 };
 
 function failureMessage(err: unknown): string {
@@ -28,18 +31,25 @@ function failureMessage(err: unknown): string {
   return "Catalogue failed";
 }
 
-function installLabel(tier: CataloguePack["tier"]): string {
-  return tier === "paid" ? "Install (paid)" : "Install";
+function checkoutFailureMessage(err: unknown): string {
+  if (err instanceof PackLibraryHttpError) {
+    return `Checkout failed (HTTP ${err.status})`;
+  }
+  return "Checkout failed";
 }
 
-export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.Element {
+export function PackCatalogue({
+  client,
+  onInstalled,
+  onCheckoutPaid,
+}: PackCatalogueProps): JSX.Element {
   const [document, setDocument] = useState<CatalogueDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [installingId, setInstallingId] = useState<string | null>(null);
-  const [installFeedback, setInstallFeedback] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rowFeedback, setRowFeedback] = useState<Record<string, string>>({});
   const requestSeq = useRef(0);
-  const installSeq = useRef(0);
+  const actionSeq = useRef(0);
 
   const load = useCallback((): void => {
     const seq = (requestSeq.current += 1);
@@ -69,9 +79,9 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
 
   const handleInstall = useCallback(
     (pack: CataloguePack): void => {
-      const seq = (installSeq.current += 1);
-      setInstallingId(pack.id);
-      setInstallFeedback((prev) => {
+      const seq = (actionSeq.current += 1);
+      setBusyId(pack.id);
+      setRowFeedback((prev) => {
         const next = { ...prev };
         delete next[pack.id];
         return next;
@@ -79,11 +89,11 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
       client
         .install(pack.id)
         .then((result) => {
-          if (seq !== installSeq.current) return;
+          if (seq !== actionSeq.current) return;
           if (result.ok) {
             const bucket = result.pack?.bucket ?? "download_pending";
             const version = result.pack?.version ?? pack.version ?? "—";
-            setInstallFeedback((prev) => ({
+            setRowFeedback((prev) => ({
               ...prev,
               [pack.id]: `Installed · ${bucket} · ${version}`,
             }));
@@ -94,25 +104,75 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
             result.code === "activation_required"
               ? "Activation required for paid packs."
               : (result.message ?? "Install refused");
-          setInstallFeedback((prev) => ({
+          setRowFeedback((prev) => ({
             ...prev,
             [pack.id]: detail,
           }));
         })
         .catch((err: unknown) => {
-          if (seq !== installSeq.current) return;
-          setInstallFeedback((prev) => ({
+          if (seq !== actionSeq.current) return;
+          setRowFeedback((prev) => ({
             ...prev,
             [pack.id]: failureMessage(err),
           }));
         })
         .finally(() => {
-          if (seq === installSeq.current) {
-            setInstallingId(null);
+          if (seq === actionSeq.current) {
+            setBusyId(null);
           }
         });
     },
     [client, onInstalled],
+  );
+
+  const handleCheckout = useCallback(
+    (pack: CataloguePack): void => {
+      const seq = (actionSeq.current += 1);
+      setBusyId(pack.id);
+      setRowFeedback((prev) => {
+        const next = { ...prev };
+        delete next[pack.id];
+        return next;
+      });
+      client
+        .startCheckout(pack.id)
+        .then((result) => {
+          if (seq !== actionSeq.current) return;
+          if (result.status === "paid") {
+            setRowFeedback((prev) => ({
+              ...prev,
+              [pack.id]: "Entitled · entitlements refreshed",
+            }));
+            onCheckoutPaid?.(result);
+            return;
+          }
+          const detail =
+            result.status === "failed"
+              ? "Checkout refused. Trading and export stay available."
+              : result.status === "refused"
+                ? result.message === "sku not paid"
+                  ? "Checkout is only for paid catalogue SKUs."
+                  : "Checkout refused."
+                : "Checkout unreachable. Trading and export stay available.";
+          setRowFeedback((prev) => ({
+            ...prev,
+            [pack.id]: detail,
+          }));
+        })
+        .catch((err: unknown) => {
+          if (seq !== actionSeq.current) return;
+          setRowFeedback((prev) => ({
+            ...prev,
+            [pack.id]: checkoutFailureMessage(err),
+          }));
+        })
+        .finally(() => {
+          if (seq === actionSeq.current) {
+            setBusyId(null);
+          }
+        });
+    },
+    [client, onCheckoutPaid],
   );
 
   const packs = document?.packs ?? [];
@@ -147,8 +207,9 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
       </p>
       <p className="kbot-pack-catalogue__helper" data-testid="pack-catalogue-honesty">
         {PACK_SOURCES.signed_catalogue.honesty} One-click install queues a free
-        pack into the local library (bucket and version shown below). This lane
-        is not the community index and not starter examples.
+        pack into the local library. Paid SKUs use Checkout to start a local
+        entitlement (fake processor in CI). This lane is not the community
+        index and not starter examples.
       </p>
       {document !== null ? (
         <p className="kbot-pack-catalogue__meta" data-testid="pack-catalogue-version">
@@ -173,11 +234,13 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
         ) : (
           <ul className="kbot-pack-catalogue__list" data-testid="pack-catalogue-list">
             {packs.map((pack) => {
-              const busy = installingId === pack.id;
-              const feedback = installFeedback[pack.id];
+              const busy = busyId === pack.id;
+              const feedback = rowFeedback[pack.id];
               const isError =
                 feedback !== undefined &&
-                !feedback.startsWith("Installed");
+                !feedback.startsWith("Installed") &&
+                !feedback.startsWith("Entitled");
+              const isPaid = pack.tier === "paid";
               return (
                 <li
                   key={pack.id}
@@ -194,7 +257,7 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
                     <span
                       className={
                         "kbot-pack-catalogue__tier" +
-                        (pack.tier === "paid" ? " kbot-pack-catalogue__tier--paid" : "")
+                        (isPaid ? " kbot-pack-catalogue__tier--paid" : "")
                       }
                       data-testid={`pack-catalogue-tier-${pack.id}`}
                     >
@@ -219,19 +282,35 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
                     </div>
                   </dl>
                   <div className="kbot-pack-catalogue__actions">
-                    <button
-                      type="button"
-                      className="kbot-pack-catalogue__install"
-                      data-testid={`pack-catalogue-install-${pack.id}`}
-                      disabled={busy}
-                      aria-disabled={busy}
-                      aria-busy={busy}
-                      onClick={() => {
-                        handleInstall(pack);
-                      }}
-                    >
-                      {busy ? "Installing…" : installLabel(pack.tier)}
-                    </button>
+                    {isPaid ? (
+                      <button
+                        type="button"
+                        className="kbot-pack-catalogue__checkout"
+                        data-testid={`pack-catalogue-checkout-${pack.id}`}
+                        disabled={busy}
+                        aria-disabled={busy}
+                        aria-busy={busy}
+                        onClick={() => {
+                          handleCheckout(pack);
+                        }}
+                      >
+                        {busy ? "Checking out…" : "Checkout"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="kbot-pack-catalogue__install"
+                        data-testid={`pack-catalogue-install-${pack.id}`}
+                        disabled={busy}
+                        aria-disabled={busy}
+                        aria-busy={busy}
+                        onClick={() => {
+                          handleInstall(pack);
+                        }}
+                      >
+                        {busy ? "Installing…" : "Install"}
+                      </button>
+                    )}
                     {feedback ? (
                       <p
                         className={
@@ -240,7 +319,11 @@ export function PackCatalogue({ client, onInstalled }: PackCatalogueProps): JSX.
                             : "kbot-pack-catalogue__status"
                         }
                         role={isError ? "alert" : "status"}
-                        data-testid={`pack-catalogue-install-status-${pack.id}`}
+                        data-testid={
+                          isPaid
+                            ? `pack-catalogue-checkout-status-${pack.id}`
+                            : `pack-catalogue-install-status-${pack.id}`
+                        }
                       >
                         {feedback}
                       </p>
