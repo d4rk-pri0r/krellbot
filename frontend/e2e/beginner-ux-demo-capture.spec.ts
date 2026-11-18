@@ -1,15 +1,14 @@
 /**
  * Ship-feel demo screenshots for beginner-default UX (M24 / KRE-194).
- * Writes PNGs to BEGINNER_UX_DEMO_DIR (store media path).
+ * Opt-in only: set BEGINNER_UX_DEMO_DIR to a writable path. Skipped in CI
+ * so the default e2e suite never writes to agent-store paths.
  */
 import { test, expect } from "./journey-harness/journey-harness";
 import { clickNav } from "../journeys/helpers/journey-steps";
 import path from "node:path";
 import fs from "node:fs";
 
-const OUT =
-  process.env.BEGINNER_UX_DEMO_DIR ||
-  "/cursor/stores/bc-71c34276-af8e-4d34-9ec8-b481a6deff3a/media/beginner-ux-demo";
+const OUT = process.env.BEGINNER_UX_DEMO_DIR?.trim() || "";
 
 const DESKTOP = { width: 1440, height: 900 } as const;
 const MOBILE = { width: 390, height: 844 } as const;
@@ -33,6 +32,10 @@ async function shot(
 }
 
 test("capture beginner UX ship-feel demo screenshots", async ({ journey }) => {
+  test.skip(
+    !OUT,
+    "set BEGINNER_UX_DEMO_DIR to a writable directory to capture demos",
+  );
   const page = journey.page;
   await page.setViewportSize(DESKTOP);
   await page.goto(journey.workstation.baseURL);
