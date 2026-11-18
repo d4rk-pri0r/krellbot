@@ -110,40 +110,57 @@ def _make_built_dist(dist: Path) -> Path:
     return dist
 
 
-def _fetch_linux_installer(*, timeout: float = 30.0) -> str:
-    """Download the live POSIX installer script. Fail loudly on any error."""
+def _fetch_linux_installer(*, timeout: float = 30.0, attempts: int = 3) -> str:
+    """Download the live POSIX installer script. Fail loudly on any error.
+
+    Retries transient SSL / network timeouts (seen on Windows CI under load)
+    with short exponential backoff. Still fail-loud after the last attempt so
+    a broken cloud wrapper cannot hide behind a single flake.
+    """
 
     req = urllib.request.Request(
         INSTALL_URL,
         headers={"User-Agent": "krellbot-ci-installer-wrapper-check/1.0"},
         method="GET",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-            charset = "utf-8"
-            ctype = resp.headers.get_content_charset()
-            if ctype:
-                charset = ctype
-    except urllib.error.HTTPError as exc:
-        pytest.fail(f"cloud installer fetch failed loudly: HTTP {exc.code} from {INSTALL_URL}: {exc.reason}")
-    except urllib.error.URLError as exc:
-        pytest.fail(f"cloud installer fetch failed loudly: could not reach {INSTALL_URL}: {exc.reason}")
-    except TimeoutError:
-        pytest.fail(f"cloud installer fetch failed loudly: timed out fetching {INSTALL_URL}")
+    last_error = ""
+    for attempt in range(1, max(attempts, 1) + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+                charset = "utf-8"
+                ctype = resp.headers.get_content_charset()
+                if ctype:
+                    charset = ctype
+        except urllib.error.HTTPError as exc:
+            pytest.fail(f"cloud installer fetch failed loudly: HTTP {exc.code} from {INSTALL_URL}: {exc.reason}")
+        except urllib.error.URLError as exc:
+            last_error = f"could not reach {INSTALL_URL}: {exc.reason}"
+            if attempt >= attempts:
+                pytest.fail(f"cloud installer fetch failed loudly after {attempts} attempts: {last_error}")
+            time.sleep(min(2 ** (attempt - 1), 4))
+            continue
+        except TimeoutError:
+            last_error = f"timed out fetching {INSTALL_URL}"
+            if attempt >= attempts:
+                pytest.fail(f"cloud installer fetch failed loudly after {attempts} attempts: {last_error}")
+            time.sleep(min(2 ** (attempt - 1), 4))
+            continue
 
-    if not raw:
-        pytest.fail(f"cloud installer fetch failed loudly: empty body from {INSTALL_URL}")
-    try:
-        text = raw.decode(charset)
-    except UnicodeDecodeError as exc:
-        pytest.fail(f"cloud installer fetch failed loudly: non-text body from {INSTALL_URL}: {exc}")
-    if "WRAPPER_EOF" not in text and "set --" not in text:
-        pytest.fail(
-            "cloud installer fetch failed loudly: response is not a recognizable "
-            f"POSIX installer wrapper script (url={INSTALL_URL}, bytes={len(raw)})"
-        )
-    return text
+        if not raw:
+            pytest.fail(f"cloud installer fetch failed loudly: empty body from {INSTALL_URL}")
+        try:
+            text = raw.decode(charset)
+        except UnicodeDecodeError as exc:
+            pytest.fail(f"cloud installer fetch failed loudly: non-text body from {INSTALL_URL}: {exc}")
+        if "WRAPPER_EOF" not in text and "set --" not in text:
+            pytest.fail(
+                "cloud installer fetch failed loudly: response is not a recognizable "
+                f"POSIX installer wrapper script (url={INSTALL_URL}, bytes={len(raw)})"
+            )
+        return text
+
+    pytest.fail(f"cloud installer fetch failed loudly after {attempts} attempts: {last_error}")
 
 
 def _load_installer_source() -> tuple[str, str]:
@@ -455,3 +472,46 @@ def test_pinned_wrapper_fixture_is_engine_compatible() -> None:
     assert "sk-" not in body
     assert "/home/" not in body
     assert "%%KRELLBOT_VERSION%%" in body
+
+
+def test_installer_fetch_retries_transient_url_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Transient URLError/TimeoutError retries, then returns a valid body."""
+
+    calls = {"n": 0}
+    body = b"#!/bin/sh\n# WRAPPER_EOF marker\nset -- ui --open\n"
+
+    class _Resp:
+        headers = type("H", (), {"get_content_charset": staticmethod(lambda: "utf-8")})()
+
+        def read(self) -> bytes:
+            return body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def _flaky_urlopen(req: object, timeout: float = 0) -> _Resp:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise urllib.error.URLError("timed out")
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", _flaky_urlopen)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    text = _fetch_linux_installer(attempts=3, timeout=1.0)
+    assert "set --" in text
+    assert calls["n"] == 3
+
+
+def test_installer_fetch_fails_loud_after_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exhausted retries still fail loud so a dead cloud edge cannot hide."""
+
+    def _always_timeout(req: object, timeout: float = 0) -> None:
+        raise TimeoutError
+
+    monkeypatch.setattr(urllib.request, "urlopen", _always_timeout)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    with pytest.raises(pytest.fail.Exception, match="after 3 attempts"):
+        _fetch_linux_installer(attempts=3, timeout=1.0)
