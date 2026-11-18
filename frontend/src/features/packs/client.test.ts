@@ -284,6 +284,68 @@ describe("packs client startCheckout", () => {
   });
 });
 
+describe("packs client requestRefund", () => {
+  it("POSTs /api/v1/checkout/refund with credentials, CSRF, and sku body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        status: "refunded",
+        message: "refund completed",
+        sku: "paid-launch-dca",
+        entitlements: [],
+        refund_id: "re_fake_paid-launch-dca",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const csrfMock = vi
+      .spyOn(await import("../../session"), "getCsrf")
+      .mockReturnValue("csrf-refund-1");
+    try {
+      const result = await createHttpClient().requestRefund("paid-launch-dca");
+      expect(result).toEqual({
+        schema_version: "1",
+        status: "refunded",
+        message: "refund completed",
+        sku: "paid-launch-dca",
+        entitlements: [],
+        refund_id: "re_fake_paid-launch-dca",
+      });
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("/api/v1/checkout/refund");
+      expect(init.method).toBe("POST");
+      expect(init.credentials).toBe("include");
+      expect((init.headers as Record<string, string>)["X-Krellbot-CSRF"]).toBe(
+        "csrf-refund-1",
+      );
+      expect(JSON.parse(String(init.body))).toEqual({ sku: "paid-launch-dca" });
+    } finally {
+      csrfMock.mockRestore();
+    }
+  });
+
+  it("adapts failed refund without inventing a revoke", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        status: "failed",
+        message: "refund refused",
+        sku: "paid-launch-dca",
+        entitlements: ["paid-launch-dca"],
+        refund_id: null,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await createHttpClient().requestRefund("paid-launch-dca")).toEqual({
+      schema_version: "1",
+      status: "failed",
+      message: "refund refused",
+      sku: "paid-launch-dca",
+      entitlements: ["paid-launch-dca"],
+      refund_id: null,
+    });
+  });
+});
+
 describe("createPacksHttpClient", () => {
   it("exposes the same read surface the shell mounts without dead rollback", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
@@ -295,6 +357,7 @@ describe("createPacksHttpClient", () => {
     expect(typeof client.listCatalogue).toBe("function");
     expect(typeof client.install).toBe("function");
     expect(typeof client.startCheckout).toBe("function");
+    expect(typeof client.requestRefund).toBe("function");
     expect(typeof client.listCommunityIndex).toBe("function");
     expect(typeof client.installCommunity).toBe("function");
     expect(typeof client.openCommunityPack).toBe("function");

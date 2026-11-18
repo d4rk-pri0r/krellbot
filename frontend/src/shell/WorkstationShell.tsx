@@ -727,6 +727,7 @@ export function WorkstationShell({
       "listCatalogue" in packClient &&
       "install" in packClient &&
       "startCheckout" in packClient &&
+      "requestRefund" in packClient &&
       "listCommunityIndex" in packClient &&
       "installCommunity" in packClient &&
       "openCommunityPack" in packClient
@@ -755,6 +756,14 @@ export function WorkstationShell({
         sku,
         entitlements: [],
         session_id: null,
+      }),
+      requestRefund: async (sku: string) => ({
+        schema_version: "1",
+        status: "unreachable" as const,
+        message: "refund unreachable",
+        sku,
+        entitlements: [],
+        refund_id: null,
       }),
       listCommunityIndex: async () => ({
         schema_version: "1",

@@ -60,6 +60,14 @@ function makeClient(overrides: Partial<PacksClient> = {}): PacksClient {
       entitlements: [sku],
       session_id: `cs_fake_${sku}`,
     })),
+    requestRefund: vi.fn(async (sku: string) => ({
+      schema_version: "1",
+      status: "refunded" as const,
+      message: "refund completed",
+      sku,
+      entitlements: [],
+      refund_id: `re_fake_${sku}`,
+    })),
     listCommunityIndex: vi.fn(async () => INDEX),
     installCommunity: vi.fn(async (pack_id: string): Promise<CommunityInstallResult> => ({
       ok: true,

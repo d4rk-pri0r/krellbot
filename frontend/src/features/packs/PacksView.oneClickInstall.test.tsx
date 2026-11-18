@@ -63,6 +63,14 @@ function makeClient(): PacksClient {
       entitlements: [sku],
       session_id: `cs_fake_${sku}`,
     })),
+    requestRefund: vi.fn(async (sku: string) => ({
+      schema_version: "1",
+      status: "refunded" as const,
+      message: "refund completed",
+      sku,
+      entitlements: [],
+      refund_id: `re_fake_${sku}`,
+    })),
     listCommunityIndex: vi.fn(async () => ({
       schema_version: "1",
       index_url: "",

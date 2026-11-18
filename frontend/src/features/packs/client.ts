@@ -42,6 +42,18 @@ export type CheckoutResult = {
   session_id: string | null;
 };
 
+/** Closed outcome from ``POST /api/v1/checkout/refund`` (fake processor in CI). */
+export type RefundStatus = "refunded" | "failed" | "unreachable" | "refused";
+
+export type RefundResult = {
+  schema_version: string;
+  status: RefundStatus;
+  message: string;
+  sku: string;
+  entitlements: string[];
+  refund_id: string | null;
+};
+
 export type CatalogueTier = "free" | "paid";
 
 export type CataloguePack = {
@@ -143,6 +155,8 @@ export type PacksClient = PackLibraryClient & {
   install(pack_id: string): Promise<PackInstallResult>;
   /** Start live checkout for a paid catalogue SKU; refreshes entitlements on paid. */
   startCheckout(sku: string): Promise<CheckoutResult>;
+  /** Request a refund; on success revokes the local SKU entitlement. */
+  requestRefund(sku: string): Promise<RefundResult>;
   /** Browse the allow-listed community index (not the signed catalogue). */
   listCommunityIndex(): Promise<CommunityIndexDocument>;
   /** One-click install from the community index into ``packs/community/``. */
@@ -326,6 +340,52 @@ async function postStartCheckout(sku: string): Promise<CheckoutResult> {
     );
   }
   return adaptCheckoutResult(await response.json());
+}
+
+const REFUND_STATUSES = new Set<RefundStatus>([
+  "refunded",
+  "failed",
+  "unreachable",
+  "refused",
+]);
+
+function adaptRefundResult(raw: unknown): RefundResult {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  const statusRaw = typeof body.status === "string" ? body.status : "unreachable";
+  const status: RefundStatus = REFUND_STATUSES.has(statusRaw as RefundStatus)
+    ? (statusRaw as RefundStatus)
+    : "unreachable";
+  const entitlementsRaw = Array.isArray(body.entitlements) ? body.entitlements : [];
+  const entitlements = entitlementsRaw.filter((item): item is string => typeof item === "string");
+  return {
+    schema_version:
+      typeof body.schema_version === "string" ? body.schema_version : "1",
+    status,
+    message:
+      typeof body.message === "string" ? body.message : "refund unreachable",
+    sku: typeof body.sku === "string" ? body.sku : "",
+    entitlements,
+    refund_id: typeof body.refund_id === "string" ? body.refund_id : null,
+  };
+}
+
+async function postRequestRefund(sku: string): Promise<RefundResult> {
+  const response = await fetch("/api/v1/checkout/refund", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: JSON.stringify({ sku }),
+  });
+  if (!response.ok) {
+    throw new PackLibraryHttpError(
+      response.status,
+      `checkout refund failed: ${response.status}`,
+    );
+  }
+  return adaptRefundResult(await response.json());
 }
 
 function adaptCommunityIndexPack(raw: Record<string, unknown>): CommunityIndexPack | null {
@@ -528,6 +588,9 @@ export function createHttpClient(): PacksClient {
     },
     startCheckout(sku: string): Promise<CheckoutResult> {
       return postStartCheckout(sku);
+    },
+    requestRefund(sku: string): Promise<RefundResult> {
+      return postRequestRefund(sku);
     },
     listCommunityIndex(): Promise<CommunityIndexDocument> {
       return getCommunityIndex("/api/v1/community/index");
