@@ -20,6 +20,7 @@ import type { ResearchClient } from "../features/research/client";
 import type { StrategyClient } from "../features/strategies/client";
 import type { Pack } from "../features/strategies/client";
 import { WorkstationShell } from "./WorkstationShell";
+import { clickShellNav } from "./navTestUtils";
 
 // Configurable stub for applyExecutionEdit. Tests set
 // applyExecutionEditImpl to a vi.fn() that returns the desired
@@ -219,6 +220,7 @@ describe("WorkstationShell — studio view routing", () => {
       name: /workstation navigation/i,
     });
     expect(nav.querySelector("a")).toBeNull();
+    fireEvent.click(screen.getByTestId("kbot-nav-more-toggle"));
     const studio = screen.getByRole("button", { name: "Strategy studio" });
     expect(studio.tagName).toBe("BUTTON");
   });
@@ -232,27 +234,33 @@ describe("WorkstationShell — studio view routing", () => {
     const labels = Array.from(buttons).map((b) => b.textContent?.trim());
     expect(labels).toEqual(
       expect.arrayContaining([
-        "Workstation",
+        "Run",
         "Strategies",
         "Packs",
-        "Research",
-        "Strategy studio",
+        "More",
       ]),
+    );
+    fireEvent.click(screen.getByTestId("kbot-nav-more-toggle"));
+    const openLabels = Array.from(nav.querySelectorAll("button")).map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(openLabels).toEqual(
+      expect.arrayContaining(["Research", "Strategy studio"]),
     );
   });
 
   it("clicking Studio mounts the canvas and hides the Paper workstation heading", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     expect(screen.getByTestId("react-flow-stub")).toBeDefined();
     expect(screen.queryByText("Paper workstation")).toBeNull();
   });
 
   it("clicking Workstation after Studio shows the Paper workstation heading again", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     expect(screen.queryByText("Paper workstation")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     expect(screen.getByText("Paper workstation")).toBeDefined();
     expect(screen.queryByTestId("react-flow-stub")).toBeNull();
   });
@@ -267,14 +275,14 @@ describe("WorkstationShell — studio view routing", () => {
 describe("WorkstationShell — studio canvas drives refusal through mounted GraphCanvas", () => {
   it("calls the captured onConnect only when the timeframe matches", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     const captured = getCaptured();
     expect(captured.onConnect).toBeDefined();
   });
 
   it("refuses n0→n1 with the exact 'timeframe mismatch' string and records no connection", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     triggerConnect("n1");
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Timeframe mismatch");
@@ -291,7 +299,7 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
 
   it("records exactly one connection for n0→n2 and shows no timeframe mismatch", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     triggerConnect("n2");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(countText()).toMatch(/1/);
@@ -302,7 +310,7 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
 
   it("records two connections when two valid edges are added in sequence", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     triggerConnect("n2");
     triggerConnect("n0", "n2");
     expect(countText()).toMatch(/2/);
@@ -311,7 +319,7 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
 
   it("does not record a refused connection even after a successful one", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     triggerConnect("n2");
     expect(countText()).toMatch(/1/);
     triggerConnect("n1");
@@ -338,7 +346,7 @@ describe("WorkstationShell — built-in mode pack studio (M15.5)", () => {
         strategyClient={strategy}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     // Demo nodes before a mode is picked.
     expect((getCaptured().nodes ?? []).map((n) => n.id)).toEqual(
       expect.arrayContaining(["n0", "n1", "n2"]),
@@ -361,7 +369,7 @@ describe("WorkstationShell — built-in mode pack studio (M15.5)", () => {
 describe("WorkstationShell — saved strategy studio", () => {
   it("renders the saved pack instead of the demo nodes", async () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     fireEvent.change(screen.getByLabelText(/raw json/i), {
       target: {
         value: JSON.stringify({
@@ -375,7 +383,7 @@ describe("WorkstationShell — saved strategy studio", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await screen.findByTestId("editor-revision-id");
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     expect(screen.getByTestId("studio-pack-id").textContent).toBe("trend-follow");
     const ids = (getCaptured().nodes ?? []).map((node) => node.id);
     expect(ids).toContain("entry");
@@ -396,7 +404,7 @@ describe("WorkstationShell — saved strategy studio", () => {
         strategyClient={strategy}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     fireEvent.change(screen.getByLabelText(/raw json/i), {
       target: {
         value: JSON.stringify({
@@ -410,7 +418,7 @@ describe("WorkstationShell — saved strategy studio", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await screen.findByTestId("editor-revision-id");
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     await vi.waitFor(() => {
       expect(getCaptured().edges?.[0]?.source).toBe("entry");
       expect(getCaptured().edges?.[0]?.target).toBe("sma20");
@@ -430,13 +438,13 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
   }
 
   async function savePackViaStrategies(): Promise<void> {
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     fireEvent.change(screen.getByLabelText(/raw json/i), {
       target: { value: JSON.stringify(makeSavedPack()) },
     });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await screen.findByTestId("editor-revision-id");
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
   }
 
   beforeEach(() => {
@@ -500,7 +508,7 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     const outcome = await screen.findByTestId("studio-save-outcome");
     expect(outcome.textContent).toMatch(/Saved new revision rev-new/);
 
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     fireEvent.change(screen.getByLabelText(/dataset path/i), {
       target: { value: "fixtures/synthetic.csv" },
     });
@@ -513,7 +521,7 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     // required-input validation: Run with dataset/fee but blank scored
     // fields names the missing From, and Run with only From=0 names the
     // missing To; neither submits a job nor creates a job identity.
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    fireEvent.click(screen.getByTestId("research-run"));
     {
       const refusal = await screen.findByRole("alert");
       expect(refusal.textContent).toBe("From must be an integer timestamp");
@@ -523,7 +531,7 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     fireEvent.change(screen.getByLabelText(/^from$/i), {
       target: { value: "0" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    fireEvent.click(screen.getByTestId("research-run"));
     {
       const refusal = await screen.findByRole("alert");
       expect(refusal.textContent).toBe("To must be an integer timestamp");
@@ -533,7 +541,7 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     fireEvent.change(screen.getByLabelText(/^to$/i), {
       target: { value: "9999999999999" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    fireEvent.click(screen.getByTestId("research-run"));
     await vi.waitFor(() => {
       expect(research.submitRun).toHaveBeenCalledTimes(1);
     });
@@ -544,7 +552,7 @@ describe("WorkstationShell — M2-WRITE save execution outcomes", () => {
     expect(callArg.feeBps).toBe(10);
     expect(callArg.fromMs).toBe(0);
     expect(callArg.toMs).toBe(9999999999999);
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     expect(screen.getByTestId("editor-revision-id").textContent).toContain("rev-new");
     expect(screen.getByTestId("editor-revision-id").textContent).toContain("Validated");
     expect(callArg.packPath === undefined || callArg.packPath === "").toBe(

@@ -5,6 +5,7 @@ import type { ResearchClient } from "../features/research/client";
 import type { StrategyClient } from "../features/strategies/client";
 import type { Pack } from "../features/strategies/client";
 import { WorkstationShell } from "./WorkstationShell";
+import { clickShellNav } from "./navTestUtils";
 
 const savedPack: Pack = {
   schema_version: 1,
@@ -113,7 +114,7 @@ describe("WorkstationShell strategies explanation", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-panel")).toBeDefined();
     });

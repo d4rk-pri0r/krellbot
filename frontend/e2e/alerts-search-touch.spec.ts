@@ -149,8 +149,12 @@ test("Operations Alerts Search keeps >=44px touch targets <=640px and compact de
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
 
-  await page.getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: "Operations", exact: true }).click();
+  const nav = page.getByRole("navigation", { name: "Workstation navigation" });
+  const more = nav.getByTestId("kbot-nav-more-toggle");
+  if ((await more.getAttribute("aria-expanded")) !== "true") {
+    await more.click();
+  }
+  await nav.getByRole("button", { name: "Operations", exact: true }).click();
   await expect(page.getByTestId("operations-view")).toBeVisible();
 
   const query = page.getByTestId("ops-alerts-filter-query");

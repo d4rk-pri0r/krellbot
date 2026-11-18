@@ -110,8 +110,12 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   });
   await waitForSessionReady(page);
 
-  await page.getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: "Operations", exact: true }).click();
+  const nav = page.getByRole("navigation", { name: "Workstation navigation" });
+  const more = nav.getByTestId("kbot-nav-more-toggle");
+  if ((await more.getAttribute("aria-expanded")) !== "true") {
+    await more.click();
+  }
+  await nav.getByRole("button", { name: "Operations", exact: true }).click();
   const opsView = page.getByTestId("operations-view");
   await expect(opsView).toBeVisible();
 
@@ -231,8 +235,12 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   // Reload the page; the ack persists.
   await page.reload();
   await waitForSessionReady(page);
-  await page.getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: "Operations", exact: true }).click();
+  const nav = page.getByRole("navigation", { name: "Workstation navigation" });
+  const more = nav.getByTestId("kbot-nav-more-toggle");
+  if ((await more.getAttribute("aria-expanded")) !== "true") {
+    await more.click();
+  }
+  await nav.getByRole("button", { name: "Operations", exact: true }).click();
   await expect(
     page.getByTestId(`ops-alert-${ackId}`),
   ).toContainText(/acknowledged/);

@@ -148,7 +148,12 @@ test("Operations scheduler panel install/enable happy path and unavailable copy 
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
   await page
-    .getByRole("navigation", { name: "Workstation navigation" })
+    .getByRole("navigation", { name: "Workstation navigation" });
+  const moreToggle = page.getByTestId("kbot-nav-more-toggle");
+  if ((await moreToggle.getAttribute("aria-expanded")) !== "true") {
+    await moreToggle.click();
+  }
+  await page.getByRole("navigation", { name: "Workstation navigation" })
     .getByRole("button", { name: "Operations", exact: true })
     .click();
 

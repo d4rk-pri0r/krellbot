@@ -1,11 +1,8 @@
 /**
- * Navigation — roving-tabindex keyboard behavior for the view tab strip.
+ * Navigation — roving-tabindex keyboard behavior for the tiered strip.
  *
- * A keyboard-only user Tab-stops onto the row once (the active tab is the
- * only tabbable button) and then moves between views with ArrowLeft /
- * ArrowRight (clamped at the ends, no wrapping) and Home / End. Each of
- * those keys drives the exact same onChange(view.id) path a click uses,
- * and focus follows the newly active button.
+ * Tab lands on the active view once; ArrowLeft/ArrowRight move across
+ * primary tabs, the More toggle, and (when expanded) More destinations.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,7 +22,7 @@ function focusedLabel(): string | null {
   return element ? element.textContent?.trim() ?? null : null;
 }
 
-function tabIndexes(): number[] {
+function viewTabIndexes(): number[] {
   const nav = screen.getByTestId("kbot-nav");
   return Array.from(
     nav.querySelectorAll<HTMLButtonElement>(".kbot-nav__item"),
@@ -33,16 +30,18 @@ function tabIndexes(): number[] {
 }
 
 describe("Navigation — roving tabindex", () => {
-  it("keeps only the active tab in the tab order", () => {
+  it("keeps only the active view button in the tab order among view items", () => {
     const { rerender } = render(<Navigation active="home" onChange={() => {}} />);
-    expect(tabIndexes()).toEqual([0, -1, -1, -1, -1, -1, -1, -1]);
+    // More destinations stay mounted while collapsed (`hidden`), so eight
+    // view buttons remain in the tree; only the active page is tabbable.
+    expect(viewTabIndexes()).toEqual([0, -1, -1, -1, -1, -1, -1, -1]);
     rerender(<Navigation active="deployments" onChange={() => {}} />);
-    expect(tabIndexes()).toEqual([-1, -1, -1, -1, -1, -1, -1, 0]);
+    expect(viewTabIndexes()).toEqual([-1, -1, -1, -1, -1, -1, -1, 0]);
   });
 });
 
 describe("Navigation — arrow key navigation", () => {
-  it("moves focus and activates the next view on ArrowRight", () => {
+  it("moves focus and activates the next primary view on ArrowRight", () => {
     const onChange = vi.fn();
     const { rerender } = render(
       <Navigation active="home" onChange={onChange} />,
@@ -51,12 +50,28 @@ describe("Navigation — arrow key navigation", () => {
     fireEvent.keyDown(tab("Workspace"), { key: "ArrowRight" });
     expect(onChange).toHaveBeenCalledWith("workstation");
     rerender(<Navigation active="workstation" onChange={onChange} />);
-    expect(focusedLabel()).toBe("Workstation");
+    expect(focusedLabel()).toBe("Run");
 
-    fireEvent.keyDown(tab("Workstation"), { key: "ArrowRight" });
-    expect(onChange).toHaveBeenCalledWith("strategies");
+    fireEvent.keyDown(tab("Run"), { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledWith("packs");
+    rerender(<Navigation active="packs" onChange={onChange} />);
+    expect(focusedLabel()).toBe("Packs");
+  });
+
+  it("opens More from the last primary tab and continues into Research", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <Navigation active="strategies" onChange={onChange} />,
+    );
+    tab("Strategies").focus();
+    fireEvent.keyDown(tab("Strategies"), { key: "ArrowRight" });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(focusedLabel()).toBe("More");
     rerender(<Navigation active="strategies" onChange={onChange} />);
-    expect(focusedLabel()).toBe("Strategies");
+    fireEvent.keyDown(tab("More"), { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledWith("research");
+    rerender(<Navigation active="research" onChange={onChange} />);
+    expect(focusedLabel()).toBe("Research");
   });
 
   it("moves focus and activates the previous view on ArrowLeft", () => {
@@ -66,9 +81,13 @@ describe("Navigation — arrow key navigation", () => {
     );
     tab("Research").focus();
     fireEvent.keyDown(tab("Research"), { key: "ArrowLeft" });
-    expect(onChange).toHaveBeenCalledWith("packs");
-    rerender(<Navigation active="packs" onChange={onChange} />);
-    expect(focusedLabel()).toBe("Packs");
+    // Left of Research is the More toggle (not a view change).
+    expect(onChange).not.toHaveBeenCalled();
+    expect(focusedLabel()).toBe("More");
+    fireEvent.keyDown(tab("More"), { key: "ArrowLeft" });
+    expect(onChange).toHaveBeenCalledWith("strategies");
+    rerender(<Navigation active="strategies" onChange={onChange} />);
+    expect(focusedLabel()).toBe("Strategies");
   });
 
   it("clamps instead of wrapping at the row ends", () => {
@@ -87,7 +106,7 @@ describe("Navigation — arrow key navigation", () => {
     expect(focusedLabel()).toBe("Deploy");
   });
 
-  it("focuses the first view on Home and the last view on End", () => {
+  it("focuses the first view on Home and the last More destination on End", () => {
     const onChange = vi.fn();
     const { rerender } = render(
       <Navigation active="research" onChange={onChange} />,
@@ -104,7 +123,7 @@ describe("Navigation — arrow key navigation", () => {
     expect(focusedLabel()).toBe("Workspace");
   });
 
-  it("steps from Home to Research with three ArrowRight presses", () => {
+  it("steps from Workspace through primary tabs into Research", () => {
     const onChange = vi.fn();
     let active: View = "home";
     const controller = (next: View): void => {
@@ -115,20 +134,18 @@ describe("Navigation — arrow key navigation", () => {
       <Navigation active={active} onChange={controller} />,
     );
     tab("Workspace").focus();
-    for (const step of ["Workstation", "Strategies", "Packs", "Research"]) {
+    for (const step of ["Run", "Packs", "Strategies"]) {
       fireEvent.keyDown(tab(focusedLabel() as string), { key: "ArrowRight" });
       rerender(<Navigation active={active} onChange={controller} />);
       expect(focusedLabel()).toBe(step);
     }
+    fireEvent.keyDown(tab("Strategies"), { key: "ArrowRight" });
+    rerender(<Navigation active={active} onChange={controller} />);
+    expect(focusedLabel()).toBe("More");
+    fireEvent.keyDown(tab("More"), { key: "ArrowRight" });
+    rerender(<Navigation active={active} onChange={controller} />);
+    expect(focusedLabel()).toBe("Research");
     expect(onChange).toHaveBeenLastCalledWith("research");
-    fireEvent.keyDown(tab("Research"), { key: "Home" });
-    rerender(<Navigation active={active} onChange={controller} />);
-    expect(onChange).toHaveBeenLastCalledWith("home");
-    expect(focusedLabel()).toBe("Workspace");
-    fireEvent.keyDown(tab("Workspace"), { key: "End" });
-    rerender(<Navigation active={active} onChange={controller} />);
-    expect(onChange).toHaveBeenLastCalledWith("deployments");
-    expect(focusedLabel()).toBe("Deploy");
   });
 
   it("leaves untouched keys to the native button behavior", () => {

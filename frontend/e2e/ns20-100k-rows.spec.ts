@@ -118,13 +118,17 @@ test("100000-row inspection renders and scrolls", async ({ page }) => {
   if (!rowsCsv) {
     throw new Error("KRELLBOT_E2E_ROWS_CSV was not set by global-setup");
   }
+  const moreToggle = page.getByTestId("kbot-nav-more-toggle");
+  if ((await moreToggle.getAttribute("aria-expanded")) !== "true") {
+    await moreToggle.click();
+  }
   await page.getByRole("button", { name: "Research" }).click();
   await page.getByLabel(/dataset path/i).fill(rowsCsv);
   await page.getByLabel(/fee basis points/i).fill("10");
   await page.getByLabel(/^from$/i).fill("0");
   await page.getByLabel(/^to$/i).fill("9999999999999");
   const runStart = Date.now();
-  await page.getByRole("button", { name: /^run$/i }).click();
+  await page.getByTestId("research-run").click();
   const job = page.getByTestId("research-job-id");
   await expect(job).toBeVisible({ timeout: 60_000 });
   // pollForResult auto-fetches; skipping the manual Load result click

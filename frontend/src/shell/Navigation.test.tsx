@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Navigation } from "./Navigation";
+import { MORE_VIEWS, Navigation, PRIMARY_VIEWS } from "./Navigation";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -12,24 +12,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function openMore(): void {
+  const toggle = screen.getByTestId("kbot-nav-more-toggle");
+  if (toggle.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(toggle);
+  }
+}
+
 describe("Navigation — workstation views", () => {
-  it("renders the Home tab first alongside the core nav tabs", () => {
+  it("renders Workspace first among primary tabs and exposes More overflow", () => {
     render(<Navigation active="home" onChange={() => {}} />);
-    const nav = screen.getByTestId("kbot-nav");
-    const labels = Array.from(
-      nav.querySelectorAll<HTMLButtonElement>(".kbot-nav__item"),
+    const primary = screen.getByTestId("kbot-nav-primary");
+    const primaryLabels = Array.from(
+      primary.querySelectorAll<HTMLButtonElement>(".kbot-nav__item"),
     ).map((button) => button.textContent?.trim());
-    expect(labels[0]).toBe("Workspace");
-    for (const label of [
-      "Workspace",
-      "Workstation",
-      "Strategies",
-      "Packs",
-      "Research",
-      "Strategy studio",
-      "Operations",
-      "Deploy",
-    ]) {
+    expect(primaryLabels).toEqual(PRIMARY_VIEWS.map((view) => view.label));
+    expect(primaryLabels[0]).toBe("Workspace");
+    expect(screen.getByTestId("kbot-nav-more-toggle")).toBeDefined();
+    expect(screen.getByTestId("kbot-nav-more").getAttribute("data-open")).toBe(
+      "0",
+    );
+    for (const label of PRIMARY_VIEWS.map((view) => view.label)) {
       expect(screen.getByRole("button", { name: label })).toBeDefined();
     }
   });
@@ -39,15 +42,7 @@ describe("Navigation — workstation views", () => {
     expect(
       screen.getByRole("button", { name: "Workspace" }).getAttribute("aria-current"),
     ).toBe("page");
-    for (const label of [
-      "Workstation",
-      "Strategies",
-      "Packs",
-      "Research",
-      "Strategy studio",
-      "Operations",
-      "Deploy",
-    ]) {
+    for (const label of ["Run", "Packs", "Strategies"]) {
       expect(
         screen.getByRole("button", { name: label }).getAttribute("aria-current"),
       ).toBeNull();
@@ -61,44 +56,48 @@ describe("Navigation — workstation views", () => {
     expect(onChange).toHaveBeenCalledWith("home");
   });
 
-  it("renders the core nav tabs with their labels", () => {
+  it("renders primary nav labels including Run for the workstation route", () => {
     render(<Navigation active="workstation" onChange={() => {}} />);
-    for (const label of [
-      "Workstation",
-      "Strategies",
-      "Packs",
-      "Research",
-      "Strategy studio",
-      "Operations",
-    ]) {
+    for (const label of ["Run", "Packs", "Strategies", "More"]) {
       expect(screen.getByRole("button", { name: label })).toBeDefined();
     }
   });
 
-  it("renders the Deploy nav tab so users can reach the live preflight dry-run", () => {
+  it("exposes More destinations when More is expanded", () => {
     render(<Navigation active="workstation" onChange={() => {}} />);
+    openMore();
     expect(screen.getByRole("button", { name: "Deploy" })).toBeDefined();
+    for (const view of MORE_VIEWS) {
+      expect(screen.getByRole("button", { name: view.label })).toBeDefined();
+    }
   });
 
   it("marks only the active tab with aria-current", () => {
     render(<Navigation active="workstation" onChange={() => {}} />);
     const activeButton = screen.getByRole("button", {
-      name: "Workstation",
+      name: "Run",
     });
     expect(activeButton.getAttribute("aria-current")).toBe("page");
-    const otherLabels = [
-      "Strategies",
-      "Packs",
-      "Research",
-      "Strategy studio",
-      "Operations",
-      "Deploy",
-    ];
-    for (const label of otherLabels) {
+    for (const label of ["Packs", "Strategies", "Workspace"]) {
       expect(
         screen.getByRole("button", { name: label }).getAttribute("aria-current"),
       ).toBeNull();
     }
+  });
+
+  it("keeps More open and marks aria-current when a More view is active", () => {
+    render(<Navigation active="studio" onChange={() => {}} />);
+    expect(screen.getByTestId("kbot-nav-more").getAttribute("data-open")).toBe(
+      "1",
+    );
+    expect(screen.getByTestId("kbot-nav-more-toggle").getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(
+      screen.getByRole("button", { name: "Strategy studio" }).getAttribute(
+        "aria-current",
+      ),
+    ).toBe("page");
   });
 });
 
@@ -107,30 +106,21 @@ describe("Navigation — workstation views", () => {
 /* Contract: KRELL-SIGNAL-20261010.                                   */
 /* ------------------------------------------------------------------ */
 
-const EIGHT_VIEWS = [
-  { id: "home", label: "Workspace" },
-  { id: "workstation", label: "Workstation" },
-  { id: "strategies", label: "Strategies" },
-  { id: "packs", label: "Packs" },
-  { id: "research", label: "Research" },
-  { id: "studio", label: "Strategy studio" },
-  { id: "operations", label: "Operations" },
-  { id: "deployments", label: "Deploy" },
-] as const;
-
 describe("Navigation — scoped Signal presentation", () => {
-  it("renders the eight existing views in order inside the scoped nav root", () => {
+  it("renders primary views plus More toggle inside the scoped nav root", () => {
     render(<Navigation active="home" onChange={() => {}} />);
     const nav = screen.getByTestId("kbot-nav");
     expect(nav).toBeInstanceOf(HTMLElement);
     expect(nav.className).toContain("kbot-shell__nav-root");
-    const items = Array.from(
-      nav.querySelectorAll<HTMLButtonElement>(".kbot-nav__item"),
+    const primaryItems = Array.from(
+      screen
+        .getByTestId("kbot-nav-primary")
+        .querySelectorAll<HTMLButtonElement>(".kbot-nav__item"),
     );
-    expect(items.map((button) => button.textContent?.trim())).toEqual(
-      EIGHT_VIEWS.map((view) => view.label),
+    expect(primaryItems.map((button) => button.textContent?.trim())).toEqual(
+      PRIMARY_VIEWS.map((view) => view.label),
     );
-    for (const item of items) {
+    for (const item of primaryItems) {
       expect(item.className).toContain("kbot-shell__nav-item");
     }
   });
@@ -144,7 +134,7 @@ describe("Navigation — scoped Signal presentation", () => {
     expect(active.getAttribute("aria-current")).toBe("page");
     expect(active.className).toContain("kbot-nav__item--active");
     expect(active.className).toContain("kbot-shell__nav-item--active");
-    for (const label of ["Workspace", "Workstation", "Strategies"]) {
+    for (const label of ["Workspace", "Run", "Strategies"]) {
       const other = screen.getByRole("button", { name: label });
       expect(other.getAttribute("aria-pressed")).toBe("false");
       expect(other.className).not.toContain("kbot-shell__nav-item--active");
@@ -154,6 +144,7 @@ describe("Navigation — scoped Signal presentation", () => {
   it("reports view changes through the existing onChange wiring", () => {
     const onChange = vi.fn();
     render(<Navigation active="home" onChange={onChange} />);
+    openMore();
     fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
     expect(onChange).toHaveBeenCalledWith("deployments");
     fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
@@ -167,16 +158,10 @@ describe("Navigation — scoped Signal presentation", () => {
     expect(badge.className).toContain("kbot-shell__nav-preview");
     const caption = screen.getByTestId("nav-local-preview-note");
     expect(caption.textContent).toContain("Live trading unavailable");
-    // The badge sits inside the scoped root, below the tab row.
     const root = screen.getByTestId("kbot-nav");
     expect(root.contains(badge)).toBe(true);
-    const tabs = root.querySelectorAll(".kbot-nav__item");
-    expect(tabs.length).toBe(EIGHT_VIEWS.length);
     const note = caption.closest(".kbot-shell__nav-note");
     expect(note).toBe(root.lastElementChild);
-    expect(badge.compareDocumentPosition(tabs[tabs.length - 1])).toBe(
-      Node.DOCUMENT_POSITION_PRECEDING,
-    );
   });
 });
 
@@ -347,7 +332,6 @@ describe("Navigation — scoped Signal stylesheet", () => {
     for (const block of selectorBlocks(css)) {
       const hexes = block.declarations.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [];
       for (const hex of hexes) {
-        // Only token fallback literals inherited from tokens.css are allowed.
         expect([
           "#0e1c29",
           "#14222e",

@@ -16,6 +16,7 @@ import type {
   PaperStatus,
 } from "../features/paper/client";
 import { WorkstationShell } from "./WorkstationShell";
+import { clickShellNav } from "./navTestUtils";
 
 vi.mock("../session", () => ({
   redeemBootstrap: vi.fn(async () => undefined),
@@ -144,7 +145,7 @@ async function openWorkstation(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
   });
-  fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+  clickShellNav("Run");
   await waitFor(() => {
     expect(screen.getByTestId("paper-status-panel")).toBeDefined();
   });

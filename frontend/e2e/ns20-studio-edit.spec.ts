@@ -111,10 +111,18 @@ async function gotoStrategiesView(page: Page): Promise<void> {
 }
 
 async function gotoResearchView(page: Page): Promise<void> {
+  const moreToggle = page.getByTestId("kbot-nav-more-toggle");
+  if ((await moreToggle.getAttribute("aria-expanded")) !== "true") {
+    await moreToggle.click();
+  }
   await page.getByRole("button", { name: "Research" }).click();
 }
 
 async function gotoStudioView(page: Page): Promise<void> {
+  const moreToggleStudio = page.getByTestId("kbot-nav-more-toggle");
+  if ((await moreToggleStudio.getAttribute("aria-expanded")) !== "true") {
+    await moreToggleStudio.click();
+  }
   await page.getByRole("button", { name: "Strategy studio" }).click();
 }
 
@@ -201,7 +209,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   await page.getByLabel(/fee basis points/i).fill("not-a-number");
   await page.getByLabel(/^from$/i).fill("0");
   await page.getByLabel(/^to$/i).fill("9999999999999");
-  await page.getByRole("button", { name: /^run$/i }).click();
+  await page.getByTestId("research-run").click();
   await expect(page.getByRole("alert")).toContainText(/fee basis points/i, {
     timeout: 10_000,
   });
@@ -215,7 +223,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   const reqA = page.waitForRequest(
     (r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/research/jobs",
   );
-  await page.getByRole("button", { name: /^run$/i }).click();
+  await page.getByTestId("research-run").click();
   const requestA = await reqA;
   const bodyA = JSON.parse(requestA.postData() ?? "{}") as Record<string, unknown>;
   // The corrected run submits exactly the selected integers.
@@ -295,7 +303,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   const reqA2 = page.waitForRequest(
     (r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/research/jobs",
   );
-  await page.getByRole("button", { name: /^run$/i }).click();
+  await page.getByTestId("research-run").click();
   const requestA2 = await reqA2;
   const bodyA2 = JSON.parse(requestA2.postData() ?? "{}") as Record<string, unknown>;
   expect(bodyA2.revision_id).toBe(bodyA.revision_id);
@@ -336,7 +344,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   await page.getByLabel(/fee basis points/i).fill("10");
   await page.getByLabel(/^from$/i).fill("9999999999999");
   await page.getByLabel(/^to$/i).fill("0");
-  await page.getByRole("button", { name: /^run$/i }).click();
+  await page.getByTestId("research-run").click();
   await expect(page.getByRole("alert")).toContainText(/from/i, { timeout: 10_000 });
   await expect(page.getByRole("alert")).toContainText(/to/i);
   expect(researchPosts.count()).toBe(2);
@@ -360,7 +368,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   // original repeated-run + canonical-bytes workflow continues.
   await page.getByLabel(/^from$/i).fill("0");
   await page.getByLabel(/^to$/i).fill("9999999999999");
-  await page.getByRole("button", { name: /^run$/i }).click();
+  await page.getByTestId("research-run").click();
   await expect(page.getByTestId("research-result")).toBeVisible({ timeout: 60_000 });
   expect(researchPosts.count()).toBe(3);
   const thirdDownload = await downloadExportBytes(page);
@@ -454,7 +462,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   const reqB = page.waitForRequest(
     (r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/research/jobs",
   );
-  await page.getByRole("button", { name: /^run$/i }).click();
+  await page.getByTestId("research-run").click();
   const requestB = await reqB;
   const bodyB = JSON.parse(requestB.postData() ?? "{}") as Record<string, unknown>;
   const jobB = await readJobIdAfterRun(page);

@@ -19,6 +19,7 @@ import type { PaperClient } from "../features/paper/client";
 import type { ResearchClient } from "../features/research/client";
 import type { StrategyClient } from "../features/strategies/client";
 import { WorkstationShell } from "./WorkstationShell";
+import { clickShellNav } from "./navTestUtils";
 
 class ResizeObserverStub {
   observe(): void {}
@@ -174,7 +175,7 @@ describe("WorkstationShell — M2-CE bootstrap guard", () => {
     await act(async () => {
       resolveBootstrapRef?.();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-panel")).toBeDefined();
     });
@@ -191,7 +192,7 @@ describe("WorkstationShell — M2-CE bootstrap guard", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     // The shell must render the placeholder, not the live StatusPanel,
     // while the bootstrap call is pending.
     expect(screen.getByTestId("status-panel-pending")).toBeDefined();
@@ -209,7 +210,7 @@ describe("WorkstationShell — M2-CE bootstrap guard", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     expect(paper.getStatus).not.toHaveBeenCalled();
     expect(resolveBootstrapRef).not.toBeNull();
     await act(async () => {
@@ -232,7 +233,7 @@ describe("WorkstationShell — M2-CE bootstrap guard", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     await waitFor(() => {
       expect(paper.getStatus).toHaveBeenCalledTimes(1);
     });

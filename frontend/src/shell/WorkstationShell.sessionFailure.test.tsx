@@ -30,6 +30,7 @@ import type { StrategyClient } from "../features/strategies/client";
 import { recoverCsrf, redeemBootstrap } from "../session";
 import { AppHome } from "./AppHome";
 import { WorkstationShell } from "./WorkstationShell";
+import { clickShellNav } from "./navTestUtils";
 
 class ResizeObserverStub {
   observe(): void {}
@@ -193,7 +194,7 @@ describe("WorkstationShell — failed session bootstrap", () => {
       expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
     });
     vi.clearAllMocks();
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     fireEvent.click(screen.getByRole("button", { name: /^Workspace$/ }));
     await waitFor(() => {
       expect(screen.getByTestId("app-home-session-failure")).toBeDefined();

@@ -26,6 +26,14 @@ export const COMMITTED_CANDLE_CSV = join(
   "kraken_SUIUSD_1h_sample.csv",
 );
 
+/** Labels that live under the More overflow (M24 primary + More nav). */
+const MORE_NAV_LABELS = new Set([
+  "Research",
+  "Strategy studio",
+  "Operations",
+  "Deploy",
+]);
+
 export async function clickNav(page: Page, label: string): Promise<void> {
   // A modal Jobs drawer (left open by an expected-fail scenario) would
   // intercept pointer events; close it first so scenario order never
@@ -37,10 +45,17 @@ export async function clickNav(page: Page, label: string): Promise<void> {
       .waitForSelector('[data-testid="kbot-jobs-dialog"]', { state: "detached", timeout: 5_000 })
       .catch(() => undefined);
   }
-  await page
-    .getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: label, exact: true })
-    .click();
+  // M24: UI label "Workstation" → "Run"; route id stays workstation.
+  const resolved = label === "Workstation" ? "Run" : label;
+  const nav = page.getByRole("navigation", { name: "Workstation navigation" });
+  if (MORE_NAV_LABELS.has(resolved)) {
+    const moreToggle = nav.getByTestId("kbot-nav-more-toggle");
+    if ((await moreToggle.getAttribute("aria-expanded")) !== "true") {
+      await moreToggle.click();
+    }
+    await expect(moreToggle).toHaveAttribute("aria-expanded", "true");
+  }
+  await nav.getByRole("button", { name: resolved, exact: true }).click();
 }
 
 /**
@@ -197,7 +212,7 @@ export async function runResearch(
         new URL(r.url()).pathname === "/api/v1/research/jobs",
       { timeout: 30_000 },
     ),
-    page.getByRole("button", { name: /^run$/i }).click(),
+    page.getByTestId("research-run").click(),
   ]);
   const body = (await post.json()) as { id?: string };
   return { jobId: body.id ?? "", postStatus: post.status() };
@@ -301,7 +316,7 @@ export async function runResearchMaybe(
     )
     .then((post) => post)
     .catch(() => null);
-  await page.getByRole("button", { name: /^run$/i }).click();
+  await page.getByTestId("research-run").click();
   const post = await postOrTimeout;
   if (post === null) {
     return { jobId: "", submitted: false };

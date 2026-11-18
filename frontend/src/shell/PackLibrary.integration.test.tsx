@@ -28,6 +28,7 @@ import { PackLibraryHttpError } from "../features/packs/client";
 import type { ResearchClient } from "../features/research/client";
 import type { StrategyClient } from "../features/strategies/client";
 import { WorkstationShell } from "./WorkstationShell";
+import { clickShellNav } from "./navTestUtils";
 
 class ResizeObserverStub {
   observe(): void {}
@@ -187,7 +188,7 @@ describe("WorkstationShell — installed pack library mount", () => {
     expect(screen.getByRole("region", { name: "Strategy editor" })).toBe(editor);
 
     // Navigating away unmounts both, as before.
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     expect(screen.queryByRole("region", { name: "Strategy editor" })).toBeNull();
     expect(screen.queryByTestId("pack-library-panel")).toBeNull();
   });
@@ -202,8 +203,8 @@ describe("WorkstationShell — installed pack library mount", () => {
       />,
     );
 
-    for (const label of ["Workstation", "Research", "Strategy studio", "Operations"]) {
-      fireEvent.click(screen.getByRole("button", { name: label }));
+    for (const label of ["Run", "Research", "Strategy studio", "Operations"]) {
+      clickShellNav(label);
       expect(screen.queryByTestId("strategies-packs-toggle")).toBeNull();
       expect(screen.queryByTestId("pack-library-panel")).toBeNull();
     }

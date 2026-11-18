@@ -91,7 +91,12 @@ test("Operations shows unresolved orders with client order ID, age, and last loo
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
   await page
-    .getByRole("navigation", { name: "Workstation navigation" })
+    .getByRole("navigation", { name: "Workstation navigation" });
+  const moreToggle = page.getByTestId("kbot-nav-more-toggle");
+  if ((await moreToggle.getAttribute("aria-expanded")) !== "true") {
+    await moreToggle.click();
+  }
+  await page.getByRole("navigation", { name: "Workstation navigation" })
     .getByRole("button", { name: "Operations", exact: true })
     .click();
   await expect(page.getByTestId("operations-view")).toBeVisible();
