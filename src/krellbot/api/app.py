@@ -39,7 +39,7 @@ from krellbot.api.security import (
 )
 from krellbot.api.tailnet import TailnetAccess
 from krellbot.application import alerts as alerts_app
-from krellbot.application import live_gate
+from krellbot.application import live_gate, live_guardrails
 from krellbot.application import operations as operations_view_app
 from krellbot.application import packs as app_packs
 from krellbot.application import user_policy as user_policy_app
@@ -169,8 +169,29 @@ def _live_transport(s: _AppState, *, venue: str = "kraken"):
     return build_venue_preflight_transport(venue=venue, http_transport=s.keys_transport)
 
 
-def _live_arm_gate_refusal(result: live_gate.LiveGateResult) -> JSONResponse:
-    """Honest 403 body for a refused web ``live.arm`` gate check."""
+def _live_arm_gate_refusal(
+    result: live_gate.LiveGateResult,
+    *,
+    home: Path | None = None,
+    venue: str = "kraken",
+    pair: str | None = None,
+    pack_id: str = "-",
+) -> JSONResponse:
+    """Honest 403 body for a refused web ``live.arm`` gate check.
+
+    When ``home`` is provided, journal the refusal with a closed reason
+    code so the Deploy guardrails / journal surfaces can show it.
+    """
+    if home is not None and result.code:
+        live_guardrails.journal_refusal(
+            home,
+            venue=venue,
+            pack_id=pack_id,
+            pair=pair,
+            code=result.code,
+            message=result.message,
+            now=_now_seconds(),
+        )
     return JSONResponse(
         {
             "schema_version": SCHEMA_VERSION,
@@ -1077,6 +1098,54 @@ def create_app(
             # client's `status` readback. No synthetic success or fills.
             return JSONResponse({**result, "status": _rehearsal_wire(result["rehearsal"])}, status_code=200)
 
+        if command == "live.guardrails":
+            # Deploy preflight surface: active rails before arm + journal
+            # refusals. Never places an order. Optional revision_id loads
+            # pack risk (stop / max_account_pct) from the draft store.
+            venue = inner.get("venue") or "kraken"
+            revision_id = inner.get("revision_id")
+            journal_flag = inner.get("journal", True)
+            if not isinstance(venue, str):
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            if revision_id is not None and not isinstance(revision_id, str):
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            if not isinstance(journal_flag, bool):
+                return JSONResponse({"detail": "invalid body"}, status_code=400)
+            pack_for_rails = None
+            if revision_id:
+                try:
+                    _trusted, pack_for_rails = _draft_service(s).pack_for_arm(revision_id)
+                except RevisionNotFound:
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "draft_not_found",
+                            "ok": False,
+                            "effect": "refused",
+                            "message": f"draft {revision_id} not found",
+                        },
+                        status_code=404,
+                    )
+                except DraftNotRunnable:
+                    msg = f"draft {revision_id} is not runnable"
+                    return JSONResponse(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "code": "draft_not_runnable",
+                            "ok": False,
+                            "effect": "refused",
+                            "message": msg,
+                        },
+                        status_code=403,
+                    )
+            body = live_guardrails.evaluate(
+                s.home,
+                venue=venue,
+                pack_data=pack_for_rails,
+                journal=journal_flag,
+                now=_now_seconds(),
+            )
+            return JSONResponse(body, status_code=200)
         if command == "live.preflight":
             # ``live.preflight`` is the single carve-out from the prefix
             # gate: a sandbox-mode dry-run against the injectable venue
@@ -1224,7 +1293,7 @@ def create_app(
                     venue="kraken",
                     pair="unused",
                 )
-                return _live_arm_gate_refusal(paper_only)
+                return _live_arm_gate_refusal(paper_only, home=s.home, venue="kraken")
             live_policy = user_policy_app.ensure_allowed(s.home, user_policy_app.ACTION_LIVE)
             if not live_policy.ok:
                 return JSONResponse(
@@ -1248,10 +1317,10 @@ def create_app(
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
             venue_refusal = live_gate.check_web_live_arm_venue(venue)
             if venue_refusal is not None:
-                return _live_arm_gate_refusal(venue_refusal)
+                return _live_arm_gate_refusal(venue_refusal, home=s.home, venue=venue)
             confirm_refusal = live_gate.validate_web_live_arm_confirmation(confirmation)
             if confirm_refusal is not None:
-                return _live_arm_gate_refusal(confirm_refusal)
+                return _live_arm_gate_refusal(confirm_refusal, home=s.home, venue=venue)
             if not pack_path_raw and not revision_id:
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
 
@@ -1329,9 +1398,67 @@ def create_app(
                     status_code=400,
                 )
 
+            # Surface pack risk rails before arm_pack so refusals carry
+            # closed reason codes in the journal (M20.3) without widening
+            # the run/ arm path.
+            pack_risk = live_guardrails.inspect_pack_risk(pack_data)
+            pack_id = pack_risk.pack_id if pack_risk is not None else "-"
+            if pack_risk is not None and not pack_risk.stop_ok:
+                live_guardrails.journal_refusal(
+                    s.home,
+                    venue=venue,
+                    pack_id=pack_id,
+                    pair=pair,
+                    code=live_guardrails.CODE_STOP_REQUIRED,
+                    message="live arm requires a stop",
+                    now=_now_seconds(),
+                )
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": live_guardrails.CODE_STOP_REQUIRED,
+                        "ok": False,
+                        "effect": "refused",
+                        "message": "live arm requires a stop",
+                        "detail": "live arm requires a stop",
+                        "venue": venue,
+                        "pair": pair,
+                    },
+                    status_code=403,
+                )
+            if pack_risk is not None and not pack_risk.max_account_pct_ok:
+                live_guardrails.journal_refusal(
+                    s.home,
+                    venue=venue,
+                    pack_id=pack_id,
+                    pair=pair,
+                    code=live_guardrails.CODE_MAX_ACCOUNT_PCT,
+                    message="live arm requires max_account_pct > 0",
+                    now=_now_seconds(),
+                )
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": live_guardrails.CODE_MAX_ACCOUNT_PCT,
+                        "ok": False,
+                        "effect": "refused",
+                        "message": "live arm requires max_account_pct > 0",
+                        "detail": "live arm requires max_account_pct > 0",
+                        "venue": venue,
+                        "pair": pair,
+                    },
+                    status_code=403,
+                )
+
             gate = live_gate.check_web_live_arm(s.home, venue=venue, pair=pair)
             if not gate.ok:
-                return _live_arm_gate_refusal(gate)
+                return _live_arm_gate_refusal(
+                    gate,
+                    home=s.home,
+                    venue=venue,
+                    pair=pair,
+                    pack_id=pack_id,
+                )
             # Successful gate ⇒ grant already collected typed LIVE; skip stdin
             # (see live_gate.web_arm_skips_stdin_confirmation).
 
@@ -2342,6 +2469,59 @@ def create_app(
             status_code=200,
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/api/v1/operations/live-guardrails")
+    async def operations_live_guardrails_get(request: Request) -> Response:
+        """Return active live guardrails for Deploy preflight (M20.3).
+
+        Same session gate as ``GET /api/v1/operations`` (``_gate_get``).
+        Optional ``venue`` (default ``kraken``) and ``revision_id`` query
+        params; revision loads pack stop / max_account_pct. Read-only —
+        does not journal. Use ``live.guardrails`` to journal refusals.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        venue_q = request.query_params.get("venue") or "kraken"
+        revision_id = request.query_params.get("revision_id")
+        if not isinstance(venue_q, str) or not venue_q.strip():
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        pack_for_rails = None
+        if revision_id:
+            try:
+                _trusted, pack_for_rails = _draft_service(s).pack_for_arm(revision_id)
+            except RevisionNotFound:
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": "draft_not_found",
+                        "ok": False,
+                        "message": f"draft {revision_id} not found",
+                    },
+                    status_code=404,
+                )
+            except DraftNotRunnable:
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": "draft_not_runnable",
+                        "ok": False,
+                        "message": f"draft {revision_id} is not runnable",
+                    },
+                    status_code=403,
+                )
+
+        snap = live_guardrails.snapshot(
+            s.home,
+            venue=venue_q,
+            pack_data=pack_for_rails,
+            now=_now_seconds(),
+        )
+        return JSONResponse(snap.to_dict(), status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/scheduler")
     async def scheduler_status_get(request: Request) -> Response:
