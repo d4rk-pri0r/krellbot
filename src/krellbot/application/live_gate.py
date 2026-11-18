@@ -44,6 +44,9 @@ KILL_FILE = "kill-switch.json"
 CONFIRMATION_TEXT = "LIVE"
 MAX_GRANT_TTL_SECONDS = 7 * 24 * 60 * 60  # seven days
 
+# M20 workstation live arm is Kraken-only; Coinbase/Binance live wait for P4.
+WEB_LIVE_ARM_VENUES = frozenset({"kraken"})
+
 CODE_OK = "ok"
 CODE_KILL_SWITCH = "kill_switch_engaged"
 CODE_LIVE_DISABLED = "live_disabled"
@@ -54,6 +57,7 @@ CODE_BAD_INPUT = "bad_input"
 CODE_CONFIRMATION_REQUIRED = "confirmation_required"
 CODE_AUTHORIZED = "live_authorized"
 CODE_REVOKED = "live_authorization_revoked"
+CODE_LIVE_ARM_VENUE_UNSUPPORTED = "live_arm_venue_unsupported"
 
 
 @dataclass(frozen=True)
@@ -208,6 +212,36 @@ def _validate_confirmation(confirmation: object) -> LiveGateResult | None:
         return _refusal(
             CODE_CONFIRMATION_REQUIRED,
             f"type {CONFIRMATION_TEXT} to confirm live authorization",
+        )
+    return None
+
+
+def validate_web_live_arm_confirmation(confirmation: object) -> LiveGateResult | None:
+    """Refuse when a workstation ``live.arm`` confirmation is present but wrong.
+
+    The Deploy/Operations confirm panel always sends typed ``LIVE``. Older
+    M10.1 callers may omit ``confirmation``; omission is allowed so those
+    paths stay compatible. A wrong or non-string value is always refused.
+    """
+    if confirmation is None:
+        return None
+    if type(confirmation) is not str or confirmation.strip() != CONFIRMATION_TEXT:
+        return _refusal(
+            CODE_CONFIRMATION_REQUIRED,
+            f"type {CONFIRMATION_TEXT} to confirm live arm",
+        )
+    return None
+
+
+def check_web_live_arm_venue(venue: object) -> LiveGateResult | None:
+    """Refuse web ``live.arm`` for venues outside the Kraken-only M20 set."""
+    if type(venue) is not str or not venue.strip():
+        return _refusal(CODE_BAD_INPUT, "venue must be a non-empty string")
+    clean = venue.strip().lower()
+    if clean not in WEB_LIVE_ARM_VENUES:
+        return _refusal(
+            CODE_LIVE_ARM_VENUE_UNSUPPORTED,
+            "web live arm supports kraken only in this release",
         )
     return None
 

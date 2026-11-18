@@ -1211,7 +1211,9 @@ def create_app(
             # is active, refuse with an honest structured 403 before any
             # pack/key/transport work. When live is re-enabled, authorize via
             # grant + kill switch + env and skip stdin Type LIVE (grant
-            # already required typed LIVE).
+            # already required typed LIVE). Deploy/Operations confirm sends
+            # typed LIVE again on the arm payload; a wrong confirmation is
+            # refused before pack/key work. Kraken-only for M20.
             if release_policy.paper_only_release_active():
                 paper_only = live_gate.check_web_live_arm(
                     s.home,
@@ -1223,8 +1225,15 @@ def create_app(
             venue = inner.get("venue")
             pack_path_raw = inner.get("pack_path")
             revision_id = inner.get("revision_id")
+            confirmation = inner.get("confirmation")
             if not isinstance(venue, str) or not venue:
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
+            venue_refusal = live_gate.check_web_live_arm_venue(venue)
+            if venue_refusal is not None:
+                return _live_arm_gate_refusal(venue_refusal)
+            confirm_refusal = live_gate.validate_web_live_arm_confirmation(confirmation)
+            if confirm_refusal is not None:
+                return _live_arm_gate_refusal(confirm_refusal)
             if not pack_path_raw and not revision_id:
                 return JSONResponse({"detail": "invalid body"}, status_code=400)
 

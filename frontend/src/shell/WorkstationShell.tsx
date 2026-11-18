@@ -65,6 +65,7 @@ import { studioNodeLabel } from "../features/studio/studioNodeLabel";
 import { StudioNodeInspector } from "../features/studio/StudioNodeInspector";
 import "./StudioGraphAuthoring.signal.css";
 import { OperationsView } from "../features/operations/OperationsView";
+import { LiveArmConfirm } from "../features/deployments/LiveArmConfirm";
 import { LivePreflight } from "../features/deployments/LivePreflight";
 import { createHttpClient as createOperationsHttpClient } from "../features/operations/client";
 import type {
@@ -1539,7 +1540,12 @@ export function WorkstationShell({
             </p>
           )
         ) : null}
-        {active === "deployments" ? <LivePreflight /> : null}
+        {active === "deployments" ? (
+          <>
+            <LivePreflight />
+            <LiveArmConfirm />
+          </>
+        ) : null}
       </main>
       <CommandPalette
         open={paletteOpen}

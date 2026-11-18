@@ -20,6 +20,7 @@ import { useOperationsRefresh } from "./useOperationsRefresh";
 import { summarizeAlertCode } from "./alertCodeLabel";
 import type { AlertRow, OperationsClient, OperationsViewModel } from "./client";
 import { summarizeAlertSeverity } from "./alertSeverityLabel";
+import { LiveArmConfirm } from "../deployments/LiveArmConfirm";
 import { LiveAuthorizationPanel } from "./LiveAuthorizationPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import {
@@ -922,6 +923,23 @@ export function OperationsView({
           data-testid="ops-live-authorization-panel"
         >
           <LiveAuthorizationPanel client={client} />
+        </DisclosureSection>
+
+        <DisclosureSection
+          title="Kraken live arm"
+          summary="Confirm typed LIVE and arm a Kraken revision. Paper-only releases refuse arm."
+          badge="Advanced"
+          badgeTone="advanced"
+          defaultOpen={false}
+          storageKey="krellbot.disclosure.ops.live-arm"
+          data-testid="ops-live-arm-confirm-panel"
+        >
+          <LiveArmConfirm
+            client={{
+              getLiveAuthorization: client.getLiveAuthorization?.bind(client),
+              armLive: client.armLive?.bind(client),
+            }}
+          />
         </DisclosureSection>
 
         <DisclosureSection
