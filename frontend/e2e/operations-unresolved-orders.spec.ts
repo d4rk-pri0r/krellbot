@@ -12,6 +12,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
+import { clickNav } from "../journeys/helpers/journey-steps";
 
 /**
  * M1.9 — Operations shows every unresolved order.
@@ -90,15 +91,7 @@ test("Operations shows unresolved orders with client order ID, age, and last loo
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
-  await page
-    .getByRole("navigation", { name: "Workstation navigation" });
-  const moreToggle = page.getByTestId("kbot-nav-more-toggle");
-  if ((await moreToggle.getAttribute("aria-expanded")) !== "true") {
-    await moreToggle.click();
-  }
-  await page.getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: "Operations", exact: true })
-    .click();
+  await clickNav(page, "Operations");
   await expect(page.getByTestId("operations-view")).toBeVisible();
 
   // M18.4: Unresolved orders lives under Advanced — expand before asserting.

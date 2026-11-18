@@ -213,7 +213,8 @@ test.describe("J2 validate", () => {
     await page.getByLabel(/fee basis points/i).fill("10");
     await page.locator("#kbot-research-from").fill("0");
     await page.locator("#kbot-research-to").fill("9999999999999");
-    await page.getByRole("button", { name: /^run$/i }).click();
+    // Scope to research-run: nav primary "Run" would otherwise collide (M24.1).
+    await page.getByTestId("research-run").click();
     // The visible refusal names the problem.
     const jobError = page.getByTestId("research-job-error");
     await expect(jobError).toBeVisible({ timeout: 60_000 });

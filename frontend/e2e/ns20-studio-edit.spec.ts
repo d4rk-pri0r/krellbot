@@ -12,6 +12,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
+import { clickNav } from "../journeys/helpers/journey-steps";
 
 /**
  * NS20 studio-edit spec.
@@ -111,19 +112,11 @@ async function gotoStrategiesView(page: Page): Promise<void> {
 }
 
 async function gotoResearchView(page: Page): Promise<void> {
-  const moreToggle = page.getByTestId("kbot-nav-more-toggle");
-  if ((await moreToggle.getAttribute("aria-expanded")) !== "true") {
-    await moreToggle.click();
-  }
-  await page.getByRole("button", { name: "Research" }).click();
+  await clickNav(page, "Research");
 }
 
 async function gotoStudioView(page: Page): Promise<void> {
-  const moreToggleStudio = page.getByTestId("kbot-nav-more-toggle");
-  if ((await moreToggleStudio.getAttribute("aria-expanded")) !== "true") {
-    await moreToggleStudio.click();
-  }
-  await page.getByRole("button", { name: "Strategy studio" }).click();
+  await clickNav(page, "Strategy studio");
 }
 
 async function waitForSessionReady(page: Page): Promise<void> {

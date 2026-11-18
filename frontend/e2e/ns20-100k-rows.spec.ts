@@ -4,6 +4,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
+import { clickNav } from "../journeys/helpers/journey-steps";
 
 /**
  * NS20 100k-rows spec.
@@ -118,11 +119,7 @@ test("100000-row inspection renders and scrolls", async ({ page }) => {
   if (!rowsCsv) {
     throw new Error("KRELLBOT_E2E_ROWS_CSV was not set by global-setup");
   }
-  const moreToggle = page.getByTestId("kbot-nav-more-toggle");
-  if ((await moreToggle.getAttribute("aria-expanded")) !== "true") {
-    await moreToggle.click();
-  }
-  await page.getByRole("button", { name: "Research" }).click();
+  await clickNav(page, "Research");
   await page.getByLabel(/dataset path/i).fill(rowsCsv);
   await page.getByLabel(/fee basis points/i).fill("10");
   await page.getByLabel(/^from$/i).fill("0");
