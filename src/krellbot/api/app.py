@@ -3741,6 +3741,55 @@ def create_app(
         }
         return JSONResponse(body, status_code=200)
 
+    @app.post("/api/v1/checkout/refund")
+    async def checkout_refund(request: Request) -> Response:
+        """Request a pack SKU refund via injectable transport; revoke entitlement.
+
+        Same state-change gate as other POSTs (session + CSRF + loopback
+        Origin). Body is ``{"sku": "<catalogue id>"}``. On ``refunded``,
+        the local SKU entitlement is disabled and a journal audit row is
+        written. On transport failure the license cache and trading/export
+        paths stay untouched. Never embeds processor keys.
+        """
+
+        from krellbot.application import checkout as checkout_app
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        sku = payload.get("sku")
+        if not isinstance(sku, str) or not sku:
+            nested = payload.get("payload")
+            if isinstance(nested, dict):
+                sku = nested.get("sku")
+        if not isinstance(sku, str) or not sku:
+            return JSONResponse({"detail": "sku is required"}, status_code=400)
+
+        outcome = checkout_app.request_refund(
+            s.home,
+            sku,
+            transport=s.checkout_transport,
+            now=int(_app_now(s)),
+        )
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "status": outcome.status,
+            "message": outcome.message,
+            "sku": outcome.sku,
+            "entitlements": list(outcome.entitlements),
+            "refund_id": outcome.refund_id,
+        }
+        return JSONResponse(body, status_code=200)
+
     # ---- activation redeem (lane E) -------------------------------------
 
     @app.post("/api/v1/activation/redeem")

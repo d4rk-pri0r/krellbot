@@ -1,4 +1,4 @@
-"""Live catalogue-SKU checkout seam (fake processor in CI).
+"""Live catalogue-SKU checkout + refund seam (fake processor in CI).
 
 Workstation checkout starts a paid entitlement for a catalogue SKU.
 Success records the SKU in the local entitlements store and upserts the
@@ -6,10 +6,16 @@ purchased catalog entry so the pack library can refresh. Failure leaves
 trading and export unblocked: no license-cache rewrite, no armed-config
 mutation, and no kill-switch flip.
 
+A documented refund request asks the injectable transport to refund, then
+revokes the local SKU entitlement and appends a journal audit row. A
+billing/refund transport failure leaves entitlements, license cache, and
+armed config untouched so exits and export stay open.
+
 Payment goes through an injectable :class:`PaymentTransport`. Tests use
 :class:`FakePaymentTransport` only — no real processor keys live in the
 repo. Production posts SKU metadata to the cloud checkout endpoint over
-HTTPS; the cloud owns processor secrets.
+HTTPS; the cloud owns processor secrets. This module never writes the
+global license cache (`license.py`).
 """
 
 from __future__ import annotations
@@ -21,8 +27,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from krellbot import journal as kb_journal
 from krellbot import paths as kb_paths
-from krellbot.application.activation import write_claim_cache
+from krellbot.application.activation import clear_claim_cache, write_claim_cache
 from krellbot.application.pack_library import (
     InstallRefused,
     _catalogue_entry,
@@ -40,12 +47,16 @@ SAFE_MESSAGES: frozenset[str] = frozenset(
         "checkout unreachable",
         "sku not found",
         "sku not paid",
+        "refund completed",
+        "refund refused",
+        "refund unreachable",
+        "sku not entitled",
     }
 )
 
 
 class PaymentTransport(Protocol):
-    """HTTP-shaped transport for the cloud checkout session endpoint."""
+    """HTTP-shaped transport for cloud checkout and refund endpoints."""
 
     def create_session(self, sku: str, *, metadata: dict[str, Any]) -> dict[str, Any]:
         """Create a checkout session for ``sku``.
@@ -54,6 +65,15 @@ class PaymentTransport(Protocol):
 
           * ``status`` — ``"paid"``, ``"failed"``, or ``"unreachable"``
           * ``session_id`` — Stripe-shaped ``cs_...`` string when paid
+        """
+
+    def create_refund(self, sku: str, *, metadata: dict[str, Any]) -> dict[str, Any]:
+        """Create a refund for ``sku``.
+
+        Closed response shape (secret-free):
+
+          * ``status`` — ``"refunded"``, ``"failed"``, or ``"unreachable"``
+          * ``refund_id`` — opaque id string when refunded (optional)
         """
 
 
@@ -80,6 +100,23 @@ class CheckoutOutcome:
             raise ValueError(f"CheckoutOutcome.status must be paid/failed/unreachable/refused; got {self.status!r}")
         if self.message not in SAFE_MESSAGES:
             raise ValueError(f"CheckoutOutcome.message must be in SAFE_MESSAGES; got {self.message!r}")
+
+
+@dataclass(frozen=True)
+class RefundOutcome:
+    """Closed, secret-free outcome of a catalogue-SKU refund request."""
+
+    status: str
+    message: str
+    sku: str
+    entitlements: tuple[str, ...]
+    refund_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status not in {"refunded", "failed", "unreachable", "refused"}:
+            raise ValueError(f"RefundOutcome.status must be refunded/failed/unreachable/refused; got {self.status!r}")
+        if self.message not in SAFE_MESSAGES:
+            raise ValueError(f"RefundOutcome.message must be in SAFE_MESSAGES; got {self.message!r}")
 
 
 def entitlements_path(home: Path) -> Path:
@@ -142,6 +179,14 @@ def grant_entitlement(home: Path, sku: str) -> list[str]:
     return read_entitlements(home)
 
 
+def revoke_entitlement(home: Path, sku: str) -> list[str]:
+    """Remove ``sku`` from the entitlements store and return the sorted remainder."""
+    safe = _safe_pack_id_segment(sku)
+    current = [item for item in read_entitlements(home) if item != safe]
+    _write_entitlements(home, current)
+    return read_entitlements(home)
+
+
 def _upsert_purchased_catalog(home: Path, entry: dict[str, Any]) -> None:
     """Upsert a catalogue entry into ``catalog/catalog.json`` for purchased rows."""
     pack_id = entry.get("id")
@@ -191,19 +236,85 @@ def _upsert_purchased_catalog(home: Path, entry: dict[str, Any]) -> None:
     kb_paths.atomic_write(path, (json.dumps(document, sort_keys=True) + "\n").encode("utf-8"))
 
 
+def _remove_purchased_catalog(home: Path, sku: str) -> None:
+    """Drop a purchased catalogue row for ``sku`` when present."""
+    path = catalog_json_path(home)
+    if not path.is_file():
+        return
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return
+    if not isinstance(parsed, dict):
+        return
+    packs_raw = parsed.get("packs")
+    if not isinstance(packs_raw, list):
+        return
+    next_packs = [p for p in packs_raw if isinstance(p, dict) and p.get("id") != sku]
+    document = {
+        "schema_version": "1",
+        "packs": next_packs,
+    }
+    kb_paths.atomic_write(path, (json.dumps(document, sort_keys=True) + "\n").encode("utf-8"))
+
+
+def _journal_entitlement_revoked(
+    *,
+    sku: str,
+    now: int,
+    refund_id: str | None,
+) -> None:
+    """Append a closed refund/revoke audit row (no secrets).
+
+    Uses the process ``KRELLBOT_HOME`` journal (same as other application
+    audit rows). The API home is that directory in production.
+    """
+    detail: dict[str, Any] = {
+        "event": "entitlement_revoked",
+        "sku": sku,
+        "source": "refund",
+    }
+    if isinstance(refund_id, str) and refund_id:
+        detail["refund_id"] = refund_id
+    kb_journal.append(
+        {
+            "ts": int(now),
+            "kind": "entitlement",
+            "venue": "-",
+            "pack": sku,
+            "bar_ts": 0,
+            "detail": detail,
+        }
+    )
+
+
 class FakePaymentTransport:
     """In-memory payment transport for CI — never opens a socket.
 
-    Configure ``outcome`` to ``"paid"``, ``"failed"``, or ``"unreachable"``.
-    No processor secret is accepted or stored.
+    Configure ``outcome`` to ``"paid"``, ``"failed"``, or ``"unreachable"``
+    for checkout, and ``refund_outcome`` to ``"refunded"``, ``"failed"``,
+    or ``"unreachable"`` for refunds. No processor secret is accepted or
+    stored.
     """
 
-    def __init__(self, *, outcome: str = "paid", session_prefix: str = "cs_fake") -> None:
+    def __init__(
+        self,
+        *,
+        outcome: str = "paid",
+        refund_outcome: str = "refunded",
+        session_prefix: str = "cs_fake",
+        refund_prefix: str = "re_fake",
+    ) -> None:
         if outcome not in {"paid", "failed", "unreachable"}:
             raise ValueError("FakePaymentTransport.outcome must be paid/failed/unreachable")
+        if refund_outcome not in {"refunded", "failed", "unreachable"}:
+            raise ValueError("FakePaymentTransport.refund_outcome must be refunded/failed/unreachable")
         self.outcome = outcome
+        self.refund_outcome = refund_outcome
         self.session_prefix = session_prefix
+        self.refund_prefix = refund_prefix
         self.calls: list[dict[str, Any]] = []
+        self.refund_calls: list[dict[str, Any]] = []
 
     def create_session(self, sku: str, *, metadata: dict[str, Any]) -> dict[str, Any]:
         self.calls.append({"sku": sku, "metadata": dict(metadata)})
@@ -216,30 +327,70 @@ class FakePaymentTransport:
             return {"status": "failed", "session_id": None}
         return {"status": "unreachable", "session_id": None}
 
+    def create_refund(self, sku: str, *, metadata: dict[str, Any]) -> dict[str, Any]:
+        self.refund_calls.append({"sku": sku, "metadata": dict(metadata)})
+        if self.refund_outcome == "refunded":
+            return {
+                "status": "refunded",
+                "refund_id": f"{self.refund_prefix}_{sku}",
+            }
+        if self.refund_outcome == "failed":
+            return {"status": "failed", "refund_id": None}
+        return {"status": "unreachable", "refund_id": None}
+
 
 class UrllibCheckoutTransport:
-    """POST JSON over HTTPS to the cloud checkout session endpoint.
+    """POST JSON over HTTPS to cloud checkout / refund endpoints.
 
     Refuses non-HTTPS URLs. Never carries processor API keys — the cloud
     owns those. Transport failures surface as ``unreachable``.
     """
 
-    def __init__(self, *, url: str | None = None) -> None:
+    def __init__(self, *, url: str | None = None, refund_url: str | None = None) -> None:
         self._url = url
+        self._refund_url = refund_url
 
     def create_session(self, sku: str, *, metadata: dict[str, Any]) -> dict[str, Any]:
+        return self._post_closed(
+            self._url or checkout_session_url(),
+            payload={"sku": sku, "metadata": metadata},
+            paid_statuses={"paid", "failed", "unreachable"},
+            id_key="session_id",
+            id_prefix="cs_",
+            require_id_when="paid",
+        )
+
+    def create_refund(self, sku: str, *, metadata: dict[str, Any]) -> dict[str, Any]:
+        return self._post_closed(
+            self._refund_url or checkout_refund_url(),
+            payload={"sku": sku, "metadata": metadata},
+            paid_statuses={"refunded", "failed", "unreachable"},
+            id_key="refund_id",
+            id_prefix="",
+            require_id_when=None,
+        )
+
+    def _post_closed(
+        self,
+        target: str,
+        *,
+        payload: dict[str, Any],
+        paid_statuses: set[str],
+        id_key: str,
+        id_prefix: str,
+        require_id_when: str | None,
+    ) -> dict[str, Any]:
         import urllib.error
         import urllib.request
 
         from krellbot.tls import urlopen
 
-        target = self._url or checkout_session_url()
         if not isinstance(target, str) or not target.startswith("https://"):
-            return {"status": "unreachable", "session_id": None}
-        payload = json.dumps({"sku": sku, "metadata": metadata}).encode("utf-8")
+            return {"status": "unreachable", id_key: None}
+        body = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             target,
-            data=payload,
+            data=body,
             headers={
                 "content-type": "application/json",
                 "user-agent": "krellbot/0.1",
@@ -250,18 +401,22 @@ class UrllibCheckoutTransport:
             with urlopen(req, timeout=20) as res:
                 parsed = json.loads(res.read().decode("utf-8"))
         except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
-            return {"status": "unreachable", "session_id": None}
+            return {"status": "unreachable", id_key: None}
         if not isinstance(parsed, dict):
-            return {"status": "unreachable", "session_id": None}
+            return {"status": "unreachable", id_key: None}
         status = parsed.get("status")
-        if status not in {"paid", "failed", "unreachable"}:
-            return {"status": "unreachable", "session_id": None}
-        session_id = parsed.get("session_id")
-        if status == "paid" and (not isinstance(session_id, str) or not session_id.startswith("cs_")):
-            return {"status": "unreachable", "session_id": None}
+        if status not in paid_statuses:
+            return {"status": "unreachable", id_key: None}
+        ident = parsed.get(id_key)
+        if (
+            require_id_when is not None
+            and status == require_id_when
+            and (not isinstance(ident, str) or (id_prefix and not ident.startswith(id_prefix)))
+        ):
+            return {"status": "unreachable", id_key: None}
         return {
             "status": status,
-            "session_id": session_id if isinstance(session_id, str) else None,
+            id_key: ident if isinstance(ident, str) else None,
         }
 
 
@@ -271,6 +426,14 @@ def checkout_session_url() -> str:
     if not raw.startswith("https://"):
         raw = _DEFAULT_ORIGIN
     return raw + "/api/checkout/session"
+
+
+def checkout_refund_url() -> str:
+    """Return the canonical cloud checkout-refund URL."""
+    raw = os.environ.get("KRELLBOT_API", _DEFAULT_ORIGIN).rstrip("/")
+    if not raw.startswith("https://"):
+        raw = _DEFAULT_ORIGIN
+    return raw + "/api/checkout/refund"
 
 
 def start_checkout(
@@ -375,18 +538,113 @@ def start_checkout(
     )
 
 
+def request_refund(
+    home: Path,
+    sku: str,
+    *,
+    transport: PaymentTransport | None = None,
+    now: int | None = None,
+) -> RefundOutcome:
+    """Request a refund for an entitled catalogue SKU via the fake/real transport.
+
+    On ``refunded``: revokes the local SKU entitlement, removes the
+    purchased catalog row, clears the claim cache, and journals an
+    ``entitlement_revoked`` audit row. On ``failed`` / ``unreachable``:
+    leaves entitlements, license cache, and armed config untouched so
+    trading/export stay open. Never rewrites ``license.py`` cache state.
+    """
+    home = Path(home)
+    if now is None:
+        now = int(time.time())
+    try:
+        safe_sku = _safe_pack_id_segment(sku)
+    except InstallRefused:
+        return RefundOutcome(
+            status="refused",
+            message="sku not found",
+            sku="",
+            entitlements=tuple(read_entitlements(home)),
+        )
+
+    if not has_entitlement(home, safe_sku):
+        return RefundOutcome(
+            status="refused",
+            message="sku not entitled",
+            sku=safe_sku,
+            entitlements=tuple(read_entitlements(home)),
+        )
+
+    client = transport if transport is not None else UrllibCheckoutTransport()
+    try:
+        response = client.create_refund(
+            safe_sku,
+            metadata={"source": "workstation", "catalogue_id": safe_sku},
+        )
+    except OSError:
+        return RefundOutcome(
+            status="unreachable",
+            message="refund unreachable",
+            sku=safe_sku,
+            entitlements=tuple(read_entitlements(home)),
+        )
+
+    if not isinstance(response, dict):
+        return RefundOutcome(
+            status="unreachable",
+            message="refund unreachable",
+            sku=safe_sku,
+            entitlements=tuple(read_entitlements(home)),
+        )
+
+    status = response.get("status")
+    if status == "failed":
+        return RefundOutcome(
+            status="failed",
+            message="refund refused",
+            sku=safe_sku,
+            entitlements=tuple(read_entitlements(home)),
+        )
+    if status != "refunded":
+        return RefundOutcome(
+            status="unreachable",
+            message="refund unreachable",
+            sku=safe_sku,
+            entitlements=tuple(read_entitlements(home)),
+        )
+
+    refund_id = response.get("refund_id")
+    if not isinstance(refund_id, str) or not refund_id:
+        refund_id = None
+
+    entitlements = revoke_entitlement(home, safe_sku)
+    _remove_purchased_catalog(home, safe_sku)
+    clear_claim_cache(home)
+    _journal_entitlement_revoked(sku=safe_sku, now=int(now), refund_id=refund_id)
+    return RefundOutcome(
+        status="refunded",
+        message="refund completed",
+        sku=safe_sku,
+        entitlements=tuple(entitlements),
+        refund_id=refund_id,
+    )
+
+
 __all__ = [
     "SAFE_MESSAGES",
     "CheckoutOutcome",
     "CheckoutRefused",
     "FakePaymentTransport",
     "PaymentTransport",
+    "RefundOutcome",
     "UrllibCheckoutTransport",
     "catalog_json_path",
+    "checkout_refund_url",
     "checkout_session_url",
     "entitlements_path",
     "grant_entitlement",
     "has_entitlement",
     "read_entitlements",
+    "request_refund",
+    "revoke_entitlement",
     "start_checkout",
 ]

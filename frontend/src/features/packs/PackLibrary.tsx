@@ -12,6 +12,7 @@ import type {
   ActivationRedeemResult,
   PackLibraryClient,
   PackRow,
+  RefundResult,
 } from "./client";
 import { PackLibraryHttpError } from "./client";
 import "./PackLibrary.signal.css";
@@ -21,10 +22,15 @@ export type {
   ActivationRedeemStatus,
   PackLibraryClient,
   PackRow,
+  RefundResult,
+  RefundStatus,
 } from "./client";
 
 export type PackLibraryProps = {
-  client: PackLibraryClient;
+  /** Library client; refund form appears when ``requestRefund`` is present. */
+  client: PackLibraryClient & {
+    requestRefund?(sku: string): Promise<RefundResult>;
+  };
 };
 
 function isRedeemSuccess(result: ActivationRedeemResult): boolean {
@@ -83,10 +89,17 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
   const [redeemPending, setRedeemPending] = useState(false);
   const [redeemFeedback, setRedeemFeedback] = useState<string | null>(null);
   const [redeemError, setRedeemError] = useState<string | null>(null);
+  const [refundSku, setRefundSku] = useState("");
+  const [refundPending, setRefundPending] = useState(false);
+  const [refundFeedback, setRefundFeedback] = useState<string | null>(null);
+  const [refundError, setRefundError] = useState<string | null>(null);
   const requestSeq = useRef(0);
   const redeemInFlight = useRef(false);
+  const refundInFlight = useRef(false);
   const copyTimer = useRef<number | null>(null);
   const redeemKeyId = useId();
+  const refundSkuId = useId();
+  const canRequestRefund = typeof client.requestRefund === "function";
 
   useEffect(() => {
     const seq = (requestSeq.current += 1);
@@ -197,6 +210,59 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
       }
     },
     [activationKey, client, refreshLibraryAfterRedeem],
+  );
+
+  const handleRefund = useCallback(
+    async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+      event.preventDefault();
+      if (!canRequestRefund || refundInFlight.current) {
+        return;
+      }
+      const trimmed = refundSku.trim();
+      if (trimmed === "") {
+        setRefundFeedback(null);
+        setRefundError("Enter a catalogue SKU to request a refund.");
+        return;
+      }
+      refundInFlight.current = true;
+      setRefundPending(true);
+      setRefundFeedback(null);
+      setRefundError(null);
+      try {
+        const result = await client.requestRefund!(trimmed);
+        if (result.status === "refunded") {
+          setRefundSku("");
+          setRefundFeedback(
+            "Entitlement revoked · refund recorded. Trading and export stay available.",
+          );
+          await refreshLibraryAfterRedeem();
+        } else if (result.status === "failed") {
+          setRefundError(
+            "Refund refused. Entitlement unchanged; trading and export stay available.",
+          );
+        } else if (result.status === "refused") {
+          setRefundError(
+            result.message === "sku not entitled"
+              ? "That SKU is not entitled on this machine."
+              : "Refund refused.",
+          );
+        } else {
+          setRefundError(
+            "Refund unreachable. Entitlement unchanged; trading and export stay available.",
+          );
+        }
+      } catch (err: unknown) {
+        if (err instanceof PackLibraryHttpError) {
+          setRefundError(`Refund request failed (HTTP ${err.status})`);
+        } else {
+          setRefundError("Refund request failed");
+        }
+      } finally {
+        refundInFlight.current = false;
+        setRefundPending(false);
+      }
+    },
+    [canRequestRefund, client, refundSku, refreshLibraryAfterRedeem],
   );
 
   const handleCopy = useCallback((pack_id: string): void => {
@@ -370,6 +436,69 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
           </p>
         ) : null}
       </form>
+
+      {canRequestRefund ? (
+        <form
+          className="kbot-pack-library__refund"
+          data-testid="pack-library-refund"
+          onSubmit={(event) => {
+            void handleRefund(event);
+          }}
+        >
+          <div className="kbot-pack-library__refund-copy">
+            <h3 className="kbot-pack-library__refund-title">Request pack refund</h3>
+            <p className="kbot-pack-library__refund-helper">
+              Request a refund for a paid catalogue SKU. On success the local
+              entitlement is revoked and journaled. Billing failure cannot block
+              exits or export. See docs/refunds.md.
+            </p>
+          </div>
+          <label className="kbot-pack-library__refund-label" htmlFor={refundSkuId}>
+            <span className="kbot-pack-library__refund-caption">Catalogue SKU</span>
+            <input
+              id={refundSkuId}
+              type="text"
+              className="kbot-pack-library__refund-input"
+              data-testid="pack-library-refund-input"
+              autoComplete="off"
+              spellCheck={false}
+              value={refundSku}
+              disabled={refundPending}
+              onChange={(event) => {
+                setRefundSku(event.target.value);
+              }}
+            />
+          </label>
+          <button
+            type="submit"
+            className="kbot-pack-library__refund-submit"
+            data-testid="pack-library-refund-submit"
+            disabled={refundPending}
+            aria-disabled={refundPending}
+            aria-busy={refundPending}
+          >
+            {refundPending ? "Requesting…" : "Request refund"}
+          </button>
+          {refundFeedback !== null ? (
+            <p
+              className="kbot-pack-library__refund-feedback"
+              role="status"
+              data-testid="pack-library-refund-feedback"
+            >
+              {refundFeedback}
+            </p>
+          ) : null}
+          {refundError !== null ? (
+            <p
+              className="kbot-pack-library__refund-error"
+              role="alert"
+              data-testid="pack-library-refund-error"
+            >
+              {refundError}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
 
       {rows !== null && rows.length > 0 ? (
         <div className="kbot-pack-library__toolbar">
