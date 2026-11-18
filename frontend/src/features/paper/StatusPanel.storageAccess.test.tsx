@@ -215,7 +215,7 @@ async function armFromForm(): Promise<void> {
   fireEvent.change(screen.getByTestId("paper-arm-balance"), {
     target: { value: "250.50" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /arm paper pack/i }));
+  fireEvent.click(screen.getByRole("button", { name: /start paper run/i }));
 }
 
 describe("StatusPanel optional storage access (browser-local memory is optional, never authority)", () => {
@@ -269,7 +269,7 @@ describe("StatusPanel optional storage access (browser-local memory is optional,
     // The form stays usable: a balance can still be entered.
     fireEvent.change(balance, { target: { value: "250.50" } });
     expect(
-      screen.getByRole("button", { name: /arm paper pack/i }).getAttribute(
+      screen.getByRole("button", { name: /start paper run/i }).getAttribute(
         "disabled",
       ),
     ).toBeNull();

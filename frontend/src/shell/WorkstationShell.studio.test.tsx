@@ -265,9 +265,12 @@ describe("WorkstationShell — studio view routing", () => {
     expect(screen.queryByTestId("react-flow-stub")).toBeNull();
   });
 
-  it("does not mount the canvas while the Workstation view is active", () => {
+  it("does not mount the canvas on the beginner AppHome front door", () => {
     renderShell();
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByText("Paper trading on this computer")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Start with a free paper strategy/i }),
+    ).toBeDefined();
     expect(screen.queryByTestId("react-flow-stub")).toBeNull();
   });
 });

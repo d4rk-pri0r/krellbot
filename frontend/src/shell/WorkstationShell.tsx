@@ -237,6 +237,10 @@ export function WorkstationShell({
       typeof window === "undefined" ? "" : window.location.search,
     ),
   );
+  /** Revision selected by the home starter chooser for the Run arm form. */
+  const [preferredArmRevisionId, setPreferredArmRevisionId] = useState<
+    string | null
+  >(null);
   const setActive = useCallback((view: View): void => {
     setActiveState(view);
     // No-ops when the URL already encodes ``view`` (re-clicking the
@@ -1145,6 +1149,11 @@ export function WorkstationShell({
             onRedeemReconnect={
               bootstrapFailed ? handleRedeemReconnect : undefined
             }
+            strategyClient={client}
+            onStarterReady={({ revisionId }) => {
+              setPreferredArmRevisionId(revisionId);
+              setActive("workstation");
+            }}
           />
         ) : null}
         {active === "workstation" ? (
@@ -1170,6 +1179,7 @@ export function WorkstationShell({
                       positionSelected={
                         inspectorSelection?.kind === "position"
                       }
+                      preferredRevisionId={preferredArmRevisionId}
                     />
                     <FleetArmedList
                       client={paperFleet}
