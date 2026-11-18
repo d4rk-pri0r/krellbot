@@ -45,6 +45,7 @@ from krellbot.application import packs as app_packs
 from krellbot.application.live_preflight import build_venue_preflight_transport
 from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
 from krellbot.application.paper import (
+    project_forward_paper_ledger,
     project_owned_position,
     project_paper_pnl_position_chart,
     project_portfolio_history,
@@ -2527,6 +2528,30 @@ def create_app(
 
         body = _paper_history_view(s.home)
 
+        return JSONResponse(
+            body,
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/paper/ledger")
+    async def paper_ledger(request: Request) -> Response:
+        """Return the forward chronological paper evidence ledger.
+
+        Same session gate as ``GET /api/v1/paper/status`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF. The
+        body projects journal ticks/refusals, paper-state fills, and
+        paper-mode arm records oldest→newest for outsider reproduction.
+        Labeled paper / local evidence — never live P&L. Fill qty/price
+        and owned cash stay off the wire. Read-only: never arms or writes.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = project_forward_paper_ledger(s.home)
         return JSONResponse(
             body,
             status_code=200,

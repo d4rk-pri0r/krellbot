@@ -1,0 +1,140 @@
+/*
+ * Forward paper ledger — Signal + Krell Asset Pack v2 (KRELL-SIGNAL-20261010).
+ *
+ * Component-root-scoped styles for ForwardPaperLedgerPanel on the paper
+ * workstation. Namespaced under `.kbot-paper-ledger`.
+ *
+ *   navy/canvas #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text        #E9F0F5  muted  #ABC4D8  seafoam #A8D8D1
+ */
+
+.kbot-paper-ledger {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kbot-paper-ledger *,
+.kbot-paper-ledger *::before,
+.kbot-paper-ledger *::after {
+  box-sizing: border-box;
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__preview-badge {
+  margin: 0;
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__refresh {
+  margin: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 7px;
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__refresh:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__helper {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__empty,
+.kbot-paper-ledger .kbot-paper-ledger__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__error {
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__scroll {
+  overflow: auto;
+  max-height: 320px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: 8px;
+  background: var(--surface, #14222e);
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__table th,
+.kbot-paper-ledger .kbot-paper-ledger__table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line, #22465d);
+  white-space: nowrap;
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__table th {
+  position: sticky;
+  top: 0;
+  background: var(--panel, #18354a);
+  color: var(--muted, #abc4d8);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  z-index: 1;
+}
+
+.kbot-paper-ledger .kbot-paper-ledger__detail {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 28rem;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+}

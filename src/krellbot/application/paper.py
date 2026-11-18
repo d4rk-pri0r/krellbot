@@ -672,6 +672,176 @@ def project_portfolio_history(home: Path) -> dict:
     }
 
 
+# Cap keeps the wire bounded while preserving oldest→newest order for
+# outsider reproduction (drop the newest surplus, never reverse).
+FORWARD_PAPER_LEDGER_MAX_EVENTS = 5000
+_FORWARD_PAPER_LEDGER_KIND_ORDER = {"arm": 0, "tick": 1, "fill": 2, "refusal": 3}
+FORWARD_PAPER_LEDGER_DISCLAIMER = "Paper evidence — not live P&L"
+
+
+def _forward_ledger_refusal_code(detail: dict) -> str | None:
+    """Return the refusal code a tick detail carries, else ``None``.
+
+    Matches the paper-history refusal keys: ``code``, ``intent_refused``,
+    ``metadata_refusal``. A plain decision ``reason`` is not a refusal.
+    """
+
+    for key in ("code", "intent_refused", "metadata_refusal"):
+        value = detail.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _forward_ledger_safe_detail(detail: object) -> dict:
+    """Drop export secret fields from a tick detail for the ledger wire."""
+
+    from krellbot import journal as kb_journal
+
+    if not isinstance(detail, dict):
+        return {}
+    cleaned = kb_journal.drop_export_secret_fields(detail)
+    return cleaned if isinstance(cleaned, dict) else {}
+
+
+def project_forward_paper_ledger(home: Path) -> dict:
+    """Forward (oldest→newest) paper evidence ledger for outsider reproduction.
+
+    Projects journal-backed ticks and refusals, paper-state fills, and
+    paper-mode arm records into a single chronological ``events`` list.
+    Never fabricates live P&L: fill qty/price and owned cash stay off the
+    wire; the body is labeled ``mode: paper`` / ``presentation:
+    local_evidence``. Read-only over ``<home>/journal`` +
+    ``<home>/run/paper-*.json`` + paper armed config.
+    """
+
+    home = Path(home)
+    events: list[dict] = []
+
+    try:
+        config = kb_config.load_config(home)
+    except (OSError, ValueError):
+        config = kb_config.Config()
+
+    for armed in config.armed:
+        if armed.mode != "paper":
+            continue
+        pack_version = armed.pack_version
+        detail: dict = {"mode": "paper"}
+        if isinstance(pack_version, str) and pack_version:
+            detail["pack_version"] = pack_version
+        events.append(
+            {
+                "ts": int(armed.armed_at_ts) if armed.armed_at_ts else 0,
+                "kind": "arm",
+                "venue": armed.venue,
+                "pack": armed.pack_id,
+                "pair": armed.pair,
+                "detail": detail,
+            }
+        )
+
+    for record in _read_journal_dicts(home):
+        if record.get("kind") != "tick":
+            continue
+        venue = record.get("venue")
+        pack_id = record.get("pack")
+        if not isinstance(venue, str) or not isinstance(pack_id, str):
+            continue
+        raw_detail = record.get("detail")
+        detail = raw_detail if isinstance(raw_detail, dict) else {}
+        pair = detail.get("pair")
+        pair_text = pair if isinstance(pair, str) and pair else None
+        ts = record.get("ts")
+        ts_value = int(ts) if isinstance(ts, (int, float)) else 0
+        safe_detail = _forward_ledger_safe_detail(detail)
+        events.append(
+            {
+                "ts": ts_value,
+                "kind": "tick",
+                "venue": venue,
+                "pack": pack_id,
+                "pair": pair_text,
+                "detail": safe_detail,
+            }
+        )
+        refusal = _forward_ledger_refusal_code(detail)
+        if refusal is not None:
+            events.append(
+                {
+                    "ts": ts_value,
+                    "kind": "refusal",
+                    "venue": venue,
+                    "pack": pack_id,
+                    "pair": pair_text,
+                    "detail": {"code": refusal},
+                }
+            )
+
+    run_dir = home / "run"
+    if run_dir.is_dir():
+        for path in sorted(run_dir.glob("paper-*.json")):
+            name = path.name
+            if not (name.startswith("paper-") and name.endswith(".json")):
+                continue
+            venue = name[len("paper-") : -len(".json")]
+            if not venue:
+                continue
+            state = read_paper_state(home, venue)
+            raw_fills = state.get("recent_fills")
+            if not isinstance(raw_fills, list):
+                continue
+            for item in raw_fills:
+                if not isinstance(item, dict):
+                    continue
+                pair = item.get("pair")
+                if not isinstance(pair, str) or not pair:
+                    continue
+                side = item.get("side")
+                if side not in ("buy", "sell"):
+                    continue
+                ts_ms = item.get("ts_ms")
+                if not isinstance(ts_ms, (int, float)):
+                    continue
+                ts_ms_int = int(ts_ms)
+                coid = item.get("coid", item.get("id", ""))
+                events.append(
+                    {
+                        "ts": ts_ms_int // 1000,
+                        "kind": "fill",
+                        "venue": venue,
+                        "pack": "",
+                        "pair": pair,
+                        "detail": {
+                            "coid": str(coid) if coid is not None else "",
+                            "side": side,
+                            "ts_ms": ts_ms_int,
+                        },
+                    }
+                )
+
+    events.sort(
+        key=lambda row: (
+            int(row["ts"]),
+            _FORWARD_PAPER_LEDGER_KIND_ORDER.get(str(row["kind"]), 99),
+            str(row.get("venue") or ""),
+            str(row.get("pack") or ""),
+            str(row.get("pair") or ""),
+        )
+    )
+    if len(events) > FORWARD_PAPER_LEDGER_MAX_EVENTS:
+        events = events[:FORWARD_PAPER_LEDGER_MAX_EVENTS]
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "mode": "paper",
+        "order": "forward",
+        "presentation": "local_evidence",
+        "disclaimer": FORWARD_PAPER_LEDGER_DISCLAIMER,
+        "events": events,
+    }
+
+
 def _revision(home: Path) -> str | None:
     path = kb_config.config_path(home)
     if not path.exists():

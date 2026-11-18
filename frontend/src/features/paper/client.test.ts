@@ -363,6 +363,42 @@ describe("createHttpClient raiseStop", () => {
   });
 });
 
+describe("createHttpClient listForwardLedger", () => {
+  it("GETs /api/v1/paper/ledger with credentials: include and the CSRF header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        mode: "paper",
+        order: "forward",
+        presentation: "local_evidence",
+        disclaimer: "Paper evidence — not live P&L",
+        events: [
+          {
+            ts: 100,
+            kind: "tick",
+            venue: "kraken",
+            pack: "trend-follow",
+            pair: "SUIUSD",
+            detail: { reason: "no_signal" },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const body = await createHttpClient().listForwardLedger();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/paper/ledger");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("include");
+    expect(init.headers).toEqual({ "X-Krellbot-CSRF": getCsrf() });
+    expect(body.mode).toBe("paper");
+    expect(body.order).toBe("forward");
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0].kind).toBe("tick");
+  });
+});
+
 describe("createHttpClient listRuns", () => {
   it("GETs /api/v1/paper/history with credentials: include and the CSRF header", async () => {
     const fetchMock = vi.fn().mockResolvedValue(

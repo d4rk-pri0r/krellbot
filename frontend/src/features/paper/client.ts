@@ -150,6 +150,30 @@ export type PaperRunsClient = {
   listRuns(): Promise<PaperHistory>;
 };
 
+/** One projected event from ``GET /api/v1/paper/ledger``. */
+export type ForwardPaperLedgerEvent = {
+  ts: number;
+  kind: string;
+  venue: string;
+  pack: string;
+  pair: string | null;
+  detail: Record<string, unknown>;
+};
+
+/** Closed-shape forward paper ledger body (oldest→newest evidence). */
+export type ForwardPaperLedger = {
+  schema_version: string;
+  mode: string;
+  order: string;
+  presentation: string;
+  disclaimer: string;
+  events: ForwardPaperLedgerEvent[];
+};
+
+export type ForwardPaperLedgerClient = {
+  listForwardLedger(): Promise<ForwardPaperLedger>;
+};
+
 export type PaperArmedRecord = {
   venue: string;
   pair: string;
@@ -557,6 +581,69 @@ async function listRuns(): Promise<PaperHistory> {
   return adaptHistory(raw);
 }
 
+function adaptForwardLedger(raw: Record<string, unknown>): ForwardPaperLedger {
+  const eventsRaw = Array.isArray(raw.events) ? raw.events : [];
+  const events: ForwardPaperLedgerEvent[] = [];
+  for (const item of eventsRaw) {
+    if (item === null || typeof item !== "object") {
+      continue;
+    }
+    const row = item as Record<string, unknown>;
+    const detail =
+      row.detail !== null && typeof row.detail === "object"
+        ? (row.detail as Record<string, unknown>)
+        : {};
+    events.push({
+      ts: typeof row.ts === "number" ? row.ts : Number(row.ts) || 0,
+      kind: typeof row.kind === "string" ? row.kind : "",
+      venue: typeof row.venue === "string" ? row.venue : "",
+      pack: typeof row.pack === "string" ? row.pack : "",
+      pair: typeof row.pair === "string" ? row.pair : null,
+      detail,
+    });
+  }
+  return {
+    schema_version:
+      typeof raw.schema_version === "string" ? raw.schema_version : "1",
+    mode: typeof raw.mode === "string" ? raw.mode : "paper",
+    order: typeof raw.order === "string" ? raw.order : "forward",
+    presentation:
+      typeof raw.presentation === "string"
+        ? raw.presentation
+        : "local_evidence",
+    disclaimer:
+      typeof raw.disclaimer === "string"
+        ? raw.disclaimer
+        : "Paper evidence — not live P&L",
+    events,
+  };
+}
+
+async function listForwardLedger(): Promise<ForwardPaperLedger> {
+  const response = await fetch("/api/v1/paper/ledger", {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    let refusal: Record<string, unknown> = {};
+    try {
+      refusal = (await response.json()) as Record<string, unknown>;
+    } catch {
+      refusal = {};
+    }
+    const code = typeof refusal.code === "string" ? refusal.code : "";
+    const message =
+      typeof refusal.message === "string" ? refusal.message : "";
+    const reason = code || message || String(response.status);
+    throw new Error(`paper ledger refused: ${reason}`);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  return adaptForwardLedger(raw);
+}
+
 function adaptArmedView(raw: Record<string, unknown>): PaperArmedView {
   const schema_version =
     typeof raw.schema_version === "string" ? raw.schema_version : "1";
@@ -890,6 +977,7 @@ export function createHttpClient(): PaperClient &
   PaperArmedClient &
   PaperChartClient &
   FleetArmedClient &
+  ForwardPaperLedgerClient &
   Required<Pick<PaperClient, "raiseStop">> {
   return {
     getStatus(select?: PaperStatusSelect): Promise<PaperStatus> {
@@ -922,6 +1010,7 @@ export function createHttpClient(): PaperClient &
       return raiseStop(venue, pair, newStop);
     },
     listRuns,
+    listForwardLedger,
     exportPaperPack(venue: string, pair: string): Promise<PaperExportResult> {
       return exportPaperPack(venue, pair);
     },
@@ -941,4 +1030,8 @@ export function createFleetHttpClient(): FleetArmedClient {
 
 export function createLastRunsHttpClient(): PaperRunsClient {
   return { listRuns };
+}
+
+export function createForwardPaperLedgerHttpClient(): ForwardPaperLedgerClient {
+  return { listForwardLedger };
 }
