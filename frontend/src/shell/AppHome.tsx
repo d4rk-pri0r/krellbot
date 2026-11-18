@@ -8,6 +8,7 @@ import {
   createKeysHttpClient,
   type KeysClient,
 } from "../features/keys/client";
+import { PaidDisclosuresPanel } from "../features/packs/PaidDisclosuresPanel";
 import { ReferralDisclosurePanel } from "../features/referral/ReferralDisclosurePanel";
 import {
   createReferralHttpClient,
@@ -462,6 +463,21 @@ export function AppHome({
               </button>
             </div>
           </section>
+
+          <DisclosureSection
+            title="Paid disclosures"
+            summary="Fee share / referral when shown; packs not personalized advice; refund window pointer; telemetry opt-in. Does not promise gains."
+            badge="Settings"
+            badgeTone="advanced"
+            defaultOpen={false}
+            storageKey="krellbot.disclosure.home.paid-disclosures"
+            bare
+            data-testid="app-home-paid-disclosures-rail"
+          >
+            <div className="app-home__rail app-home__rail--nested">
+              <PaidDisclosuresPanel variant="settings" />
+            </div>
+          </DisclosureSection>
 
           <DisclosureSection
             title="Exchange fee share / referral"

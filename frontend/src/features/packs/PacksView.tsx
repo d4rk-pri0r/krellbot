@@ -1,8 +1,8 @@
 import { useCallback, useState, type JSX } from "react";
-import { REFERRAL_PACKS_DISCLOSURE } from "../referral/copy";
 import { CommunityIndex } from "./CommunityIndex";
 import { PackCatalogue } from "./PackCatalogue";
 import { PackLibrary } from "./PackLibrary";
+import { PaidDisclosuresPanel } from "./PaidDisclosuresPanel";
 import type { PacksClient } from "./client";
 import { PACK_SOURCES } from "./packSources";
 import "./PacksView.signal.css";
@@ -38,12 +38,12 @@ export function PacksView({ client }: PacksViewProps): JSX.Element {
             unpaid community index, and starter examples on Strategies. Community
             entries are never paid SKUs.
           </p>
-          <p
-            className="kbot-packs-view__referral"
-            data-testid="packs-referral-disclosure"
+          <div
+            className="kbot-packs-view__disclosures"
+            data-testid="packs-paid-disclosures"
           >
-            {REFERRAL_PACKS_DISCLOSURE}
-          </p>
+            <PaidDisclosuresPanel variant="packs" />
+          </div>
           <ul
             className="kbot-packs-view__sources"
             data-testid="packs-source-legend"

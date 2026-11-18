@@ -138,6 +138,19 @@ describe("PacksView community vs signed-catalogue distinction", () => {
   it("shows distinct source badges and never labels community as ed25519-signed", async () => {
     render(<PacksView client={makeClient()} />);
 
+    expect(screen.getByTestId("packs-paid-disclosures")).toBeDefined();
+    expect(screen.getByTestId("paid-disclosures-not-advice").textContent).toMatch(
+      /not personalized advice/i,
+    );
+    expect(screen.getByTestId("paid-disclosures-fee-share").textContent).toMatch(
+      /fee share/i,
+    );
+    expect(screen.getByTestId("paid-disclosures-refund").textContent).toMatch(
+      /refund/i,
+    );
+    expect(screen.getByTestId("paid-disclosures-telemetry").textContent).toMatch(
+      /opt-in/i,
+    );
     expect(screen.getByTestId("packs-source-legend")).toBeDefined();
     expect(screen.getByTestId("packs-source-legend-signed_catalogue").textContent).toContain(
       SIGNED_CATALOGUE_BADGE,

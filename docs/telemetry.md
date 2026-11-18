@@ -1,6 +1,9 @@
 # Telemetry
 
-Telemetry is **default off** until the operator opts in. `krellbot telemetry enable` prints one example payload and waits for `y`. Anything other than `y` leaves it off.
+Telemetry is **opt-in** (default off) until the operator opts in. Paid
+catalogue surfaces point here from [paid-disclosures.md](paid-disclosures.md).
+`krellbot telemetry enable` prints one example payload and waits for `y`.
+Anything other than `y` leaves it off.
 
 The workstation Packs checkout UI also exposes an explicit opt-in control
 that writes the same `$KRELLBOT_HOME/telemetry.json` flag via
