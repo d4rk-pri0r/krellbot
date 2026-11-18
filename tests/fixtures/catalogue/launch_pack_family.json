@@ -1,0 +1,26 @@
+{
+  "catalogue_version": "1",
+  "family_id": "dca",
+  "family_label": "DCA mode pack family",
+  "packs": [
+    {
+      "description": "Launch DCA pack family. Tools only \u2014 not personalized advice. Research/fixture results are backtest or pinned fixture \u2014 not live market performance. No returns promises.",
+      "disclosures": {
+        "fixture_backtest_labeled": true,
+        "no_returns_promises": true,
+        "not_personalized_advice": true
+      },
+      "family_id": "dca",
+      "family_label": "DCA mode pack family",
+      "id": "paid-launch-dca",
+      "label": "Launch DCA",
+      "pack_sha256": "827cd73891e1d357bd0cbe36009b87684c11c9b18d7ac56f7b80fcf8bd9731f0",
+      "permissions": [
+        "catalog"
+      ],
+      "tier": "paid",
+      "version": "1.0.0"
+    }
+  ],
+  "updated": "2026-11-18T00:00:00Z"
+}

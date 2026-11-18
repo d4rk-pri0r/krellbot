@@ -117,3 +117,11 @@ fixture — not live market performance.
   leverage / futures grids, no venue-native grid API, no hidden multi-order
   ladder beyond the long-only DSL decision).
 - Do not present mode Research or fixture metrics as live market performance.
+
+## Paid launch family (DCA)
+
+Paid 1.0 launches **one** pack family: the DCA mode pack family
+(`paid-launch-dca`). Honesty rules (no returns promises; fixture/backtest
+labeled; not personalized advice; catalogue `pack_sha256` matches installed
+bytes) live in [launch-pack-family.md](launch-pack-family.md) and
+`krellbot.packs.launch_family`.

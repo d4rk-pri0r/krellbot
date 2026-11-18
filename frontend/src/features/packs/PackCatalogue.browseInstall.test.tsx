@@ -205,4 +205,42 @@ describe("PackCatalogue browse and one-click install", () => {
     );
     expect(screen.queryByTestId("pack-catalogue-list")).toBeNull();
   });
+
+  it("shows launch pack family honesty for the DCA SKU without returns promises", async () => {
+    const launchDoc: CatalogueDocument = {
+      schema_version: "1",
+      catalogue_version: "1",
+      updated: "2026-11-18T00:00:00Z",
+      packs: [
+        {
+          id: "paid-launch-dca",
+          tier: "paid",
+          label: "Launch DCA",
+          description:
+            "Launch DCA pack family. Tools only — not personalized advice. Research/fixture results are backtest or pinned fixture — not live market performance. No returns promises.",
+          version: "1.0.0",
+          permissions: ["catalog"],
+        },
+      ],
+    };
+    render(
+      <PackCatalogue
+        client={makeClient({ listCatalogue: vi.fn(async () => launchDoc) })}
+      />,
+    );
+    expect(
+      await screen.findByTestId("pack-catalogue-launch-family-honesty"),
+    ).toBeDefined();
+    const familyHonesty =
+      screen.getByTestId("pack-catalogue-launch-family-honesty").textContent ?? "";
+    expect(familyHonesty.toLowerCase()).toContain("not personalized advice");
+    expect(familyHonesty.toLowerCase()).toMatch(/fixture/);
+    expect(familyHonesty.toLowerCase()).toMatch(/backtest/);
+    expect(familyHonesty.toLowerCase()).not.toMatch(/guaranteed\s+returns?/);
+    expect(
+      screen.getByTestId("pack-catalogue-launch-honesty-paid-launch-dca").textContent,
+    ).toMatch(/not personalized advice/i);
+    expect(screen.queryByTestId("pack-catalogue-install-paid-launch-dca")).toBeNull();
+    expect(screen.getByTestId("pack-catalogue-checkout-paid-launch-dca")).toBeDefined();
+  });
 });

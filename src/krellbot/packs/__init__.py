@@ -9,6 +9,8 @@ Public surface:
       rev-share verify-before-install (docs/creator-packs.md).
     * ``rev_share_ledger`` - local owed-share ledger + fake settlement
       transport for paid creator install/redeem (docs/creator-packs.md).
+    * ``launch_family`` - Paid 1.0 single launch pack family honesty
+      (DCA / ``paid-launch-dca``; docs/launch-pack-family.md).
 
 The examples are ordinary valid DSL packs. They are project-authored
 read-only catalogue entries: nothing here installs a pack, writes under
@@ -19,6 +21,6 @@ existing draft flow (``POST /api/v1/strategies/drafts``).
 
 from __future__ import annotations
 
-from . import catalogue, creator_signed, mode_packs, rev_share_ledger
+from . import catalogue, creator_signed, launch_family, mode_packs, rev_share_ledger
 
-__all__ = ["catalogue", "creator_signed", "mode_packs", "rev_share_ledger"]
+__all__ = ["catalogue", "creator_signed", "launch_family", "mode_packs", "rev_share_ledger"]
