@@ -7,7 +7,7 @@ Behavior under test:
 
   1. ``GET /`` returns the built ``frontend/dist/index.html`` with
      ``Content-Type: text/html`` and ``Cache-Control: no-store``. The body
-     contains the shell copy ``Paper workstation``.
+     contains the shell title marker ``paper workstation`` and Run CTA.
   2. ``GET /assets/<file>`` returns the matching file from
      ``frontend/dist/assets``. Path traversal (``..``), absolute paths,
      and missing files are 404; no file outside ``frontend/dist`` is
@@ -42,7 +42,8 @@ FRONTEND_DIR = REPO_ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
 INDEX_HTML = DIST_DIR / "index.html"
 
-SHELL_PROMISE = "Paper workstation"
+SHELL_TITLE_MARKER = "paper workstation"
+SHELL_RUN_CTA = "Start paper run"
 SHELL_NOT_BUILT_CODE = "shell_not_built"
 
 # Env vars the API layer reads but the host might have set. Clearing them
@@ -146,12 +147,8 @@ def test_root_returns_built_index_html(home: Path, built_dist: Path, monkeypatch
     and body.
 
     The Vite-generated ``index.html`` carries the title marker
-    ``krellbot — paper workstation`` (case-sensitive lowercase ``p``).
-    The user-facing copy ``Paper workstation`` (capital ``P``) is the
-    text the React app renders once the JS bundle loads; the bundle
-    is reachable through ``/assets/<file>``. The brief's "body contains
-    Paper workstation" is verified end-to-end: the served HTML plus the
-    served JS bundle the browser receives carries that copy.
+    ``krellbot — paper workstation`` (lowercase ``p``). M24 pagehead is
+    **Run**; the JS bundle carries the primary CTA ``Start paper run``.
     """
 
     _clear_secret_env(monkeypatch)
@@ -168,16 +165,13 @@ def test_root_returns_built_index_html(home: Path, built_dist: Path, monkeypatch
     assert ctype.startswith("text/html"), ctype
     assert "no-store" in flat.get("cache-control", "").lower(), flat
     decoded = body.decode("utf-8")
-    # The Vite title carries the canonical "paper workstation" marker.
-    assert "paper workstation" in decoded, decoded[:512]
-    # The JS bundle, reachable via /assets/<file>, carries the
-    # capitalised "Paper workstation" copy the React app renders.
+    assert SHELL_TITLE_MARKER in decoded, decoded[:512]
     assets_dir = built_dist / "assets"
     bundle_text = ""
     for path in sorted(assets_dir.iterdir()):
         if path.suffix in {".js", ".css", ".html", ".json", ".svg"}:
             bundle_text += path.read_text(encoding="utf-8")
-    assert SHELL_PROMISE in bundle_text, "JS bundle is missing the shell copy"
+    assert SHELL_RUN_CTA in bundle_text, "JS bundle is missing the Run-path CTA"
 
 
 def test_root_does_not_swallow_api(home: Path, built_dist: Path, monkeypatch: pytest.MonkeyPatch) -> None:

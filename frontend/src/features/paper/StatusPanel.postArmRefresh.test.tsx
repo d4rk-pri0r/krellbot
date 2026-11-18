@@ -159,13 +159,13 @@ describe("StatusPanel post-arm automatic status refresh (Paper tab)", () => {
 
     // The full post-Arm control set on the SAME StatusPanel.
     expect(
-      screen.getByRole("button", { name: /pause entries/i }).getAttribute("disabled"),
+      screen.getByRole("button", { name: /pause new buys/i }).getAttribute("disabled"),
     ).toBeNull();
     expect(
-      screen.getByRole("button", { name: /resume entries/i }).getAttribute("disabled"),
+      screen.getByRole("button", { name: /resume new buys/i }).getAttribute("disabled"),
     ).toBeNull();
     expect(
-      screen.getByRole("button", { name: /^disarm$/i }).getAttribute("disabled"),
+      screen.getByRole("button", { name: /^stop paper run$/i }).getAttribute("disabled"),
     ).toBeNull();
     // The resting_stop branch: the raise-stop input + Apply are mounted.
     expect(screen.getByTestId("paper-raise-stop")).toBeDefined();
@@ -283,7 +283,7 @@ describe("StatusPanel post-arm automatic status refresh (Paper tab)", () => {
     const entries = await screen.findByTestId("paper-status-entries");
     expect(entries.textContent).toMatch(/Entries paused/);
     expect(
-      screen.getByRole("button", { name: /^disarm$/i }).getAttribute("disabled"),
+      screen.getByRole("button", { name: /^stop paper run$/i }).getAttribute("disabled"),
     ).toBeNull();
     expect(screen.getByTestId("paper-raise-stop-apply")).toBeDefined();
   });
@@ -316,7 +316,7 @@ describe("StatusPanel post-arm automatic status refresh (Paper tab)", () => {
     });
     await screen.findByTestId("paper-status-entries");
 
-    fireEvent.click(screen.getByRole("button", { name: /^disarm$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^stop paper run$/i }));
     await waitFor(() => {
       expect(client.disarm).toHaveBeenCalledTimes(1);
     });

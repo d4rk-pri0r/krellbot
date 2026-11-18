@@ -119,7 +119,7 @@ describe("operations first-viewport density at 1440×900", () => {
     render(<OperationsView client={makeClient()} />);
     const deployments = await screen.findByTestId("ops-deployments");
     expect(deployments.textContent).toMatch(/No deployments\./);
-    expect(deployments.textContent).toMatch(/Arm a paper pack/i);
+    expect(deployments.textContent).toMatch(/Start a paper run/i);
     const alerts = screen.getByTestId("ops-alerts");
     expect(alerts.textContent).toMatch(/No alerts\./);
     expect(alerts.textContent).toMatch(/Refresh after a refusal/i);

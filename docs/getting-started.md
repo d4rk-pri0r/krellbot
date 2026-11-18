@@ -4,16 +4,17 @@ The client is free. It runs on your computer. It does not hold your money.
 
 ## Start with paper (no exchange credentials)
 
-[Install the free client](#install-the-free-client), start the workstation
+[Install the free client](#install-the-free-client), start the local app
 with `krellbot`, then
-[arm a free starter strategy](../README.md#arm-your-first-paper-strategy).
+[start a free paper strategy](../README.md#arm-your-first-paper-strategy).
 Building from source is only for working on the engine; see
 [Working on the engine](../README.md#working-on-the-engine).
 
 Paper mode needs neither an exchange account nor a key or paid license. Skip
 the exchange-key instructions below for paper.
 Headless/keychain warnings in `doctor` are not a request to load credentials;
-verify your paper deployment in Operations and `krellbot status`.
+verify your paper deployment in Operations and `krellbot status`. Live trading
+stays unavailable in this release.
 
 ## What an API key is
 

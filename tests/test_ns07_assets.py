@@ -2,7 +2,8 @@
 
 Builds the React shell into ``frontend/dist`` if it is missing, then asserts
 that the built artefacts carry no third-party CDN *host* references and
-contain the exact copy the user-facing shell promises ("Paper workstation").
+contain the shell copy the user-facing surface promises (title marker
+``paper workstation`` plus the M24 Run path CTA ``Start paper run``).
 
 The CDN guard matches host-like tokens (URL hosts / known CDN hostnames),
 not bare substrings inside Vite content-hashes such as ``index-Cdn….css``.
@@ -27,7 +28,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = REPO_ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
 
-SHELL_PROMISE = "Paper workstation"
+# Vite title keeps the product phrase; M24 pagehead is "Run" with
+# Start paper run as the primary paper CTA (not the legacy heading).
+SHELL_TITLE_MARKER = "paper workstation"
+SHELL_RUN_CTA = "Start paper run"
 
 # Host-like tokens only — never bare "cdn" / "Cdn" inside a Vite hash.
 _FORBIDDEN_HOST_RE = re.compile(
@@ -137,6 +141,7 @@ def test_no_cdn_references(built_dist: Path) -> None:
 
 
 def test_shell_promise_text_present(built_dist: Path) -> None:
-    """The built bundle must contain the user-facing shell copy."""
+    """Built artefacts keep the title marker and the Run-path CTA."""
     payload = "\n".join(path.read_text(encoding="utf-8") for path in _iter_built_files(built_dist))
-    assert SHELL_PROMISE in payload, f"expected {SHELL_PROMISE!r} in built artefacts under {built_dist}"
+    assert SHELL_TITLE_MARKER in payload, f"expected {SHELL_TITLE_MARKER!r} in built artefacts under {built_dist}"
+    assert SHELL_RUN_CTA in payload, f"expected {SHELL_RUN_CTA!r} in built artefacts under {built_dist}"

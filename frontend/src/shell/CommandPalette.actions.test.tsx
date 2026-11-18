@@ -33,11 +33,11 @@ describe("CommandPalette — navigable actions (M7.3)", () => {
 
     expect(screen.getByTestId("command-palette-action-view-workstation")).toBeDefined();
     expect(screen.getByTestId("command-palette-action-paper-arm").textContent).toMatch(
-      /Arm paper pack/,
+      /Start paper run/,
     );
     expect(
       screen.getByTestId("command-palette-action-paper-disarm").textContent,
-    ).toMatch(/Disarm paper pack/);
+    ).toMatch(/Stop paper run/);
     expect(
       screen.getByTestId("command-palette-action-paper-arm").getAttribute(
         "data-palette-kind",

@@ -39,10 +39,10 @@ const VIEW_ACTIONS: ReadonlyArray<PaletteAction> = [
   },
   {
     id: "view-workstation",
-    label: "Go to Workstation",
+    label: "Go to Run",
     group: "Views",
     kind: "view",
-    keywords: "paper bot runs",
+    keywords: "paper bot runs workstation",
     view: "workstation",
   },
   {
@@ -96,37 +96,53 @@ const VIEW_ACTIONS: ReadonlyArray<PaletteAction> = [
 ];
 
 /**
- * Paper arm/disarm entry points only — they open Workstation where the real
+ * Beginner default path — home mounts Chooser A (M24.2–M24.3). Power
+ * paper controls remain below as Run destinations.
+ */
+const BEGINNER_ENTRY_ACTIONS: ReadonlyArray<PaletteAction> = [
+  {
+    id: "start-free-paper-strategy",
+    label: "Start free paper strategy",
+    group: "Paper",
+    kind: "paper-entry",
+    keywords: "starter free paper strategy chooser home begin",
+    view: "home",
+  },
+];
+
+/**
+ * Paper arm/disarm entry points only — they open Run where the real
  * controls live. Live arming is not offered (local preview / PAPER_ONLY).
  */
 const PAPER_ENTRY_ACTIONS: ReadonlyArray<PaletteAction> = [
   {
     id: "paper-arm",
-    label: "Arm paper pack…",
+    label: "Start paper run…",
     group: "Paper",
     kind: "paper-entry",
-    keywords: "arm paper pack fund workstation",
+    keywords: "arm paper pack fund start run workstation",
     view: "workstation",
   },
   {
     id: "paper-disarm",
-    label: "Disarm paper pack…",
+    label: "Stop paper run…",
     group: "Paper",
     kind: "paper-entry",
-    keywords: "disarm paper pack stop workstation",
+    keywords: "disarm paper pack stop run workstation",
     view: "workstation",
   },
   {
     id: "paper-pause",
-    label: "Pause paper entries…",
+    label: "Pause new buys…",
     group: "Paper",
     kind: "paper-entry",
-    keywords: "pause entries resume workstation",
+    keywords: "pause entries resume buys workstation",
     view: "workstation",
   },
 ];
 
 export const PALETTE_ACTIONS: ReadonlyArray<PaletteAction> = [
+  ...BEGINNER_ENTRY_ACTIONS,
   ...VIEW_ACTIONS,
   ...PAPER_ENTRY_ACTIONS,
 ];

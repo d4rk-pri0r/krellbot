@@ -188,7 +188,7 @@ describe("StatusPanel paper arm tracer (primary user-action path)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /start paper run/i }));
     const unknown = await screen.findByTestId("paper-arm-unknown");
-    expect(unknown.textContent).toMatch(/Arm outcome unknown/i);
+    expect(unknown.textContent).toMatch(/Start paper run outcome unknown/i);
     expect(unknown.textContent).toMatch(/503/);
     expect(screen.queryByTestId("paper-status-pack")).toBeNull();
     // No automatic retry: exactly one arm call.

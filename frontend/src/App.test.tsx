@@ -207,6 +207,12 @@ describe("App shell", () => {
     ).toBeDefined();
   });
 
+  it("renders the Run pagehead from Workspace", () => {
+    render(<App />);
+    clickShellNav("Run");
+    expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
+  });
+
   it("renders the live-orders unavailable status", () => {
     render(<App />);
     expect(screen.getByText("Live orders unavailable")).toBeDefined();
@@ -315,7 +321,7 @@ describe("App view routing", () => {
     render(<App />);
     expect(screen.getByTestId("app-home")).toBeDefined();
     clickShellNav("Run");
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
     expect(
       screen.getByRole("region", { name: "Inspector" }),
     ).toBeDefined();
@@ -335,7 +341,7 @@ describe("App view routing", () => {
     expect(editor).toBeDefined();
     expect(editor.textContent).toMatch(/Label/);
     expect(editor.textContent).toMatch(/Raw JSON/);
-    expect(screen.queryByText("Paper workstation")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Run" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Inspector" })).toBeNull();
   });
 
@@ -346,7 +352,7 @@ describe("App view routing", () => {
       screen.getByRole("region", { name: /strategy editor/i }),
     ).toBeDefined();
     clickShellNav("Run");
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
     expect(
       screen.queryByRole("region", { name: /strategy editor/i }),
     ).toBeNull();
@@ -366,7 +372,7 @@ describe("App view routing", () => {
   it("choosing Research hides the workstation heading", () => {
     render(<App />);
     clickShellNav("Research");
-    expect(screen.queryByText("Paper workstation")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Run" })).toBeNull();
   });
 
   it("choosing Workstation after Research shows the paper workstation again", () => {
@@ -374,7 +380,7 @@ describe("App view routing", () => {
     clickShellNav("Research");
     expect(screen.getByLabelText(/dataset path/i)).toBeDefined();
     clickShellNav("Run");
-    expect(screen.getByText("Paper workstation")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
     expect(screen.queryByLabelText(/dataset path/i)).toBeNull();
   });
 });
@@ -391,12 +397,12 @@ describe("App paper controls (NS10b)", () => {
     expect(await screen.findByTestId("paper-status-empty")).toBeDefined();
     expect(panel.textContent).toMatch(/No pack armed/);
     // No controls while not armed.
-    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
   });
 
-  it("shows Pause entries, Resume entries, and Disarm when status says armed", async () => {
+  it("shows pause / resume / stop paper run when status says armed", async () => {
     const paperClient = makePaperClient({
       getStatus: vi.fn().mockResolvedValue({
         schema_version: "1",
@@ -411,13 +417,13 @@ describe("App paper controls (NS10b)", () => {
     render(<WorkstationShell paperClient={paperClient} />);
     clickShellNav("Run");
     expect(
-      await screen.findByRole("button", { name: /pause entries/i }),
+      await screen.findByRole("button", { name: /pause new buys/i }),
     ).toBeDefined();
     expect(
-      await screen.findByRole("button", { name: /resume entries/i }),
+      await screen.findByRole("button", { name: /resume new buys/i }),
     ).toBeDefined();
     expect(
-      await screen.findByRole("button", { name: /^disarm$/i }),
+      await screen.findByRole("button", { name: /^stop paper run$/i }),
     ).toBeDefined();
     expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
       /Entries active/,
@@ -488,7 +494,7 @@ describe("App paper controls (NS10b)", () => {
     });
     render(<WorkstationShell paperClient={paperClient} />);
     clickShellNav("Run");
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
@@ -527,7 +533,7 @@ describe("App paper controls (NS10b)", () => {
     });
     render(<WorkstationShell paperClient={paperClient} />);
     clickShellNav("Run");
-    const resume = await screen.findByRole("button", { name: /resume entries/i });
+    const resume = await screen.findByRole("button", { name: /resume new buys/i });
     fireEvent.click(resume);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByTestId("paper-status-entries").textContent).toMatch(

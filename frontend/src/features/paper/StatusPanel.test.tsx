@@ -76,23 +76,23 @@ describe("StatusPanel empty state", () => {
       /No pack armed/,
     );
     // No controls while not armed.
-    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
   });
 });
 
 describe("StatusPanel armed controls", () => {
-  it("shows Pause entries, Resume entries, and Disarm when status says armed", async () => {
+  it("shows pause / resume / stop paper run when status says armed", async () => {
     const client = makeClient({
       getStatus: vi.fn().mockResolvedValue(armedStatus()),
     });
     render(<StatusPanel client={client} />);
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /pause entries/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /pause new buys/i })).toBeDefined();
     });
-    expect(screen.getByRole("button", { name: /resume entries/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /^disarm$/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /resume new buys/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^stop paper run$/i })).toBeDefined();
   });
 
   it("renders 'Entries active' initially when entries_paused is false", async () => {
@@ -135,9 +135,9 @@ describe("StatusPanel armed controls", () => {
     });
     render(<StatusPanel client={client} />);
     expect(await screen.findByText(/Controls unavailable/)).toBeDefined();
-    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
   });
 
   it("renders the pack id, venue, and pair in the status line", async () => {
@@ -153,12 +153,12 @@ describe("StatusPanel armed controls", () => {
 });
 
 describe("StatusPanel pause / resume / disarm commands", () => {
-  it("Pause entries posts paper.pause_entries with {schema_version, command, payload:{venue,pair}}", async () => {
+  it("Pause new buys posts paper.pause_entries with {schema_version, command, payload:{venue,pair}}", async () => {
     const client = makeClient({
       getStatus: vi.fn().mockResolvedValue(armedStatus()),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
     await waitFor(() => {
       expect(client.pauseEntries).toHaveBeenCalledTimes(1);
@@ -173,12 +173,12 @@ describe("StatusPanel pause / resume / disarm commands", () => {
     ]);
   });
 
-  it("Resume entries posts paper.resume_entries with venue/pair", async () => {
+  it("Resume new buys posts paper.resume_entries with venue/pair", async () => {
     const client = makeClient({
       getStatus: vi.fn().mockResolvedValue(armedStatus()),
     });
     render(<StatusPanel client={client} />);
-    const resume = await screen.findByRole("button", { name: /resume entries/i });
+    const resume = await screen.findByRole("button", { name: /resume new buys/i });
     fireEvent.click(resume);
     await waitFor(() => {
       expect(client.resumeEntries).toHaveBeenCalledTimes(1);
@@ -186,12 +186,12 @@ describe("StatusPanel pause / resume / disarm commands", () => {
     expect(client.resumeEntries).toHaveBeenCalledWith("kraken", "SUIUSD");
   });
 
-  it("Disarm posts paper.disarm with venue/pair", async () => {
+  it("Stop paper run posts paper.disarm with venue/pair", async () => {
     const client = makeClient({
       getStatus: vi.fn().mockResolvedValue(armedStatus()),
     });
     render(<StatusPanel client={client} />);
-    const disarm = await screen.findByRole("button", { name: /^disarm$/i });
+    const disarm = await screen.findByRole("button", { name: /^stop paper run$/i });
     fireEvent.click(disarm);
     await waitFor(() => {
       expect(client.disarm).toHaveBeenCalledTimes(1);
@@ -210,7 +210,7 @@ describe("StatusPanel visible status", () => {
         .mockResolvedValueOnce(afterStatus),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
     await waitFor(() => {
       const entries = screen.getByTestId("paper-status-entries");
@@ -227,7 +227,7 @@ describe("StatusPanel visible status", () => {
         .mockResolvedValueOnce(afterStatus),
     });
     render(<StatusPanel client={client} />);
-    const resume = await screen.findByRole("button", { name: /resume entries/i });
+    const resume = await screen.findByRole("button", { name: /resume new buys/i });
     fireEvent.click(resume);
     await waitFor(() => {
       const entries = screen.getByTestId("paper-status-entries");
@@ -249,7 +249,7 @@ describe("StatusPanel visible status", () => {
       } satisfies PaperCommandResult),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     const before = screen.getByTestId("paper-status-entries").textContent;
     expect(before).toMatch(/Entries active/);
     fireEvent.click(pause);
@@ -270,13 +270,13 @@ describe("StatusPanel visible status", () => {
         .mockResolvedValueOnce({ schema_version: "1", armed: false }),
     });
     render(<StatusPanel client={client} />);
-    const disarm = await screen.findByRole("button", { name: /^disarm$/i });
+    const disarm = await screen.findByRole("button", { name: /^stop paper run$/i });
     fireEvent.click(disarm);
     await waitFor(() => {
       expect(client.disarm).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
     });
     expect(screen.getByTestId("paper-status-empty").textContent).toMatch(/No pack armed/);
   });
@@ -289,7 +289,7 @@ describe("StatusPanel persistence", () => {
       getStatus: vi.fn().mockResolvedValue(armedStatus()),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
     await waitFor(() => {
       expect(client.pauseEntries).toHaveBeenCalledTimes(1);
@@ -326,9 +326,9 @@ describe("StatusPanel unavailable state", () => {
 
   it("shows no pause, resume, or disarm controls while the status is unknown", async () => {
     await renderUnavailable();
-    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
   });
 
   it("offers an explicit retry control after an initial failure", async () => {
@@ -399,9 +399,9 @@ describe("StatusPanel unavailable state", () => {
     );
     expect(screen.queryByTestId("paper-status-empty")).toBeNull();
     // Still no unsafe controls while unknown.
-    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
   });
 });
 
@@ -434,9 +434,9 @@ describe("StatusPanel pending initial status", () => {
     expect(
       screen.getByTestId("paper-status-panel").textContent ?? "",
     ).not.toMatch(/No pack armed/);
-    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /resume entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /resume new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
 
     // A confirmed unarmed response is the only thing that may claim it.
     await act(async () => {
@@ -456,8 +456,8 @@ describe("StatusPanel pending initial status", () => {
     expect(screen.getByTestId("paper-status-loading")).toBeDefined();
     expect(screen.queryByTestId("paper-status-empty")).toBeNull();
     expect(screen.queryByTestId("paper-status-unavailable")).toBeNull();
-    expect(screen.queryByRole("button", { name: /pause entries/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
 
     await act(async () => {
       gate.reject(new Error("paper status failed: 503"));
@@ -485,7 +485,7 @@ describe("StatusPanel command pending guard", () => {
       getStatus: vi.fn().mockResolvedValue(armedStatus()),
     });
     render(<StatusPanel client={client} />);
-    await screen.findByRole("button", { name: /pause entries/i });
+    await screen.findByRole("button", { name: /pause new buys/i });
     return client;
   }
 
@@ -498,7 +498,7 @@ describe("StatusPanel command pending guard", () => {
     (client.getStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       armedStatus({ entries_paused: true }),
     );
-    const pause = screen.getByRole("button", { name: /pause entries/i });
+    const pause = screen.getByRole("button", { name: /pause new buys/i });
 
     fireEvent.click(pause);
     fireEvent.click(pause);
@@ -511,10 +511,10 @@ describe("StatusPanel command pending guard", () => {
     // pending command is announced.
     expect(pause.getAttribute("disabled")).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: /resume entries/i }).getAttribute("disabled"),
+      screen.getByRole("button", { name: /resume new buys/i }).getAttribute("disabled"),
     ).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: /^disarm$/i }).getAttribute("disabled"),
+      screen.getByRole("button", { name: /^stop paper run$/i }).getAttribute("disabled"),
     ).not.toBeNull();
     expect(
       screen.getByRole("button", { name: /refresh status/i }).getAttribute("disabled"),
@@ -550,7 +550,7 @@ describe("StatusPanel command pending guard", () => {
     const client = await renderArmed();
     const gate = commandGate();
     (client.disarm as ReturnType<typeof vi.fn>).mockReturnValue(gate.promise);
-    const disarm = screen.getByRole("button", { name: /^disarm$/i });
+    const disarm = screen.getByRole("button", { name: /^stop paper run$/i });
 
     fireEvent.click(disarm);
     fireEvent.click(disarm);
@@ -569,7 +569,7 @@ describe("StatusPanel command pending guard", () => {
       } satisfies PaperCommandResult);
     });
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /^disarm$/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
     });
     expect(screen.getByTestId("paper-status-empty").textContent).toMatch(/No pack armed/);
   });
@@ -582,11 +582,11 @@ describe("StatusPanel command transport failures", () => {
       pauseEntries: vi.fn().mockRejectedValue(new Error("paper.pause_entries failed: 503")),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
 
     const alert = await screen.findByTestId("paper-status-unknown");
-    expect(alert.textContent).toMatch(/Pause outcome unknown/i);
+    expect(alert.textContent).toMatch(/Pause new buys outcome unknown/i);
     expect(alert.textContent).toMatch(/paper\.pause_entries failed: 503/);
     expect(alert.textContent).toMatch(/refresh/i);
     // No optimistic success and no fabricated state change.
@@ -612,7 +612,7 @@ describe("StatusPanel command transport failures", () => {
       pauseEntries: vi.fn().mockRejectedValue(new Error("network error")),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
     await screen.findByTestId("paper-status-unknown");
 
@@ -637,10 +637,10 @@ describe("StatusPanel command transport failures", () => {
       disarm: vi.fn().mockRejectedValue(new Error("paper.disarm failed: 503")),
     });
     render(<StatusPanel client={client} />);
-    fireEvent.click(await screen.findByRole("button", { name: /^disarm$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^stop paper run$/i }));
     await screen.findByTestId("paper-status-unknown");
     expect(screen.getByTestId("paper-status-unknown").textContent).toMatch(
-      /Disarm outcome unknown/i,
+      /Stop paper run outcome unknown/i,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /refresh status/i }));
@@ -665,10 +665,10 @@ describe("StatusPanel command transport failures", () => {
       pauseEntries: vi.fn().mockResolvedValue({} satisfies PaperCommandResult),
     });
     render(<StatusPanel client={client} />);
-    fireEvent.click(await screen.findByRole("button", { name: /pause entries/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /pause new buys/i }));
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-error").textContent).toMatch(
-        /Pause refused/,
+        /Pause new buys refused/,
       );
     });
     expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
@@ -688,7 +688,7 @@ describe("StatusPanel command transport failures", () => {
       } satisfies PaperCommandResult),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-error").textContent).toMatch(/not armed/);
@@ -704,7 +704,7 @@ describe("StatusPanel command transport failures", () => {
       pauseEntries: vi.fn().mockReturnValue(gate.promise),
     });
     const { unmount } = render(<StatusPanel client={client} />);
-    fireEvent.click(await screen.findByRole("button", { name: /pause entries/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /pause new buys/i }));
     expect(client.pauseEntries).toHaveBeenCalledTimes(1);
 
     unmount();
@@ -731,7 +731,7 @@ describe("StatusPanel command transport failures", () => {
         .mockResolvedValueOnce(armedStatus({ entries_paused: false })),
     });
     render(<StatusPanel client={client} />);
-    const resume = await screen.findByRole("button", { name: /resume entries/i });
+    const resume = await screen.findByRole("button", { name: /resume new buys/i });
     fireEvent.click(resume);
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
@@ -784,9 +784,9 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
     render(<StatusPanel client={client} />);
 
     // The ordinary armed paper controls are still the primary surface…
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
-    expect(screen.getByRole("button", { name: /resume entries/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /^disarm$/i })).toBeDefined();
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
+    expect(screen.getByRole("button", { name: /resume new buys/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^stop paper run$/i })).toBeDefined();
 
     // …and the honest isolated synthetic rehearsal surface with real status
     // stays accessible alongside it.
@@ -849,7 +849,7 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
       .length;
 
     // A backend-confirmed disarm is the real armed → unarmed transition.
-    fireEvent.click(screen.getByRole("button", { name: /^disarm$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^stop paper run$/i }));
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
         /No pack armed/,
@@ -919,7 +919,7 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
     });
     render(<StatusPanel client={armed} />);
     expect(await screen.findByTestId("rehearsal-unavailable")).toBeDefined();
-    expect(screen.getByRole("button", { name: /pause entries/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /pause new buys/i })).toBeDefined();
     expect(screen.queryByTestId("rehearsal-panel")).toBeNull();
   });
 
@@ -942,7 +942,7 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
     expect(client.resumeEntries).not.toHaveBeenCalled();
     expect(client.disarm).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: /pause entries/i }).getAttribute(
+      screen.getByRole("button", { name: /pause new buys/i }).getAttribute(
         "disabled",
       ),
     ).toBeNull();
@@ -965,7 +965,7 @@ describe("StatusPanel refusal error text", () => {
       } satisfies PaperCommandResult),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-error").textContent).toBe(
@@ -985,11 +985,11 @@ describe("StatusPanel refusal error text", () => {
       } satisfies PaperCommandResult),
     });
     render(<StatusPanel client={client} />);
-    const pause = await screen.findByRole("button", { name: /pause entries/i });
+    const pause = await screen.findByRole("button", { name: /pause new buys/i });
     fireEvent.click(pause);
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-error").textContent).toBe(
-        "Pause refused",
+        "Pause new buys refused",
       );
     });
   });

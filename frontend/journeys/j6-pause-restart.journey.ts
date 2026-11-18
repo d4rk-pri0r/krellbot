@@ -29,12 +29,12 @@ test("J6.1 Pausing entries stops new entries while stops and exits keep working,
   expect(suppressed.detail.entries_paused).toBe(true);
   // Separately seed another real position, then pause and trigger its stop.
   const panel=page.getByTestId("paper-status-panel");
-  await panel.getByRole("button",{name:"Resume entries",exact:true}).click();
+  await panel.getByRole("button",{name:"Resume new buys",exact:true}).click();
   await expect(page.getByTestId("paper-status-entries")).toContainText(/active/i);
   tickPaper(journey,[100,90,95,110,100,105,100]);
   tickPaper(journey,[100,90,95,110,100,105,100,105]);
   expect(Number(readJournalTicks(journey.workstation.homeDir).at(-1)!.detail.entry_qty)).toBeGreaterThan(0);
-  await panel.getByRole("button",{name:"Pause entries",exact:true}).click();
+  await panel.getByRole("button",{name:"Pause new buys (doesn't sell)",exact:true}).click();
   await expect(page.getByTestId("paper-status-entries")).toContainText(/paused/i);
   tickPaper(journey,[100,90,95,110,100,105,100,105,10]);
   const stopped=readJournalTicks(journey.workstation.homeDir).at(-1)!;

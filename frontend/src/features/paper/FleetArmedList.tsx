@@ -75,12 +75,12 @@ function formatTickTime(ts_ms: number | null): string {
 
 function actionLabel(kind: RowActionKind): string {
   if (kind === "pause") {
-    return "Pause entries";
+    return "Pause new buys";
   }
   if (kind === "resume") {
-    return "Resume entries";
+    return "Resume new buys";
   }
-  return "Disarm";
+  return "Stop paper run";
 }
 
 export function FleetArmedList({
@@ -522,7 +522,7 @@ export function FleetArmedList({
                                   type="button"
                                   className="kbot-fleet__row-action"
                                   data-testid="fleet-armed-row-pause"
-                                  aria-label={`Pause entries on ${row.venue} ${row.pair}`}
+                                  aria-label={`Pause new buys on ${row.venue} ${row.pair}`}
                                   disabled={
                                     rowActionInFlight ||
                                     row.entries_paused === true
@@ -533,7 +533,7 @@ export function FleetArmedList({
                                 >
                                   {rowBusy && rowActionKind === "pause"
                                     ? "Pausing…"
-                                    : "Pause entries"}
+                                    : "Pause new buys"}
                                 </button>
                               ) : null}
                               {canResume ? (
@@ -541,7 +541,7 @@ export function FleetArmedList({
                                   type="button"
                                   className="kbot-fleet__row-action"
                                   data-testid="fleet-armed-row-resume"
-                                  aria-label={`Resume entries on ${row.venue} ${row.pair}`}
+                                  aria-label={`Resume new buys on ${row.venue} ${row.pair}`}
                                   disabled={
                                     rowActionInFlight ||
                                     row.entries_paused === false
@@ -552,7 +552,7 @@ export function FleetArmedList({
                                 >
                                   {rowBusy && rowActionKind === "resume"
                                     ? "Resuming…"
-                                    : "Resume entries"}
+                                    : "Resume new buys"}
                                 </button>
                               ) : null}
                               {canDisarm ? (
@@ -560,15 +560,15 @@ export function FleetArmedList({
                                   type="button"
                                   className="kbot-fleet__row-action"
                                   data-testid="fleet-armed-row-disarm"
-                                  aria-label={`Disarm ${row.venue} ${row.pair}`}
+                                  aria-label={`Stop paper run ${row.venue} ${row.pair}`}
                                   disabled={rowActionInFlight}
                                   onClick={() => {
                                     void runRowAction(row, "disarm");
                                   }}
                                 >
                                   {rowBusy && rowActionKind === "disarm"
-                                    ? "Disarming…"
-                                    : "Disarm"}
+                                    ? "Stopping…"
+                                    : "Stop paper run"}
                                 </button>
                               ) : null}
                               {rowActionError !== null &&
@@ -634,7 +634,7 @@ export function FleetArmedList({
                         type="button"
                         className="kbot-fleet__row-action"
                         data-testid="fleet-armed-selected-pause"
-                        aria-label={`Pause entries on selected ${selected.venue} ${selected.pair}`}
+                        aria-label={`Pause new buys on selected ${selected.venue} ${selected.pair}`}
                         disabled={
                           rowActionInFlight || selected.entries_paused === true
                         }
@@ -642,7 +642,7 @@ export function FleetArmedList({
                           void runRowAction(selected, "pause");
                         }}
                       >
-                        Pause entries
+                        Pause new buys
                       </button>
                     ) : null}
                     {canResume ? (
@@ -650,7 +650,7 @@ export function FleetArmedList({
                         type="button"
                         className="kbot-fleet__row-action"
                         data-testid="fleet-armed-selected-resume"
-                        aria-label={`Resume entries on selected ${selected.venue} ${selected.pair}`}
+                        aria-label={`Resume new buys on selected ${selected.venue} ${selected.pair}`}
                         disabled={
                           rowActionInFlight || selected.entries_paused === false
                         }
@@ -658,7 +658,7 @@ export function FleetArmedList({
                           void runRowAction(selected, "resume");
                         }}
                       >
-                        Resume entries
+                        Resume new buys
                       </button>
                     ) : null}
                     {canDisarm ? (
@@ -666,13 +666,13 @@ export function FleetArmedList({
                         type="button"
                         className="kbot-fleet__row-action"
                         data-testid="fleet-armed-selected-disarm"
-                        aria-label={`Disarm selected ${selected.venue} ${selected.pair}`}
+                        aria-label={`Stop paper run selected ${selected.venue} ${selected.pair}`}
                         disabled={rowActionInFlight}
                         onClick={() => {
                           void runRowAction(selected, "disarm");
                         }}
                       >
-                        Disarm
+                        Stop paper run
                       </button>
                     ) : null}
                   </div>
