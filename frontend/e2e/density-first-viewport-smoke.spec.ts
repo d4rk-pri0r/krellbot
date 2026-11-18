@@ -92,6 +92,10 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
   await expect(page.getByTestId("app-home-cta-paper")).toContainText(
     /Start with a free paper strategy/i,
   );
+  expect(
+    await page.getByTestId("app-home-cta-paper").count(),
+    "exactly one primary paper CTA",
+  ).toBe(1);
   await expect(page.getByTestId("app-home-path")).toHaveAttribute(
     "data-open",
     "0",
@@ -122,7 +126,7 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     "fresh home must not invent a multi-viewport empty scroll",
   ).toBeLessThan(VIEWPORT.height * 3);
 
-  await clickNav(page, "Workstation");
+  await clickNav(page, "Run");
   await expect(page.getByTestId("paper-status-panel")).toBeVisible({
     timeout: 20_000,
   });
@@ -158,4 +162,31 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
   const armedToggle = page.getByTestId("paper-armed-records-disclosure-toggle");
   await expect(armedToggle).toBeVisible();
   await expect(armedToggle).toHaveAttribute("aria-expanded", "false");
+
+  // Power destinations remain reachable via More (no beginnerMode flag).
+  await clickNav(page, "Strategy studio");
+  await settle(page);
+  await expect(
+    page.getByRole("navigation", { name: "Workstation navigation" }).getByTestId(
+      "kbot-nav-more-toggle",
+    ),
+  ).toHaveAttribute("aria-expanded", "true");
+});
+
+test("no beginnerMode or powerMode flags in the shipped shell", async ({
+  journey,
+}) => {
+  const page = journey.page;
+  await page.setViewportSize(VIEWPORT);
+  await page.goto(journey.workstation.baseURL);
+  await journey.waitForSessionReady(page);
+  const flagged = await page.evaluate(() => {
+    const html = document.documentElement.outerHTML;
+    return {
+      beginnerMode: /beginnerMode/.test(html),
+      powerMode: /powerMode/.test(html),
+    };
+  });
+  expect(flagged.beginnerMode).toBe(false);
+  expect(flagged.powerMode).toBe(false);
 });
