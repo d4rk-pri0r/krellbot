@@ -346,6 +346,62 @@ describe("packs client requestRefund", () => {
   });
 });
 
+describe("packs client telemetry consent", () => {
+  it("GETs /api/v1/telemetry and adapts default-off consent", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        enabled: false,
+        default_off: true,
+        funnel_events: ["view", "checkout_start"],
+        disclosure: "Telemetry is opt-in and off by default.",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const csrfMock = vi
+      .spyOn(await import("../../session"), "getCsrf")
+      .mockReturnValue("csrf-telemetry-1");
+    try {
+      const result = await createHttpClient().getTelemetryConsent();
+      expect(result.enabled).toBe(false);
+      expect(result.default_off).toBe(true);
+      expect(result.funnel_events).toEqual(["view", "checkout_start"]);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("/api/v1/telemetry");
+      expect(init.method).toBe("GET");
+      expect(init.credentials).toBe("include");
+    } finally {
+      csrfMock.mockRestore();
+    }
+  });
+
+  it("PUTs /api/v1/telemetry enabled=true for explicit opt-in", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        enabled: true,
+        default_off: true,
+        funnel_events: ["view"],
+        disclosure: "Telemetry is opt-in and off by default.",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const csrfMock = vi
+      .spyOn(await import("../../session"), "getCsrf")
+      .mockReturnValue("csrf-telemetry-2");
+    try {
+      const result = await createHttpClient().setTelemetryConsent(true);
+      expect(result.enabled).toBe(true);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("/api/v1/telemetry");
+      expect(init.method).toBe("PUT");
+      expect(JSON.parse(String(init.body))).toEqual({ enabled: true });
+    } finally {
+      csrfMock.mockRestore();
+    }
+  });
+});
+
 describe("createPacksHttpClient", () => {
   it("exposes the same read surface the shell mounts without dead rollback", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
@@ -360,6 +416,8 @@ describe("createPacksHttpClient", () => {
     expect(typeof client.requestRefund).toBe("function");
     expect(typeof client.listCommunityIndex).toBe("function");
     expect(typeof client.installCommunity).toBe("function");
+    expect(typeof client.getTelemetryConsent).toBe("function");
+    expect(typeof client.setTelemetryConsent).toBe("function");
     expect(typeof client.openCommunityPack).toBe("function");
     expect(await client.listInstalled()).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(

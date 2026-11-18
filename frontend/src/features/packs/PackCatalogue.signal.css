@@ -50,6 +50,35 @@
   max-width: 52rem;
 }
 
+.kbot-pack-catalogue__telemetry {
+  display: grid;
+  gap: 6px;
+  max-width: 52rem;
+}
+
+.kbot-pack-catalogue__telemetry-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.kbot-pack-catalogue__telemetry-input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.kbot-pack-catalogue__telemetry-hint,
+.kbot-pack-catalogue__telemetry-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .kbot-pack-catalogue__meta {
   margin: 0;
   font-family: var(--font-mono);

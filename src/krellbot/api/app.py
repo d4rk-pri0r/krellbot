@@ -97,6 +97,7 @@ class _AppState:
     catalogue_transport: object = field(default=None)  # injectable signed-catalogue fetch
     checkout_transport: object = field(default=None)  # injectable payment transport (fake in CI)
     community_transport: object = field(default=None)  # injectable community index/pack bytes
+    telemetry_transport: object = field(default=None)  # injectable telemetry POST (spy in CI)
     keys_allow_fake_backend: bool = False  # tests-only FakeKeyring opt-in
     scheduler_supervisor: object = None  # PlatformSupervisor; tests inject FakeSupervisor
     scheduler_write_root: Path | None = None  # defaults to Path.home()
@@ -256,6 +257,19 @@ def _scheduler_write_root(s: _AppState) -> Path:
     if s.scheduler_write_root is None:
         return Path.home()
     return Path(s.scheduler_write_root)
+
+
+def _emit_funnel(s: _AppState, event: str, *, sku: str = "") -> None:
+    """Best-effort opt-in funnel telemetry. No-op when consent is off."""
+
+    from krellbot import telemetry as kb_telemetry
+
+    transport = s.telemetry_transport
+    if transport is None:
+        transport = kb_telemetry.resolve_transport(s.home, None)
+    if transport is None:
+        return
+    kb_telemetry.maybe_send_funnel(s.home, event, sku=sku, transport=transport)
 
 
 def _scheduler_executable(s: _AppState) -> str:
@@ -1346,6 +1360,7 @@ def create_app(
                 key_check=_live_arm_key_check(s),
             )
             if rc == 0:
+                _emit_funnel(s, "arm", sku=trusted_pack.stem)
                 if revision_id:
                     try:
                         _draft_service(s).mark_deployed(revision_id)
@@ -1464,6 +1479,10 @@ def create_app(
                 paper_balance=Decimal(inner["paper_balance"]),
                 correlation_id=correlation_id,
             )
+            if result.ok:
+                # Funnel arm event: pack id stem only — never strategy source.
+                arm_sku = Path(pack_path).stem if pack_path is not None else ""
+                _emit_funnel(s, "arm", sku=arm_sku)
             if revision_id and result.ok:
                 try:
                     _draft_service(s).mark_deployed(revision_id)
@@ -1839,6 +1858,55 @@ def create_app(
         return JSONResponse(
             kb_referral.outcome_dict(outcome),
             status_code=status_code,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/telemetry")
+    async def telemetry_settings_get(request: Request) -> Response:
+        """Return closed-shape telemetry consent (default off; M21.4).
+
+        Same session gate as ``GET /api/v1/notifications``. Never returns
+        keys, secrets, install_id value, or strategy source — only the
+        opt-in flag and disclosed funnel event names.
+        """
+
+        from krellbot import telemetry as kb_telemetry
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        body = kb_telemetry.status(s.home)
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.put("/api/v1/telemetry")
+    async def telemetry_settings_put(request: Request) -> Response:
+        """Update opt-in telemetry consent from the checkout UI (M21.4).
+
+        Same state-change gate as other POSTs/PUTs. Body is
+        ``{"enabled": true|false}``. Enabling is an explicit consent write;
+        nothing is sent by this route itself.
+        """
+
+        from krellbot import telemetry as kb_telemetry
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict) or "enabled" not in payload:
+            return JSONResponse({"detail": "enabled is required"}, status_code=400)
+
+        body = kb_telemetry.set_enabled(s.home, bool(payload.get("enabled")))
+        return JSONResponse(
+            {**body, "ok": True, "code": "telemetry_updated"},
+            status_code=200,
             headers={"Cache-Control": "no-store"},
         )
 
@@ -2994,6 +3062,8 @@ def create_app(
         }
         if isinstance(document.get("updated"), str):
             body["updated"] = document["updated"]
+        # Opt-in funnel: catalogue view (no SKU; never strategy source).
+        _emit_funnel(s, "view")
         return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/capabilities")
@@ -3797,6 +3867,7 @@ def create_app(
                 status_code=status,
             )
 
+        _emit_funnel(s, "install", sku=pack_id)
         return JSONResponse(
             {
                 "schema_version": SCHEMA_VERSION,
@@ -3842,12 +3913,18 @@ def create_app(
         if not isinstance(sku, str) or not sku:
             return JSONResponse({"detail": "sku is required"}, status_code=400)
 
+        _emit_funnel(s, "checkout_start", sku=sku)
         outcome = checkout_app.start_checkout(
             s.home,
             sku,
             transport=s.checkout_transport,
             now=int(_app_now(s)),
         )
+        funnel_sku = outcome.sku or sku
+        if outcome.status == "paid":
+            _emit_funnel(s, "checkout_success", sku=funnel_sku)
+        else:
+            _emit_funnel(s, "checkout_fail", sku=funnel_sku)
         body = {
             "schema_version": SCHEMA_VERSION,
             "status": outcome.status,

@@ -730,7 +730,9 @@ export function WorkstationShell({
       "requestRefund" in packClient &&
       "listCommunityIndex" in packClient &&
       "installCommunity" in packClient &&
-      "openCommunityPack" in packClient
+      "openCommunityPack" in packClient &&
+      "getTelemetryConsent" in packClient &&
+      "setTelemetryConsent" in packClient
     ) {
       return packClient as PacksClient;
     }
@@ -781,6 +783,20 @@ export function WorkstationShell({
         source: "community" as const,
         path: "",
         pack: {},
+      }),
+      getTelemetryConsent: async () => ({
+        schema_version: "1",
+        enabled: false,
+        default_off: true,
+        funnel_events: [],
+        disclosure: "Telemetry is opt-in and off by default.",
+      }),
+      setTelemetryConsent: async (enabled: boolean) => ({
+        schema_version: "1",
+        enabled,
+        default_off: true,
+        funnel_events: [],
+        disclosure: "Telemetry is opt-in and off by default.",
       }),
     };
   }, [packClient]);
