@@ -9,7 +9,6 @@ One line per item. Nothing here is work until the owner moves it into a mileston
 - CI frontend flake: `Editor.ownedSeedIdentity.test.tsx` intermittently misses `[data-testid="editor-revision-id"]` under full suite load (seen on #426; passes alone locally; main tip green).
 - CI macOS flake: `tests/test_int01_workstation_launch.py` intermittently times out (`test_workstation_serves_index_with_bootstrap_meta` HTTP TimeoutError / `test_workstation_missing_index_exits_2_with_build_hint` subprocess TimeoutExpired) under full suite (seen on #450; Ubuntu/Windows green; main tip green).
 - CI Windows 3.13 flake: `tests/test_installer_wrapper_vs_engine.py` live installer fetch can still fail after retries under sustained SSL loss (retries landed; keep watching Windows matrix).
-- `tests/test_ns07_assets.py::test_no_cdn_references` matches bare substring `cdn` inside Vite content-hashes (e.g. `index-Cdn….css` in `dist/index.html`); tighten to host-like tokens when that test is next touched.
 - Hosting operator exchange keys (cloud key custody) — explicitly out of P0–P4; never promote without a custody redesign.
 - Paid ads for trading signals — restricted channels; out of P0–P4 growth plan.
 - Personalized / individualized trading advice framing — packs stay tools; out of scope.
