@@ -117,12 +117,14 @@ it.each(["bootstrap", "csrf"])(
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
+    // About/version mounts with Settings & trust earlier in AppHome, so
+    // /version can precede trust/keys; Operations still follows session.
     expect(requests).toEqual([
       `/api/v1/session/${sessionRoute}`,
+      "/api/v1/version",
       "/api/v1/trust",
       "/api/v1/keys/kraken",
       "/api/v1/keys/coinbase",
-      "/api/v1/version",
       "/api/v1/operations",
     ]);
     expect(screen.getByTestId("live-orders-status").textContent).toBe("No live venues authorized");

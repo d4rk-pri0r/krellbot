@@ -519,35 +519,66 @@ export function AppHome({
           </section>
 
           <DisclosureSection
-            title="Paid disclosures"
-            summary="Fee share / referral when shown; packs not personalized advice; refund window pointer; telemetry opt-in. Does not promise gains."
-            badge="Settings"
+            title="Settings & trust"
+            summary="Paid disclosures, referral, telemetry consent, and About — on this computer only. No separate Settings view."
+            badge="Advanced"
             badgeTone="advanced"
             defaultOpen={false}
-            storageKey="krellbot.disclosure.home.paid-disclosures"
+            storageKey="krellbot.disclosure.home.settings-trust"
             bare
-            data-testid="app-home-paid-disclosures-rail"
+            data-testid="app-home-settings-trust"
           >
             <div className="app-home__rail app-home__rail--nested">
-              <PaidDisclosuresPanel variant="settings" />
-            </div>
-          </DisclosureSection>
+              <DisclosureSection
+                title="Paid disclosures"
+                summary="Fee share / referral when shown; packs not personalized advice; refund window pointer; telemetry opt-in. Does not promise gains."
+                badge="Settings"
+                badgeTone="advanced"
+                defaultOpen={false}
+                storageKey="krellbot.disclosure.home.paid-disclosures"
+                bare
+                data-testid="app-home-paid-disclosures-rail"
+              >
+                <div className="app-home__rail app-home__rail--nested">
+                  <PaidDisclosuresPanel variant="settings" />
+                </div>
+              </DisclosureSection>
 
-          <DisclosureSection
-            title="Exchange fee share / referral"
-            summary="Disclosed attribution when an operator creates or links an exchange account through a Krellbot referral path."
-            badge="Settings"
-            badgeTone="advanced"
-            defaultOpen={false}
-            storageKey="krellbot.disclosure.home.referral"
-            bare
-            data-testid="app-home-referral-rail"
-          >
-            <div className="app-home__rail app-home__rail--nested">
-              <ReferralDisclosurePanel
-                client={referral}
-                enabled={!sessionPending && !sessionFailed}
-              />
+              <DisclosureSection
+                title="Exchange fee share / referral"
+                summary="Disclosed attribution when an operator creates or links an exchange account through a Krellbot referral path."
+                badge="Settings"
+                badgeTone="advanced"
+                defaultOpen={false}
+                storageKey="krellbot.disclosure.home.referral"
+                bare
+                data-testid="app-home-referral-rail"
+              >
+                <div className="app-home__rail app-home__rail--nested">
+                  <ReferralDisclosurePanel
+                    client={referral}
+                    enabled={!sessionPending && !sessionFailed}
+                  />
+                </div>
+              </DisclosureSection>
+
+              <DisclosureSection
+                title="About this build"
+                summary="Version, digest/signing posture honesty, and how to reproduce a starter pack."
+                badge="Settings"
+                badgeTone="advanced"
+                defaultOpen={false}
+                storageKey="krellbot.disclosure.home.about"
+                bare
+                data-testid="app-home-about-rail"
+              >
+                <div className="app-home__rail app-home__rail--nested">
+                  <AboutPanel
+                    client={versionClient}
+                    enabled={!sessionPending}
+                  />
+                </div>
+              </DisclosureSection>
             </div>
           </DisclosureSection>
 
@@ -683,20 +714,6 @@ export function AppHome({
             </DisclosureSection>
           ) : null}
 
-          <DisclosureSection
-            title="About this build"
-            summary="Version, digest/signing posture honesty, and how to reproduce a starter pack."
-            badge="Advanced"
-            badgeTone="advanced"
-            defaultOpen={false}
-            storageKey="krellbot.disclosure.home.about"
-            bare
-            data-testid="app-home-about-rail"
-          >
-            <div className="app-home__rail app-home__rail--nested">
-              <AboutPanel client={versionClient} enabled={!sessionPending} />
-            </div>
-          </DisclosureSection>
         </aside>
       </div>
     </section>

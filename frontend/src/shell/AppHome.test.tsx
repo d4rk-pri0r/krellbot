@@ -374,4 +374,13 @@ describe("AppHome — application overview", () => {
       /No license token/i,
     );
   });
+
+  it("clusters paid disclosures, referral, and About under Settings & trust", () => {
+    renderHome();
+    const cluster = screen.getByTestId("app-home-settings-trust");
+    expect(cluster.textContent).toMatch(/Settings & trust/);
+    expect(screen.getByTestId("app-home-paid-disclosures-rail")).toBeTruthy();
+    expect(screen.getByTestId("app-home-referral-rail")).toBeTruthy();
+    expect(screen.getByTestId("app-home-about-rail")).toBeTruthy();
+  });
 });
