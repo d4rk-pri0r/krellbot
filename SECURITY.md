@@ -1,5 +1,9 @@
 # Security
 
+Trust boundaries (loopback UI, OS keychain, paper vs live, opt-in
+telemetry, no exchange keys to krellbot.dev) are summarized in
+[docs/threat-model.md](docs/threat-model.md).
+
 The client is open so you can read what it does before you run it.
 
 - The Exchange wizard requires a native OS keychain; it will not save a key to a plaintext file. The legacy CLI can read an explicitly configured `KRELLBOT_<VEN>_KEYFILE` when no keyring entry exists, subject to file-mode checks on POSIX (or an explicit acknowledgement on Windows). `keys add` itself writes to the keyring, not to that file.
