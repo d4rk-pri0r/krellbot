@@ -191,7 +191,7 @@ export function AboutPanel({
             then <strong>Save</strong> and <strong>Validate</strong>.
           </li>
           <li>
-            Paper-arm with venue <code>kraken</code> and starting balance{" "}
+            Paper-arm with venue <code>kraken</code> and starting paper cash{" "}
             <code>1000</code>, then <strong>Arm</strong> (simulated cash).
           </li>
           <li>
