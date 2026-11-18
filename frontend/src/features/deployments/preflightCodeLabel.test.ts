@@ -56,6 +56,12 @@ describe("summarizePreflightCode", () => {
     expect(summarizePreflightCode("preflight_blocked").label).toBe(
       "Preflight blocked",
     );
+    expect(summarizePreflightCode("key_withdraw_capable").label).toBe(
+      "Key withdraw capable",
+    );
+    expect(summarizePreflightCode("key_unknown_permission").label).toBe(
+      "Key unknown permission",
+    );
   });
 
   it("title-cases unknown snake_case codes and marks them unknown", () => {

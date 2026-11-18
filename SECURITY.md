@@ -8,13 +8,13 @@ The client is open so you can read what it does before you run it.
 
 - The Exchange wizard requires a native OS keychain; it will not save a key to a plaintext file. The legacy CLI can read an explicitly configured `KRELLBOT_<VEN>_KEYFILE` when no keyring entry exists, subject to file-mode checks on POSIX (or an explicit acknowledgement on Windows). `keys add` itself writes to the keyring, not to that file.
 - Credential-source precedence when the engine loads a key is: a complete `KRELLBOT_<VEN>_KEY` and `KRELLBOT_<VEN>_SECRET` environment pair first, then the keyring (including a wizard-stored pair), then an explicitly configured `KRELLBOT_<VEN>_KEYFILE` if no keyring entry exists. A partial environment pair is an error. A successful wizard store does not override existing environment credentials; the live arm gate still probes the key it loads.
-- The key should have trade permission on and withdraw permission off.
+- The key should have trade permission on and withdraw permission off. Key onboarding and web `live.arm` refuse `can_withdraw=True` and unrecognized venue permissions fail-closed, with typed refusal codes (never a false "connected" claim). Unknown permissions are never treated as trade-only.
 - krellbot.dev receives a license key if you add packs. It does not receive the exchange key.
 - This repository does not contain the paid packs.
 - Paper fills stay on this machine, inside `$KRELLBOT_HOME/run/paper-<venue>.json`. No exchange sees a paper fill.
 - A live order requires an operator live grant (typed `LIVE` in the workstation) and a key whose withdraw permission is off. CLI `arm --mode live` does not prompt `Type LIVE` on stdin; successful live arm is the web `live.arm` path after that grant.
 - Telemetry is off until the operator types `y`. See [docs/telemetry.md](docs/telemetry.md).
-- The Exchange wizard step displays only historical status — "last stored through wizard at <ts>; current key presence not checked" or "unknown; not currently verified". It never claims a live connection; CLI-side rotation is not detectable from the page because no credential is read at render time.
+- The Exchange / keys step displays only stored-key status (presence, balances when available) — never a live connection claim. Historical wizard wording remains "last stored through wizard at <ts>; current key presence not checked" or "unknown; not currently verified". CLI-side rotation is not detectable from the page because no credential is read at render time.
 
 ## Code signing and notarization
 

@@ -149,7 +149,7 @@ describe.each([
     expect((await screen.findByTestId(`keys-feedback-${venue}`)).textContent).toMatch(
       /stored in native OS keychain/i,
     );
-    expect(await screen.findByTestId(`keys-connected-${venue}`)).toBeTruthy();
+    expect(await screen.findByTestId(`keys-stored-${venue}`)).toBeTruthy();
     for (const row of balances) {
       expect(screen.getByTestId(`keys-balance-${venue}-${row.asset}`).textContent).toMatch(
         new RegExp(row.free.replace(".", "\\.")),
@@ -189,7 +189,7 @@ describe.each([
       remove: vi.fn().mockResolvedValue(removed(venue)),
     });
     render(<KeysOnboardingPanel client={client} venue={venue} />);
-    expect(await screen.findByTestId(`keys-connected-${venue}`)).toBeTruthy();
+    expect(await screen.findByTestId(`keys-stored-${venue}`)).toBeTruthy();
 
     fireEvent.click(screen.getByTestId(`keys-remove-${venue}`));
     await waitFor(() => {
@@ -210,7 +210,7 @@ describe.each([
       /csrf required/,
     );
     expect(screen.queryByTestId(`keys-balances-${venue}`)).toBeNull();
-    expect(screen.queryByTestId(`keys-connected-${venue}`)).toBeNull();
+    expect(screen.queryByTestId(`keys-stored-${venue}`)).toBeNull();
   });
 
   it("waits for the session when disabled", () => {

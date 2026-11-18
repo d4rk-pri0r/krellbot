@@ -57,6 +57,7 @@ def test_key_probe_result_trade_only_is_only_path_to_storage() -> None:
     assert KeyProbeResult.is_trade_only_outcome(KeyProbeOutcome.TRADE_ONLY) is True
     for outcome in (
         KeyProbeOutcome.WITHDRAW_CAPABLE,
+        KeyProbeOutcome.UNKNOWN_PERMISSION,
         KeyProbeOutcome.TRADE_OFF,
         KeyProbeOutcome.INVALID,
         KeyProbeOutcome.MALFORMED,
@@ -208,7 +209,7 @@ def test_probe_unknown_extra_permission_refused(isolated_home, fresh_keyring) ->
     )
     api_key, api_secret = secrets.get("kraken")
     result = cli_keys._probe("kraken", api_key, api_secret, transport=transport)
-    assert result.outcome == KeyProbeOutcome.TRADE_OFF
+    assert result.outcome == KeyProbeOutcome.UNKNOWN_PERMISSION
     assert result.is_trade_only is False
     # Reason is a fixed safe string and MUST NOT echo the unrecognized
     # permission token (N2 round-2: defense in depth against credential

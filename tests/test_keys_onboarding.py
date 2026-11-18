@@ -105,6 +105,20 @@ def _kraken_withdraw_transport() -> FakeKrakenTransport:
     )
 
 
+def _kraken_unknown_permission_transport() -> FakeKrakenTransport:
+    return FakeKrakenTransport(
+        api_key_info={
+            "permissions": [
+                "query-funds",
+                "query-open-trades",
+                "modify-trades",
+                "close-trades",
+                "transfer-funds",
+            ]
+        },
+    )
+
+
 def _kraken_trade_off_transport() -> FakeKrakenTransport:
     return FakeKrakenTransport(
         api_key_info={"permissions": ["query-funds", "query-open-trades"]},
@@ -437,6 +451,13 @@ def test_does_not_skip_probe_when_caller_claims_trade_only(
             "kraken",
             "FAKEKEY",
             KRAKEN_TEST_SECRET_B64,
+            _kraken_unknown_permission_transport,
+            keys_onboarding.Status.REFUSED_UNKNOWN_PERMISSION,
+        ),
+        (
+            "kraken",
+            "FAKEKEY",
+            KRAKEN_TEST_SECRET_B64,
             _kraken_trade_off_transport,
             keys_onboarding.Status.REFUSED_TRADE_OFF,
         ),
@@ -553,6 +574,13 @@ def test_result_message_is_one_of_the_fixed_safe_strings(
             KRAKEN_TEST_SECRET_B64,
             _kraken_withdraw_transport,
             keys_onboarding.Status.REFUSED_WITHDRAW,
+        ),
+        (
+            "kraken",
+            "FAKEKEY",
+            KRAKEN_TEST_SECRET_B64,
+            _kraken_unknown_permission_transport,
+            keys_onboarding.Status.REFUSED_UNKNOWN_PERMISSION,
         ),
         (
             "kraken",

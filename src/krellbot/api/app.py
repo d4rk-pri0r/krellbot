@@ -183,18 +183,140 @@ def _live_arm_gate_refusal(result: live_gate.LiveGateResult) -> JSONResponse:
     )
 
 
-def _live_arm_key_check(s: _AppState) -> Callable[[str], object]:
-    """Build a key_check callable that uses the injectable keys transport."""
+# Typed web ``live.arm`` refusals for non-trade-only keys (M20.2).
+# Distinct from the opaque ``live_arm_refused`` catch-all used for other
+# arm_pack failures (missing stop/cap, etc.).
+CODE_LIVE_ARM_KEY_WITHDRAW_CAPABLE = "live_arm_key_withdraw_capable"
+CODE_LIVE_ARM_KEY_UNKNOWN_PERMISSION = "live_arm_key_unknown_permission"
+CODE_LIVE_ARM_KEY_TRADE_OFF = "live_arm_key_trade_off"
+CODE_LIVE_ARM_KEY_INVALID = "live_arm_key_invalid"
+CODE_LIVE_ARM_KEY_MALFORMED = "live_arm_key_malformed"
+CODE_LIVE_ARM_KEY_UNREACHABLE = "live_arm_key_unreachable"
+CODE_LIVE_ARM_KEY_MISSING = "live_arm_key_missing"
+
+_LIVE_ARM_KEY_REFUSALS: dict[str, tuple[str, str]] = {
+    "withdraw_capable": (
+        CODE_LIVE_ARM_KEY_WITHDRAW_CAPABLE,
+        "key has withdraw rights; trade-only keys refused",
+    ),
+    "unknown_permission": (
+        CODE_LIVE_ARM_KEY_UNKNOWN_PERMISSION,
+        "key grants unrecognized permission; refused",
+    ),
+    "trade_off": (
+        CODE_LIVE_ARM_KEY_TRADE_OFF,
+        "key lacks required trade permission; refused",
+    ),
+    "invalid": (
+        CODE_LIVE_ARM_KEY_INVALID,
+        "key cannot be verified; refused",
+    ),
+    "malformed": (
+        CODE_LIVE_ARM_KEY_MALFORMED,
+        "venue response shape unknown; refused",
+    ),
+    "unreachable": (
+        CODE_LIVE_ARM_KEY_UNREACHABLE,
+        "venue unreachable; cannot verify key",
+    ),
+}
+
+
+def _live_arm_key_probe(s: _AppState, venue: str) -> object | None:
+    """Probe the stored key for ``venue`` via the injectable transport.
+
+    Returns a ``KeyProbeResult`` when a key pair is readable, or ``None``
+    when no usable key is stored. Never echoes credentials.
+    """
     from krellbot import secrets as kb_secrets
     from krellbot.cli_keys import _probe
 
+    try:
+        api_key, api_secret = kb_secrets.get(venue)
+    except (FileNotFoundError, ValueError, PermissionError):
+        return None
+    return _probe(venue, api_key, api_secret, transport=s.keys_transport)
+
+
+def _live_arm_key_refusal(
+    *,
+    venue: str,
+    pair: str,
+    correlation_id: str,
+    probe: object | None,
+) -> JSONResponse | None:
+    """Return a typed 403 when the live-arm key probe is not trade-only."""
+    from krellbot.venues.base import KeyProbeResult
+
+    if probe is None:
+        msg = f"no key stored for {venue}"
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "correlation_id": correlation_id,
+                "code": CODE_LIVE_ARM_KEY_MISSING,
+                "ok": False,
+                "effect": "refused",
+                "message": msg,
+                "detail": msg,
+                "venue": venue,
+                "pair": pair,
+            },
+            status_code=403,
+        )
+    if not isinstance(probe, KeyProbeResult):
+        msg = "key check failed; refused"
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "correlation_id": correlation_id,
+                "code": CODE_LIVE_ARM_KEY_MALFORMED,
+                "ok": False,
+                "effect": "refused",
+                "message": msg,
+                "detail": msg,
+                "venue": venue,
+                "pair": pair,
+            },
+            status_code=403,
+        )
+    if probe.is_trade_only:
+        return None
+    code, message = _LIVE_ARM_KEY_REFUSALS.get(
+        probe.outcome,
+        (CODE_LIVE_ARM_KEY_MALFORMED, "key refused"),
+    )
+    return JSONResponse(
+        {
+            "schema_version": SCHEMA_VERSION,
+            "correlation_id": correlation_id,
+            "code": code,
+            "ok": False,
+            "effect": "refused",
+            "message": message,
+            "detail": message,
+            "venue": venue,
+            "pair": pair,
+        },
+        status_code=403,
+    )
+
+
+def _live_arm_key_check(s: _AppState) -> Callable[[str], object]:
+    """Build a key_check callable that uses the injectable keys transport.
+
+    Defense-in-depth for ``arm_pack`` after the typed API probe. Returns
+    ``KeyPerms`` (or ``None`` when no key is stored).
+    """
+    from krellbot.venues.base import KeyProbeResult
+
     def key_check(venue_arg: str) -> object:
-        try:
-            api_key, api_secret = kb_secrets.get(venue_arg)
-        except (FileNotFoundError, ValueError, PermissionError):
+        probe = _live_arm_key_probe(s, venue_arg)
+        if probe is None:
             return None
-        probe = _probe(venue_arg, api_key, api_secret, transport=s.keys_transport)
-        return probe.to_key_perms()
+        if isinstance(probe, KeyProbeResult):
+            return probe.to_key_perms()
+        return None
 
     return key_check
 
@@ -1317,6 +1439,18 @@ def create_app(
                 return _live_arm_gate_refusal(gate)
             # Successful gate ⇒ grant already collected typed LIVE; skip stdin
             # (see live_gate.web_arm_skips_stdin_confirmation).
+
+            # Probe the stored key before arm_pack so withdraw-capable and
+            # unknown-permission keys get typed 403s (M20.2 / SECURITY.md).
+            # arm_pack still re-checks via key_check as defense in depth.
+            key_refusal = _live_arm_key_refusal(
+                venue=venue,
+                pair=pair,
+                correlation_id=correlation_id,
+                probe=_live_arm_key_probe(s, venue),
+            )
+            if key_refusal is not None:
+                return key_refusal
 
             from krellbot.run import arm_pack
 

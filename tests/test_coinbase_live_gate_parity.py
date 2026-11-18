@@ -22,6 +22,7 @@ from krellbot import release_policy
 from krellbot.application import live_gate
 from krellbot.application.live_preflight import (
     CODE_OK,
+    CODE_KEY_WITHDRAW_CAPABLE,
     CODE_PREFLIGHT_BLOCKED,
     CODE_VENUE_UNREACHABLE,
     SandboxTransport,
@@ -488,7 +489,7 @@ def test_coinbase_preflight_blocks_transfer_capable_key(home: Path, fresh_keyrin
     assert status == 200, body
     decoded = json.loads(body)
     assert decoded["ok"] is False, decoded
-    assert decoded["code"] == CODE_PREFLIGHT_BLOCKED
+    assert decoded["code"] == CODE_KEY_WITHDRAW_CAPABLE
     assert _order_posts(http) == []
     assert not any("/brokerage/accounts" in c.url for c in http.calls)
 

@@ -121,6 +121,7 @@ class Status(str, Enum):
 
     STORED = "stored"
     REFUSED_WITHDRAW = "refused_withdraw"
+    REFUSED_UNKNOWN_PERMISSION = "refused_unknown_permission"
     REFUSED_TRADE_OFF = "refused_trade_off"
     REFUSED_INVALID = "refused_invalid"
     REFUSED_MALFORMED = "refused_malformed"
@@ -139,6 +140,8 @@ SAFE_MESSAGES: frozenset[str] = frozenset(
         "stored in native OS keychain",
         # REFUSED_WITHDRAW
         "key has withdraw rights; refused",
+        # REFUSED_UNKNOWN_PERMISSION
+        "key grants unrecognized permission; refused",
         # REFUSED_TRADE_OFF
         "key lacks required trade permission; refused",
         # REFUSED_INVALID
@@ -172,6 +175,7 @@ SAFE_MESSAGES: frozenset[str] = frozenset(
 _MSG_FOR: dict[Status, str] = {
     Status.STORED: "stored in native OS keychain",
     Status.REFUSED_WITHDRAW: "key has withdraw rights; refused",
+    Status.REFUSED_UNKNOWN_PERMISSION: "key grants unrecognized permission; refused",
     Status.REFUSED_TRADE_OFF: "key lacks required trade permission; refused",
     Status.REFUSED_INVALID: "key cannot be verified (invalid or permission denied); refused",
     Status.REFUSED_MALFORMED: "venue response shape unknown; refused",
@@ -413,6 +417,11 @@ def _run_probe(
         return Status.STORED, _MSG_FOR[Status.STORED]
     if outcome == "withdraw_capable":
         return Status.REFUSED_WITHDRAW, _MSG_FOR[Status.REFUSED_WITHDRAW]
+    if outcome == "unknown_permission":
+        return (
+            Status.REFUSED_UNKNOWN_PERMISSION,
+            _MSG_FOR[Status.REFUSED_UNKNOWN_PERMISSION],
+        )
     if outcome == "trade_off":
         return Status.REFUSED_TRADE_OFF, _MSG_FOR[Status.REFUSED_TRADE_OFF]
     if outcome == "invalid":

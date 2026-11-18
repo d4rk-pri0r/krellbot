@@ -44,6 +44,8 @@ CODE_MODE_NOT_SANDBOX = "mode_not_sandbox"
 CODE_STORED_MODE_NOT_SANDBOX = "stored_mode_not_sandbox"
 CODE_VENUE_UNREACHABLE = "venue_unreachable"
 CODE_PREFLIGHT_BLOCKED = "preflight_blocked"
+CODE_KEY_WITHDRAW_CAPABLE = "key_withdraw_capable"
+CODE_KEY_UNKNOWN_PERMISSION = "key_unknown_permission"
 
 MODE_SANDBOX = "sandbox"
 
@@ -71,8 +73,13 @@ class PreflightUnreachableError(PreflightTransportError):
 
 
 class PreflightBlockedError(PreflightTransportError):
-    def __init__(self, message: str = "preflight blocked") -> None:
-        super().__init__(CODE_PREFLIGHT_BLOCKED, message)
+    def __init__(
+        self,
+        message: str = "preflight blocked",
+        *,
+        code: str = CODE_PREFLIGHT_BLOCKED,
+    ) -> None:
+        super().__init__(code, message)
 
 
 @dataclass(frozen=True)
@@ -166,7 +173,8 @@ def evaluate(
          ``CODE_STORED_MODE_NOT_SANDBOX``; otherwise
          ``CODE_MODE_NOT_SANDBOX``.
       4. ``transport.permissions()`` must be trade-only — else
-         ``CODE_PREFLIGHT_BLOCKED`` (or ``CODE_VENUE_UNREACHABLE``).
+         ``CODE_KEY_WITHDRAW_CAPABLE``, ``CODE_KEY_UNKNOWN_PERMISSION``,
+         ``CODE_PREFLIGHT_BLOCKED``, or ``CODE_VENUE_UNREACHABLE``.
       5. ``transport.balances()`` — else ``CODE_VENUE_UNREACHABLE``.
 
     On success the helper returns balances and permissions. It never
@@ -234,7 +242,19 @@ def evaluate(
             stored_mode=stored_mode,
         )
 
-    if not perms.can_trade or perms.can_withdraw:
+    if perms.can_withdraw:
+        return PreflightResult(
+            schema_version=SCHEMA_VERSION,
+            code=CODE_KEY_WITHDRAW_CAPABLE,
+            ok=False,
+            message="key has withdraw rights; live preflight refused",
+            effect="refused",
+            account_id=account_id,
+            revision_id=revision_id,
+            stored_mode=stored_mode,
+            permissions=perms.to_dict(),
+        )
+    if not perms.can_trade:
         return PreflightResult(
             schema_version=SCHEMA_VERSION,
             code=CODE_PREFLIGHT_BLOCKED,
@@ -317,11 +337,27 @@ class VenueBackedPreflightTransport:
         raise RuntimeError("VenueBackedPreflightTransport.send is never invoked by live.preflight")
 
     def permissions(self) -> PreflightPermissions:
-        from krellbot.venues.base import WithdrawCapableError
+        from krellbot.venues.base import (
+            KrakenKeyUnknownPermissionError,
+            WithdrawCapableError,
+        )
 
         try:
             perms = self._venue.check_key()
-        except WithdrawCapableError:
+        except KrakenKeyUnknownPermissionError:
+            raise PreflightBlockedError(
+                "key grants unrecognized permission; live preflight refused",
+                code=CODE_KEY_UNKNOWN_PERMISSION,
+            ) from None
+        except WithdrawCapableError as exc:
+            # Bare withdraw confirmation vs other typed refusals
+            # (trade-off / invalid / malformed). Withdraw gets its own
+            # code so Deploy/Operations can show an honest typed error.
+            if type(exc) is WithdrawCapableError:
+                raise PreflightBlockedError(
+                    "key has withdraw rights; live preflight refused",
+                    code=CODE_KEY_WITHDRAW_CAPABLE,
+                ) from None
             raise PreflightBlockedError("key permissions refuse live preflight") from None
         except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
             raise PreflightUnreachableError("venue unreachable; cannot verify permissions") from None
