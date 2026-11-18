@@ -565,7 +565,7 @@ export function AppHome({
 
           <DisclosureSection
             title="About this build"
-            summary="Version, channel, and signing honesty for this local preview."
+            summary="Version, digest/signing posture honesty, and how to reproduce a starter pack."
             badge="Advanced"
             badgeTone="advanced"
             defaultOpen={false}

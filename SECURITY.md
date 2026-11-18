@@ -37,6 +37,12 @@ but missing). Secret **names**, Gatekeeper / SmartScreen expectations,
 and the Linux checksum policy are documented in
 [docs/signing.md](docs/signing.md). Never put cert material in the repo.
 
+Install evidence for outsiders (pinned digest, `ARTIFACTS_SIGNED`
+posture, how to reproduce a starter pack without market-performance
+claims): [docs/evidence.md](docs/evidence.md). The same contract is
+surfaced in the workstation under **Home → Advanced → About this
+build**.
+
 ## Unknown permissions are fail-closed
 
 `krellbot doctor` only reports `trade` and `withdraw` after a real
