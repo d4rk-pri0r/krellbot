@@ -91,6 +91,14 @@
   line-height: 1.45;
 }
 
+.app-home__cta-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  align-self: flex-start;
+}
+
 .app-home__cta {
   flex: none;
   min-height: 40px;
@@ -108,6 +116,25 @@
 .app-home__cta:hover:not(:disabled) {
   border-color: var(--sage) !important;
   filter: brightness(1.05);
+}
+
+.app-home__cta-secondary {
+  flex: none;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--seafoam, #a8d8d1);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.app-home__cta-secondary:hover {
+  color: var(--text, #e9f0f5);
 }
 
 .app-home__availability {
