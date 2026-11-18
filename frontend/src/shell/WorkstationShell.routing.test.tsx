@@ -16,6 +16,7 @@ import {
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PaperClient } from "../features/paper/client";
 import { WorkstationShell } from "./WorkstationShell";
+import { clickShellNav } from "./navTestUtils";
 
 class ResizeObserverStub {
   observe(): void {}
@@ -78,24 +79,24 @@ afterEach(() => {
 describe("WorkstationShell — URL reflects view", () => {
   it("writes ?view= when a nav tab is activated", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     expect(window.location.search).toBe("?view=strategies");
     expect(activeNavLabel()).toBe("Strategies");
   });
 
   it("writes ?view=home when returning to Workspace", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Operations" }));
-    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    clickShellNav("Operations");
+    clickShellNav("Workspace");
     expect(window.location.search).toBe("?view=home");
     expect(activeNavLabel()).toBe("Workspace");
   });
 
   it("does not stack a duplicate history entry when re-clicking the active view", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     const length = window.history.length;
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     expect(window.history.length).toBe(length);
     expect(window.location.search).toBe("?view=research");
   });
@@ -113,7 +114,7 @@ describe("WorkstationShell — reload restores route", () => {
 
   it("restores Strategies after a remount that simulates reload", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     expect(window.location.search).toBe("?view=strategies");
     cleanup();
     renderShell();
@@ -144,9 +145,9 @@ describe("WorkstationShell — reload restores route", () => {
 describe("WorkstationShell — back navigation", () => {
   it("pushes distinct history entries so back can return to the prior view", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     expect(window.location.search).toBe("?view=workstation");
-    fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+    clickShellNav("Deploy");
     expect(window.location.search).toBe("?view=deployments");
     expect(activeNavLabel()).toBe("Deploy");
 
@@ -155,7 +156,7 @@ describe("WorkstationShell — back navigation", () => {
       window.history.pushState({}, "", "/?view=workstation");
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
-    expect(activeNavLabel()).toBe("Workstation");
+    expect(activeNavLabel()).toBe("Run");
     expect(screen.getByRole("heading", { name: /paper workstation/i })).toBeTruthy();
   });
 

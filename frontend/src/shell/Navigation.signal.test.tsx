@@ -1,20 +1,12 @@
 /**
  * Navigation — scoped Signal presentation vocabulary evidence.
  * Contract: KRELL-SIGNAL-20261010.
- *
- * Pins the owner-approved scoped class vocabulary the persistent
- * top-of-shell tab strip renders (frontend/src/shell/Navigation.signal.css)
- * without touching the legacy unscoped Navigation.test.tsx: every
- * expectation here is driven through the existing `active`/`onChange`
- * prop path over the eight-tab VIEWS array, and every test references an
- * existing data-testid marker verbatim (kbot-nav / nav-local-preview /
- * nav-local-preview-note), which this slice must not alter.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Navigation } from "./Navigation";
+import { MORE_VIEWS, Navigation, PRIMARY_VIEWS } from "./Navigation";
 
 afterEach(() => {
   cleanup();
@@ -26,41 +18,27 @@ const cssSource = readFileSync(
   "utf8",
 );
 
-const EIGHT_VIEWS = [
-  { id: "home", label: "Workspace" },
-  { id: "workstation", label: "Workstation" },
-  { id: "strategies", label: "Strategies" },
-  { id: "packs", label: "Packs" },
-  { id: "research", label: "Research" },
-  { id: "studio", label: "Strategy studio" },
-  { id: "operations", label: "Operations" },
-  { id: "deployments", label: "Deploy" },
-] as const;
-
 describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
   it("mounts the scoped Signal root with the shared navigation semantics", () => {
     render(<Navigation active="home" onChange={() => {}} />);
     const nav = screen.getByTestId("kbot-nav");
     expect(nav).toBeInstanceOf(HTMLElement);
-    // Exact tokens, not substrings: a renamed or suffixed class must fail.
     expect(nav.classList.contains("kbot-shell__nav-root")).toBe(true);
     expect(nav.getAttribute("role")).toBe("navigation");
     expect(nav.getAttribute("aria-label")).toBe("Workstation navigation");
   });
 
-  it("renders the eight VIEWS tabs in order with the scoped item vocabulary", () => {
+  it("renders primary VIEWS and More toggle with the scoped item vocabulary", () => {
     render(<Navigation active="home" onChange={() => {}} />);
-    const nav = screen.getByTestId("kbot-nav");
-    const items = Array.from(nav.querySelectorAll("button"));
+    const primary = screen.getByTestId("kbot-nav-primary");
+    const items = Array.from(primary.querySelectorAll(".kbot-nav__item"));
     expect(items.map((button) => button.textContent?.trim())).toEqual(
-      EIGHT_VIEWS.map((view) => view.label),
+      PRIMARY_VIEWS.map((view) => view.label),
     );
     for (const item of items) {
       expect(item.classList.contains("kbot-shell__nav-item")).toBe(true);
     }
-    expect(nav.querySelectorAll(".kbot-shell__nav-item")).toHaveLength(
-      EIGHT_VIEWS.length,
-    );
+    expect(screen.getByTestId("kbot-nav-more-toggle")).toBeDefined();
   });
 
   it("marks only the active tab with the scoped active class and ARIA state", () => {
@@ -75,10 +53,7 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
     expect(
       nav.querySelectorAll(".kbot-shell__nav-item--active"),
     ).toHaveLength(1);
-    for (const view of EIGHT_VIEWS) {
-      if (view.id === "research") {
-        continue;
-      }
+    for (const view of PRIMARY_VIEWS) {
       const other = screen.getByRole("button", { name: view.label });
       expect(other.classList.contains("kbot-shell__nav-item--active")).toBe(
         false,
@@ -91,12 +66,12 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
   it("reports every view selection through the existing onChange wiring", () => {
     const onChange = vi.fn();
     render(<Navigation active="home" onChange={onChange} />);
-    expect(screen.getByTestId("kbot-nav")).toBeInstanceOf(HTMLElement);
-    for (const view of EIGHT_VIEWS) {
+    fireEvent.click(screen.getByTestId("kbot-nav-more-toggle"));
+    for (const view of [...PRIMARY_VIEWS, ...MORE_VIEWS]) {
       fireEvent.click(screen.getByRole("button", { name: view.label }));
     }
     expect(onChange.mock.calls).toEqual(
-      EIGHT_VIEWS.map((view) => [view.id]),
+      [...PRIMARY_VIEWS, ...MORE_VIEWS].map((view) => [view.id]),
     );
   });
 

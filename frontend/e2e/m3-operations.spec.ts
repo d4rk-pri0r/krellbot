@@ -13,6 +13,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
+import { clickNav } from "../journeys/helpers/journey-steps";
 
 /**
  * M3-GUI operations spec.
@@ -110,8 +111,7 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   });
   await waitForSessionReady(page);
 
-  await page.getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: "Operations", exact: true }).click();
+  await clickNav(page, "Operations");
   const opsView = page.getByTestId("operations-view");
   await expect(opsView).toBeVisible();
 
@@ -231,8 +231,7 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   // Reload the page; the ack persists.
   await page.reload();
   await waitForSessionReady(page);
-  await page.getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: "Operations", exact: true }).click();
+  await clickNav(page, "Operations");
   await expect(
     page.getByTestId(`ops-alert-${ackId}`),
   ).toContainText(/acknowledged/);

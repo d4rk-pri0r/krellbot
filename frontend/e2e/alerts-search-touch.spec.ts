@@ -12,6 +12,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
+import { clickNav } from "../journeys/helpers/journey-steps";
 
 /**
  * Alerts Search touch-target geometry regression (issue179).
@@ -149,8 +150,7 @@ test("Operations Alerts Search keeps >=44px touch targets <=640px and compact de
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
 
-  await page.getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: "Operations", exact: true }).click();
+  await clickNav(page, "Operations");
   await expect(page.getByTestId("operations-view")).toBeVisible();
 
   const query = page.getByTestId("ops-alerts-filter-query");

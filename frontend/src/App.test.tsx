@@ -17,6 +17,7 @@ import type {
   StrategyClient,
 } from "./features/strategies/client";
 import { WorkstationShell } from "./shell/WorkstationShell";
+import { clickShellNav } from "./shell/navTestUtils";
 
 afterEach(cleanup);
 
@@ -126,7 +127,7 @@ function makeSavedPack(): StrategyPack {
 }
 
 async function savePackViaStrategies(): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+  clickShellNav("Strategies");
   fireEvent.change(screen.getByLabelText(/raw json/i), {
     target: { value: JSON.stringify(makeSavedPack()) },
   });
@@ -190,7 +191,7 @@ function fillResearchInputs(): void {
 }
 
 async function runResearchToCompletion(): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+  fireEvent.click(screen.getByTestId("research-run"));
   await screen.findByTestId("research-job-id");
   await waitFor(() => {
     expect(screen.queryByTestId("research-result")).not.toBeNull();
@@ -231,7 +232,14 @@ describe("App navigation", () => {
     const buttons = nav.querySelectorAll("button");
     const labels = Array.from(buttons).map((b) => b.textContent?.trim());
     expect(labels).toEqual(
-      expect.arrayContaining(["Workstation", "Strategies", "Research"]),
+      expect.arrayContaining(["Run", "Strategies", "Packs", "More"]),
+    );
+    fireEvent.click(screen.getByTestId("kbot-nav-more-toggle"));
+    const openLabels = Array.from(
+      screen.getByRole("navigation", { name: /workstation navigation/i }).querySelectorAll("button"),
+    ).map((b) => b.textContent?.trim());
+    expect(openLabels).toEqual(
+      expect.arrayContaining(["Research", "Strategy studio", "Operations", "Deploy"]),
     );
   });
 });
@@ -239,7 +247,7 @@ describe("App navigation", () => {
 describe("App inspector", () => {
   it("renders an inspector region whose empty state reads 'Nothing selected'", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     const inspector = screen.getByRole("region", { name: "Inspector" });
     expect(inspector.textContent).toMatch(/Nothing selected/);
   });
@@ -303,7 +311,7 @@ describe("App view routing", () => {
   it("starts on Home and opens Workstation with its inspector", () => {
     render(<App />);
     expect(screen.getByTestId("app-home")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     expect(screen.getByText("Paper workstation")).toBeDefined();
     expect(
       screen.getByRole("region", { name: "Inspector" }),
@@ -319,7 +327,7 @@ describe("App view routing", () => {
 
   it("choosing Strategies shows the strategy editor and hides the workstation heading", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     const editor = screen.getByRole("region", { name: /strategy editor/i });
     expect(editor).toBeDefined();
     expect(editor.textContent).toMatch(/Label/);
@@ -330,11 +338,11 @@ describe("App view routing", () => {
 
   it("choosing Workstation after Strategies shows the paper workstation again", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     expect(
       screen.getByRole("region", { name: /strategy editor/i }),
     ).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     expect(screen.getByText("Paper workstation")).toBeDefined();
     expect(
       screen.queryByRole("region", { name: /strategy editor/i }),
@@ -343,26 +351,26 @@ describe("App view routing", () => {
 
   it("choosing Research shows the research run form", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     expect(screen.getByLabelText(/dataset path/i)).toBeDefined();
     expect(screen.getByLabelText(/fee basis points/i)).toBeDefined();
     expect(screen.getByLabelText(/^from$/i)).toBeDefined();
     expect(screen.getByLabelText(/^to$/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: /^run$/i })).toBeDefined();
+    expect(screen.getByTestId("research-run")).toBeDefined();
     expect(screen.queryByRole("button", { name: /synthetic fixture/i })).toBeNull();
   });
 
   it("choosing Research hides the workstation heading", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     expect(screen.queryByText("Paper workstation")).toBeNull();
   });
 
   it("choosing Workstation after Research shows the paper workstation again", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     expect(screen.getByLabelText(/dataset path/i)).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     expect(screen.getByText("Paper workstation")).toBeDefined();
     expect(screen.queryByLabelText(/dataset path/i)).toBeNull();
   });
@@ -372,7 +380,7 @@ describe("App paper controls (NS10b)", () => {
   it("renders the Paper controls region on the workstation view with a no-armed-pack fallback", async () => {
     const paperClient = makePaperClient();
     render(<WorkstationShell paperClient={paperClient} />);
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     const panel = await screen.findByTestId("paper-status-panel");
     expect(panel.textContent).toMatch(/Paper status/);
     // Await the confirmed unarmed response; the initial pending state must
@@ -398,7 +406,7 @@ describe("App paper controls (NS10b)", () => {
       }),
     });
     render(<WorkstationShell paperClient={paperClient} />);
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     expect(
       await screen.findByRole("button", { name: /pause entries/i }),
     ).toBeDefined();
@@ -416,9 +424,9 @@ describe("App paper controls (NS10b)", () => {
   it("hides the controls on the Strategies and Research views", () => {
     const paperClient = makePaperClient();
     render(<WorkstationShell paperClient={paperClient} />);
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     expect(screen.queryByTestId("paper-status-panel")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     expect(screen.queryByTestId("paper-status-panel")).toBeNull();
   });
 
@@ -435,7 +443,7 @@ describe("App paper controls (NS10b)", () => {
       }),
     });
     render(<WorkstationShell paperClient={paperClient} />);
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     const panel = await screen.findByTestId("paper-status-panel");
     const buttons = panel.querySelectorAll("button");
     for (const btn of Array.from(buttons)) {
@@ -476,7 +484,7 @@ describe("App paper controls (NS10b)", () => {
       }),
     });
     render(<WorkstationShell paperClient={paperClient} />);
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     const pause = await screen.findByRole("button", { name: /pause entries/i });
     fireEvent.click(pause);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -515,7 +523,7 @@ describe("App paper controls (NS10b)", () => {
       }),
     });
     render(<WorkstationShell paperClient={paperClient} />);
-    fireEvent.click(screen.getByRole("button", { name: "Workstation" }));
+    clickShellNav("Run");
     const resume = await screen.findByRole("button", { name: /resume entries/i });
     fireEvent.click(resume);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -535,7 +543,7 @@ describe("App research navigation lifecycle (research mode)", () => {
         strategyClient={makeStrategyClient()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     fireEvent.change(screen.getByLabelText(/dataset path/i), {
       target: { value: "fixtures/cached.csv" },
     });
@@ -565,12 +573,12 @@ describe("App research navigation lifecycle (research mode)", () => {
     expect(screen.queryByLabelText(/pack path/i)).toBeNull();
     expect(screen.queryByLabelText(/^from$/i)).toBeNull();
     expect(screen.queryByLabelText(/^to$/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: /^run$/i })).toBeNull();
+    expect(screen.queryByTestId("research-run")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     expect(screen.queryByLabelText(/dataset path/i)).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     expect(screen.queryByLabelText(/dataset path/i)).toBeNull();
     expect(screen.queryByLabelText(/fee basis points/i)).toBeNull();
     expect(screen.queryByLabelText(/holdout from/i)).toBeNull();
@@ -578,13 +586,13 @@ describe("App research navigation lifecycle (research mode)", () => {
     expect(screen.queryByLabelText(/pack path/i)).toBeNull();
     expect(screen.queryByLabelText(/^from$/i)).toBeNull();
     expect(screen.queryByLabelText(/^to$/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: /^run$/i })).toBeNull();
+    expect(screen.queryByTestId("research-run")).toBeNull();
 
     // Studio still works after leaving Research.
     expect(screen.queryByTestId("studio-connection-count")).not.toBeNull();
 
     // Strategies still works after leaving Research.
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     expect(screen.getByLabelText(/raw json/i)).toBeDefined();
     expect(screen.getByLabelText(/label/i)).toBeDefined();
   });
@@ -618,13 +626,13 @@ describe("App research navigation lifecycle (research mode)", () => {
     );
     await savePackViaStrategies();
 
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     expect(screen.queryByTestId("research-revision")).not.toBeNull();
 
     fillResearchInputs();
     // Complete the first research request by flipping the polling
     // backend to succeeded once the job id has been issued.
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    fireEvent.click(screen.getByTestId("research-run"));
     await screen.findByTestId("research-job-id");
     completed = true;
     await waitFor(() => {
@@ -636,7 +644,7 @@ describe("App research navigation lifecycle (research mode)", () => {
     fireEvent.change(screen.getByLabelText(/holdout to/i), {
       target: { value: "1200" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    fireEvent.click(screen.getByTestId("research-run"));
     const refusal = await screen.findByRole("alert");
     expect(refusal.textContent).toMatch(/holdout bounds must both be set/);
     expect(research.submitRun).toHaveBeenCalledTimes(1);
@@ -657,9 +665,9 @@ describe("App research navigation lifecycle (research mode)", () => {
     expect(traceButtons[1].getAttribute("aria-pressed")).toBe("true");
 
     // Navigate Research → Studio → Strategies → Research.
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Strategy studio");
+    clickShellNav("Strategies");
+    clickShellNav("Research");
 
     expect(
       (screen.getByLabelText(/dataset path/i) as HTMLInputElement).value,
@@ -726,16 +734,16 @@ describe("App research navigation lifecycle (research mode)", () => {
     );
     await savePackViaStrategies();
 
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     fillResearchInputs();
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    fireEvent.click(screen.getByTestId("research-run"));
     await screen.findByTestId("research-job-id");
     expect(research.submitRun).toHaveBeenCalledTimes(1);
     // While the request is still pending, no result is rendered.
     expect(screen.queryByTestId("research-result")).toBeNull();
 
     // Leave Research while the request is still pending.
-    fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+    clickShellNav("Strategy studio");
     expect(screen.queryByTestId("research-job-id")).toBeNull();
     expect(screen.queryByTestId("research-result")).toBeNull();
 
@@ -743,7 +751,7 @@ describe("App research navigation lifecycle (research mode)", () => {
     pending = false;
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     await waitFor(() => {
       expect(screen.queryByTestId("research-result")).not.toBeNull();
     });
@@ -775,7 +783,7 @@ describe("App research navigation lifecycle (research mode)", () => {
     );
     await savePackViaStrategies();
 
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     fillResearchInputs();
     await runResearchToCompletion();
     expect(
@@ -792,12 +800,12 @@ describe("App research navigation lifecycle (research mode)", () => {
     fireEvent.change(screen.getByLabelText(/holdout to/i), {
       target: { value: "1200" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    fireEvent.click(screen.getByTestId("research-run"));
     const refusal = await screen.findByRole("alert");
     expect(refusal.textContent).toMatch(/holdout bounds must both be set/);
 
     // Save a different revision through Strategies.
-    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    clickShellNav("Strategies");
     fireEvent.change(screen.getByLabelText(/raw json/i), {
       target: {
         value: JSON.stringify({ ...makeSavedPack(), id: "trend-follow-v2" }),
@@ -807,7 +815,7 @@ describe("App research navigation lifecycle (research mode)", () => {
     await screen.findByTestId("editor-save-outcome");
 
     // Return to Research: old state must be gone, new revision visible.
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    clickShellNav("Research");
     expect(screen.queryByTestId("research-job-id")).toBeNull();
     expect(screen.queryByTestId("research-result")).toBeNull();
     expect(
@@ -828,7 +836,7 @@ describe("App research navigation lifecycle (research mode)", () => {
     fireEvent.change(screen.getByLabelText(/^to$/i), {
       target: { value: "9999999999999" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    fireEvent.click(screen.getByTestId("research-run"));
     await waitFor(() => {
       expect(research.submitRun).toHaveBeenCalledTimes(2);
     });

@@ -8,6 +8,7 @@ import type {
   OwnedDraftSummary,
 } from "../features/strategies/libraryClient";
 import { WorkstationShell } from "./WorkstationShell";
+import { clickShellNav } from "./navTestUtils";
 
 class ResizeObserverStub {
   observe(): void {}
@@ -130,7 +131,7 @@ describe("WorkstationShell — saved strategy library", () => {
     expect(screen.queryByLabelText(/^label$/i)).toBeNull();
     openStrategiesView();
     fireEvent.change(labelInput(), { target: { value: "Keep my unsaved draft" } });
-    fireEvent.click(screen.getByRole("button", { name: destination }));
+    clickShellNav(destination);
     expect(screen.queryByLabelText(/^label$/i)).toBeNull();
     openStrategiesView();
     expect(labelInput().value).toBe("Keep my unsaved draft");

@@ -42,9 +42,33 @@
   row-gap: 4px;
 }
 
-/* ============ tabs ============ */
+/* ============ primary strip + More ============ */
 
-.kbot-shell__nav-root .kbot-shell__nav-item {
+.kbot-shell__nav-root .kbot-nav__primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kbot-shell__nav-root .kbot-nav__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0 0;
+}
+
+.kbot-shell__nav-root .kbot-nav__more[hidden] {
+  display: none;
+}
+
+.kbot-shell__nav-root .kbot-shell__nav-item,
+.kbot-shell__nav-root .kbot-nav__more-toggle {
   min-width: 0;
   padding: 8px 12px;
   border-radius: var(--radius-control, 7px);
@@ -64,7 +88,20 @@
       var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
-.kbot-shell__nav-root .kbot-shell__nav-item:hover {
+.kbot-shell__nav-root .kbot-nav__more-toggle {
+  color: var(--muted, #abc4d8);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.kbot-shell__nav-root .kbot-nav__more-toggle--open,
+.kbot-shell__nav-root .kbot-nav__more-toggle--current {
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-shell__nav-root .kbot-shell__nav-item:hover,
+.kbot-shell__nav-root .kbot-nav__more-toggle:hover {
   color: var(--text, #e9f0f5);
   background: color-mix(in srgb, var(--panel, #18354a) 55%, transparent);
 }
@@ -140,7 +177,8 @@
 
   /* Reachable tabs with >=44px touch targets; labels ellipsize inside
    * the tab instead of overflowing the 390px composition. */
-  .kbot-shell__nav-root .kbot-shell__nav-item {
+  .kbot-shell__nav-root .kbot-shell__nav-item,
+  .kbot-shell__nav-root .kbot-nav__more-toggle {
     min-height: 44px;
     padding: 10px 10px;
     font-size: 12.5px;
@@ -157,7 +195,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kbot-shell__nav-root .kbot-shell__nav-item {
+  .kbot-shell__nav-root .kbot-shell__nav-item,
+  .kbot-shell__nav-root .kbot-nav__more-toggle {
     transition: none;
   }
 }

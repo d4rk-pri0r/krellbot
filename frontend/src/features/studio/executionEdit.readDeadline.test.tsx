@@ -20,6 +20,7 @@ import type { ResearchClient } from "../research/client";
 import type { StrategyClient } from "../strategies/client";
 import type { Pack } from "../strategies/client";
 import { WorkstationShell } from "../../shell/WorkstationShell";
+import { clickShellNav } from "../../shell/navTestUtils";
 
 // The REAL applyExecutionEdit module drives every save in this file:
 // only global fetch is stubbed. There is deliberately no vi.mock of
@@ -195,13 +196,13 @@ async function savePackAndOpenStudio(
       strategyClient={strategyClient ?? makeStrategyClient()}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+  clickShellNav("Strategies");
   fireEvent.change(screen.getByLabelText(/raw json/i), {
     target: { value: JSON.stringify(savedPackFixture()) },
   });
   fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
   await screen.findByTestId("editor-revision-id");
-  fireEvent.click(screen.getByRole("button", { name: "Strategy studio" }));
+  clickShellNav("Strategy studio");
   // Settle the shell's real-clock mount effects (notably the status
   // strip's deferred self-read arm and its refresh intervals) BEFORE a
   // test switches to fake timers, so the fake clock only ever owns the

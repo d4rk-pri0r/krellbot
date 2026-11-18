@@ -10,6 +10,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
+import { clickNav } from "../journeys/helpers/journey-steps";
 
 /**
  * M2.8 — Scheduler UI install / enable / status happy path with fakes.
@@ -147,10 +148,7 @@ test("Operations scheduler panel install/enable happy path and unavailable copy 
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
-  await page
-    .getByRole("navigation", { name: "Workstation navigation" })
-    .getByRole("button", { name: "Operations", exact: true })
-    .click();
+  await clickNav(page, "Operations");
 
   // M18.4: Scheduler lives under Advanced — expand before asserting.
   const schedulerToggle = page.getByTestId("ops-scheduler-panel-toggle");
