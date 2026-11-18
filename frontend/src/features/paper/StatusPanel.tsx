@@ -33,6 +33,8 @@ export type StatusPanelProps = {
   positionSelected?: boolean;
   /** Optional market selector from a fleet deep link. */
   select?: PaperStatusSelect | null;
+  /** Prefer this runnable revision in the arm form (home starter handoff). */
+  preferredRevisionId?: string | null;
 };
 
 type EntriesSentence = "Entries active" | "Entries paused";
@@ -404,6 +406,7 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
 function ArmForm({
   client,
   onArmConfirmed,
+  preferredRevisionId = null,
 }: {
   client: PaperClient;
   /**
@@ -412,6 +415,7 @@ function ArmForm({
    * one bounded status read so the armed controls appear immediately.
    */
   onArmConfirmed: () => void;
+  preferredRevisionId?: string | null;
 }): JSX.Element | null {
   const canArm =
     typeof client === "object" &&
@@ -449,9 +453,17 @@ function ArmForm({
         const armable = rows.filter((row) => row.runnable === true);
         setDrafts(armable);
         setLoadError(null);
-        setRevisionId((current) =>
-          current === "" && armable.length > 0 ? armable[0].revision_id : current,
-        );
+        setRevisionId((current) => {
+          if (
+            preferredRevisionId &&
+            armable.some((row) => row.revision_id === preferredRevisionId)
+          ) {
+            return preferredRevisionId;
+          }
+          return current === "" && armable.length > 0
+            ? armable[0].revision_id
+            : current;
+        });
       })
       .catch((reason: unknown) => {
         if (cancelled) {
@@ -464,7 +476,7 @@ function ArmForm({
     return () => {
       cancelled = true;
     };
-  }, [client, canArm]);
+  }, [client, canArm, preferredRevisionId]);
 
   if (!canArm) {
     // A legacy injected client without the arm surface: say so instead
@@ -671,7 +683,7 @@ function ArmForm({
               void handleArm();
             }}
           >
-            {pending ? "Arming…" : "Arm paper pack"}
+            {pending ? "Starting…" : "Start paper run"}
           </button>
           {unknownOutcome !== null ? (
             <p
@@ -703,6 +715,7 @@ export function StatusPanel({
   onPositionSelect,
   positionSelected = false,
   select = null,
+  preferredRevisionId = null,
 }: StatusPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   // Synchronous guard so a rapid double click cannot dispatch a duplicate
@@ -1312,7 +1325,11 @@ export function StatusPanel({
                 recorded fills — never fabricated.
               </p>
             </div>
-            <ArmForm client={client} onArmConfirmed={handleArmConfirmed} />
+            <ArmForm
+              client={client}
+              onArmConfirmed={handleArmConfirmed}
+              preferredRevisionId={preferredRevisionId}
+            />
           </>
         )}
         </div>

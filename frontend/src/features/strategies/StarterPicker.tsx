@@ -10,6 +10,11 @@ export type StarterPickerProps = {
    * session fetch (`fetchStarters`) runs.
    */
   loadStarters?: () => Promise<StarterCatalogue>;
+  /**
+   * When true, load as soon as mounted (home chooser / tests) instead of
+   * waiting for IntersectionObserver visibility.
+   */
+  eager?: boolean;
 };
 
 type LoadState =
@@ -38,6 +43,7 @@ type LoadState =
 export function StarterPicker({
   onPick,
   loadStarters = fetchStarters,
+  eager = false,
 }: StarterPickerProps): JSX.Element {
   const rootRef = useRef<HTMLElement | null>(null);
   const [state, setState] = useState<LoadState>({ kind: "idle" });
@@ -49,9 +55,6 @@ export function StarterPicker({
 
   useEffect(() => {
     const element = rootRef.current;
-    if (!element || typeof IntersectionObserver === "undefined") {
-      return;
-    }
     let cancelled = false;
     const load = (): void => {
       if (cancelled) {
@@ -82,6 +85,15 @@ export function StarterPicker({
           });
         });
     };
+    if (eager || retryTrigger > 0) {
+      load();
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!element || typeof IntersectionObserver === "undefined") {
+      return;
+    }
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -93,18 +105,12 @@ export function StarterPicker({
       },
       { root: null, rootMargin: "0px", threshold: 0 },
     );
-    if (retryTrigger > 0) {
-      // A retry already proved visibility once; the one-shot observer
-      // would never fire again, so the retry attempt runs directly.
-      load();
-    } else {
-      observer.observe(element);
-    }
+    observer.observe(element);
     return () => {
       cancelled = true;
       observer.disconnect();
     };
-  }, [loadStarters, retryTrigger]);
+  }, [loadStarters, retryTrigger, eager]);
 
   return (
     <section

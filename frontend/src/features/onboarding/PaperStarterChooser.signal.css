@@ -1,0 +1,87 @@
+/*
+ * Home paper-starter chooser — Signal (KRELL-SIGNAL-20261010).
+ */
+
+.kbot-paper-starter-chooser {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding: 18px 18px 20px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 12px);
+  background: color-mix(in srgb, var(--panel, #18354a) 70%, var(--surface, #14222e));
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-paper-starter-chooser__head {
+  display: grid;
+  gap: 6px;
+  position: relative;
+  padding-right: 72px;
+}
+
+.kbot-paper-starter-chooser__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-paper-starter-chooser__lede {
+  margin: 0;
+  max-width: 58ch;
+  color: var(--muted, #abc4d8);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.kbot-paper-starter-chooser__dismiss {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: transparent;
+  color: var(--text, #e9f0f5);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-paper-starter-chooser__status {
+  margin: 0;
+  color: var(--seafoam, #a8d8d1);
+  font-size: 13px;
+}
+
+.kbot-paper-starter-chooser__error {
+  margin: 0;
+  color: var(--coral, #cc9689);
+  font-size: 13px;
+}
+
+.kbot-paper-starter-chooser__secondary {
+  margin: 0;
+}
+
+.kbot-paper-starter-chooser__packs {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--seafoam, #a8d8d1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-paper-starter-chooser {
+    transition: none;
+  }
+}

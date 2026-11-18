@@ -127,7 +127,7 @@ describe("StatusPanel paper arm tracer (primary user-action path)", () => {
       target: { value: "250.50" },
     });
 
-    const armButton = screen.getByRole("button", { name: /arm paper pack/i });
+    const armButton = screen.getByRole("button", { name: /start paper run/i });
     expect(armButton.getAttribute("disabled")).toBeNull();
     fireEvent.click(armButton);
 
@@ -161,7 +161,7 @@ describe("StatusPanel paper arm tracer (primary user-action path)", () => {
     fireEvent.change(screen.getByTestId("paper-arm-balance"), {
       target: { value: "100" },
     });
-    const armButton = screen.getByRole("button", { name: /arm paper pack/i });
+    const armButton = screen.getByRole("button", { name: /start paper run/i });
     fireEvent.click(armButton);
     // Pending: disabled while the command is in flight.
     await waitFor(() => {
@@ -186,7 +186,7 @@ describe("StatusPanel paper arm tracer (primary user-action path)", () => {
     fireEvent.change(screen.getByTestId("paper-arm-balance"), {
       target: { value: "100" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /arm paper pack/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start paper run/i }));
     const unknown = await screen.findByTestId("paper-arm-unknown");
     expect(unknown.textContent).toMatch(/Arm outcome unknown/i);
     expect(unknown.textContent).toMatch(/503/);

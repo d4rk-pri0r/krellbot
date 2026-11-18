@@ -147,7 +147,7 @@ describe("StatusPanel remembers the last armed balance", () => {
       target: { value: "rev-2" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: /arm paper pack/i }),
+      screen.getByRole("button", { name: /start paper run/i }),
     );
     await waitFor(() => {
       expect(client.arm).toHaveBeenCalledTimes(1);
@@ -176,7 +176,7 @@ describe("StatusPanel remembers the last armed balance", () => {
       target: { value: "rev-2" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: /arm paper pack/i }),
+      screen.getByRole("button", { name: /start paper run/i }),
     );
     await waitFor(() => {
       expect(client.arm).toHaveBeenCalledTimes(1);
@@ -218,7 +218,7 @@ describe("StatusPanel remembers the last armed balance", () => {
     fireEvent.change(await screen.findByTestId("paper-arm-revision"), {
       target: { value: "rev-2" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /arm paper pack/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start paper run/i }));
     await waitFor(() => {
       expect(refused.arm).toHaveBeenCalledTimes(1);
     });
@@ -237,7 +237,7 @@ describe("StatusPanel remembers the last armed balance", () => {
     fireEvent.change(await screen.findByTestId("paper-arm-revision"), {
       target: {value: "rev-2" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /arm paper pack/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start paper run/i }));
     await screen.findByTestId("paper-arm-unknown");
     expect(window.localStorage.getItem(LAST_ARMED_BALANCE_KEY)).toBeNull();
     unmount2();
