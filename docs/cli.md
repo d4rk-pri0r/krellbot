@@ -105,9 +105,26 @@ nothing, add `~/.local/bin` to `PATH` (POSIX) or
 `%LOCALAPPDATA%\Krellbot\bin` to your user PATH (Windows). The site
 installer's README has the exact `PATH` line per shell.
 
+### Headless / always-on runner (scheduler plumbing)
+
+For always-on paper or live ticks on a headless host, use the existing
+scheduler/service install path — do not invent a separate CLI product
+command. After the release install and arming in the workstation:
+
+```
+krellbot service install
+```
+
+That writes the OS scheduler unit (launchd / systemd user timer /
+Windows task) which fires `krellbot tick` hourly. Details, dry-run, and
+uninstall live in [service.md](service.md). Enable or inspect the same
+scheduler from the workstation Operations view when a browser is
+available. The workstation remains the operator surface; `service
+install` and `tick` are plumbing only.
+
 ### Private access from your Tailscale devices
 
-For an always-on workstation, keep the backend on loopback and let
+For an always-on or headless workstation, keep the backend on loopback and let
 [Tailscale Serve](https://tailscale.com/kb/1312/serve) provide tailnet-only HTTPS:
 
 ```sh

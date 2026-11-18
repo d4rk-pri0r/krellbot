@@ -11,6 +11,21 @@ absolute path of the `krellbot` executable and the home directory. They do
 not read `Path.home()` and they do not write files. Callers decide where to
 write; the test suite writes only under an injected root.
 
+## Headless / always-on runner
+
+On an always-on or headless host, the documented runner entry is the
+existing OS scheduler unit — not a new CLI product surface. Install it
+with `krellbot service install` (or enable it from the workstation
+Operations scheduler panel). The unit fires `krellbot tick` on the hourly
+cadence; the stable package entry the install path proves importable is
+`krellbot.service.runner`.
+
+Operator actions (arm, status, kill-switch, live confirmation) stay in the
+web workstation. Keep the workstation on loopback; for private access from
+your Tailscale devices, use the Tailscale Serve + `--tailscale-origin` /
+`--tailscale-user` flow documented in [cli.md](cli.md) — never expose the
+backend directly or use Funnel.
+
 ## Renderers
 
 Three platforms, one body shape:
