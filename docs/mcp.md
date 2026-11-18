@@ -29,3 +29,9 @@ Python entry point: `krellbot.mcp.McpTools(home).call(tool, **params)`.
 Operator policy files (allow paper-arm / deny live / deny key export)
 are M22.2+. This module hard-refuses live and keys at the MCP boundary
 regardless.
+
+## Cursor client
+
+Install, loopback auth, allowed verbs, and non-goals for the Cursor
+agent client: [agent-cursor.md](agent-cursor.md). Project skill path:
+`.cursor/skills/krellbot-mcp/SKILL.md`.
