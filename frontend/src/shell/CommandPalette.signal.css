@@ -42,6 +42,17 @@
     transparent
   );
   backdrop-filter: blur(2px);
+  animation: kbot-palette-backdrop-enter var(--motion-duration-fast, 120ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+@keyframes kbot-palette-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Panel surface: raised panel token, restrained line, Signal radius. */
@@ -58,6 +69,19 @@
   box-shadow:
     0 22px 60px color-mix(in srgb, #000 50%, transparent),
     0 0 0 1px color-mix(in srgb, var(--navy, #0e1c29) 60%, transparent);
+  animation: kbot-palette-box-enter var(--motion-duration-enter, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+@keyframes kbot-palette-box-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* Honest copy: the Seafoam Local preview badge sits above the input,
@@ -291,5 +315,12 @@
 
   .kbot-shell__palette-root .kbot-shell__palette-action {
     min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-shell__palette-root,
+  .kbot-shell__palette-root .kbot-shell__palette-box {
+    animation: none;
   }
 }

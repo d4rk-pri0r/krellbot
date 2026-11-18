@@ -147,11 +147,52 @@ describe("CommandPalette Signal presentation (KRELL-SIGNAL-20261010)", () => {
 
   it("scopes every stylesheet rule under the approved palette root selector", () => {
     renderPalette();
-    const stripped = cssSource.replace(/\/\*[\s\S]*?\*\//g, "");
-    const blocks = Array.from(stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g));
+    // @keyframes names are global; strip them. Nested @media bodies still
+    // must scope every rule under the palette root (same contract as
+    // CommandPalette.test.tsx).
+    let stripped = cssSource.replace(/\/\*[\s\S]*?\*\//g, "");
+    while (stripped.includes("@keyframes")) {
+      const at = stripped.indexOf("@keyframes");
+      const open = stripped.indexOf("{", at);
+      let depth = 1;
+      let j = open + 1;
+      while (j < stripped.length && depth > 0) {
+        if (stripped[j] === "{") depth += 1;
+        else if (stripped[j] === "}") depth -= 1;
+        j += 1;
+      }
+      stripped = stripped.slice(0, at) + stripped.slice(j);
+    }
+    const mediaBodies: string[] = [];
+    let base = "";
+    let i = 0;
+    while (i < stripped.length) {
+      const at = stripped.indexOf("@media", i);
+      if (at === -1) {
+        base += stripped.slice(i);
+        break;
+      }
+      base += stripped.slice(i, at);
+      const open = stripped.indexOf("{", at);
+      let depth = 1;
+      let j = open + 1;
+      while (j < stripped.length && depth > 0) {
+        if (stripped[j] === "{") depth += 1;
+        else if (stripped[j] === "}") depth -= 1;
+        j += 1;
+      }
+      mediaBodies.push(stripped.slice(open + 1, j - 1));
+      i = j;
+    }
+    const blocks = Array.from(base.matchAll(/([^{}]+)\{([^{}]*)\}/g));
     expect(blocks.length).toBeGreaterThan(0);
     for (const block of blocks) {
       expect(block[1]).toContain(".kbot-shell__palette-root");
+    }
+    for (const body of mediaBodies) {
+      for (const block of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        expect(block[1]).toContain(".kbot-shell__palette-root");
+      }
     }
     // The approved scoped child selectors are nested under the root, not flat.
     for (const scoped of [

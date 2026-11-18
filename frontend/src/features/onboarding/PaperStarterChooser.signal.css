@@ -12,6 +12,19 @@
   border-radius: var(--radius-panel, 12px);
   background: color-mix(in srgb, var(--panel, #18354a) 70%, var(--surface, #14222e));
   font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  animation: kbot-paper-starter-enter var(--motion-duration-enter, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+@keyframes kbot-paper-starter-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .kbot-paper-starter-chooser__head {
@@ -80,8 +93,16 @@
   cursor: pointer;
 }
 
+@media (max-width: 640px) {
+  .kbot-paper-starter-chooser__dismiss {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kbot-paper-starter-chooser {
+    animation: none;
     transition: none;
   }
 }

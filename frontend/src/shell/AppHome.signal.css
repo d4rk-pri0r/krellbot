@@ -118,6 +118,17 @@
   filter: brightness(1.05);
 }
 
+.app-home__cta:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--seafoam, #a8d8d1) 28%, transparent);
+  transition:
+    box-shadow var(--motion-duration-fast, 120ms)
+      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    outline-offset var(--motion-duration-fast, 120ms)
+      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
 .app-home__cta-secondary {
   flex: none;
   min-height: 40px;
@@ -604,7 +615,8 @@
     animation: none;
   }
 
-  .app-home button.app-home__card {
+  .app-home button.app-home__card,
+  .app-home__cta:focus-visible {
     transition: none;
   }
 }
