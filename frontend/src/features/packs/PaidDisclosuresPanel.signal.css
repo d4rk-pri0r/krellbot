@@ -1,0 +1,63 @@
+/*
+ * Paid disclosures — Packs + Settings (M21.5).
+ * Contract: KRELL-SIGNAL-20261010. Tokens only.
+ */
+
+.kbot-paid-disclosures {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-paid-disclosures__title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kbot-paid-disclosures--packs .kbot-paid-disclosures__title {
+  font-size: 11px;
+}
+
+.kbot-paid-disclosures__lede {
+  margin: 0;
+  max-width: 48rem;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.kbot-paid-disclosures--packs .kbot-paid-disclosures__lede {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.kbot-paid-disclosures__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-width: 52rem;
+}
+
+.kbot-paid-disclosures__list li {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.kbot-paid-disclosures__links {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.kbot-paid-disclosures__links a {
+  color: var(--seafoam, var(--accent, var(--text)));
+}

@@ -26,4 +26,6 @@ disabled through a **refund request** on the Packs surface.
 Refunds disable **local SKU entitlement** only. They do not rewrite the
 global license cache and are not personalized advice or a returns
 promise. Owner legal copy, processor account, and refund-window terms
-remain an owner gate (M21.6).
+remain an owner gate (M21.6). The Packs / Settings **refund window
+pointer** and related paid disclosures live in
+[paid-disclosures.md](paid-disclosures.md).

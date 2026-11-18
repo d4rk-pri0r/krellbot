@@ -54,7 +54,9 @@ Fixture used by tests: `tests/fixtures/catalogue/launch_pack_family.json`.
 
 The signed-catalogue Packs surface shows launch-family honesty copy when the
 SKU is present (see `frontend/src/features/packs/launchPackFamily.ts`). This
-is not a second product line and not personalized advice.
+is not a second product line and not personalized advice. Broader paid
+checkout disclosures (fee share / referral, refund window pointer, telemetry
+opt-in) live in [paid-disclosures.md](paid-disclosures.md).
 
 ## Out of scope
 
