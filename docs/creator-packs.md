@@ -117,9 +117,28 @@ Community installs remain the unsigned Labs path
 `packs/catalog/` via activation. Creator signed packs do not replace
 either lane.
 
+## Rev-share ledger (fake settlements)
+
+After a paid install or redeem of a verified creator pack, record the
+owed share locally. Application seam: `krellbot.packs.rev_share_ledger`.
+
+- Storage: `$KRELLBOT_HOME/receipts/creator-rev-share.json` (atomic
+  write). No bank tokens, payout API keys, or other payout secrets.
+- `record_owed_share(home, document, event_kind=...)` — append one
+  `owed` row from a closed creator-pack document (`paid_install` or
+  `paid_redeem`). Idempotent on `event_id`. Creator cents are
+  `floor(price_cents * creator_bps / 10000)`; platform gets the
+  remainder so the split sums to `price_cents`.
+- `settle_pending(home, transport=...)` — POST a secret-free batch
+  through an injectable settlement transport. Rows flip to `settled`
+  only when the transport acks their `entry_id`. Tests use
+  `FakeSettlementTransport` (no network).
+- `operator_view(home)` / `creator_view(home, creator_id)` — local-honest
+  summaries. Views never invent remote settlement state.
+
 ## What this is not
 
 - Not personalized or individualized trading advice.
 - Not executable pack code; indicators stay on the local DSL whitelist.
-- Not a settlement / payout implementation (see M23.3 ledger).
+- Not a real payout rail or a place for payout secrets.
 - Not a substitute for the typed `LIVE` grant when arming live.
