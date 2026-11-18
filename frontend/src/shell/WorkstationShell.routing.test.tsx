@@ -157,7 +157,7 @@ describe("WorkstationShell — back navigation", () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     expect(activeNavLabel()).toBe("Run");
-    expect(screen.getByRole("heading", { name: /paper workstation/i })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Run$/ })).toBeTruthy();
   });
 
   it("syncs the active tab when popstate carries a different view", () => {
