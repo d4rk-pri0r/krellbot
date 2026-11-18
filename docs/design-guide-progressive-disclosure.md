@@ -37,37 +37,43 @@ Rules:
 
 ## Capability → destination map
 
-Navigation destinations (`?view=`) stay stable. Capabilities relocated only via progressive disclosure within a view.
+Navigation destinations (`?view=`) stay stable. Capabilities relocate only via progressive disclosure within a view or via **tiered nav chrome** (primary tabs vs **More** overflow) — never via a Beginner/Power mode toggle or a second app shell. See M24 and the store plan `docs/beginner-default-ux-plan.md` (KRE-187).
+
+**Nav tiers (M24):** Primary = Workspace (`home`), Run (`workstation` — UI label **Run**), Packs (`packs`), Strategies (`strategies`). More = Research (`research`), Strategy studio (`studio`), Operations (`operations`), Deploy (`deployments`). Pause/disarm stay on Run; Operations kill switch remains ≤2 clicks from an armed paper state (deep link from Run when needed).
 
 | Capability | Destination | Disclosure |
 | --- | --- | --- |
-| Workspace orientation / next step | `home` | Essential hero + primary path |
-| Paper arm / pause entries / resume / disarm / raise stop | `workstation` | Essential status + primary arm/controls |
+| Workspace orientation / next step | `home` | Essential hero + **one** sage CTA into free paper starter |
+| Home-mounted starter chooser | `home` (Chooser A) | Primary task; free local starter default; catalogue secondary |
+| Paper arm / pause entries / resume / disarm / raise stop | `workstation` (Run) | Essential status + primary arm/controls |
 | Synthetic paper rehearsal | `workstation` (inside Paper status) | Primary (paper/test-run controls) |
 | Armed fleet list | `workstation` and `operations` | Essential |
-| Unresolved orders (ops panel) | `operations` | Advanced (open by default; collapsible) |
+| Unresolved orders (ops panel) | `operations` | Advanced (open by default; collapsible); nav via More |
 | Last paper runs + fills detail | `workstation` | Primary list; row expands detail |
 | Portfolio / equity history | `workstation` | Advanced |
 | Armed paper run records | `workstation` | Advanced (open by default; fleet is primary) |
+| Forward paper ledger | `workstation` | Advanced |
 | Paper alerts (compact) | `workstation` | Essential |
 | Selection inspector | `workstation` aside | Contextual |
-| Strategy author / validate / library | `strategies` | Primary editor; Library toggle |
+| Strategy author / validate / library | `strategies` | Primary editor; Library toggle; deep JSON Advanced |
 | Pack library (installed) | `strategies` Packs toggle | Contextual toggle |
-| Catalogue browse / install | `packs` | Primary |
-| Research / backtest / evidence | `research` | Primary |
-| Strategy graph / authoring | `studio` | Primary canvas; authoring when pack loaded |
-| Kill switch / live status / deployments pause-resume | `operations` | Essential |
+| Catalogue browse / install | `packs` | Primary (“get a strategy”); paid/refund under Settings & trust |
+| Research / backtest / evidence | `research` | Full view unchanged; **nav: More** |
+| Strategy graph / authoring | `studio` | Full canvas unchanged; **nav: More**; no soft tips after first arm |
+| Kill switch / live status / deployments pause-resume | `operations` | Essential on Operations view; **nav: More** (reachable from Run) |
 | Alerts acknowledge | `operations` | Essential |
 | Scheduler install/enable | `operations` | Advanced (open by default; collapsible) |
 | Opt-in notifications | `operations` | Advanced |
 | Live authorization grant/revoke | `operations` | Advanced (open by default; honest paper-only refusal) |
 | Journal browse | `operations` | Advanced |
 | Deployment history | `operations` | Advanced |
-| Live preflight | `deployments` | Primary (paper-only honesty) |
+| Live preflight | `deployments` | Primary on Deploy view (paper-only honesty); **nav: More** |
 | Exchange keys onboarding | `home` aside | Advanced (session setup) |
+| Live-ready wizard | `home` aside | Advanced |
+| Demo fixture seed | `home` aside | Advanced (honesty badges) |
 | Reconnect QR / token | `home` aside | Advanced |
-| About / version / signing channel / install evidence | `home` aside | Advanced |
-| Jobs drawer / command palette | Shell chrome | Always reachable |
+| Settings & trust (About, disclosures, referral, telemetry) | `home` aside | One Advanced “Settings & trust” cluster |
+| Jobs drawer / command palette | Shell chrome | Always reachable; palette leads with Start free paper strategy |
 
 ## Verification expectations
 

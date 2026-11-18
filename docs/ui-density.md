@@ -43,16 +43,17 @@ These honesty rules bind every M18 composition pass and any later density work.
 
 ### Workspace home (`?view=home` — `AppHome`)
 
-**One composition:** brand/product signal + one short path into work + status
-honesty — not a tall stack of sparse cards with empty scroll.
+**One composition:** brand/product signal + **one** sage CTA into the free
+paper-starter path + status honesty — not a tall stack of sparse peer cards.
+(M24 beginner-default front door.)
 
 | Viewport | Must appear without page scroll | Stays below / collapsed |
 | --- | --- | --- |
-| 1440×900 | Sticky brand bar; hero (title + purpose); sage CTA into paper workstation; Local preview / Live unavailable honesty; primary destination path (compact, not a card wall) | Advanced: keys onboarding, reconnect QR/token, About; secondary destination detail that does not compete with the hero |
-| ~390×844 | Same essential hero + CTA + honesty, stacked; primary path reachable without inventing metrics; ≥44px controls | Same Advanced blocks; long destination lists may continue below |
+| 1440×900 | Sticky brand bar; hero (title + purpose + paper-only honesty); single sage CTA “Start with a free paper strategy”; Local preview / Live unavailable honesty | Advanced: keys, reconnect, live-ready wizard, demo fixture, Settings & trust (About/disclosures/referral/telemetry); demoted “all areas” / secondary links below the fold — not a first-viewport card wall |
+| ~390×844 | Same essential hero + CTA + honesty, stacked; ≥44px controls | Same Advanced blocks; long secondary lists continue below |
 
 Tighten progressive disclosure before adding card chrome. No fabricated equity
-or sample-bot strip.
+or sample-bot strip. No Beginner/Power toggle.
 
 ### Workstation (`?view=workstation` — paper shell)
 

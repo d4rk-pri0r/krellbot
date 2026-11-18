@@ -14,10 +14,16 @@ credentials.
 
 ## Who it is for
 
-1. **Primary:** the self-directed trader who wants automation they can
-   inspect, reproduce, and operate under explicit controls.
-2. **Secondary:** newcomers who can follow a paper-first path without
-   inventing live performance or needing a paid account for free starters.
+1. **Primary (co-equal for the V1 front door):** the self-directed trader
+   who wants automation they can inspect, reproduce, and operate under
+   explicit controls — and **newcomers** who should feel a paper-first
+   default path (free starter → paper arm → Run status) without inventing
+   live performance or needing a paid account. Power tools stay in the
+   same binary behind More / Advanced (see M24); there is no Beginner /
+   Power mode toggle.
+2. **Still secondary for monetization stories:** operators who later
+   deepen into Studio, Research, Deploy, paid packs, or live readiness
+   after the paper path feels clear.
 
 ## Earn (disclosed)
 
@@ -57,6 +63,8 @@ Monetization is optional and separate from the free engine:
 Phases are milestone files `M19`–`M23` (P0–P4). In-flight `M14`–`M18` are
 not rewritten by this roadmap; finish or park them on their own terms.
 Do not start phase engineering until the owner merges the roadmap PR.
+**M24** (Beginner-default front door) is a V1 UX milestone that rebalances
+workstation disclosure and copy without rewriting P0–P4 gates.
 
 | Phase | Milestone | Theme | Gate (summary) |
 | --- | --- | --- | --- |
@@ -65,6 +73,7 @@ Do not start phase engineering until the owner merges the roadmap PR.
 | P2 | M21 | Paid 1.0 | 10 paying customers + day-30 retention evidence |
 | P3 | M22 | Agent-ready | Agent completes paper path; policy refuse is journaled |
 | P4 | M23 | Distribution | 100 paying + a second revenue line > $1k/mo |
+| V1 UX | M24 | Beginner-default front door | Newcomer completes starter → paper arm → Run without Studio; power via More/Advanced |
 
 Explicitly out of scope for these phases: hosting operator keys; more
 than two qualified live venues (P4 ships Kraken + Coinbase; Binance stays
