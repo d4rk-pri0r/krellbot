@@ -66,7 +66,7 @@ Navigation destinations (`?view=`) stay stable. Capabilities relocated only via 
 | Live preflight | `deployments` | Primary (paper-only honesty) |
 | Exchange keys onboarding | `home` aside | Advanced (session setup) |
 | Reconnect QR / token | `home` aside | Advanced |
-| About / version / signing channel | `home` aside | Advanced |
+| About / version / signing channel / install evidence | `home` aside | Advanced |
 | Jobs drawer / command palette | Shell chrome | Always reachable |
 
 ## Verification expectations

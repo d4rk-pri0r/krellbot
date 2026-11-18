@@ -73,4 +73,40 @@ describe("AboutPanel version honesty", () => {
     expect(screen.queryByTestId("app-home-about-loading")).toBeNull();
     expect(client.getVersion).not.toHaveBeenCalled();
   });
+
+  it("shows digest and unsigned ARTIFACTS_SIGNED posture without claiming signed GA", async () => {
+    render(<AboutPanel client={fakeClient()} />);
+
+    expect(
+      (await screen.findByTestId("app-home-about-digest")).textContent,
+    ).toMatch(/HTTPS-pinned SHA-256/i);
+    expect(screen.getByTestId("app-home-about-posture").textContent).toMatch(
+      /ARTIFACTS_SIGNED is False/i,
+    );
+    expect(
+      screen.getByTestId("app-home-about-signing-honesty").textContent,
+    ).toMatch(/Do not treat this cut as signed GA/i);
+    expect(screen.getByTestId("app-home-about-no-perf").textContent).toMatch(
+      /not market performance/i,
+    );
+  });
+
+  it("lists how to reproduce a starter pack and links signing docs", async () => {
+    render(<AboutPanel client={fakeClient()} />);
+
+    const steps = await screen.findByTestId("app-home-about-reproduce");
+    expect(steps.textContent).toMatch(/Validate/i);
+    expect(steps.textContent).toMatch(/kraken/i);
+    expect(steps.textContent).toMatch(/1000/i);
+
+    const links = screen.getByTestId("app-home-about-links");
+    const hrefs = Array.from(links.querySelectorAll("a")).map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs.some((h) => h?.includes("docs/evidence.md"))).toBe(true);
+    expect(hrefs.some((h) => h?.includes("docs/signing.md"))).toBe(true);
+    expect(hrefs.some((h) => h?.includes("krellbot.dev/docs/security"))).toBe(
+      true,
+    );
+  });
 });

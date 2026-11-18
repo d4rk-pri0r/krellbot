@@ -12,6 +12,10 @@ signing requested, published cuts remain **unsigned prereleases**.
 and GitHub Releases stay `--prerelease`. Flipping to GA is an owner
 publication decision (M13.3), not this workflow alone.
 
+Public evidence / trust copy (pinned digest, signing posture honesty,
+reproduce a starter pack) lives in [evidence.md](evidence.md) and in the
+workstation **Home → Advanced → About this build** rail.
+
 ## When signing runs
 
 | Trigger | Signing behavior |

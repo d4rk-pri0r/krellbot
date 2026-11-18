@@ -47,7 +47,10 @@ Published cuts stay an **unsigned prerelease** until owner signing
 secrets are wired and a signed tag is cut. Gatekeeper / SmartScreen may
 warn on unsigned builds. Secrets-gated Developer ID + notarization
 (macOS) and Authenticode (Windows), plus the Linux checksum policy:
-[docs/signing.md](docs/signing.md).
+[docs/signing.md](docs/signing.md). Install evidence (digest, signing
+posture, reproduce a starter pack): [docs/evidence.md](docs/evidence.md);
+same contract in the workstation under **Home → Advanced → About this
+build**.
 
 ## Update policy
 
