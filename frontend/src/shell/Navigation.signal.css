@@ -175,11 +175,13 @@
     padding: 0;
   }
 
-  /* Reachable tabs with >=44px touch targets; labels ellipsize inside
-   * the tab instead of overflowing the 390px composition. */
+  /* Reachable tabs + More overflow with >=44px touch targets; labels
+   * ellipsize inside the tab instead of overflowing the 390px composition. */
   .kbot-shell__nav-root .kbot-shell__nav-item,
-  .kbot-shell__nav-root .kbot-nav__more-toggle {
+  .kbot-shell__nav-root .kbot-nav__more-toggle,
+  .kbot-shell__nav-root .kbot-nav__more .kbot-shell__nav-item {
     min-height: 44px;
+    min-width: 44px;
     padding: 10px 10px;
     font-size: 12.5px;
   }

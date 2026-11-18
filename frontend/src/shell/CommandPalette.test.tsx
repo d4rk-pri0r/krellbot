@@ -157,6 +157,33 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
+/** Drop @keyframes bodies — animation names are global; rules stay scoped. */
+function stripKeyframes(source: string): string {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const at = source.indexOf("@keyframes", i);
+    if (at === -1) {
+      out += source.slice(i);
+      break;
+    }
+    out += source.slice(i, at);
+    const open = source.indexOf("{", at);
+    let depth = 1;
+    let j = open + 1;
+    while (j < source.length && depth > 0) {
+      if (source[j] === "{") {
+        depth += 1;
+      } else if (source[j] === "}") {
+        depth -= 1;
+      }
+      j += 1;
+    }
+    i = j;
+  }
+  return out;
+}
+
 type CssBlock = { selector: string; declarations: string };
 
 function selectorBlocks(source: string): CssBlock[] {
@@ -244,9 +271,15 @@ function declarationValue(
 
 describe("CommandPalette — scoped Signal stylesheet", () => {
   it("scopes every rule under .kbot-shell__palette-root", () => {
-    const css = stripComments(readStylesheet());
-    for (const block of selectorBlocks(css)) {
+    const css = stripKeyframes(stripComments(readStylesheet()));
+    const { base, media } = splitMedia(css);
+    for (const block of selectorBlocks(base)) {
       expect(block.selector).toContain(".kbot-shell__palette-root");
+    }
+    for (const query of media) {
+      for (const block of selectorBlocks(query.body)) {
+        expect(block.selector).toContain(".kbot-shell__palette-root");
+      }
     }
   });
 
