@@ -149,6 +149,15 @@ export type CommunityPackDocument = {
   pack: Record<string, unknown>;
 };
 
+/** Closed telemetry consent from ``GET/PUT /api/v1/telemetry`` (default off). */
+export type TelemetryConsent = {
+  schema_version: string;
+  enabled: boolean;
+  default_off: boolean;
+  funnel_events: string[];
+  disclosure: string;
+};
+
 /** First-class Packs destination client: library + catalogue + community. */
 export type PacksClient = PackLibraryClient & {
   listCatalogue(): Promise<CatalogueDocument>;
@@ -163,6 +172,10 @@ export type PacksClient = PackLibraryClient & {
   installCommunity(pack_id: string): Promise<CommunityInstallResult>;
   /** Open an installed community pack for Strategies validate-before-arm. */
   openCommunityPack(pack_id: string): Promise<CommunityPackDocument>;
+  /** Read opt-in funnel telemetry consent (default off). */
+  getTelemetryConsent(): Promise<TelemetryConsent>;
+  /** Persist explicit opt-in / opt-out for funnel + fill telemetry. */
+  setTelemetryConsent(enabled: boolean): Promise<TelemetryConsent>;
 };
 
 async function getJson(url: string): Promise<PackRow[]> {
@@ -572,6 +585,58 @@ async function getCommunityPack(packId: string): Promise<CommunityPackDocument> 
   };
 }
 
+function adaptTelemetryConsent(raw: unknown): TelemetryConsent {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  const eventsRaw = Array.isArray(body.funnel_events) ? body.funnel_events : [];
+  return {
+    schema_version:
+      typeof body.schema_version === "string" ? body.schema_version : "1",
+    enabled: body.enabled === true,
+    default_off: body.default_off !== false,
+    funnel_events: eventsRaw.filter((item): item is string => typeof item === "string"),
+    disclosure:
+      typeof body.disclosure === "string"
+        ? body.disclosure
+        : "Telemetry is opt-in and off by default.",
+  };
+}
+
+async function fetchTelemetryConsent(): Promise<TelemetryConsent> {
+  const response = await fetch("/api/v1/telemetry", {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+  });
+  if (!response.ok) {
+    throw new PackLibraryHttpError(
+      response.status,
+      `telemetry consent failed: ${response.status}`,
+    );
+  }
+  return adaptTelemetryConsent(await response.json());
+}
+
+async function updateTelemetryConsent(enabled: boolean): Promise<TelemetryConsent> {
+  const response = await fetch("/api/v1/telemetry", {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Krellbot-CSRF": getCsrf(),
+    },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) {
+    throw new PackLibraryHttpError(
+      response.status,
+      `telemetry consent update failed: ${response.status}`,
+    );
+  }
+  return adaptTelemetryConsent(await response.json());
+}
+
 export function createHttpClient(): PacksClient {
   return {
     listInstalled(): Promise<PackRow[]> {
@@ -600,6 +665,12 @@ export function createHttpClient(): PacksClient {
     },
     openCommunityPack(pack_id: string): Promise<CommunityPackDocument> {
       return getCommunityPack(pack_id);
+    },
+    getTelemetryConsent(): Promise<TelemetryConsent> {
+      return fetchTelemetryConsent();
+    },
+    setTelemetryConsent(enabled: boolean): Promise<TelemetryConsent> {
+      return updateTelemetryConsent(enabled);
     },
   };
 }

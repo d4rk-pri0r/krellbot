@@ -88,6 +88,36 @@ function makeClient(): PacksClient {
       path: "",
       pack: {},
     })),
+    getTelemetryConsent: vi.fn(async () => ({
+      schema_version: "1",
+      enabled: false,
+      default_off: true,
+      funnel_events: [
+        "view",
+        "checkout_start",
+        "checkout_success",
+        "checkout_fail",
+        "install",
+        "arm",
+      ],
+      disclosure:
+        "Telemetry is opt-in and off by default. Funnel events cover catalogue view, checkout start/success/fail, install, and arm.",
+    })),
+    setTelemetryConsent: vi.fn(async (enabled: boolean) => ({
+      schema_version: "1",
+      enabled,
+      default_off: true,
+      funnel_events: [
+        "view",
+        "checkout_start",
+        "checkout_success",
+        "checkout_fail",
+        "install",
+        "arm",
+      ],
+      disclosure:
+        "Telemetry is opt-in and off by default. Funnel events cover catalogue view, checkout start/success/fail, install, and arm.",
+    })),
   };
 }
 

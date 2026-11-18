@@ -1,15 +1,21 @@
-"""Telemetry: opt-in fill reporting.
+"""Telemetry: opt-in fill reporting and checkout-funnel events.
 
 Telemetry is off by default. `enable` prints an example payload and writes
 the install only when the operator types `y` on stdin. `disable` flips it
-off. `show` prints what is currently stored without sending. `maybe_send`
-is the hook the engine calls after a paper fill; it returns without
-calling the injected transport when telemetry is disabled.
+off. Workstation consent uses `set_enabled` (same default-off gate).
+`show` prints what is currently stored without sending. `maybe_send` is
+the hook the engine calls after a paper fill; `maybe_send_funnel` covers
+the paid-checkout funnel (view → checkout start → success/fail →
+install/arm). Both return without calling the injected transport when
+telemetry is disabled.
 
 A fill payload has exactly eleven keys (see `PAYLOAD_KEYS`) and never
 includes a balance, an API key, a license, an IP, or the raw quantity.
 The quantity is bucketed: `qty_bucket` is `floor(log2(USD_notional))` so
 the precise size of a trade never leaves the machine.
+
+Funnel payloads carry only `FUNNEL_PAYLOAD_KEYS` — never keys, secrets,
+session ids, or strategy source.
 """
 
 from __future__ import annotations
@@ -39,6 +45,41 @@ PAYLOAD_KEYS: tuple[str, ...] = (
     "fill_px",
     "qty_bucket",
     "fee_bps",
+)
+
+# Closed funnel event names (M21.4). Order matches the paid checkout path.
+FUNNEL_EVENTS: tuple[str, ...] = (
+    "view",
+    "checkout_start",
+    "checkout_success",
+    "checkout_fail",
+    "install",
+    "arm",
+)
+
+FUNNEL_PAYLOAD_KEYS: tuple[str, ...] = (
+    "install_id",
+    "kind",
+    "event",
+    "sku",
+)
+
+# Fields that must never appear on a funnel wire body.
+FUNNEL_FORBIDDEN_KEYS: frozenset[str] = frozenset(
+    {
+        "key",
+        "api_key",
+        "secret",
+        "password",
+        "token",
+        "license",
+        "session_id",
+        "strategy",
+        "source",
+        "pack_bytes",
+        "balance",
+        "qty",
+    }
 )
 
 
@@ -127,6 +168,39 @@ def disable(home: Path) -> None:
     _save(home, data)
 
 
+def set_enabled(home: Path, enabled: bool) -> dict:
+    """Persist opt-in from the workstation consent UI (no stdin prompt).
+
+    Default remains off until an explicit ``True`` write. Reuses a prior
+    ``install_id`` so enable/disable cycles do not double-count installs.
+    """
+    kb_paths.ensure_layout()
+    data = _load(home)
+    install_id = data.get("install_id") or str(uuid.uuid4())
+    data["enabled"] = bool(enabled)
+    data["install_id"] = install_id
+    data.setdefault("url", DEFAULT_URL)
+    _save(home, data)
+    return status(home)
+
+
+def status(home: Path) -> dict:
+    """Closed-shape consent status for the workstation / API (no secrets)."""
+    data = _load(home)
+    return {
+        "schema_version": "1",
+        "enabled": bool(data.get("enabled")),
+        "default_off": True,
+        "install_id_present": bool(data.get("install_id")),
+        "funnel_events": list(FUNNEL_EVENTS),
+        "disclosure": (
+            "Telemetry is opt-in and off by default. Funnel events cover "
+            "catalogue view, checkout start/success/fail, install, and arm. "
+            "Payloads never include keys, secrets, session ids, or strategy source."
+        ),
+    }
+
+
 def show(home: Path) -> None:
     """Print what is currently stored. Does not send."""
     data = _load(home)
@@ -184,6 +258,53 @@ def maybe_send(home: Path, fill: dict, transport: Transport) -> None:
     install_id = str(fill.get("install_id") or data.get("install_id") or "")
     body_obj = _payload(fill, install_id)
     if body_obj is None or not install_id:
+        return
+    url = str(data.get("url") or DEFAULT_URL)
+    body = json.dumps(body_obj, sort_keys=True).encode("utf-8")
+    headers = {"content-type": "application/json", "user-agent": "krellbot/0.1"}
+    transport.post(url, body, headers)
+
+
+def _funnel_payload(event: str, install_id: str, sku: str) -> dict | None:
+    """Build a closed funnel body. Unknown events and empty install ids refuse."""
+    if event not in FUNNEL_EVENTS or not install_id:
+        return None
+    safe_sku = sku if isinstance(sku, str) else ""
+    # Catalogue SKU / pack id only — never a path, source blob, or secret.
+    if any(ch in safe_sku for ch in ("/", "\\", "\n", "\r", "\0")):
+        safe_sku = ""
+    out = {
+        "install_id": install_id,
+        "kind": "funnel",
+        "event": event,
+        "sku": safe_sku,
+    }
+    if set(out) != set(FUNNEL_PAYLOAD_KEYS):
+        return None
+    if FUNNEL_FORBIDDEN_KEYS.intersection(out):
+        return None
+    return out
+
+
+def maybe_send_funnel(
+    home: Path,
+    event: str,
+    *,
+    sku: str = "",
+    transport: Transport,
+) -> None:
+    """Send a checkout-funnel event if enabled. No-op when consent is off.
+
+    The transport is never touched while telemetry is disabled. The body
+    carries only ``FUNNEL_PAYLOAD_KEYS`` — never keys, secrets, session
+    ids, or strategy source.
+    """
+    data = _load(home)
+    if not data.get("enabled"):
+        return
+    install_id = str(data.get("install_id") or "")
+    body_obj = _funnel_payload(event, install_id, sku)
+    if body_obj is None:
         return
     url = str(data.get("url") or DEFAULT_URL)
     body = json.dumps(body_obj, sort_keys=True).encode("utf-8")
