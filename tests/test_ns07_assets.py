@@ -1,17 +1,21 @@
-"""NS07a — local frontend toolchain build evidence.
+"""Built frontend artefacts stay local — no third-party CDN hosts.
 
 Builds the React shell into ``frontend/dist`` if it is missing, then asserts
-that the built artefacts carry no third-party CDN references and contain the
-exact copy the user-facing shell promises ("Paper workstation").
+that the built artefacts carry no third-party CDN *host* references and
+contain the exact copy the user-facing shell promises ("Paper workstation").
+
+The CDN guard matches host-like tokens (URL hosts / known CDN hostnames),
+not bare substrings inside Vite content-hashes such as ``index-Cdn….css``.
 
 The test runs ``npm ci --include=dev`` plus ``npm run build`` because the
-host environment exports ``NODE_ENV=production`` and the brief's plain
-``npm ci`` would silently skip devDependencies without the flag.
+host environment exports ``NODE_ENV=production`` and a plain ``npm ci``
+would silently skip devDependencies without the flag.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,8 +27,26 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = REPO_ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
 
-FORBIDDEN_HOSTS = ("cdn", "googleapis", "unpkg", "jsdelivr")
 SHELL_PROMISE = "Paper workstation"
+
+# Host-like tokens only — never bare "cdn" / "Cdn" inside a Vite hash.
+_FORBIDDEN_HOST_RE = re.compile(
+    r"(?:"
+    r"(?:https?:)?//[^\s\"'<>]*\bcdn\b"  # URL whose host label contains cdn
+    r"|\.cdn\."  # .cdn. inside a hostname
+    r"|[\"'=(]\s*//cdn\."  # protocol-relative //cdn.…
+    r"|[\"'=(]\s*cdn\."  # quoted/attr cdn.…
+    r"|googleapis\.com"
+    r"|unpkg\.com"
+    r"|jsdelivr\.net"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def forbidden_host_tokens(text: str) -> list[str]:
+    """Return distinct forbidden CDN host tokens found in ``text``."""
+    return sorted({match.group(0).strip() for match in _FORBIDDEN_HOST_RE.finditer(text)})
 
 
 def _resolve_npm() -> str:
@@ -88,15 +110,29 @@ def _iter_built_files(dist: Path) -> list[Path]:
     return files
 
 
+def test_cdn_matcher_ignores_vite_content_hash() -> None:
+    """Bare ``Cdn`` inside a Vite asset hash is not a CDN host reference."""
+    assert forbidden_host_tokens('href="/assets/index-CdnAbc123.css"') == []
+    assert forbidden_host_tokens("index-CdnXyZ.js") == []
+    assert forbidden_host_tokens('const label = "cdn"') == []
+
+
+def test_cdn_matcher_catches_host_like_tokens() -> None:
+    """URL hosts and known CDN hostnames are refused."""
+    assert forbidden_host_tokens('src="https://cdn.jsdelivr.net/npm/x"')
+    assert forbidden_host_tokens("https://fonts.googleapis.com/css2")
+    assert forbidden_host_tokens("https://unpkg.com/react@18")
+    assert forbidden_host_tokens('href="//cdn.example.com/lib.js"')
+    assert forbidden_host_tokens('src="https://cdn.cloudflare.com/x.js"')
+
+
 def test_no_cdn_references(built_dist: Path) -> None:
     """The built artefacts must not reference any third-party CDN host."""
     offenders: list[tuple[str, str]] = []
     for path in _iter_built_files(built_dist):
         text = path.read_text(encoding="utf-8")
-        lowered = text.lower()
-        for host in FORBIDDEN_HOSTS:
-            if host in lowered:
-                offenders.append((path.name, host))
+        for token in forbidden_host_tokens(text):
+            offenders.append((path.name, token))
     assert not offenders, f"forbidden host tokens present in build: {offenders}"
 
 
