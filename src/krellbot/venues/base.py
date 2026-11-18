@@ -96,6 +96,7 @@ class _KeyProbeReason:
     """
 
     WITHDRAW_CAPABLE = "venue confirmed withdraw rights; refused"
+    UNKNOWN_PERMISSION = "venue returned an unrecognized permission; refused"
     TRADE_OFF = "no required trade permission; refused"
     INVALID = "key cannot be verified (invalid or permission denied); refused"
     MALFORMED = "venue response shape unknown; refused"
@@ -108,10 +109,13 @@ class KeyProbeOutcome:
     A future wizard key-add must refuse to store on any value other than
     `TRADE_ONLY`. There is no "we'd like to update later" path — once a
     key is on disk, an unrecognized refusal reason is just a refusal.
+    Unknown venue permission tokens are their own fail-closed outcome
+    (``UNKNOWN_PERMISSION``), distinct from a confirmed-withdraw key.
     """
 
     TRADE_ONLY = "trade_only"
     WITHDRAW_CAPABLE = "withdraw_capable"
+    UNKNOWN_PERMISSION = "unknown_permission"
     TRADE_OFF = "trade_off"
     INVALID = "invalid"
     MALFORMED = "malformed"
@@ -121,6 +125,7 @@ class KeyProbeOutcome:
         {
             TRADE_ONLY,
             WITHDRAW_CAPABLE,
+            UNKNOWN_PERMISSION,
             TRADE_OFF,
             INVALID,
             MALFORMED,
@@ -174,15 +179,17 @@ class KeyProbeResult:
         `withdraw_capable` → ``(can_trade=False, can_withdraw=True)`` so
         the arm site can distinguish a confirmed-withdraw key (which
         reports ``"withdraw is on; trade-only keys refused"``) from a
-        plain trade-off / invalid / malformed / unreachable refusal
-        (which reports ``"trade is off"``). Without this distinction the
-        arm-site diagnostic collapses every refusal to the same line and
-        the user cannot tell what was actually wrong.
+        plain trade-off / unknown-permission / invalid / malformed /
+        unreachable refusal (which reports ``"trade is off"``). Without
+        this distinction the arm-site diagnostic collapses every refusal
+        to the same line and the user cannot tell what was actually wrong.
 
-        Every other outcome → ``(can_trade=False, can_withdraw=False)``
-        so the engine refuses the key. Use this when plumbing the result
-        into callers that still inspect `can_trade` / `can_withdraw`
-        booleans (e.g. `arm_pack`).
+        Every other outcome (including ``unknown_permission``) →
+        ``(can_trade=False, can_withdraw=False)`` so the engine refuses
+        the key fail-closed. Use this when plumbing the result into
+        callers that still inspect `can_trade` / `can_withdraw`
+        booleans (e.g. `arm_pack`). Prefer inspecting ``outcome`` when
+        typed API refusals are required.
         """
         from krellbot.venues.base import KeyPerms  # local import: avoid cycle
 

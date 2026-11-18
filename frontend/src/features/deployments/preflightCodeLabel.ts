@@ -23,6 +23,8 @@ const KNOWN_LABELS: Record<string, string> = {
   rate_limited: "Rate limited",
   circuit_open: "Circuit open",
   preflight_blocked: "Preflight blocked",
+  key_withdraw_capable: "Key withdraw capable",
+  key_unknown_permission: "Key unknown permission",
 };
 
 // Sentence-case fallback matching the canonical label style above

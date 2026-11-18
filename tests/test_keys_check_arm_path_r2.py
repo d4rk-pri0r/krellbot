@@ -546,6 +546,7 @@ def test_unknown_outcome_is_refused_not_trade_only() -> None:
 
     for outcome in (
         KeyProbeOutcome.WITHDRAW_CAPABLE,
+        KeyProbeOutcome.UNKNOWN_PERMISSION,
         KeyProbeOutcome.TRADE_OFF,
         KeyProbeOutcome.INVALID,
         KeyProbeOutcome.MALFORMED,

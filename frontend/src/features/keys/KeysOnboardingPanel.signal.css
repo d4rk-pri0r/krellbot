@@ -108,7 +108,7 @@
 }
 
 .kbot-keys__form,
-.kbot-keys__connected {
+.kbot-keys__stored {
   display: grid;
   gap: 8px;
   min-width: 0;

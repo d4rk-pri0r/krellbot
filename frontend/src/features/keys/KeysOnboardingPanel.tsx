@@ -18,7 +18,7 @@ const VENUE_COPY: Record<KeysVenue, VenueCopy> = {
   kraken: {
     title: "Kraken exchange key",
     helper:
-      "Probe a trade-only Kraken key, store it in this machine’s OS keychain, then review status and free holdings. Live order send stays disabled in this paper-only release.",
+      "Probe a trade-only Kraken key (withdraw off; unknown permissions fail closed), store it in this machine’s OS keychain, then review stored status and free holdings. Status here is not a live connection claim. Live order send stays disabled in this paper-only release.",
     loading: "Reading Kraken key status…",
     loadErrorPrefix:
       "Could not read Kraken key status — check the workstation is running.",
@@ -31,7 +31,7 @@ const VENUE_COPY: Record<KeysVenue, VenueCopy> = {
   coinbase: {
     title: "Coinbase exchange key",
     helper:
-      "Probe a trade-only Coinbase Advanced Trade key, store it in this machine’s OS keychain, then review status and free holdings. Live order send stays disabled in this paper-only release.",
+      "Probe a trade-only Coinbase Advanced Trade key (withdraw/transfer off), store it in this machine’s OS keychain, then review stored status and free holdings. Status here is not a live connection claim. Live order send stays disabled in this paper-only release.",
     loading: "Reading Coinbase key status…",
     loadErrorPrefix:
       "Could not read Coinbase key status — check the workstation is running.",
@@ -234,7 +234,7 @@ export function KeysOnboardingPanel({
           </p>
 
           {present ? (
-            <div className="kbot-keys__connected" data-testid={`keys-connected-${venue}`}>
+            <div className="kbot-keys__stored" data-testid={`keys-stored-${venue}`}>
               {status.balances_available && status.balances !== null ? (
                 <div data-testid={`keys-balances-${venue}`}>
                   <h3 className="kbot-keys__balances-title">Free holdings</h3>

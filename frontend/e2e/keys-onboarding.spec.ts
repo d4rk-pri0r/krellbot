@@ -145,7 +145,7 @@ test("keys onboarding: Kraken probe-store, show holdings, then remove with fakes
   await expect(page.getByTestId("keys-feedback-kraken")).toContainText(
     /stored in native OS keychain/i,
   );
-  await expect(page.getByTestId("keys-connected-kraken")).toBeVisible();
+  await expect(page.getByTestId("keys-stored-kraken")).toBeVisible();
   await expect(page.getByTestId("keys-balance-kraken-ZUSD")).toContainText("100.5");
   await expect(page.getByTestId("keys-balance-kraken-XXBT")).toContainText("0.01");
   await expect(page.getByTestId("keys-public-kraken")).toHaveCount(0);
@@ -188,7 +188,7 @@ test("keys onboarding: Coinbase probe-store, show holdings, then remove with fak
   await expect(page.getByTestId("keys-feedback-coinbase")).toContainText(
     /stored in native OS keychain/i,
   );
-  await expect(page.getByTestId("keys-connected-coinbase")).toBeVisible();
+  await expect(page.getByTestId("keys-stored-coinbase")).toBeVisible();
   await expect(page.getByTestId("keys-balance-coinbase-USD")).toContainText("250.75");
   await expect(page.getByTestId("keys-balance-coinbase-BTC")).toContainText("0.002");
   await expect(page.getByTestId("keys-public-coinbase")).toHaveCount(0);

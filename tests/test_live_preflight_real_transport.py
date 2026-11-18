@@ -24,6 +24,7 @@ from fakes.fake_kraken import FakeKrakenTransport
 
 from krellbot.api.app import _live_transport
 from krellbot.application.live_preflight import (
+    CODE_KEY_WITHDRAW_CAPABLE,
     CODE_OK,
     CODE_PREFLIGHT_BLOCKED,
     CODE_VENUE_UNREACHABLE,
@@ -262,7 +263,7 @@ def test_app_preflight_trade_only_returns_balances_and_permissions(home: Path, f
 
 
 def test_app_preflight_blocks_withdraw_capable_key(home: Path, fresh_keyring) -> None:
-    """A key with withdraw rights refuses as preflight_blocked without placing."""
+    """A key with withdraw rights refuses as key_withdraw_capable without placing."""
     _store_kraken_key(fresh_keyring)
     http = FakeKrakenTransport(
         responses=[
@@ -289,7 +290,7 @@ def test_app_preflight_blocks_withdraw_capable_key(home: Path, fresh_keyring) ->
     assert status == 200, body
     decoded = json.loads(body)
     assert decoded["ok"] is False, decoded
-    assert decoded["code"] == CODE_PREFLIGHT_BLOCKED
+    assert decoded["code"] == CODE_KEY_WITHDRAW_CAPABLE
     assert "AddOrder" not in _endpoints(http)
     assert "Balance" not in _endpoints(http)
 

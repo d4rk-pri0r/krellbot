@@ -172,7 +172,7 @@ def _outcome_for(exc: BaseException) -> str:
     if isinstance(exc, KeyTradeOffError):
         return KeyProbeOutcome.TRADE_OFF
     if isinstance(exc, KrakenKeyUnknownPermissionError):
-        return KeyProbeOutcome.TRADE_OFF
+        return KeyProbeOutcome.UNKNOWN_PERMISSION
     # Any other typed subclass collapses to trade_off; callers narrow via reason.
     return KeyProbeOutcome.TRADE_OFF
 
