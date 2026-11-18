@@ -1,4 +1,5 @@
 import { useCallback, useState, type JSX } from "react";
+import { REFERRAL_PACKS_DISCLOSURE } from "../referral/copy";
 import { CommunityIndex } from "./CommunityIndex";
 import { PackCatalogue } from "./PackCatalogue";
 import { PackLibrary } from "./PackLibrary";
@@ -36,6 +37,12 @@ export function PacksView({ client }: PacksViewProps): JSX.Element {
             Three pack lanes stay distinct: the ed25519-signed catalogue, the
             unpaid community index, and starter examples on Strategies. Community
             entries are never paid SKUs.
+          </p>
+          <p
+            className="kbot-packs-view__referral"
+            data-testid="packs-referral-disclosure"
+          >
+            {REFERRAL_PACKS_DISCLOSURE}
           </p>
           <ul
             className="kbot-packs-view__sources"

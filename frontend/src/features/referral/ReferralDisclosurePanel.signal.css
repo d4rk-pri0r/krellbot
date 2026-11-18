@@ -1,0 +1,70 @@
+/*
+ * Referral / fee-share disclosure (Settings).
+ * Contract: KRELL-SIGNAL-20261010.
+ */
+
+.kbot-referral {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbot-referral__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.kbot-referral__body,
+.kbot-referral__note,
+.kbot-referral__status,
+.kbot-referral__count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.kbot-referral__error {
+  margin: 0;
+  color: var(--caution-text, var(--text));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.kbot-referral__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.kbot-referral__select,
+.kbot-referral__action {
+  justify-self: start;
+  max-width: 100%;
+  font: inherit;
+  font-size: 13px;
+}
+
+.kbot-referral__select {
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control, 4px);
+}
+
+.kbot-referral__action {
+  padding: 7px 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control, 4px);
+  cursor: pointer;
+}
+
+.kbot-referral__action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
