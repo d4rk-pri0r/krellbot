@@ -94,6 +94,10 @@ export type JournalRecordRow = {
   pack: string;
   bar_ts: number;
   detail: unknown;
+  /** Projected paper/live classification from the browse API (M20.5). */
+  mode?: "paper" | "live";
+  /** Human-readable tick/refuse/fill summary when the server projects one. */
+  summary?: string;
 };
 
 export type JournalBrowseQuery = {
@@ -101,6 +105,8 @@ export type JournalBrowseQuery = {
   tail?: number;
   /** CLI windows only: ``24h`` or ``14d``. Wins over ``tail`` when both set. */
   since?: "24h" | "14d";
+  /** Optional paper/live filter (filter-then-tail on the server). */
+  mode?: "paper" | "live";
 };
 
 /** Closed-shape scheduler status from GET/POST /api/v1/scheduler* (M2.7). */
@@ -391,6 +397,8 @@ function adaptJournalRecord(raw: unknown): JournalRecordRow | null {
     return null;
   }
   const barTs = typeof obj.bar_ts === "number" && Number.isFinite(obj.bar_ts) ? obj.bar_ts : 0;
+  const mode = obj.mode === "paper" || obj.mode === "live" ? obj.mode : undefined;
+  const summary = typeof obj.summary === "string" ? obj.summary : undefined;
   return {
     ts: obj.ts,
     kind: obj.kind,
@@ -398,6 +406,8 @@ function adaptJournalRecord(raw: unknown): JournalRecordRow | null {
     pack: obj.pack,
     bar_ts: barTs,
     detail: obj.detail,
+    ...(mode !== undefined ? { mode } : {}),
+    ...(summary !== undefined ? { summary } : {}),
   };
 }
 
@@ -407,6 +417,9 @@ function journalBrowseUrl(query?: JournalBrowseQuery): string {
     params.set("since", query.since);
   } else if (typeof query?.tail === "number" && Number.isFinite(query.tail)) {
     params.set("tail", String(Math.trunc(query.tail)));
+  }
+  if (query?.mode === "paper" || query?.mode === "live") {
+    params.set("mode", query.mode);
   }
   const encoded = params.toString();
   return encoded ? `/api/v1/journal?${encoded}` : "/api/v1/journal";

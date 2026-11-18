@@ -185,12 +185,18 @@
 }
 
 .kbot-ops__journal .kbot-ops__journal-ts,
+.kbot-ops__journal .kbot-ops__journal-mode,
 .kbot-ops__journal .kbot-ops__journal-kind,
 .kbot-ops__journal .kbot-ops__journal-venue,
 .kbot-ops__journal .kbot-ops__journal-pack {
   font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.kbot-ops__journal .kbot-ops__journal-mode {
+  text-transform: lowercase;
+  color: var(--seafoam, #a8d8d1);
 }
 
 .kbot-ops__journal .kbot-ops__journal-detail {
