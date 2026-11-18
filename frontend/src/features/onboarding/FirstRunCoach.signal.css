@@ -1,0 +1,186 @@
+/*
+ * First-run coach shell — Signal (KRELL-SIGNAL-20261010).
+ * Spotlight + step card; honor prefers-reduced-motion.
+ */
+
+.kbot-first-run-coach {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-first-run-coach__scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--navy, #0e1c29) 55%, transparent);
+  pointer-events: none;
+  animation: kbot-first-run-coach-fade var(--motion-duration-enter, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.kbot-first-run-coach__scrim--soft {
+  background: color-mix(in srgb, var(--navy, #0e1c29) 35%, transparent);
+}
+
+.kbot-first-run-coach__spotlight {
+  position: absolute;
+  z-index: 1;
+  border-radius: var(--radius-control, 7px);
+  box-shadow:
+    0 0 0 2px var(--seafoam, #a8d8d1),
+    0 0 0 9999px color-mix(in srgb, var(--navy, #0e1c29) 62%, transparent);
+  pointer-events: none;
+  animation: kbot-first-run-coach-spotlight-enter
+    var(--motion-duration-enter, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.kbot-first-run-coach__card {
+  position: absolute;
+  z-index: 2;
+  left: max(16px, var(--space-page-x, 22px));
+  bottom: 28px;
+  width: min(100% - 32px, 420px);
+  display: grid;
+  gap: 8px;
+  padding: 16px 16px 14px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  background: color-mix(in srgb, var(--panel, #18354a) 88%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  pointer-events: auto;
+  animation: kbot-first-run-coach-card-enter var(--motion-duration-enter, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.kbot-first-run-coach__card--center {
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.kbot-first-run-coach__progress {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-first-run-coach__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-first-run-coach__body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted, #abc4d8);
+  max-width: 42ch;
+}
+
+.kbot-first-run-coach__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.kbot-first-run-coach__primary {
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-control, 7px);
+  padding: 10px 16px;
+  min-height: 44px;
+  background: var(--action-primary-bg, var(--sage, #b3dda8));
+  color: var(--action-primary-text, #172a1d);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.kbot-first-run-coach__primary:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+.kbot-first-run-coach__skip {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted, #abc4d8);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 44px;
+  padding: 8px 4px;
+}
+
+.kbot-first-run-coach__skip:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@keyframes kbot-first-run-coach-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes kbot-first-run-coach-spotlight-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes kbot-first-run-coach-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kbot-first-run-coach__card--center {
+  animation-name: kbot-first-run-coach-card-center-enter;
+}
+
+@keyframes kbot-first-run-coach-card-center-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 10px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-first-run-coach__scrim,
+  .kbot-first-run-coach__spotlight,
+  .kbot-first-run-coach__card {
+    animation: none;
+  }
+}
