@@ -86,6 +86,12 @@ import {
 } from "../session";
 import { Wordmark } from "../components/brand/Wordmark";
 import { DisclosureSection } from "../components/disclosure/DisclosureSection";
+import {
+  advanceFirstRunCoachTo,
+  FirstRunCoach,
+  readFirstRunCoachState,
+} from "../features/onboarding/FirstRunCoach";
+import type { FirstRunCoachStepId } from "../features/onboarding/firstRunCoachPersistence";
 import { AppHome } from "./AppHome";
 import { CommandPalette } from "./CommandPalette";
 import {
@@ -241,6 +247,10 @@ export function WorkstationShell({
   const [preferredArmRevisionId, setPreferredArmRevisionId] = useState<
     string | null
   >(null);
+  /** Bumps FirstRunCoach to re-read persistence after external advances. */
+  const [coachSyncKey, setCoachSyncKey] = useState(0);
+  /** Bumps AppHome to open the starter chooser from the coach primary. */
+  const [openChooserSignal, setOpenChooserSignal] = useState(0);
   const setActive = useCallback((view: View): void => {
     setActiveState(view);
     // No-ops when the URL already encodes ``view`` (re-clicking the
@@ -1150,8 +1160,14 @@ export function WorkstationShell({
               bootstrapFailed ? handleRedeemReconnect : undefined
             }
             strategyClient={client}
+            openChooserSignal={openChooserSignal}
             onStarterReady={({ revisionId }) => {
               setPreferredArmRevisionId(revisionId);
+              const coach = readFirstRunCoachState();
+              if (coach.status === "active" || coach.status === "idle") {
+                advanceFirstRunCoachTo("arm_paper");
+                setCoachSyncKey((value) => value + 1);
+              }
               setActive("workstation");
             }}
           />
@@ -1180,6 +1196,17 @@ export function WorkstationShell({
                         inspectorSelection?.kind === "position"
                       }
                       preferredRevisionId={preferredArmRevisionId}
+                      onPaperArmed={() => {
+                        const coach = readFirstRunCoachState();
+                        if (
+                          coach.status === "active" &&
+                          (coach.stepId === "arm_paper" ||
+                            coach.stepId === "choose_starter")
+                        ) {
+                          advanceFirstRunCoachTo("status");
+                          setCoachSyncKey((value) => value + 1);
+                        }
+                      }}
                     />
                     <FleetArmedList
                       client={paperFleet}
@@ -1632,6 +1659,30 @@ export function WorkstationShell({
             researchDetachedRef.current,
           )
         : null}
+      <FirstRunCoach
+        syncKey={coachSyncKey}
+        onPrimaryAction={(stepId: FirstRunCoachStepId) => {
+          if (stepId === "choose_starter") {
+            setActive("home");
+            setOpenChooserSignal((value) => value + 1);
+            return false;
+          }
+          if (stepId === "arm_paper") {
+            setActive("workstation");
+            window.requestAnimationFrame(() => {
+              const arm = document.querySelector(
+                '[data-coach-anchor="arm_paper"]',
+              );
+              if (arm instanceof HTMLElement) {
+                arm.focus();
+                arm.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              }
+            });
+            return false;
+          }
+          return undefined;
+        }}
+      />
     </div>
   );
 }

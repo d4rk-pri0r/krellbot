@@ -1,4 +1,4 @@
-import { useRef, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import type { VersionClient } from "../api/version";
 import { BrandMark } from "../components/brand/BrandMark";
 import { DisclosureSection } from "../components/disclosure/DisclosureSection";
@@ -136,6 +136,10 @@ type AppHomeProps = {
   suppressActivationChecklist?: boolean;
   /** Incomplete checklist: reopen guided setup (coach resume). */
   onResumeActivationSetup?: () => void;
+* Bump to request opening the home starter chooser (first-run coach).
+   * Does not rewrite chooser cards — open only.
+   */
+  openChooserSignal?: number;
 };
 
 export function AppHome({
@@ -154,8 +158,16 @@ export function AppHome({
   onStarterReady,
   suppressActivationChecklist = false,
   onResumeActivationSetup,
+openChooserSignal = 0,
 }: AppHomeProps): JSX.Element {
   const [chooserOpen, setChooserOpen] = useState(false);
+  const lastChooserSignal = useRef(0);
+  useEffect(() => {
+    if (openChooserSignal > 0 && openChooserSignal !== lastChooserSignal.current) {
+      lastChooserSignal.current = openChooserSignal;
+      setChooserOpen(true);
+    }
+  }, [openChooserSignal]);
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const recoveryAttempt = useRef(0);
   const fallbackKeysRef = useRef<KeysClient | null>(null);
@@ -364,6 +376,7 @@ export function AppHome({
               type="button"
               className="app-home__cta"
               data-testid="app-home-cta-paper"
+              data-coach-anchor="choose_starter"
               onClick={() => {
                 setChooserOpen(true);
               }}
