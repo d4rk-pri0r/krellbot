@@ -111,8 +111,10 @@ diagnostics such as readiness checks. Those commands are documented in
 ## Live and the UI gate
 
 - The workstation is `127.0.0.1` only; it refuses non-loopback `Host`
-  headers and rejects live orders. Live arm remains a CLI-only path
-  that requires typing `LIVE` exactly.
+  headers. Successful live arm is the workstation path: grant
+  authorization (typed `LIVE` in the UI), then `live.arm`. The CLI does
+  not prompt `Type LIVE` on stdin — see [docs/live.md](docs/live.md).
+  This release still refuses every live send (`PAPER_ONLY_RELEASE`).
 - Exchange keys are stored in the native OS keychain (see
   [docs/cli.md](docs/cli.md)). No exchange credentials go to `krellbot.dev`.
 - See [docs/live.md](docs/live.md) for the live arm flow.
