@@ -16,7 +16,7 @@ One line per item. Nothing here is work until the owner moves it into a mileston
 - Paid ads for trading signals — restricted channels; out of P0–P4 growth plan.
 - Personalized / individualized trading advice framing — packs stay tools; out of scope.
 - CLI user-facing feature expansion — AGENTS.md web-only surface; keep CLI as plumbing.
-- More than one live venue before P4 — Coinbase/Binance live wait; M14 paper breadth may continue without expanding live qualification.
+- More than two qualified live venues — Binance live still waits after M23.4 Coinbase second-venue product path; park further live venues.
 - Exchange-native free AI agent tooling parity race — spike only in M22.5; no cloud-key me-too product.
 - Multi-pack reservation / breaking one-pack-per-(venue,pair) before independent qualification (still true post-M16).
 - Learn top-nav / Learn view (Signal artboard) — still do not invent in cockpit.

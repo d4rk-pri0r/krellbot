@@ -514,7 +514,11 @@ def cmd_run(key):
         return 1
     print_pack(pack, True)
     print()
-    print("Coinbase is not ready.")
+    print(
+        "Legacy catalog run does not place orders. Use the workstation for "
+        "paper or for live grants on kraken/coinbase (paper-only release still "
+        "refuses live send)."
+    )
     if result.get("status") == "grace":
         print("No order sent.")
         return 0

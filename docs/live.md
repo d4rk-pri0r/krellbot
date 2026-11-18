@@ -23,6 +23,21 @@ orders hit the exchange. Live mode is off by default. Successful live arm
 is the workstation path: grant authorization (typed `LIVE` in the UI), then
 `live.arm`. The CLI does not prompt `Type LIVE to arm:` on stdin.
 
+## Qualified live venues (distribution)
+
+The distribution product path qualifies **two** live venues behind the same
+gates and paper-only rail:
+
+| Venue id   | Wave pair spelling | Notes |
+|------------|--------------------|-------|
+| `kraken`   | e.g. `XXBTZUSD`    | First live venue |
+| `coinbase` | `BTC-USD`          | Second distribution venue (Coinbase Advanced) |
+
+`binance` is paper-only breadth (M14). Do not claim qualified Binance live.
+Live preflight and Ops live authorization offer only the two qualified ids.
+Store a trade-only key with `krellbot keys add <venue> --file <key-file>`
+(or the workstation Keys panel) for the venue you grant.
+
 ## Arm gate
 
 ```
@@ -31,6 +46,8 @@ is the workstation path: grant authorization (typed `LIVE` in the UI), then
 KRELLBOT_ENABLE_LIVE=1 krellbot arm tests/fixtures/packs/sma_cross.json \
     --venue kraken \
     --mode live
+# Second venue (exact Coinbase product id):
+#   --venue coinbase   # pack market pair BTC-USD
 ```
 
 Live arm refuses when:
@@ -39,7 +56,8 @@ Live arm refuses when:
 * `KRELLBOT_ENABLE_LIVE` is not `1`.
 * No operator live grant names the exact venue+pair (workstation grant).
 * No key is stored for the venue. Store one first with
-  `krellbot keys add kraken --file <key-file>`.
+  `krellbot keys add kraken --file <key-file>` or
+  `krellbot keys add coinbase --file <key-file>`.
 * `check_key` reports `can_withdraw=True`. Krellbot only accepts
   trade-only keys.
 * `check_key` reports `can_trade=False`.
