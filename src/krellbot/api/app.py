@@ -42,6 +42,7 @@ from krellbot.application import alerts as alerts_app
 from krellbot.application import live_gate
 from krellbot.application import operations as operations_view_app
 from krellbot.application import packs as app_packs
+from krellbot.application import user_policy as user_policy_app
 from krellbot.application.live_preflight import build_venue_preflight_transport
 from krellbot.application.live_preflight import evaluate as live_preflight_evaluate
 from krellbot.application.paper import (
@@ -1214,7 +1215,9 @@ def create_app(
             # grant + kill switch + env and skip stdin Type LIVE (grant
             # already required typed LIVE). Deploy/Operations confirm sends
             # typed LIVE again on the arm payload; a wrong confirmation is
-            # refused before pack/key work. Kraken-only for M20.
+            # refused before pack/key work. Kraken-only for M20. Operator
+            # user-policy deny-live still applies after the release gate so
+            # a future flip cannot bypass a local deny.
             if release_policy.paper_only_release_active():
                 paper_only = live_gate.check_web_live_arm(
                     s.home,
@@ -1222,6 +1225,20 @@ def create_app(
                     pair="unused",
                 )
                 return _live_arm_gate_refusal(paper_only)
+            live_policy = user_policy_app.ensure_allowed(s.home, user_policy_app.ACTION_LIVE)
+            if not live_policy.ok:
+                return JSONResponse(
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "code": live_policy.code,
+                        "ok": False,
+                        "effect": "refused",
+                        "message": live_policy.message,
+                        "detail": live_policy.message,
+                        "action": user_policy_app.ACTION_LIVE,
+                    },
+                    status_code=403,
+                )
 
             venue = inner.get("venue")
             pack_path_raw = inner.get("pack_path")
@@ -3151,6 +3168,106 @@ def create_app(
             status_code=200,
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post("/api/v1/keys/{venue}/export")
+    async def keys_export(venue: str, request: Request) -> Response:
+        """Refuse key export; honors operator user-policy before the hard deny.
+
+        Exchange keys never leave the OS keyring over the loopback API.
+        When user-policy denies ``key_export``, the typed policy code wins;
+        otherwise the hard ``key_export_unsupported`` refuse still fires.
+        """
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+        missing = _keys_venue_or_404(venue)
+        if missing is not None:
+            return missing
+
+        decision = user_policy_app.ensure_allowed(s.home, user_policy_app.ACTION_KEY_EXPORT)
+        if not decision.ok:
+            return JSONResponse(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "ok": False,
+                    "effect": "refused",
+                    "code": decision.code,
+                    "message": decision.message,
+                    "action": user_policy_app.ACTION_KEY_EXPORT,
+                    "venue": venue,
+                },
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "ok": False,
+                "effect": "refused",
+                "code": "key_export_unsupported",
+                "message": "workstation does not export exchange keys",
+                "action": user_policy_app.ACTION_KEY_EXPORT,
+                "venue": venue,
+            },
+            status_code=403,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    # ---- operator user policy (M22.2) ---------------------------------
+
+    @app.get("/api/v1/user-policy")
+    async def get_user_policy(request: Request) -> Response:
+        """Return the operator user-policy snapshot (defaults if missing)."""
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+        policy = user_policy_app.load_policy(s.home)
+        return JSONResponse(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "ok": True,
+                "effect": "unchanged",
+                "policy": policy.to_dict(),
+                "path": user_policy_app.POLICY_FILENAME,
+            },
+            status_code=200,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.put("/api/v1/user-policy")
+    async def put_user_policy(request: Request) -> Response:
+        """Replace the operator user-policy file; audits the change."""
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        body = payload.get("policy", payload)
+        now = _app_now(s)
+        result = user_policy_app.save_policy(s.home, body, clock=lambda: now)
+        status = 200 if result.ok else 400
+        out: dict = {
+            "schema_version": SCHEMA_VERSION,
+            "ok": result.ok,
+            "code": result.code,
+            "message": result.message,
+            "effect": "changed"
+            if result.code == user_policy_app.CODE_POLICY_UPDATED
+            else ("unchanged" if result.ok else "refused"),
+        }
+        if result.policy is not None:
+            out["policy"] = result.policy.to_dict()
+        return JSONResponse(out, status_code=status, headers={"Cache-Control": "no-store"})
 
     # ---- strategy drafts (NS08a) --------------------------------------
 

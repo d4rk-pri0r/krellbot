@@ -14,6 +14,7 @@ CODE_LIVE_ARM_REFUSED = "mcp_live_arm_refused"
 CODE_KEY_READ_REFUSED = "mcp_key_read_refused"
 CODE_UNKNOWN_TOOL = "mcp_unknown_tool"
 CODE_INVALID_REQUEST = "mcp_invalid_request"
+CODE_POLICY_DENIED = "user_policy_denied"
 
 MESSAGE_LIVE_ARM_REFUSED = "MCP refuses live arm; paper-arm only"
 MESSAGE_KEY_READ_REFUSED = "MCP refuses key read or key export"
@@ -53,3 +54,7 @@ def unknown_tool(tool: str) -> McpToolRefusal:
 
 def invalid_request(tool: str, message: str) -> McpToolRefusal:
     return McpToolRefusal(CODE_INVALID_REQUEST, message, tool)
+
+
+def policy_denied(tool: str, message: str) -> McpToolRefusal:
+    return McpToolRefusal(CODE_POLICY_DENIED, message, tool)

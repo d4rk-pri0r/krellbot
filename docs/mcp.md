@@ -26,9 +26,13 @@ Python entry point: `krellbot.mcp.McpTools(home).call(tool, **params)`.
 - No MCP key write, no hosted keys, no CLI agent UX as the product
   surface (the web workstation remains the user surface).
 
-Operator policy files (allow paper-arm / deny live / deny key export)
-are M22.2+. This module hard-refuses live and keys at the MCP boundary
-regardless.
+Operator policy lives at `$KRELLBOT_HOME/user-policy.json`. Missing
+file defaults: allow paper-arm, allow live at the policy layer (still
+blocked by `PAPER_ONLY_RELEASE` / MCP), deny key export. A written
+policy can deny paper-arm, live, or key export. MCP `paper_arm` and
+`policy_check` honor it; `read` includes the policy snapshot. Hard MCP
+refuses for live and key tool names still apply regardless — policy
+can only further restrict.
 
 ## Cursor client
 
