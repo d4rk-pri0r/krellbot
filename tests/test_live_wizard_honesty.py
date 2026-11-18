@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
 
 from fakes.fake_kraken import FakeKrakenTransport
@@ -212,14 +213,26 @@ def test_trust_snapshot_shape_and_rails(tmp_path: Path) -> None:
 
 
 def test_trust_snapshot_fail_closed_on_permissive_home(tmp_path: Path) -> None:
+    """POSIX 0o755 homes fail closed; Windows cannot read DACLs so mode is None.
+
+    Either way the aggregate posture must not be green: Windows surfaces a
+    DACL review warning, POSIX names the over-permissive mode and 0o700.
+    """
     os.chmod(tmp_path, 0o755)
     snap = trust_snapshot(tmp_path)
-    assert snap["home_mode"] == "0o755"
     assert snap["home_mode_ok"] is False
     assert snap["posture_ok"] is False
     assert isinstance(snap["posture_warning"], str)
-    assert "0o755" in str(snap["posture_warning"])
-    assert "0o700" in str(snap["posture_warning"])
+    warning = str(snap["posture_warning"])
+    if sys.platform == "win32":
+        # chmod is not meaningful on Windows; trust_snapshot returns None
+        # and fail-closes with an explicit DACL review message.
+        assert snap["home_mode"] is None
+        assert "windows" in warning.lower() or "dacl" in warning.lower()
+    else:
+        assert snap["home_mode"] == "0o755"
+        assert "0o755" in warning
+        assert "0o700" in warning
 
 
 # ---- GET /api/v1/trust ---------------------------------------------------
