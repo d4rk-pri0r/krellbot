@@ -59,13 +59,13 @@ describe("PaperStarterChooser — starter pick reaches paper arm handoff", () =>
       />,
     );
     await screen.findByTestId("starter-picker-item-starter-dual-ma-crossover");
-    fireEvent.click(screen.getByRole("button", { name: /Use Dual moving-average/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Use Dual moving average" }));
     await waitFor(() => {
       expect(strategyClient.create).toHaveBeenCalledWith(example.pack);
       expect(strategyClient.validate).toHaveBeenCalledWith("rev-starter-1");
       expect(onReady).toHaveBeenCalledWith({
         revisionId: "rev-starter-1",
-        label: example.label,
+        label: "Dual moving average",
       });
     });
   });
@@ -88,7 +88,7 @@ describe("PaperStarterChooser — starter pick reaches paper arm handoff", () =>
       />,
     );
     await screen.findByTestId("starter-picker-item-starter-dual-ma-crossover");
-    fireEvent.click(screen.getByRole("button", { name: /Use Dual moving-average/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Use Dual moving average" }));
     expect(
       (await screen.findByTestId("paper-starter-chooser-error")).textContent,
     ).toMatch(/pair required/i);
