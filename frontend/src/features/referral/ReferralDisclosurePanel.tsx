@@ -15,13 +15,21 @@ export type ReferralDisclosurePanelProps = {
 /**
  * Settings disclosure for exchange fee share / referral (M23.1).
  * Contract: KRELL-SIGNAL-20261010.
+ *
+ * Status is fetched only while the Settings disclosure body is open (or
+ * when mounted outside a disclosure). Collapsed mount must not hit the
+ * network — shell bootstrap tests stub a closed allow-list of routes.
  */
 export function ReferralDisclosurePanel({
   client,
   enabled = true,
 }: ReferralDisclosurePanelProps): JSX.Element {
+  const rootRef = useRef<HTMLElement | null>(null);
+  // Start closed; open after we see no disclosure parent (standalone) or
+  // the Settings body is un-hidden — avoids bootstrap fetches while collapsed.
+  const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [status, setStatus] = useState<ReferralStatus | null>(null);
-  const [loading, setLoading] = useState(enabled);
+  const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +37,26 @@ export function ReferralDisclosurePanel({
   const requestRef = useRef(0);
   const inFlight = useRef(false);
 
+  useEffect(() => {
+    const node = rootRef.current;
+    const body = node?.closest(".kbot-disclosure__body") as HTMLElement | null;
+    if (!body) {
+      setDisclosureOpen(true);
+      return;
+    }
+    const sync = (): void => {
+      setDisclosureOpen(!body.hasAttribute("hidden"));
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(body, { attributes: true, attributeFilter: ["hidden"] });
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
   const load = useCallback(async (): Promise<void> => {
-    if (!enabled) {
+    if (!enabled || !disclosureOpen) {
       setLoading(false);
       return;
     }
@@ -53,14 +79,14 @@ export function ReferralDisclosurePanel({
         setLoading(false);
       }
     }
-  }, [client, enabled]);
+  }, [client, disclosureOpen, enabled]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const attributeSignup = useCallback(async (): Promise<void> => {
-    if (!enabled || inFlight.current) {
+    if (!enabled || !disclosureOpen || inFlight.current) {
       return;
     }
     inFlight.current = true;
@@ -80,7 +106,7 @@ export function ReferralDisclosurePanel({
       inFlight.current = false;
       setPending(false);
     }
-  }, [client, enabled, load, venue]);
+  }, [client, disclosureOpen, enabled, load, venue]);
 
   const headline = status?.headline || REFERRAL_DISCLOSURE_HEADLINE;
   const body = status?.body || REFERRAL_DISCLOSURE_BODY;
@@ -88,6 +114,9 @@ export function ReferralDisclosurePanel({
 
   return (
     <div
+      ref={(node) => {
+        rootRef.current = node;
+      }}
       className="kbot-referral"
       data-testid="referral-disclosure-panel"
     >
@@ -111,7 +140,7 @@ export function ReferralDisclosurePanel({
         className="kbot-referral__select"
         data-testid="referral-venue"
         value={venue}
-        disabled={busy || !enabled}
+        disabled={busy || !enabled || !disclosureOpen}
         onChange={(event) => {
           const next = event.target.value;
           if (next === "kraken" || next === "coinbase") {
@@ -127,7 +156,7 @@ export function ReferralDisclosurePanel({
         type="button"
         className="kbot-referral__action"
         data-testid="referral-attribute-exchange"
-        disabled={busy || !enabled}
+        disabled={busy || !enabled || !disclosureOpen}
         onClick={() => {
           void attributeSignup();
         }}

@@ -50,15 +50,19 @@ function clientStub(
 
 describe("ReferralDisclosurePanel", () => {
   it("shows earn-rule disclosure copy from product direction", async () => {
-    render(<ReferralDisclosurePanel client={clientStub()} />);
-    await waitFor(() => {
-      expect(screen.getByTestId("referral-disclosure-body").textContent).toBe(
-        REFERRAL_DISCLOSURE_BODY,
-      );
-    });
+    const client = clientStub();
+    render(<ReferralDisclosurePanel client={client} />);
+    // Static copy is always present; standalone mount (no disclosure parent)
+    // opens and then loads status.
+    expect(screen.getByTestId("referral-disclosure-body").textContent).toBe(
+      REFERRAL_DISCLOSURE_BODY,
+    );
     expect(screen.getByText(REFERRAL_DISCLOSURE_HEADLINE)).toBeTruthy();
     expect(REFERRAL_DISCLOSURE_BODY).toMatch(/referral path/);
     expect(REFERRAL_PACKS_DISCLOSURE.toLowerCase()).toContain("fee share");
+    await waitFor(() => {
+      expect(client.getStatus).toHaveBeenCalled();
+    });
   });
 
   it("records disclosed exchange signup attribution", async () => {
@@ -89,5 +93,22 @@ describe("ReferralDisclosurePanel", () => {
         "1",
       );
     });
+  });
+
+  it("does not fetch while nested in a collapsed disclosure body", async () => {
+    const client = clientStub();
+    const { container } = render(
+      <div className="kbot-disclosure__body" hidden>
+        <ReferralDisclosurePanel client={client} />
+      </div>,
+    );
+    expect(container.querySelector(".kbot-disclosure__body")?.hasAttribute("hidden")).toBe(
+      true,
+    );
+    // Allow effects to run; collapsed body must not call getStatus.
+    await waitFor(() => {
+      expect(screen.getByTestId("referral-disclosure-panel")).toBeTruthy();
+    });
+    expect(client.getStatus).not.toHaveBeenCalled();
   });
 });
