@@ -22,6 +22,9 @@ import { StatusPanel } from "../features/paper/StatusPanel";
 import { createHttpClient as createPaperHttpClient } from "../features/paper/client";
 import { LastRunsPanel } from "../features/paper/LastRunsPanel";
 import { createLastRunsHttpClient } from "../features/paper/client";
+import { ForwardPaperLedgerPanel } from "../features/paper/ForwardPaperLedgerPanel";
+import { createForwardPaperLedgerHttpClient } from "../features/paper/client";
+import type { ForwardPaperLedgerClient } from "../features/paper/client";
 import { ArmedRecordsList } from "../features/paper/ArmedRecordsList";
 import { FleetArmedList } from "../features/paper/FleetArmedList";
 import { createFleetHttpClient } from "../features/paper/client";
@@ -672,6 +675,17 @@ export function WorkstationShell({
     () => Object.assign({}, paper, createLastRunsHttpClient()),
     [paper],
   );
+  const paperLedger: ForwardPaperLedgerClient = useMemo(() => {
+    const candidate = paper as PaperClient & Partial<ForwardPaperLedgerClient>;
+    if (
+      typeof candidate === "object" &&
+      candidate !== null &&
+      typeof candidate.listForwardLedger === "function"
+    ) {
+      return candidate as ForwardPaperLedgerClient;
+    }
+    return createForwardPaperLedgerHttpClient();
+  }, [paper]);
   const paperFleet = useMemo((): PaperClient & FleetArmedClient => {
     const candidate = paper as PaperClient & Partial<FleetArmedClient>;
     if (
@@ -1128,6 +1142,17 @@ export function WorkstationShell({
                       unresolvedClient={operations}
                     />
                     <LastRunsPanel client={paperRuns} />
+                    <DisclosureSection
+                      title="Forward paper ledger"
+                      summary="Chronological paper evidence (arms, ticks, fills, refusals) for outsider reproduction — not live P&L."
+                      badge="Advanced"
+                      badgeTone="advanced"
+                      defaultOpen={false}
+                      storageKey="krellbot.disclosure.paper.forward-ledger"
+                      data-testid="paper-forward-ledger-disclosure"
+                    >
+                      <ForwardPaperLedgerPanel client={paperLedger} />
+                    </DisclosureSection>
                     <WorkstationAlerts
                       client={operations}
                       selectedId={
