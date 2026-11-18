@@ -13,6 +13,11 @@ import type {
   PacksClient,
 } from "./client";
 import { PackLibraryHttpError } from "./client";
+import {
+  isLaunchPackFamilySku,
+  LAUNCH_PACK_FAMILY_HONESTY,
+  LAUNCH_PACK_FAMILY_SKU,
+} from "./launchPackFamily";
 import { PACK_SOURCES, SIGNED_CATALOGUE_BADGE } from "./packSources";
 import "./PackCatalogue.signal.css";
 
@@ -176,6 +181,7 @@ export function PackCatalogue({
   );
 
   const packs = document?.packs ?? [];
+  const hasLaunchFamily = packs.some((pack) => isLaunchPackFamilySku(pack.id));
 
   return (
     <section
@@ -211,6 +217,14 @@ export function PackCatalogue({
         entitlement (fake processor in CI). This lane is not the community
         index and not starter examples.
       </p>
+      {hasLaunchFamily ? (
+        <p
+          className="kbot-pack-catalogue__helper"
+          data-testid="pack-catalogue-launch-family-honesty"
+        >
+          {LAUNCH_PACK_FAMILY_HONESTY}
+        </p>
+      ) : null}
       {document !== null ? (
         <p className="kbot-pack-catalogue__meta" data-testid="pack-catalogue-version">
           catalogue {document.catalogue_version}
@@ -241,11 +255,13 @@ export function PackCatalogue({
                 !feedback.startsWith("Installed") &&
                 !feedback.startsWith("Entitled");
               const isPaid = pack.tier === "paid";
+              const isLaunchFamily = isLaunchPackFamilySku(pack.id);
               return (
                 <li
                   key={pack.id}
                   className="kbot-pack-catalogue__row"
                   data-testid={`pack-catalogue-row-${pack.id}`}
+                  data-launch-family={isLaunchFamily ? LAUNCH_PACK_FAMILY_SKU : undefined}
                 >
                   <div className="kbot-pack-catalogue__row-head">
                     <span
@@ -272,6 +288,14 @@ export function PackCatalogue({
                   </span>
                   {pack.description ? (
                     <p className="kbot-pack-catalogue__description">{pack.description}</p>
+                  ) : null}
+                  {isLaunchFamily ? (
+                    <p
+                      className="kbot-pack-catalogue__description"
+                      data-testid={`pack-catalogue-launch-honesty-${pack.id}`}
+                    >
+                      {LAUNCH_PACK_FAMILY_HONESTY}
+                    </p>
                   ) : null}
                   <dl className="kbot-pack-catalogue__row-meta">
                     <div>
