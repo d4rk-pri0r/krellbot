@@ -2654,12 +2654,15 @@ def create_app(
 
         - ``tail`` — positive integer; default 5 when ``since`` is absent.
         - ``since`` — ``24h`` or ``14d`` only.
+        - ``mode`` — optional ``paper`` or ``live``; filter-then-tail so
+          "last N live" returns the last N live-classified rows.
 
         Body is ``{"schema_version": "1", "records": [...]}`` with export
         secret fields (``key``, ``secret``, ``license``, ``balance``)
-        dropped at any depth. Empty journal → ``records: []``. Invalid
-        params → 400 with a typed ``code``. Served with
-        ``Cache-Control: no-store``.
+        dropped at any depth. Each record also carries projected
+        ``mode`` and ``summary`` siblings for the Operations panel.
+        Empty journal → ``records: []``. Invalid params → 400 with a
+        typed ``code``. Served with ``Cache-Control: no-store``.
         """
 
         from krellbot import journal as kb_journal
@@ -2671,12 +2674,16 @@ def create_app(
 
         raw_tail = request.query_params.get("tail")
         raw_since = request.query_params.get("since")
+        raw_mode = request.query_params.get("mode")
 
         tail: int | None = None
         since: str | None = None
+        mode: str | None = None
 
         if raw_since is not None and raw_since != "":
             since = raw_since
+        if raw_mode is not None and raw_mode != "":
+            mode = raw_mode
         if raw_tail is not None and raw_tail != "":
             try:
                 tail = int(raw_tail)
@@ -2691,7 +2698,7 @@ def create_app(
                 )
 
         try:
-            records = kb_journal.browse(s.home, tail=tail, since=since)
+            records = kb_journal.browse(s.home, tail=tail, since=since, mode=mode)
         except kb_journal.BrowseError as err:
             return JSONResponse(
                 {

@@ -315,6 +315,37 @@ describe("createHttpClient journal browse", () => {
     expect((fetchMock.mock.calls[2] as [string])[0]).toBe("/api/v1/journal?since=14d");
   });
 
+  it("listJournal encodes mode=paper|live alongside tail/since", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ schema_version: "1", records: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createHttpClient();
+    await client.listJournal!({ tail: 20, mode: "live" });
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe("/api/v1/journal?tail=20&mode=live");
+    await client.listJournal!({ since: "24h", mode: "paper" });
+    expect((fetchMock.mock.calls[1] as [string])[0]).toBe("/api/v1/journal?since=24h&mode=paper");
+  });
+
+  it("listJournal keeps projected mode and summary fields", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1",
+        records: [
+          {
+            ...closedRow,
+            mode: "live",
+            summary: "live refused: paper_only_release (SUIUSD)",
+            detail: { pair: "SUIUSD", reason: "live_refused", code: "paper_only_release" },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await createHttpClient().listJournal!({ mode: "live" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].mode).toBe("live");
+    expect(rows[0].summary).toContain("live refused");
+  });
+
   it("listJournal drops malformed rows and throws on non-2xx", async () => {
     const fetchMock = vi
       .fn()
