@@ -5,6 +5,8 @@ Public surface:
       (``krellbot.packs.examples``) for ``GET /api/v1/packs/starters``.
     * ``mode_packs`` - loads built-in DCA/grid/rebalance packs from
       ``krellbot.packs.modes`` (read-only package data).
+    * ``creator_signed`` - signed third-party creator pack envelope +
+      rev-share verify-before-install (docs/creator-packs.md).
 
 The examples are ordinary valid DSL packs. They are project-authored
 read-only catalogue entries: nothing here installs a pack, writes under
@@ -15,6 +17,6 @@ existing draft flow (``POST /api/v1/strategies/drafts``).
 
 from __future__ import annotations
 
-from . import catalogue, mode_packs
+from . import catalogue, creator_signed, mode_packs
 
-__all__ = ["catalogue", "mode_packs"]
+__all__ = ["catalogue", "creator_signed", "mode_packs"]

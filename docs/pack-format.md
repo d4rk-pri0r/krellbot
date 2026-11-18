@@ -145,3 +145,13 @@ authoring checklist in [community.md](community.md#authoring-checklist):
 schema_version 1 DSL with required `author` / `origin`, size limits, index
 entry shape, and the allow-listed `raw.githubusercontent.com` URL prefix for
 `d4rk-pri0r/krellbot-community-packs`.
+
+## Signed creator packs (rev share)
+
+Third-party creators can sell a schema_version 1 DSL pack through the signed
+catalogue lane with disclosed revenue-share metadata. The wire envelope is
+ed25519-signed (`payload` + `sig`); the client verifies before install and
+never executes pack JSON. Packs remain tools, **not personalized advice**.
+
+Contract, rev-share fields, and verify-before-install seam:
+[creator-packs.md](creator-packs.md).
