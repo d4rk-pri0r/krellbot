@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-import krellbot.release_policy as release_policy
+from krellbot import release_policy
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _CLI_DOC = _REPO_ROOT / "docs" / "cli.md"
