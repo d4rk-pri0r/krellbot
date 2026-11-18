@@ -711,6 +711,7 @@ export function WorkstationShell({
     if (
       "listCatalogue" in packClient &&
       "install" in packClient &&
+      "startCheckout" in packClient &&
       "listCommunityIndex" in packClient &&
       "installCommunity" in packClient &&
       "openCommunityPack" in packClient
@@ -731,6 +732,14 @@ export function WorkstationShell({
         ok: false,
         code: "unavailable",
         message: "install unavailable",
+      }),
+      startCheckout: async (sku: string) => ({
+        schema_version: "1",
+        status: "unreachable" as const,
+        message: "checkout unreachable",
+        sku,
+        entitlements: [],
+        session_id: null,
       }),
       listCommunityIndex: async () => ({
         schema_version: "1",

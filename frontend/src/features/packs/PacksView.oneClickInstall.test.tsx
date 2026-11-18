@@ -55,6 +55,14 @@ function makeClient(): PacksClient {
       library = [pack];
       return { ok: true, pack };
     }),
+    startCheckout: vi.fn(async (sku: string) => ({
+      schema_version: "1",
+      status: "paid" as const,
+      message: "checkout paid",
+      sku,
+      entitlements: [sku],
+      session_id: `cs_fake_${sku}`,
+    })),
     listCommunityIndex: vi.fn(async () => ({
       schema_version: "1",
       index_url: "",

@@ -93,6 +93,7 @@ class _AppState:
     live_transport: object = field(default=None)  # test spy override for live.preflight
     keys_transport: object = field(default=None)  # injectable venue transport for keys routes
     catalogue_transport: object = field(default=None)  # injectable signed-catalogue fetch
+    checkout_transport: object = field(default=None)  # injectable payment transport (fake in CI)
     community_transport: object = field(default=None)  # injectable community index/pack bytes
     keys_allow_fake_backend: bool = False  # tests-only FakeKeyring opt-in
     scheduler_supervisor: object = None  # PlatformSupervisor; tests inject FakeSupervisor
@@ -3572,6 +3573,58 @@ def create_app(
             },
             status_code=200,
         )
+
+    # ---- live checkout seam (M21.1; fake processor in CI) ---------------
+
+    @app.post("/api/v1/checkout/start")
+    async def checkout_start(request: Request) -> Response:
+        """Start paid checkout for a catalogue SKU via injectable transport.
+
+        Same state-change gate as other POSTs (session + CSRF + loopback
+        Origin). Body is ``{"sku": "<catalogue id>"}``. Tests inject
+        ``checkout_transport`` (typically ``FakePaymentTransport``); the
+        default production transport never embeds processor keys. On
+        ``paid``, entitlements refresh; on failure the license cache and
+        trading/export paths are left untouched.
+        """
+
+        from krellbot.application import checkout as checkout_app
+
+        s = _state(request.app)
+        denied = _gate_state_change(request, s)
+        if denied is not None:
+            return denied
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"detail": "invalid body"}, status_code=400)
+
+        sku = payload.get("sku")
+        if not isinstance(sku, str) or not sku:
+            nested = payload.get("payload")
+            if isinstance(nested, dict):
+                sku = nested.get("sku")
+        if not isinstance(sku, str) or not sku:
+            return JSONResponse({"detail": "sku is required"}, status_code=400)
+
+        outcome = checkout_app.start_checkout(
+            s.home,
+            sku,
+            transport=s.checkout_transport,
+            now=int(_app_now(s)),
+        )
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "status": outcome.status,
+            "message": outcome.message,
+            "sku": outcome.sku,
+            "entitlements": list(outcome.entitlements),
+            "session_id": outcome.session_id,
+        }
+        return JSONResponse(body, status_code=200)
 
     # ---- activation redeem (lane E) -------------------------------------
 
