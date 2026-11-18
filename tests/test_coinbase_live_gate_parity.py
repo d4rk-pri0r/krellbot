@@ -21,8 +21,8 @@ from fakes.live_grant import write_grant
 from krellbot import release_policy
 from krellbot.application import live_gate
 from krellbot.application.live_preflight import (
-    CODE_OK,
     CODE_KEY_WITHDRAW_CAPABLE,
+    CODE_OK,
     CODE_PREFLIGHT_BLOCKED,
     CODE_VENUE_UNREACHABLE,
     SandboxTransport,
