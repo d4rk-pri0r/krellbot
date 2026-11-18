@@ -120,10 +120,12 @@ class McpTools:
         """Evaluate one closed operator-policy action (does not mutate).
 
         Used by agents and tests to honor ``paper_arm`` / ``live`` /
-        ``key_export`` without expanding the tool allowlist. Hard MCP
-        refuse codes for live/key tool names stay unchanged (M22.1).
+        ``key_export`` without expanding the tool allowlist. Probes use
+        :func:`user_policy.check` so they do not journal a refuse receipt;
+        enforce seams (e.g. ``paper_arm``) call ``ensure_allowed`` instead.
+        Hard MCP refuse codes for live/key tool names stay unchanged (M22.1).
         """
-        decision = user_policy.ensure_allowed(self._home, str(action))
+        decision = user_policy.check(self._home, str(action))
         body = decision.to_dict()
         body["tool"] = "policy_check"
         if not decision.ok:

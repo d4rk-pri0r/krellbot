@@ -9,7 +9,9 @@ Missing file → safe defaults (allow paper-arm, allow live at the policy
 layer, deny key export). Live remains blocked by ``PAPER_ONLY_RELEASE``
 and the MCP hard refuse until the operator writes an explicit policy.
 Malformed file → fail closed (deny all three). Writes go through
-:func:`save_policy` and append a journal audit record.
+:func:`save_policy` and append a journal audit record. Enforce seams
+call :func:`ensure_allowed`, which journals a refuse row with a reason
+code when denied; :func:`check` stays silent for probes.
 """
 
 from __future__ import annotations
@@ -220,9 +222,29 @@ def check(home: Path, action: str) -> PolicyDecision:
     )
 
 
-def ensure_allowed(home: Path, action: str) -> PolicyDecision:
-    """Alias of :func:`check` for call-site clarity at enforce seams."""
-    return check(home, action)
+def ensure_allowed(
+    home: Path,
+    action: str,
+    *,
+    clock: Any | None = None,
+) -> PolicyDecision:
+    """Enforce ``action`` and journal a refuse row when denied.
+
+    Call this at seams that actually attempt the action (paper-arm, live
+    arm, key export). Probes and agent ``policy_check`` should use
+    :func:`check` so they do not flood the journal.
+    """
+    decision = check(home, action)
+    if not decision.ok:
+        now = int((clock or time.time)())
+        _append_policy_refuse(
+            home,
+            ts=now,
+            action=action,
+            code=decision.code,
+            message=decision.message,
+        )
+    return decision
 
 
 def save_policy(
@@ -283,18 +305,12 @@ def save_policy(
     )
 
 
-def _append_policy_audit(
-    home: Path,
-    *,
-    ts: int,
-    before: dict[str, object],
-    after: dict[str, object],
-) -> None:
+def _append_user_policy_record(home: Path, *, ts: int, detail: dict[str, object]) -> None:
     """Append a ``kind=user_policy`` journal row under ``home/journal``.
 
     Uses an explicit home (not process ``KRELLBOT_HOME``) so tests and
     multi-home callers audit the correct tree. Failures are swallowed so
-    a read-only journal cannot block a successful policy write.
+    a read-only journal cannot block a successful policy write or refuse.
     """
     record = {
         "ts": int(ts),
@@ -302,11 +318,7 @@ def _append_policy_audit(
         "venue": "-",
         "pack": "-",
         "bar_ts": 0,
-        "detail": {
-            "event": "changed",
-            "before": before,
-            "after": after,
-        },
+        "detail": detail,
     }
     journal_dir = Path(home) / "journal"
     try:
@@ -330,6 +342,47 @@ def _append_policy_audit(
             os.chmod(file_path, 0o600)
     except OSError:
         return
+
+
+def _append_policy_audit(
+    home: Path,
+    *,
+    ts: int,
+    before: dict[str, object],
+    after: dict[str, object],
+) -> None:
+    """Append a policy-change audit row under ``home/journal``."""
+    _append_user_policy_record(
+        home,
+        ts=ts,
+        detail={
+            "event": "changed",
+            "before": before,
+            "after": after,
+        },
+    )
+
+
+def _append_policy_refuse(
+    home: Path,
+    *,
+    ts: int,
+    action: str,
+    code: str,
+    message: str,
+) -> None:
+    """Append a policy-refuse receipt under ``home/journal``."""
+    _append_user_policy_record(
+        home,
+        ts=ts,
+        detail={
+            "event": "refused",
+            "reason": code,
+            "code": code,
+            "action": action,
+            "message": message,
+        },
+    )
 
 
 __all__ = [

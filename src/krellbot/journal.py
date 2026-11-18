@@ -106,6 +106,11 @@ def summarize_record(record: dict, *, mode: str | None = None) -> str:
     intent = detail.get("intent_refused")
     if intent:
         return f"refused: {intent}" + (f" ({pair})" if pair else "")
+    if kind == "user_policy" and detail.get("event") == "refused":
+        code = detail.get("code") or reason or "refused"
+        action = detail.get("action")
+        suffix = f" ({action})" if action else ""
+        return f"user policy refused: {code}{suffix}"
 
     if kind == "tick":
         if reason == "entry" and qty("entry_qty") not in ("0", "0.0"):
