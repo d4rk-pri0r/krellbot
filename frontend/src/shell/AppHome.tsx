@@ -42,25 +42,33 @@ type HomePath = {
   meta: string;
 };
 
+/** Demoted peer destinations — Advanced “All areas”, not first viewport. */
 const HOME_PATH: ReadonlyArray<HomePath> = [
   {
     view: "workstation",
-    action: "Paper workstation",
-    detail: "Status, last runs, and stop controls.",
+    action: "Open Run",
+    detail: "Paper status, last runs, and pause / stop controls.",
     testid: "app-home-card-workstation",
     meta: "Paper · local",
   },
   {
     view: "strategies",
-    action: "Create or open a strategy",
+    action: "Edit strategies",
     detail: "Write or paste a pack, save, and reopen from the library.",
     testid: "app-home-card-strategies",
     meta: "Author · library",
   },
   {
+    view: "packs",
+    action: "Browse packs",
+    detail: "Install free or catalogue strategies on this machine.",
+    testid: "app-home-card-packs",
+    meta: "Catalogue · install",
+  },
+  {
     view: "studio",
     action: "Open Studio",
-    detail: "Inspect a saved strategy as a graph.",
+    detail: "Inspect a saved strategy as a graph when you want depth.",
     testid: "app-home-card-studio",
     meta: "Graph · edit",
   },
@@ -82,16 +90,16 @@ const HOME_PATH: ReadonlyArray<HomePath> = [
 
 const ACTIVITY_ROWS: ReadonlyArray<{ title: string; detail: string }> = [
   {
-    title: "1. Author a strategy",
-    detail: "Create or paste rules, validate them, and save a draft locally.",
+    title: "1. Choose a free strategy",
+    detail: "Pick a local starter example — no exchange account required.",
   },
   {
-    title: "2. Inspect in Studio",
-    detail: "Open a saved pack as a graph before you paper-arm it.",
+    title: "2. Start a paper run",
+    detail: "Use pretend money on this computer; live trading stays off.",
   },
   {
-    title: "3. Paper-arm and watch",
-    detail: "Use simulated funds on this machine; pause entries or disarm when needed.",
+    title: "3. Watch status / pause if needed",
+    detail: "See armed or waiting honestly; pause new buys or stop the paper run.",
   },
 ];
 
@@ -232,16 +240,11 @@ export function AppHome({
           <BrandMark />
           <div className="app-home__hero-copy">
             <h1 className="app-home__title" id="app-home-title">
-              Your workspace
+              Paper trading on this computer
             </h1>
             <p className="app-home__purpose">
-              A clear view of your strategies, paper bots, and next decisions.
-              Start with paper on this machine — live trading stays unavailable
+              Start a free strategy with pretend money. Live trading stays off
               in this release.
-            </p>
-            <p className="app-home__summary-lead">
-              Build, inspect and paper-test strategy packs on this machine.
-              Every area below is real navigation in this application.
             </p>
             <p
               className="app-home__availability"
@@ -344,63 +347,33 @@ export function AppHome({
             ) : null}
           </div>
         </div>
-        <button
-          type="button"
-          className="app-home__cta"
-          data-testid="app-home-cta-paper"
-          onClick={() => {
-            onNavigate("workstation");
-          }}
-        >
-          Open paper workstation
-        </button>
+        <div className="app-home__cta-group">
+          <button
+            type="button"
+            className="app-home__cta"
+            data-testid="app-home-cta-paper"
+            onClick={() => {
+              // M24.3 mounts the home chooser; until then Strategies hosts starters.
+              onNavigate("strategies");
+            }}
+          >
+            Start with a free paper strategy
+          </button>
+          <button
+            type="button"
+            className="app-home__cta-secondary"
+            data-testid="app-home-cta-packs"
+            onClick={() => {
+              onNavigate("packs");
+            }}
+          >
+            I already have a pack
+          </button>
+        </div>
       </header>
 
       <div className="app-home__layout">
         <div className="app-home__main">
-          <section
-            className="app-home__path"
-            aria-labelledby="app-home-path-title"
-            data-testid="app-home-path"
-          >
-            <div className="app-home__section-head">
-              <h2 className="app-home__section-title" id="app-home-path-title">
-                Where to work
-              </h2>
-              <p className="app-home__section-meta">
-                {HOME_PATH.length} areas · compact path
-              </p>
-            </div>
-            <ul className="app-home__cards">
-              {HOME_PATH.map((card) => (
-                <li key={card.view} className="app-home__card-item">
-                  <button
-                    type="button"
-                    className="app-home__card"
-                    data-testid={card.testid}
-                    onClick={() => {
-                      onNavigate(card.view);
-                    }}
-                  >
-                    {/*
-                      Single stacked body: shell buttons are inline-flex;
-                      keep one readable column so descriptions stay usable
-                      at 1440×900 (dense rows, not a sparse card wall).
-                    */}
-                    <span className="app-home__card-body">
-                      <span className="app-home__card-action">{card.action}</span>
-                      <span className="app-home__card-detail">{card.detail}</span>
-                      <span className="app-home__card-footer">
-                        <span className="app-home__card-meta">{card.meta}</span>
-                        <span className="app-home__card-link">Open →</span>
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-
           <section
             className="app-home__activity"
             aria-labelledby="app-home-works-title"
@@ -408,12 +381,11 @@ export function AppHome({
             data-testid="app-home-works"
           >
             <h2 className="app-home__section-title" id="app-home-works-title">
-              What works here
+              Your next steps
             </h2>
             <p className="app-home__section-lede">
-              Author and validate strategy packs, run research on your own
-              dataset, inspect graphs in Studio, then paper-arm and observe.
-              Nothing here places real orders.
+              One path: choose a free strategy, start a paper run, and watch
+              status on this machine. Nothing here places real orders.
             </p>
             <ul className="app-home__activity-list">
               {ACTIVITY_ROWS.map((row) => (
@@ -426,6 +398,39 @@ export function AppHome({
               ))}
             </ul>
           </section>
+
+          <DisclosureSection
+            title="All areas"
+            summary="Every destination in this app"
+            badge="Advanced"
+            badgeTone="advanced"
+            storageKey="krellbot.disclosure.home.all-areas"
+            data-testid="app-home-path"
+          >
+            <ul className="app-home__cards">
+              {HOME_PATH.map((card) => (
+                <li key={card.view} className="app-home__card-item">
+                  <button
+                    type="button"
+                    className="app-home__card"
+                    data-testid={card.testid}
+                    onClick={() => {
+                      onNavigate(card.view);
+                    }}
+                  >
+                    <span className="app-home__card-body">
+                      <span className="app-home__card-action">{card.action}</span>
+                      <span className="app-home__card-detail">{card.detail}</span>
+                      <span className="app-home__card-footer">
+                        <span className="app-home__card-meta">{card.meta}</span>
+                        <span className="app-home__card-link">Open →</span>
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </DisclosureSection>
         </div>
 
         <aside className="app-home__aside" aria-label="Workspace context">

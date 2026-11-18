@@ -62,6 +62,7 @@ function stripComments(source: string): string {
 const CARD_TESTIDS = [
   "app-home-card-workstation",
   "app-home-card-strategies",
+  "app-home-card-packs",
   "app-home-card-studio",
   "app-home-card-research",
   "app-home-card-operations",
@@ -83,10 +84,14 @@ describe("home first-viewport composition at 1440×900", () => {
       true,
     );
     expect(first.contains(screen.getByTestId("app-home-cta-paper"))).toBe(true);
+    expect(first.contains(screen.getByTestId("app-home-cta-packs"))).toBe(true);
     expect(
       screen.getByTestId("app-home-availability").textContent,
     ).toMatch(/Local preview/i);
-    expect(screen.getByTestId("app-home-path")).toBeTruthy();
+    // Peer destinations live under Advanced All areas — collapsed by default.
+    expect(screen.getByTestId("app-home-path").getAttribute("data-open")).toBe(
+      "0",
+    );
     expect(screen.getByTestId("app-home-works")).toBeTruthy();
     expect(screen.getByTestId("app-home-keys-rail").getAttribute("data-open")).toBe(
       "0",

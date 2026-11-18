@@ -88,24 +88,21 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     80,
   );
 
-  const path = page.getByTestId("app-home-path");
-  await expect(path).toBeVisible();
-  const pathBox = await boxFor(page, "app-home-path");
+  // M24: single sage CTA in the hero; peer destinations sit under Advanced.
+  await expect(page.getByTestId("app-home-cta-paper")).toContainText(
+    /Start with a free paper strategy/i,
+  );
+  await expect(page.getByTestId("app-home-path")).toHaveAttribute(
+    "data-open",
+    "0",
+  );
+  const works = page.getByTestId("app-home-works");
+  await expect(works).toBeVisible();
+  const worksBox = await boxFor(page, "app-home-works");
   expect(
-    pathBox.top,
-    "destination path begins above the fold",
+    worksBox.top,
+    "next-steps activity begins near the first viewport",
   ).toBeLessThanOrEqual(MAX_PATH_TOP_PX);
-
-  // Compact path: single-column track, not a wide equal-weight card wall.
-  const pathStyle = await path.evaluate((el) => {
-    const style = getComputedStyle(el);
-    return {
-      display: style.display,
-      gridTemplateColumns: style.gridTemplateColumns,
-    };
-  });
-  expect(pathStyle.display).toMatch(/grid|flex|block/);
-  expect(pathStyle.gridTemplateColumns).not.toMatch(/minmax\(260px/i);
 
   const keysToggle = page.getByTestId("app-home-keys-rail-toggle");
   await expect(keysToggle).toBeVisible();

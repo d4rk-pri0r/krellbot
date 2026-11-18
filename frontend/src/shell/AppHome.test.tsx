@@ -94,13 +94,18 @@ const CARD_DESTINATIONS: ReadonlyArray<{
 }> = [
   {
     testid: "app-home-card-workstation",
-    name: /paper workstation/i,
+    name: /open run/i,
     view: "workstation",
   },
   {
     testid: "app-home-card-strategies",
-    name: /create or open a strategy/i,
+    name: /edit strategies/i,
     view: "strategies",
+  },
+  {
+    testid: "app-home-card-packs",
+    name: /browse packs/i,
+    view: "packs",
   },
   {
     testid: "app-home-card-studio",
@@ -150,24 +155,34 @@ describe("AppHome — application overview", () => {
     expect(region.tagName).toBe("SECTION");
     const heading = screen.getByRole("heading", {
       level: 1,
-      name: /your workspace/i,
+      name: /paper trading on this computer/i,
     });
     expect(region.contains(heading)).toBe(true);
     expect(
-      screen.getByText(/A clear view of your strategies, paper bots/i),
+      screen.getByText(/Start a free strategy with pretend money/i),
     ).toBeDefined();
-    expect(
-      screen.getByText(/Build, inspect and paper-test/i),
-    ).toBeDefined();
+    expect(heading.closest(".app-home__hero-copy")?.textContent).toMatch(
+      /Live trading stays off/i,
+    );
     await screen.findByTestId("keys-onboarding-kraken");
     await screen.findByTestId("keys-onboarding-coinbase");
   });
 
-  it("offers a primary CTA into the paper workstation", () => {
+  it("offers a primary CTA into the free paper strategy path", () => {
     const onNavigate = vi.fn();
     renderHome({ onNavigate });
+    expect(screen.getByTestId("app-home-cta-paper").textContent).toMatch(
+      /Start with a free paper strategy/i,
+    );
     fireEvent.click(screen.getByTestId("app-home-cta-paper"));
-    expect(onNavigate).toHaveBeenCalledWith("workstation");
+    expect(onNavigate).toHaveBeenCalledWith("strategies");
+  });
+
+  it("offers a secondary text action for operators who already have a pack", () => {
+    const onNavigate = vi.fn();
+    renderHome({ onNavigate });
+    fireEvent.click(screen.getByTestId("app-home-cta-packs"));
+    expect(onNavigate).toHaveBeenCalledWith("packs");
   });
 
   it("keeps the local-preview / live-unavailable copy conspicuous", () => {
@@ -222,9 +237,9 @@ describe("AppHome — application overview", () => {
 
   it("replaces the old not-connected copy with Kraken and Coinbase keys forms", async () => {
     renderHome();
-    const works = screen.getByRole("region", { name: /what works here/i });
-    expect(works.textContent).toMatch(/strategy/i);
-    expect(works.textContent).toMatch(/research/i);
+    const works = screen.getByRole("region", { name: /your next steps/i });
+    expect(works.textContent).toMatch(/free strategy/i);
+    expect(works.textContent).toMatch(/paper run/i);
     expect(screen.queryByText(/No exchange is connected in this build/i)).toBeNull();
     const kraken = await screen.findByTestId("keys-onboarding-kraken");
     expect(kraken.textContent).toMatch(/Kraken exchange key/i);
