@@ -143,6 +143,11 @@ export type OperationsClient = {
     confirmation: string,
   ): Promise<LiveAuthorizationCommandResult>;
   revokeLiveAuthorization?(): Promise<LiveAuthorizationCommandResult>;
+  armLive?(
+    revisionId: string,
+    venue: string,
+    confirmation: string,
+  ): Promise<CommandResult>;
   getScheduler?(): Promise<SchedulerStatus>;
   installScheduler?(): Promise<SchedulerStatus>;
   enableScheduler?(): Promise<SchedulerStatus>;
@@ -600,6 +605,45 @@ export function createHttpClient(): OperationsClient {
         message: typeof raw.message === "string" ? raw.message : undefined,
         effect: typeof raw.effect === "string" ? raw.effect : undefined,
         authorization: adaptAuthorization(raw.authorization),
+      };
+    },
+    async armLive(
+      revisionId: string,
+      venue: string,
+      confirmation: string,
+    ): Promise<CommandResult> {
+      const response = await fetch("/api/v1/commands", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Krellbot-CSRF": getCsrf(),
+        },
+        body: JSON.stringify({
+          schema_version: "1",
+          command: "live.arm",
+          payload: {
+            venue,
+            revision_id: revisionId,
+            mode: "live",
+            confirmation,
+          },
+        }),
+      });
+      let raw: Record<string, unknown> = {};
+      try {
+        raw = (await response.json()) as Record<string, unknown>;
+      } catch {
+        raw = {};
+      }
+      return {
+        schema_version: typeof raw.schema_version === "string" ? raw.schema_version : "1",
+        code: typeof raw.code === "string" ? raw.code : undefined,
+        ok: raw.ok === true,
+        message: typeof raw.message === "string" ? raw.message : undefined,
+        effect: typeof raw.effect === "string" ? raw.effect : undefined,
+        venue: typeof raw.venue === "string" ? raw.venue : undefined,
+        pair: typeof raw.pair === "string" ? raw.pair : undefined,
       };
     },
     getScheduler(): Promise<SchedulerStatus> {

@@ -49,6 +49,12 @@ MODE_SANDBOX = "sandbox"
 
 SUPPORTED_PREFLIGHT_VENUES = frozenset({"kraken", "coinbase"})
 
+# Workstation live arm (M20) is Kraken-only. Preflight may still probe
+# coinbase for paper/readiness honesty, but Deploy live arm + confirm
+# never offers a non-Kraken live path while PAPER_ONLY_RELEASE holds and
+# until a later venue milestone expands WEB_LIVE_ARM_VENUES.
+WEB_LIVE_ARM_PREFLIGHT_VENUE = "kraken"
+
 
 class PreflightTransportError(Exception):
     """Typed transport failure mapped to a preflight refusal code."""
