@@ -11,6 +11,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VersionClient } from "../api/version";
 import type { KeysClient, KeysStatus } from "../features/keys/client";
+import type { LiveWizardHonesty, TrustClient } from "../features/onboarding/client";
 import { AppHome } from "./AppHome";
 import type { View } from "./Navigation";
 
@@ -52,6 +53,40 @@ function fakeVersionClient(over: Partial<VersionClient> = {}): VersionClient {
   };
 }
 
+const HONEST_TRUST: LiveWizardHonesty = {
+  schema_version: "1",
+  trust: {
+    home: "/tmp/krellbot-home",
+    home_mode: "0o700",
+    home_mode_ok: true,
+    keychain_backend: "FakeKeyring",
+    keychain_ok: false,
+    posture_ok: false,
+    posture_warning: "keychain backend is FakeKeyring (not persistent)",
+    bind: "127.0.0.1",
+    live_arm_ui_allowed: false,
+    trade_only_required: true,
+  },
+  paper_only_release: true,
+  release_policy: "paper_only",
+  release_policy_code: "live_disabled_paper_only_release",
+  release_policy_message: "paper-only release",
+  live_grant_active: false,
+  live_grant: { active: false, expires_at: null, grants: [] },
+  live_ready: false,
+  live_arm_ui_allowed: false,
+  trade_only_required: true,
+  license_required_for_exchange: false,
+  keys_leave_machine: false,
+};
+
+function fakeTrustClient(over: Partial<TrustClient> = {}): TrustClient {
+  return {
+    getTrust: vi.fn().mockResolvedValue(HONEST_TRUST),
+    ...over,
+  };
+}
+
 const CARD_DESTINATIONS: ReadonlyArray<{
   testid: string;
   name: RegExp;
@@ -88,6 +123,7 @@ function renderHome(
   props: {
     onNavigate?: (view: View) => void;
     keysClient?: KeysClient;
+    trustClient?: TrustClient;
     versionClient?: VersionClient;
     sessionPending?: boolean;
     sessionFailed?: boolean;
@@ -98,6 +134,7 @@ function renderHome(
     <AppHome
       onNavigate={props.onNavigate ?? (() => {})}
       keysClient={keysClient}
+      trustClient={props.trustClient ?? fakeTrustClient()}
       versionClient={props.versionClient ?? fakeVersionClient()}
       sessionPending={props.sessionPending}
       sessionFailed={props.sessionFailed}
@@ -208,6 +245,7 @@ describe("AppHome — application overview", () => {
       <AppHome
         onNavigate={() => {}}
         keysClient={fakeKeysClient()}
+        trustClient={fakeTrustClient()}
         versionClient={fakeVersionClient()}
       />,
     );
@@ -233,6 +271,7 @@ describe("AppHome — application overview", () => {
       <AppHome
         onNavigate={() => {}}
         keysClient={fakeKeysClient()}
+        trustClient={fakeTrustClient()}
         versionClient={fakeVersionClient()}
       />,
     );
@@ -270,11 +309,13 @@ describe("AppHome — application overview", () => {
 
   it("shows the session note only while the local session is starting", async () => {
     const keysClient = fakeKeysClient();
+    const trustClient = fakeTrustClient();
     const versionClient = fakeVersionClient();
     const { rerender } = render(
       <AppHome
         onNavigate={() => {}}
         keysClient={keysClient}
+        trustClient={trustClient}
         versionClient={versionClient}
       />,
     );
@@ -283,6 +324,7 @@ describe("AppHome — application overview", () => {
       <AppHome
         onNavigate={() => {}}
         keysClient={keysClient}
+        trustClient={trustClient}
         versionClient={versionClient}
         sessionPending
       />,
@@ -296,6 +338,7 @@ describe("AppHome — application overview", () => {
       <AppHome
         onNavigate={() => {}}
         keysClient={keysClient}
+        trustClient={trustClient}
         versionClient={versionClient}
         sessionPending={false}
       />,
@@ -305,5 +348,14 @@ describe("AppHome — application overview", () => {
       expect(keysClient.getStatus).toHaveBeenCalledWith("kraken");
       expect(keysClient.getStatus).toHaveBeenCalledWith("coinbase");
     });
+  });
+
+  it("mounts the live-ready wizard honesty rail without a license ask", async () => {
+    renderHome();
+    expect(screen.getByTestId("app-home-live-wizard-rail")).toBeTruthy();
+    expect(await screen.findByTestId("live-wizard")).toBeTruthy();
+    expect(screen.getByTestId("live-wizard-no-license").textContent).toMatch(
+      /No license token/i,
+    );
   });
 });

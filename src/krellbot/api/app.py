@@ -57,6 +57,7 @@ from krellbot.application.strategy import (
     StrategyDraftService,
     StrategyIdMismatch,
 )
+from krellbot.trust import trust_snapshot
 
 SCHEMA_VERSION = "1"
 SESSION_COOKIE = "krellbot_session"
@@ -2170,6 +2171,48 @@ def create_app(
             status_code=200,
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/api/v1/trust")
+    async def trust_get(request: Request) -> Response:
+        """Return the local trust snapshot + live-wizard honesty rails.
+
+        Same session gate as ``GET /api/v1/operations`` (``_gate_get``):
+        session cookie + loopback Origin + loopback Host, no CSRF for
+        the read. Presentation-only: never probes a venue, never reads
+        exchange credentials, never asks for a license. While
+        ``PAPER_ONLY_RELEASE`` is active, ``live_ready`` is always False
+        even when a live grant file exists — paper-only release and live
+        grant are distinct states.
+        """
+
+        s = _state(request.app)
+        denied = _gate_get(request, s)
+        if denied is not None:
+            return denied
+
+        now = _now_seconds()
+        snap = trust_snapshot(s.home)
+        live = live_gate.live_status(s.home, now=now)
+        auth = live_gate.authorization_state(s.home, now=now).to_dict()
+        paper_only = live.get("release_policy") == "paper_only"
+        body = {
+            "schema_version": SCHEMA_VERSION,
+            "trust": snap,
+            "paper_only_release": bool(paper_only),
+            "release_policy": live.get("release_policy"),
+            "release_policy_code": live.get("release_policy_code"),
+            "release_policy_message": (release_policy.paper_only_message() if paper_only else None),
+            # Distinct from paper-only: a grant file may exist and still
+            # never make this surface claim the workstation is live-ready.
+            "live_grant_active": bool(auth.get("active")),
+            "live_grant": auth,
+            "live_ready": False,
+            "live_arm_ui_allowed": False,
+            "trade_only_required": True,
+            "license_required_for_exchange": False,
+            "keys_leave_machine": False,
+        }
+        return JSONResponse(body, status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/demo-fixture")
     async def demo_fixture_get(request: Request) -> Response:

@@ -34,6 +34,34 @@ it.each(["bootstrap", "csrf"])(
         await sessionReady;
         return new Response(JSON.stringify({ csrf_token: "fixture-csrf" }), { status: 200 });
       }
+      if (url === "/api/v1/trust") {
+        return new Response(JSON.stringify({
+          schema_version: "1",
+          trust: {
+            home: "/tmp/home",
+            home_mode: "0o700",
+            home_mode_ok: true,
+            keychain_backend: "FakeKeyring",
+            keychain_ok: false,
+            posture_ok: false,
+            posture_warning: "keychain backend is FakeKeyring (not persistent)",
+            bind: "127.0.0.1",
+            live_arm_ui_allowed: false,
+            trade_only_required: true,
+          },
+          paper_only_release: true,
+          release_policy: "paper_only",
+          release_policy_code: "live_disabled_paper_only_release",
+          release_policy_message: "paper-only release",
+          live_grant_active: false,
+          live_grant: { active: false, expires_at: null, grants: [] },
+          live_ready: false,
+          live_arm_ui_allowed: false,
+          trade_only_required: true,
+          license_required_for_exchange: false,
+          keys_leave_machine: false,
+        }), { status: 200 });
+      }
       if (url === "/api/v1/keys/kraken" || url === "/api/v1/keys/coinbase") {
         const venue = url.endsWith("coinbase") ? "coinbase" : "kraken";
         return new Response(JSON.stringify({
@@ -91,6 +119,7 @@ it.each(["bootstrap", "csrf"])(
     });
     expect(requests).toEqual([
       `/api/v1/session/${sessionRoute}`,
+      "/api/v1/trust",
       "/api/v1/keys/kraken",
       "/api/v1/keys/coinbase",
       "/api/v1/version",

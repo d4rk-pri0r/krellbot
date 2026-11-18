@@ -8,6 +8,11 @@ import {
   createKeysHttpClient,
   type KeysClient,
 } from "../features/keys/client";
+import { LiveWizardPanel } from "../features/onboarding/LiveWizardPanel";
+import {
+  createTrustHttpClient,
+  type TrustClient,
+} from "../features/onboarding/client";
 import { PaidDisclosuresPanel } from "../features/packs/PaidDisclosuresPanel";
 import { ReferralDisclosurePanel } from "../features/referral/ReferralDisclosurePanel";
 import {
@@ -103,6 +108,8 @@ type AppHomeProps = {
   onRecoverSession?: () => Promise<{ ok: boolean; error?: string }>;
   /** Injectable keys client; defaults to the loopback HTTP client. */
   keysClient?: KeysClient;
+  /** Injectable trust / live-wizard honesty client. */
+  trustClient?: TrustClient;
   /** Injectable referral client; defaults to the loopback HTTP client. */
   referralClient?: ReferralClient;
   /** Injectable version/about client; defaults to the loopback HTTP client. */
@@ -124,6 +131,7 @@ export function AppHome({
   sessionFailed = false,
   onRecoverSession,
   keysClient,
+  trustClient,
   referralClient,
   versionClient,
   onIssueReconnect,
@@ -136,6 +144,11 @@ export function AppHome({
     fallbackKeysRef.current = createKeysHttpClient();
   }
   const keys = keysClient ?? fallbackKeysRef.current!;
+  const fallbackTrustRef = useRef<TrustClient | null>(null);
+  if (fallbackTrustRef.current === null && trustClient === undefined) {
+    fallbackTrustRef.current = createTrustHttpClient();
+  }
+  const trust = trustClient ?? fallbackTrustRef.current!;
   const fallbackReferralRef = useRef<ReferralClient | null>(null);
   if (fallbackReferralRef.current === null && referralClient === undefined) {
     fallbackReferralRef.current = createReferralHttpClient();
@@ -492,6 +505,25 @@ export function AppHome({
             <div className="app-home__rail app-home__rail--nested">
               <ReferralDisclosurePanel
                 client={referral}
+                enabled={!sessionPending && !sessionFailed}
+              />
+            </div>
+          </DisclosureSection>
+
+          <DisclosureSection
+            title="Live-ready path"
+            summary="Welcome, trust snapshot, trade-only Exchange probe, and paper-only release vs live grant — no license ask."
+            badge="Advanced"
+            badgeTone="advanced"
+            defaultOpen={false}
+            storageKey="krellbot.disclosure.home.live-wizard"
+            bare
+            data-testid="app-home-live-wizard-rail"
+          >
+            <div className="app-home__rail app-home__rail--emphasis app-home__rail--nested">
+              <LiveWizardPanel
+                trustClient={trust}
+                keysClient={keys}
                 enabled={!sessionPending && !sessionFailed}
               />
             </div>

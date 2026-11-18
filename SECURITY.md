@@ -65,15 +65,18 @@ tag and the matching session cookie — never in the printed URL.
 
 ## First-run wizard and trust screen
 
-A fresh install renders the wizard at `/<token>/welcome` instead of
-the dashboard. Welcome and Security are read-only; the Exchange step
-accepts a key and secret in one credential-bearing POST, probes the
-selected venue, then stores only a trade-only pair in the native keychain.
-No wizard page asks for a license token. The Security step renders
-the local trust posture from `trust_snapshot()`: the detected
-keychain backend class, the resolved `$KRELLBOT_HOME` path and
-POSIX mode, the loopback bind, the `live_arm_ui_allowed = False`
-rail, and a fail-closed aggregate diagnostic.
+The web workstation exposes the live-ready path on Workspace home
+(Advanced → **Live-ready path**): Welcome, Security (trust snapshot),
+Exchange (trade-only probe), and Live state. Welcome and Security are
+read-only; the Exchange step accepts a key and secret in one
+credential-bearing `POST /api/v1/keys/{venue}`, probes the selected
+venue, then stores only a trade-only pair in the native keychain.
+No wizard step asks for a license token. The Security step renders
+the local trust posture from `trust_snapshot()` (also served as
+`GET /api/v1/trust`): the detected keychain backend class, the
+resolved `$KRELLBOT_HOME` path and POSIX mode, the loopback bind,
+the `live_arm_ui_allowed = False` rail, and a fail-closed aggregate
+diagnostic.
 
 The aggregate diagnostic is computed from BOTH the backend and the
 home mode. A persistent keychain on a 0o755 home, or a 0o700 home
@@ -83,34 +86,19 @@ is never reported as a green check. The "Key permissions" line on
 the Security step is a REQUIREMENT statement ("Trade-only permission
 required, withdraw permission never granted. No exchange key is
 probed from this page."), not a validated connection — the Security
-page does not probe a key. The Exchange POST does.
+step does not probe a key. The Exchange POST does.
 
-The wizard's Welcome page states three truthful things: the engine
+The wizard's Welcome step states three truthful things: the engine
 is free and open-source, exchange keys are stored locally and not sent to
-krellbot.dev, and
-official packs are optional and recommended. Welcome exposes only
-sibling-relative `<a href="security">` / `<a href="next">` links —
-there is no Continue button that posts a preference. Only Next's
-explicit **Enter dashboard** button POSTs `/<token>/enter-dashboard`
-through the existing token/session/CSRF/Origin gate and the server
-responds 303 to `/<token>/dashboard` (PRG). A direct GET to
-`/<token>/dashboard` never marks the preference, so Back/forward
-navigation cannot flip it.
+krellbot.dev, and official packs are optional and recommended.
 
-The Next page labels pack adoption (slice D) as a future slice —
-not a completed step in this release. Slice C's Exchange (keys)
-step is part of the wizard today: the page is reached from the nav
-or Security's "Continue to exchange" link, runs a single credentialed
-probe-and-store POST, and renders only historical status (the
-durable "last stored through wizard at <ts>" timestamp from the
-last POST, or "unknown; not currently verified"). It never claims
-a live connection and never echoes credentials. The free path today
-is the dashboard, the CLI, and `krellbot doctor`.
+The Live state step keeps **paper-only release** and **live grant** as
+separate rails: while `PAPER_ONLY_RELEASE` is True, a grant file (or a
+stored trade-only key) never makes the surface claim live-ready. Keys
+never leave the machine; trust and keys status bodies never echo
+credentials and never claim a live connection.
 
 Static assets are entirely local — no CDN, no Google font, no
-external script. The wizard templates and the dashboard shell embed
-`window.__KB_VIEW__` as an inline script with every value escaped by
-`_embed_json`, so a journal string or trust value containing `<`
-cannot close the script tag.
+external script.
 
 If you find a problem, open an issue on this repository. Do not send a key, a secret, or a license key in the issue.

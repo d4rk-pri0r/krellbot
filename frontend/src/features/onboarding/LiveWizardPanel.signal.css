@@ -1,0 +1,213 @@
+/*
+ * Live-ready wizard honesty — Signal (KRELL-SIGNAL-20261010).
+ *
+ * Welcome → Security (trust) → Exchange → Live-state steps. Seafoam for
+ * step selection; caution for fail-closed posture; never success-colored
+ * live claims.
+ *
+ *   navy #0E1C29  surface #14222E  panel #18354A  line #22465D
+ *   text #E9F0F5  muted #ABC4D8  seafoam #A8D8D1  sage #B3DDA8
+ *   coral #CC9689
+ */
+
+.kbot-live-wizard {
+  font-family: var(--font-ui, "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--text, #e9f0f5);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kbot-live-wizard *,
+.kbot-live-wizard *::before,
+.kbot-live-wizard *::after {
+  box-sizing: border-box;
+}
+
+.kbot-live-wizard__title {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-live-wizard__helper {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-live-wizard__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kbot-live-wizard__step-btn {
+  margin: 0;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line, #22465d);
+  background: var(--surface, #14222e);
+  color: var(--muted, #abc4d8);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-live-wizard__step-btn[aria-current="step"] {
+  border-color: var(--seafoam, #a8d8d1);
+  color: var(--text, #e9f0f5);
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 12%, var(--surface, #14222e));
+}
+
+.kbot-live-wizard__panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line, #22465d);
+  background: var(--surface, #14222e);
+  min-width: 0;
+}
+
+.kbot-live-wizard__panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-live-wizard__panel-copy {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-live-wizard__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-live-wizard__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.kbot-live-wizard__row {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kbot-live-wizard__row-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-live-wizard__row-value {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text, #e9f0f5);
+  overflow-wrap: anywhere;
+}
+
+.kbot-live-wizard__banner {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--caution-border, #8a5a4f);
+  background: color-mix(in srgb, var(--coral, #cc9689) 14%, var(--surface, #14222e));
+  color: var(--caution-text, #e8c4bb);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.kbot-live-wizard__banner--ok {
+  border-color: var(--line, #22465d);
+  background: var(--panel, #18354a);
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-live-wizard__state {
+  display: grid;
+  gap: 8px;
+}
+
+.kbot-live-wizard__state-chip {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line, #22465d);
+  background: var(--panel, #18354a);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.kbot-live-wizard__state-chip strong {
+  font-weight: 650;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-live-wizard__error {
+  margin: 0;
+  color: var(--caution-text, #e8c4bb);
+  font-size: 12.5px;
+}
+
+.kbot-live-wizard__loading {
+  margin: 0;
+  color: var(--muted, #abc4d8);
+  font-size: 12.5px;
+}
+
+.kbot-live-wizard__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kbot-live-wizard__nav-btn {
+  margin: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--line, #22465d);
+  background: var(--panel, #18354a);
+  color: var(--text, #e9f0f5);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-live-wizard__nav-btn--primary {
+  border-color: transparent;
+  background: var(--sage, #b3dda8);
+  color: var(--navy, #0e1c29);
+}
+
+.kbot-live-wizard__nav-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
