@@ -529,6 +529,15 @@ describe("App wizard paper path opens the shell after Looks good", () => {
             pair: JARGON_PAIR,
           });
         }
+        if (
+          url.endsWith("/api/v1/session/csrf") ||
+          url.endsWith("/api/v1/session/bootstrap")
+        ) {
+          return Response.json({
+            schema_version: "1",
+            csrf_token: "test-csrf",
+          });
+        }
         return Response.json({ detail: "unused" }, { status: 404 });
       }),
     );

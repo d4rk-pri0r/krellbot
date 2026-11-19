@@ -21,13 +21,21 @@ export async function waitForSessionReady(page: Page): Promise<void> {
   await page.waitForFunction(() => document.querySelector('[data-testid="kbot-shell"]')?.getAttribute("data-bootstrap-done") === "1", undefined, {timeout: 20_000});
 }
 
-export const jTest = base.extend<{journey: JourneyScope}>({
-  journey: [async ({}, use, testInfo) => {
+export const jTest = base.extend<{
+  journey: JourneyScope;
+  /** `fresh` leaves the wizard on cold open. Default seeds a skip. */
+  wizardColdOpen: "dismissed" | "fresh";
+}>({
+  wizardColdOpen: ["dismissed", { option: true }],
+  journey: [async ({ wizardColdOpen }, use, testInfo) => {
     const workstation = await startJourneyWorkstation();
     const browserEnv = Object.fromEntries(Object.entries(sanitizedJourneyEnv(workstation.homeDir)).filter((entry): entry is [string, string] => entry[1] !== undefined));
     const context = await chromium.launchPersistentContext(`${workstation.homeDir}/.chromium-profile`, {headless: true, serviceWorkers: "block", acceptDownloads: true, env: browserEnv});
-    // Shell suites: seed dismissed wizard before any navigation (M26.4 gate).
-    await seedDismissedFirstRunWizard(context);
+    // Shell suites seed a skip so cold open mounts WorkstationShell.
+    // Wizard-first specs set wizardColdOpen: "fresh".
+    if (wizardColdOpen !== "fresh") {
+      await seedDismissedFirstRunWizard(context);
+    }
     const page = context.pages()[0] ?? await context.newPage();
     // Install BOTH guards while the page is still about:blank. Scenario
     // beforeEach performs the first real navigation only after fixture yield.

@@ -39,6 +39,8 @@ Rules:
 
 Navigation destinations (`?view=`) stay stable. Capabilities relocate only via progressive disclosure within a view or via **tiered nav chrome** (primary tabs vs **More** overflow) — never via a Beginner/Power mode toggle or a second app shell. See M24 and the store plan `docs/beginner-default-ux-plan.md` (KRE-187).
 
+First-run is a full-screen wizard gate, not a coach painted on the cockpit. After complete or skip, this guide applies to the mounted shell: Advanced stays collapsed and reachable, and the wizard win screen is the only celebration.
+
 **Nav tiers (M24):** Primary = Workspace (`home`), Run (`workstation` — UI label **Run**), Packs (`packs`), Strategies (`strategies`). More = Research (`research`), Strategy studio (`studio`), Operations (`operations`), Deploy (`deployments`). Pause/disarm stay on Run; Operations kill switch remains ≤2 clicks from an armed paper state (deep link from Run when needed).
 
 | Capability | Destination | Disclosure |

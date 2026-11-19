@@ -181,6 +181,67 @@ export async function skipFirstRunWizard(page: Page): Promise<void> {
 }
 
 /**
+ * Fresh-install paper path: welcome → free starter → Start paper run →
+ * honest status → win. Leaves the wizard on the win screen with the
+ * shell still unmounted. Caller clicks Open Krellbot.
+ */
+export async function walkFirstRunWizardToWin(page: Page): Promise<void> {
+  const wizard = page.getByTestId("first-run-wizard");
+  await expect(wizard).toBeVisible();
+  await expect(wizard).toHaveAttribute("data-wizard-step", "welcome");
+  await expect(page.getByTestId("kbot-shell")).toHaveCount(0);
+  await expect(page.getByTestId("kbot-nav")).toHaveCount(0);
+  await expect(page.getByTestId("app-home")).toHaveCount(0);
+
+  await page.getByTestId("first-run-wizard-primary").click();
+  await expect(wizard).toHaveAttribute("data-wizard-step", "choose");
+  await page.getByTestId("first-run-wizard-use-starter-dual-ma-crossover").click();
+  const chooseError = page.getByTestId("first-run-wizard-choose-error");
+  await expect
+    .poll(
+      async () => {
+        if ((await chooseError.count()) > 0) {
+          return `error:${await chooseError.innerText()}`;
+        }
+        return (await wizard.getAttribute("data-wizard-step")) ?? "";
+      },
+      { timeout: 20_000 },
+    )
+    .toBe("start_paper");
+
+  await page.getByTestId("first-run-wizard-primary").click();
+  const armError = page.getByTestId("first-run-wizard-arm-error");
+  await expect
+    .poll(
+      async () => {
+        if ((await armError.count()) > 0) {
+          return `error:${await armError.innerText()}`;
+        }
+        return (await wizard.getAttribute("data-wizard-step")) ?? "";
+      },
+      { timeout: 20_000 },
+    )
+    .toBe("status");
+  await expect(page.getByTestId("first-run-wizard-sentence")).toContainText(
+    /running on this computer/i,
+  );
+  await expect(page.getByTestId("first-run-wizard-status-chip")).toContainText(
+    /Live trading unavailable/i,
+  );
+  await expect(page.getByTestId("kbot-shell")).toHaveCount(0);
+
+  await page.getByTestId("first-run-wizard-primary").click();
+  await expect(wizard).toHaveAttribute("data-wizard-step", "win");
+  await expect(page.getByTestId("first-run-wizard-sentence")).toContainText(
+    /You’re set/i,
+  );
+  await expect(page.getByTestId("first-win-celebrate")).toHaveCount(0);
+  await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
+  await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
+  await expect(page.getByTestId("kbot-shell")).toHaveCount(0);
+}
+
+/**
  * Legacy helper. The hotspot coach is not mounted on the default path.
  * No-op when the overlay is absent so older specs can still call it.
  */
