@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type JSX } from "react";
+import { markActivationPaperStatusVisible } from "../onboarding/ActivationChecklist";
 import { getCsrf } from "../../session";
 import type {
   PaperArmDraftSummary,
@@ -534,6 +535,8 @@ function ArmForm({
       setErrorMessage(null);
       // Offer this balance again on the next arm attempt in this session.
       writeLastArmedBalance(balance);
+      // Activation checklist (M25.4): real confirmed arm, not a local click.
+      markActivationPaperStatusVisible(true);
       // Signal the panel: its post-arm read makes the armed controls render
       // without a manual refresh, navigation or remount.
       onArmConfirmed();

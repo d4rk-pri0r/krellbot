@@ -20,6 +20,10 @@ import {
   type ReferralClient,
 } from "../features/referral/client";
 import type { ReconnectIssue } from "../session";
+import {
+  ActivationChecklist,
+  markActivationStarterChosen,
+} from "../features/onboarding/ActivationChecklist";
 import { PaperStarterChooser } from "../features/onboarding/PaperStarterChooser";
 import type { StrategyClient } from "../features/strategies/client";
 import type { StarterCatalogue } from "../features/strategies/StarterPicker.client";
@@ -91,21 +95,6 @@ const HOME_PATH: ReadonlyArray<HomePath> = [
   },
 ];
 
-const ACTIVITY_ROWS: ReadonlyArray<{ title: string; detail: string }> = [
-  {
-    title: "1. Choose a free strategy",
-    detail: "Pick a local starter example — no exchange account required.",
-  },
-  {
-    title: "2. Start a paper run",
-    detail: "Use pretend money on this computer; live trading stays off.",
-  },
-  {
-    title: "3. Watch status / pause if needed",
-    detail: "See armed or waiting honestly; pause new buys or stop the paper run.",
-  },
-];
-
 type AppHomeProps = {
   onNavigate: (view: View) => void;
   /** True while the local session bootstrap has not settled yet. */
@@ -140,6 +129,13 @@ type AppHomeProps = {
   loadStarters?: () => Promise<StarterCatalogue>;
   /** After create+validate, hand off to Run with this revision selected. */
   onStarterReady?: (ready: { revisionId: string; label: string }) => void;
+  /**
+   * When true, hide the activation checklist so an active FirstRunCoach
+   * step owns the chrome (M25.2+). Checklist stays mountable otherwise.
+   */
+  suppressActivationChecklist?: boolean;
+  /** Incomplete checklist: reopen guided setup (coach resume). */
+  onResumeActivationSetup?: () => void;
 };
 
 export function AppHome({
@@ -156,6 +152,8 @@ export function AppHome({
   strategyClient,
   loadStarters,
   onStarterReady,
+  suppressActivationChecklist = false,
+  onResumeActivationSetup,
 }: AppHomeProps): JSX.Element {
   const [chooserOpen, setChooserOpen] = useState(false);
   const [recoverError, setRecoverError] = useState<string | null>(null);
@@ -399,6 +397,7 @@ export function AppHome({
           }}
           onReady={(ready) => {
             setChooserOpen(false);
+            markActivationStarterChosen(ready);
             if (onStarterReady) {
               onStarterReady(ready);
               return;
@@ -410,30 +409,14 @@ export function AppHome({
 
       <div className="app-home__layout">
         <div className="app-home__main">
-          <section
-            className="app-home__activity"
-            aria-labelledby="app-home-works-title"
-            role="region"
-            data-testid="app-home-works"
-          >
-            <h2 className="app-home__section-title" id="app-home-works-title">
-              Your next steps
-            </h2>
-            <p className="app-home__section-lede">
-              One path: choose a free strategy, start a paper run, and watch
-              status on this machine. Nothing here places real orders.
-            </p>
-            <ul className="app-home__activity-list">
-              {ACTIVITY_ROWS.map((row) => (
-                <li key={row.title} className="app-home__activity-row">
-                  <div className="app-home__activity-copy">
-                    <p className="app-home__activity-title">{row.title}</p>
-                    <p className="app-home__activity-detail">{row.detail}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+          {suppressActivationChecklist ? null : (
+            <div className="app-home__activity" data-testid="app-home-works">
+              <ActivationChecklist
+                onResumeSetup={onResumeActivationSetup}
+                lede="One path: choose a free strategy, start a paper run, and watch status on this machine. Nothing here places real orders."
+              />
+            </div>
+          )}
 
           <DisclosureSection
             title="All areas"

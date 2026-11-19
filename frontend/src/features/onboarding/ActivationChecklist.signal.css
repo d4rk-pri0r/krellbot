@@ -1,0 +1,131 @@
+/*
+ * Activation checklist — Signal (KRELL-SIGNAL-20261010).
+ * Compact ≤3 items; check motion respects prefers-reduced-motion.
+ */
+
+.kbot-activation-checklist {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-activation-checklist__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-activation-checklist__lede {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted, #abc4d8);
+  max-width: 48ch;
+}
+
+.kbot-activation-checklist__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+
+.kbot-activation-checklist__item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 7px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 65%, transparent);
+}
+
+.kbot-activation-checklist__item:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.kbot-activation-checklist__item:first-child {
+  padding-top: 2px;
+}
+
+.kbot-activation-checklist__mark {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 4px;
+  border: 1px solid var(--line, #22465d);
+  background: color-mix(in srgb, var(--navy, #0e1c29) 40%, var(--surface, #14222e));
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.kbot-activation-checklist__item[data-done="1"] .kbot-activation-checklist__mark {
+  border-color: color-mix(in srgb, var(--seafoam, #a8d8d1) 55%, var(--line, #22465d));
+  background: color-mix(in srgb, var(--seafoam, #a8d8d1) 22%, var(--surface, #14222e));
+  color: var(--seafoam, #a8d8d1);
+  animation: kbot-activation-check-enter var(--motion-duration-enter, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.kbot-activation-checklist__mark-glyph {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.kbot-activation-checklist__label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-activation-checklist__item[data-done="1"] .kbot-activation-checklist__label {
+  color: var(--muted, #abc4d8);
+  font-weight: 600;
+}
+
+.kbot-activation-checklist__resume {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--seafoam, #a8d8d1);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  justify-self: start;
+  min-height: 36px;
+  padding: 4px 0;
+}
+
+.kbot-activation-checklist__resume:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@keyframes kbot-activation-check-enter {
+  from {
+    opacity: 0.4;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-activation-checklist__item[data-done="1"] .kbot-activation-checklist__mark {
+    animation: none;
+  }
+}
