@@ -10,9 +10,10 @@ with `krellbot`, then
 Building from source is only for working on the engine; see
 [Working on the engine](../README.md#working-on-the-engine).
 
-On a fresh install the workstation’s first-run path aims at **interactive
-paper-arm activation**: pick a free starter, start a paper run, and see
-honest status on Run (guided coach in M25; not a reading list).
+On a fresh install the workstation’s first-run path aims at a
+**full-screen Krell wizard**: pick a free starter, start a paper run, and
+see honest status — with almost no text and no cockpit chrome until setup
+is done (M26; supersedes the M25 coach overlay; not a reading list).
 
 Paper mode needs neither an exchange account nor a key or paid license. Skip
 the exchange-key instructions below for paper.
