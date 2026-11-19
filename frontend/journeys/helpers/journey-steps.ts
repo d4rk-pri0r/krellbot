@@ -81,11 +81,16 @@ export const DISMISSED_FIRST_RUN_WIZARD_JSON = JSON.stringify({
   selectedStarterId: null,
 });
 
+/**
+ * Playwright Page/BrowserContext both expose addInitScript; the return type
+ * is Promise<Disposable> (not void), so keep the host structural and loose
+ * on the Promise result.
+ */
 type InitScriptHost = {
   addInitScript: (
     script: (arg: { key: string; value: string }) => void,
     arg: { key: string; value: string },
-  ) => Promise<void>;
+  ) => Promise<unknown>;
 };
 
 /**
