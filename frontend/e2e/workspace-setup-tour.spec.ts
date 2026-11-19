@@ -249,7 +249,7 @@ test("skipping the wizard still opens the tour and one click starts a paper simu
     "run",
   );
   await expect(page.getByTestId("workspace-setup-tour-next")).toHaveText(
-    "Start paper simulation",
+    "Start paper run",
   );
   await expect(page.getByTestId("workspace-setup-tour")).toHaveAttribute(
     "data-anchor",

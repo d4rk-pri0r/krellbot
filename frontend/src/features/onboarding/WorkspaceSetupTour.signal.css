@@ -95,8 +95,8 @@
 
 .kbot-setup-tour__actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-wrap: nowrap;
+  gap: 6px;
   align-items: center;
   margin-top: 4px;
 }
@@ -106,7 +106,8 @@
 .kbot-setup-tour__skip {
   box-sizing: border-box;
   min-height: 44px;
-  padding: 8px 14px;
+  padding: 8px 10px;
+  white-space: nowrap;
   border-radius: var(--radius-control, 7px);
   font: inherit;
   font-size: 13px;

@@ -1,13 +1,14 @@
 /**
  * Viewport placement for the setup-tour callout (KRELL-SIGNAL-20261010).
  *
- * The card stays fully inside the viewport and off the target. A side
- * that would have to be clamped on top of the control is discarded in
- * favor of a corner that leaves the control readable.
+ * The card sits 20px off the target — beside a right-rail field, under a
+ * wide control, or to the right of a left-side card. It is never parked
+ * at the far edge of the viewport, which stretched the arrow across the
+ * page. A corner is used only when no adjacent side fits.
  */
 
 export const SETUP_TOUR_MARGIN = 12;
-const TARGET_GAP = 18;
+const TARGET_GAP = 20;
 
 export type Box = {
   top: number;
@@ -105,18 +106,28 @@ function usableTarget(target: Box | null): target is Box {
   return target !== null && target.width > 2 && target.height > 2;
 }
 
+function hitsAny(box: Box, regions: Box[], pad: number): boolean {
+  return regions.some(
+    (region) =>
+      region.width > 2 &&
+      region.height > 2 &&
+      intersects(box, expand(region, pad)),
+  );
+}
+
 /**
- * Place the callout beside the target when that side fits, otherwise
- * in the free corner. Card and arrow coordinates stay inside the viewport.
+ * Place the callout snug against the target. `blocked` sides are rejected
+ * (nav, the paper CTA, the sticky header). `avoid` only breaks ties.
  */
 export function placeSetupTourCallout(input: {
   viewport: Viewport;
   target: Box | null;
   card: { width: number; height: number };
+  blocked?: Box[];
   avoid?: Box[];
 }): SetupTourPlacement {
   const margin = SETUP_TOUR_MARGIN;
-  const { viewport, avoid = [] } = input;
+  const { viewport, blocked = [], avoid = [] } = input;
   const cardW = Math.min(
     input.card.width,
     Math.max(160, viewport.width - margin * 2),
@@ -144,71 +155,81 @@ export function placeSetupTourCallout(input: {
         height: target.height + 8,
       }
     : null;
-  const guarded = target ? expand(target, 8) : null;
-
   const bottomCenter = clampCard(
     viewport.height - cardH - margin,
     (viewport.width - cardW) / 2,
   );
-  if (!target || !guarded) {
+  if (!target) {
     return { card: cardBox(bottomCenter), spotlight: null, arrow: null };
   }
 
   const alignedLeft = target.left + target.width / 2 - cardW / 2;
   const alignedTop = target.top + target.height / 2 - cardH / 2;
-  const raw: Array<{ top: number; left: number }> = [
+  const adjacent: Array<{ top: number; left: number }> = [
     { top: target.top + target.height + TARGET_GAP, left: alignedLeft },
     { top: target.top - TARGET_GAP - cardH, left: alignedLeft },
     { top: alignedTop, left: target.left + target.width + TARGET_GAP },
     { top: alignedTop, left: target.left - TARGET_GAP - cardW },
-    { top: viewport.height - cardH - margin, left: margin },
-    {
-      top: viewport.height - cardH - margin,
-      left: viewport.width - cardW - margin,
-    },
-    { top: viewport.height - cardH - margin, left: alignedLeft },
-    { top: margin, left: margin },
-    { top: margin, left: viewport.width - cardW - margin },
-    { top: margin, left: alignedLeft },
   ];
-  for (const block of avoid) {
-    raw.push({
-      top: block.top - TARGET_GAP - cardH,
-      left: alignedLeft,
-    });
-    raw.push({
-      top: block.top - TARGET_GAP - cardH,
-      left: (viewport.width - cardW) / 2,
-    });
-  }
 
-  const targetCenter = center(target);
-  let best: Box | null = null;
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (const candidate of raw) {
-    const box = cardBox(clampCard(candidate.top, candidate.left));
-    let hits = 0;
-    if (intersects(box, guarded)) {
-      hits += 5;
-    }
-    for (const block of avoid) {
-      if (block.width > 2 && block.height > 2 && intersects(box, expand(block, 10))) {
-        hits += 1;
+  const tryPlace = (raw: { top: number; left: number }): Box | null => {
+    let pos = clampCard(raw.top, raw.left);
+    let box = cardBox(pos);
+    for (let pass = 0; pass < 3; pass += 1) {
+      const block = blocked.find(
+        (region) =>
+          region.width > 2 &&
+          region.height > 2 &&
+          intersects(box, expand(region, 4)),
+      );
+      if (!block) {
+        break;
       }
+      // Only slide down off a bar that sits above the target (the sticky
+      // header). A control below the target, such as Open paper run,
+      // rejects this side instead of lengthening the arrow through it.
+      const blockMid = block.top + block.height / 2;
+      const belowBlock = block.top + block.height + 8;
+      if (
+        blockMid < target.top &&
+        belowBlock + cardH <= viewport.height - margin &&
+        belowBlock > pos.top
+      ) {
+        pos = clampCard(belowBlock, pos.left);
+        box = cardBox(pos);
+        continue;
+      }
+      return null;
     }
-    const cardCenter = center(box);
-    const distance = Math.hypot(
-      cardCenter.x - targetCenter.x,
-      cardCenter.y - targetCenter.y,
-    );
-    const score = hits * 5000 + distance;
-    if (score < bestScore) {
-      best = box;
-      bestScore = score;
+    if (intersects(box, expand(target, 6))) {
+      return null;
     }
-  }
+    if (hitsAny(box, blocked, 4)) {
+      return null;
+    }
+    if (
+      box.top < margin - 1 ||
+      box.left < margin - 1 ||
+      box.top + box.height > viewport.height - margin + 1 ||
+      box.left + box.width > viewport.width - margin + 1
+    ) {
+      return null;
+    }
+    return box;
+  };
 
-  const placed = best ?? cardBox(bottomCenter);
+  const narrow = viewport.width <= 720;
+  const wideTarget = target.width >= viewport.width * 0.42;
+  const onRight = target.left + target.width / 2 >= viewport.width * 0.62;
+  const order = narrow || wideTarget ? [0, 1, 2, 3] : onRight ? [3, 0, 1, 2] : [2, 0, 3, 1];
+  const feasible = order
+    .map((index) => tryPlace(adjacent[index]!))
+    .filter((box): box is Box => box !== null);
+  const preferClean = !narrow && !wideTarget;
+  const clean = preferClean
+    ? feasible.find((box) => !hitsAny(box, avoid, 8))
+    : undefined;
+  const placed = clean ?? feasible[0] ?? cardBox(bottomCenter);
   const rawArrow = arrowBetween(placed, target);
   const limit = (value: number, max: number): number =>
     clamp(value, 2, Math.max(2, max - 2));

@@ -135,33 +135,40 @@ function findAnchor(stepId: WorkspaceSetupTourStepId): {
   return null;
 }
 
-function avoidBoxes(anchor: HTMLElement | null): Box[] {
+function collectBoxes(anchor: HTMLElement | null, selectors: readonly string[]): Box[] {
   const boxes: Box[] = [];
   const seen = new Set<HTMLElement>();
-  const add = (element: Element | null): void => {
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
     if (!(element instanceof HTMLElement) || element === anchor || seen.has(element)) {
-      return;
+      continue;
     }
     seen.add(element);
     const box = visibleBox(element);
     if (box) {
       boxes.push(box);
     }
-  };
-  for (const id of [
-    "kbot-nav",
-    "app-home-cta-paper",
-    "app-home-availability",
-    "kbot-shell-palette-hint",
-    "keys-store-kraken",
-    "paper-arm-submit",
-    "first-win-celebrate",
-  ]) {
-    add(document.querySelector(`[data-testid="${id}"]`));
   }
-  add(document.querySelector(".kbot-paper-status__actions"));
-  add(document.querySelector(".kbot-shell__header"));
   return boxes;
+}
+
+function blockedBoxes(anchor: HTMLElement | null): Box[] {
+  return collectBoxes(anchor, [
+    '[data-testid="kbot-nav"]',
+    '[data-testid="app-home-cta-paper"]',
+    '[data-testid="app-home-availability"]',
+    ".kbot-shell__header",
+  ]);
+}
+
+function avoidBoxes(anchor: HTMLElement | null): Box[] {
+  return collectBoxes(anchor, [
+    '[data-testid="kbot-shell-palette-hint"]',
+    '[data-testid="keys-store-kraken"]',
+    '[data-testid="paper-arm-submit"]',
+    '[data-testid="first-win-celebrate"]',
+    ".kbot-paper-status__actions",
+  ]);
 }
 
 function viewportSize(): { width: number; height: number } {
@@ -260,26 +267,31 @@ export function WorkspaceSetupTour({
         const headerBottom =
           document.querySelector(".kbot-shell__header")?.getBoundingClientRect().bottom ??
           72;
-        const reserve = Math.max(
-          200,
-          (cardRef.current?.getBoundingClientRect().height ?? 200) + 24,
-        );
+        // Room for the sticky header plus the heading that sits above the
+        // control (for example "Start your paper run" over the empty line).
+        const clearance = Math.ceil(headerBottom + 72);
         const scrollKey = `${stepId}:${anchor.id}`;
         const rect = anchor.element.getBoundingClientRect();
-        const inFreeBand =
-          rect.top >= headerBottom + 8 &&
+        const inBand =
+          rect.top >= clearance - 4 &&
           rect.bottom <= viewport.height - 16 &&
           rect.left >= -1 &&
           rect.right <= viewport.width + 1;
-        anchor.element.style.scrollMarginTop = `${Math.ceil(headerBottom + 12)}px`;
-        anchor.element.style.scrollMarginBottom = `${Math.ceil(reserve)}px`;
+        anchor.element.style.scrollMarginTop = `${clearance}px`;
+        anchor.element.style.scrollMarginBottom = "24px";
         const retryKey = `${scrollKey}:retried`;
-        if (scrolledFor.current !== scrollKey && scrolledFor.current !== retryKey) {
-          anchor.element.scrollIntoView({ block: "start", inline: "nearest" });
-          scrolledFor.current = scrollKey;
-        } else if (!inFreeBand && scrolledFor.current === scrollKey) {
-          anchor.element.scrollIntoView({ block: "start", inline: "nearest" });
-          scrolledFor.current = retryKey;
+        const attempts = scrolledFor.current;
+        if (!inBand && attempts !== retryKey) {
+          anchor.element.scrollIntoView({
+            block: "start",
+            inline: "nearest",
+            behavior: "auto",
+          });
+          scrolledFor.current = attempts === scrollKey ? retryKey : scrollKey;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(measure);
+          });
+          return;
         }
       }
       const fresh = findAnchor(stepId);
@@ -289,6 +301,7 @@ export function WorkspaceSetupTour({
         viewport,
         target: fresh?.box ?? null,
         card: { width, height },
+        blocked: blockedBoxes(fresh?.element ?? null),
         avoid: avoidBoxes(fresh?.element ?? null),
       });
       const nextAnchor = fresh?.id ?? null;
@@ -344,7 +357,7 @@ export function WorkspaceSetupTour({
     : showDone
       ? "Done"
       : onLast
-        ? "Start paper simulation"
+        ? "Start paper run"
         : "Next";
 
   function handlePrimary(): void {

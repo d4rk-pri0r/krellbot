@@ -132,32 +132,38 @@ describe("setup tour callout stays inside the viewport and off protected control
     const overlapsNav =
       card.top < 56 && card.left < 920 && card.left + card.width > 280;
     expect(overlapsNav).toBe(false);
-    expect(card.top).toBeGreaterThanOrEqual(168 + 64 + 8);
+    expect(card.left).toBeGreaterThanOrEqual(48 + 280 + 12);
+    expect(card.top).toBeLessThan(168 + 64);
+    expect(card.top + card.height).toBeGreaterThan(168);
   });
 
-  it("sits above a bottom toast without covering the paper controls", () => {
+  it("keeps a wide run target's card directly underneath", () => {
     const viewport = { width: 1440, height: 900 };
     const placed = placeSetupTourCallout({
       viewport,
-      target: { top: 120, left: 40, width: 900, height: 48 },
-      card: { width: 360, height: 220 },
-      avoid: [
-        { top: 280, left: 40, width: 900, height: 80 },
-        { top: 700, left: 510, width: 420, height: 176 },
-      ],
+      target: { top: 96, left: 40, width: 980, height: 52 },
+      card: { width: 360, height: 210 },
+      blocked: [{ top: 0, left: 0, width: 1440, height: 64 }],
     });
     expect(inside(placed.card, viewport)).toBe(true);
-    const card = placed.card;
-    const overlapsButtons =
-      card.top < 360 && card.top + card.height > 280 && card.left < 940;
-    const overlapsToast =
-      card.top < 876 &&
-      card.top + card.height > 700 &&
-      card.left < 930 &&
-      card.left + card.width > 510;
-    expect(overlapsButtons).toBe(false);
-    expect(overlapsToast).toBe(false);
+    expect(placed.card.top).toBeGreaterThanOrEqual(96 + 52 + 16);
+    expect(placed.card.top).toBeLessThanOrEqual(96 + 52 + 24);
+    expect(placed.card.top).toBeLessThan(400);
     expect(placed.arrow).not.toBeNull();
+  });
+
+  it("places the card to the left of a right-rail key field", () => {
+    const viewport = { width: 1440, height: 900 };
+    const placed = placeSetupTourCallout({
+      viewport,
+      target: { top: 88, left: 1080, width: 300, height: 40 },
+      card: { width: 360, height: 200 },
+      blocked: [{ top: 0, left: 0, width: 1440, height: 64 }],
+    });
+    expect(inside(placed.card, viewport)).toBe(true);
+    expect(placed.card.left + placed.card.width).toBeLessThanOrEqual(1080 - 12);
+    expect(placed.card.top + placed.card.height).toBeGreaterThan(88);
+    expect(Math.abs(placed.arrow!.y2 - placed.arrow!.y1)).toBeLessThan(180);
   });
 
   it("keeps a phone card inside 390×844 and clear of the stacked paper CTA", () => {
@@ -166,7 +172,7 @@ describe("setup tour callout stays inside the viewport and off protected control
       viewport,
       target: { top: 210, left: 16, width: 340, height: 72 },
       card: { width: 360, height: 240 },
-      avoid: [
+      blocked: [
         { top: 0, left: 0, width: 390, height: 140 },
         { top: 320, left: 16, width: 340, height: 48 },
       ],
@@ -263,7 +269,7 @@ describe("setup tour callout steps", () => {
 
     const start = renderTour({ stepId: "run", paperArmed: false });
     expect(screen.getByTestId("workspace-setup-tour-next").textContent).toBe(
-      "Start paper simulation",
+      "Start paper run",
     );
     fireEvent.click(screen.getByTestId("workspace-setup-tour-next"));
     expect(start.onStartPaper).toHaveBeenCalledTimes(1);
