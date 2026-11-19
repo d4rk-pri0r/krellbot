@@ -10,7 +10,7 @@
  * No CSS mocks, no backend mocks: fresh guarded workstation per run.
  */
 import { test, expect } from "./journey-harness/journey-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import { clickNav, skipFirstRunCoach } from "../journeys/helpers/journey-steps";
 
 const VIEWPORT = { width: 1440, height: 900 } as const;
 
@@ -131,29 +131,50 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     timeout: 20_000,
   });
   await settle(page);
+  // Clear coach overlay before Advanced toggles (demotion stays).
+  await skipFirstRunCoach(page);
+  await settle(page);
 
   const workstationFirst = page.getByTestId("paper-workstation-first-viewport");
   await expect(workstationFirst).toBeVisible();
   await expect(page.getByTestId("paper-status-next-action")).toBeVisible();
   await expect(page.getByTestId("paper-status-empty")).toBeVisible();
-  await expect(page.getByTestId("paper-chart-honest-empty")).toBeVisible();
+  // M25.6: first-session empty is a single arm prompt; chart is Advanced.
+  await expect(page.getByTestId("paper-first-session-arm")).toBeVisible();
+  await expect(page.getByTestId("paper-status-empty")).toContainText(
+    /Start a paper run with the strategy you picked/i,
+  );
+  await expect(page.getByTestId("paper-status-next-action")).toContainText(
+    /start your paper run/i,
+  );
+  await expect(page.getByTestId("paper-first-session-chart-disclosure")).toHaveAttribute(
+    "data-open",
+    "0",
+  );
+  await expect(
+    page.getByTestId("paper-first-session-chart-disclosure-toggle"),
+  ).toHaveAttribute("aria-expanded", "false");
   // Fresh install: no fabricated chart series.
   await expect(page.getByTestId("paper-pnl-chart-svg")).toHaveCount(0);
   await expect(page.getByTestId("paper-pnl-position-chart")).toHaveCount(0);
 
-  // Density contract pins status + next action + honest empty above the
-  // fold (ArmForm may continue below; tall empty scroll is the failure).
+  // Density contract pins next action + arm prompt above the fold.
   const nextAction = await boxFor(page, "paper-status-next-action");
-  const honestEmpty = await boxFor(page, "paper-chart-honest-empty");
+  const armPrompt = await boxFor(page, "paper-first-session-arm");
   expect(
     nextAction.bottom,
     "next action stays above the fold",
   ).toBeLessThanOrEqual(MAX_FIRST_VIEWPORT_BOTTOM_PX);
   expect(
-    honestEmpty.bottom,
-    "honest empty chart stays above the fold",
+    armPrompt.top,
+    "first-session arm prompt begins in the first viewport",
   ).toBeLessThanOrEqual(MAX_FIRST_VIEWPORT_BOTTOM_PX);
-  await expect(workstationFirst).toContainText(/No journal series yet/i);
+  // Expand Advanced chart only to prove honesty copy still exists (demoted).
+  await page.getByTestId("paper-first-session-chart-disclosure-toggle").click();
+  await expect(page.getByTestId("paper-chart-honest-empty")).toBeVisible();
+  await expect(page.getByTestId("paper-chart-honest-empty")).toContainText(
+    /No journal series yet/i,
+  );
 
   const portfolioToggle = page.getByTestId("paper-portfolio-disclosure-toggle");
   await expect(portfolioToggle).toBeVisible();
@@ -162,6 +183,10 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
   const armedToggle = page.getByTestId("paper-armed-records-disclosure-toggle");
   await expect(armedToggle).toBeVisible();
   await expect(armedToggle).toHaveAttribute("aria-expanded", "false");
+
+  const rehearsalToggle = page.getByTestId("paper-rehearsal-disclosure-toggle");
+  await expect(rehearsalToggle).toBeVisible();
+  await expect(rehearsalToggle).toHaveAttribute("aria-expanded", "false");
 
   // Power destinations remain reachable via More (no beginnerMode flag).
   await clickNav(page, "Strategy studio");

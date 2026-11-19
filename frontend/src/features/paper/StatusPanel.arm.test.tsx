@@ -198,6 +198,26 @@ describe("StatusPanel paper arm tracer (primary user-action path)", () => {
   });
 });
 
+
+async function openFirstSessionRehearsal(): Promise<void> {
+  const disclosure = await screen.findByTestId("paper-rehearsal-disclosure");
+  if (disclosure.getAttribute("data-open") !== "1") {
+    fireEvent.click(screen.getByTestId("paper-rehearsal-disclosure-toggle"));
+  }
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("paper-rehearsal-disclosure").getAttribute("data-open"),
+    ).toBe("1");
+  });
+}
+
+function openFirstSessionRehearsalSync(): void {
+  const disclosure = screen.getByTestId("paper-rehearsal-disclosure");
+  if (disclosure.getAttribute("data-open") !== "1") {
+    fireEvent.click(screen.getByTestId("paper-rehearsal-disclosure-toggle"));
+  }
+}
+
 describe("StatusPanel-mounted Synthetic paper rehearsal tracer", () => {
   it("starts, pauses, resumes, exits and stops through the frozen command set with status readback", async () => {
     // A stateful fake backend: GET reflects exactly what the last
@@ -241,6 +261,8 @@ describe("StatusPanel-mounted Synthetic paper rehearsal tracer", () => {
     expect(panel.textContent ?? "").toMatch(/simulated/i);
     expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
 
+    await openFirstSessionRehearsal();
+
     fireEvent.click(screen.getByRole("button", { name: /start rehearsal/i }));
     await waitFor(() => {
       expect(screen.getByTestId("rehearsal-panel").getAttribute("data-rehearsal-status")).toBe("running");
@@ -271,6 +293,7 @@ describe("StatusPanel-mounted Synthetic paper rehearsal tracer", () => {
     });
 
     // A fresh start after exit is a new user action.
+    await openFirstSessionRehearsal();
     fireEvent.click(screen.getByRole("button", { name: /start rehearsal/i }));
     await waitFor(() => {
       expect(rehearsal.start).toHaveBeenCalledTimes(2);
@@ -298,6 +321,8 @@ describe("StatusPanel-mounted Synthetic paper rehearsal tracer", () => {
     const client = makeClient({ createRehearsalClient: () => rehearsal });
     render(<StatusPanel client={client} />);
     await screen.findByTestId("rehearsal-panel");
+
+    await openFirstSessionRehearsal();
 
     fireEvent.click(screen.getByRole("button", { name: /start rehearsal/i }));
     await waitFor(() => {
@@ -364,6 +389,7 @@ describe("StatusPanel-mounted Synthetic paper rehearsal tracer", () => {
     const client = makeClient({ createRehearsalClient: () => rehearsal });
     render(<StatusPanel client={client} />);
     await screen.findByTestId("rehearsal-panel");
+    await openFirstSessionRehearsal();
     fireEvent.click(screen.getByRole("button", { name: /start rehearsal/i }));
     const error = await screen.findByTestId("rehearsal-error");
     expect(error.textContent).toMatch(/rehearsal already running/);
@@ -413,6 +439,9 @@ describe("StatusPanel-mounted Synthetic paper rehearsal tracer", () => {
       const panel = screen.getByTestId("rehearsal-panel");
       expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
 
+      // Fake timers: open Advanced sync (waitFor would hang).
+      openFirstSessionRehearsalSync();
+
       fireEvent.click(screen.getByRole("button", { name: /start rehearsal/i }));
       await settle(1);
       expect(panel.getAttribute("data-rehearsal-status")).toBe("running");
@@ -445,6 +474,7 @@ describe("StatusPanel-mounted Synthetic paper rehearsal tracer", () => {
       disarm: vi.fn(),
     };
     render(<StatusPanel client={client} />);
+    await openFirstSessionRehearsal();
     expect(
       await screen.findByTestId("rehearsal-unavailable", {}, { timeout: 2000 }),
     ).toBeDefined();

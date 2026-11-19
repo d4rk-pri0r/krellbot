@@ -1,5 +1,6 @@
 import { test, expect } from "./journey-harness/journey-harness";
 import { clickNav } from "../journeys/helpers/journey-steps";
+import { expandRehearsalDisclosure } from "../journeys/helpers/paper-steps";
 
 for (const width of [1440, 390]) {
   test(`rehearsal refresh recovers from a stalled read at width ${width}`, async ({ journey }) => {
@@ -8,6 +9,8 @@ for (const width of [1440, 390]) {
     await page.goto(journey.workstation.baseURL);
     await journey.waitForSessionReady(page);
     await clickNav(page, "Workstation");
+    // M25.6 demotes rehearsal behind Advanced until armed; expand to exercise refresh.
+    await expandRehearsalDisclosure(page);
     await expect(page.getByTestId("rehearsal-state-chip")).toHaveText("idle");
     let release!: () => void;
     const stalled = new Promise<void>(resolve => { release = resolve; });

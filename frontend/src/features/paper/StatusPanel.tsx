@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type JSX } from "react";
+import { DisclosureSection } from "../../components/disclosure/DisclosureSection";
 import { markActivationPaperStatusVisible } from "../onboarding/ActivationChecklist";
 import { getCsrf } from "../../session";
 import type {
@@ -38,6 +39,8 @@ export type StatusPanelProps = {
   preferredRevisionId?: string | null;
   /** Fired after a backend-confirmed paper arm (first-run coach wiring). */
   onPaperArmed?: () => void;
+  /** Reports confirmed armed/unarmed so the shell can demote Run chrome. */
+  onArmedChange?: (armed: boolean) => void;
 };
 
 type EntriesSentence = "Entries active" | "Entries paused";
@@ -489,7 +492,7 @@ function ArmForm({
         className="kbot-paper-status__arm"
         data-testid="paper-arm-unavailable"
       >
-        <h3 className="kbot-paper-status__arm-title">Start a paper run</h3>
+        <h3 className="kbot-paper-status__arm-title">Start your paper run</h3>
         <p className="kbot-paper-status__empty">
           Start paper run controls unavailable
         </p>
@@ -550,7 +553,7 @@ function ArmForm({
 
   return (
     <div className="kbot-paper-status__arm" data-testid="paper-arm-form">
-      <h3 className="kbot-paper-status__arm-title">Start a paper run</h3>
+      <h3 className="kbot-paper-status__arm-title">Start your paper run</h3>
       {loadError !== null && drafts === null ? (
         <>
           <p
@@ -724,6 +727,7 @@ export function StatusPanel({
   select = null,
   preferredRevisionId = null,
   onPaperArmed,
+  onArmedChange,
 }: StatusPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   // Synchronous guard so a rapid double click cannot dispatch a duplicate
@@ -820,6 +824,13 @@ export function StatusPanel({
     setArmEpoch((current) => current + 1);
     onPaperArmed?.();
   }, [onPaperArmed]);
+
+  useEffect(() => {
+    if (state.status === null) {
+      return;
+    }
+    onArmedChange?.(state.status.armed === true);
+  }, [state.status, onArmedChange]);
 
 
   // The owned position is a separate read from the status: the status body
@@ -1067,7 +1078,7 @@ export function StatusPanel({
         ? "Next: retry paper status"
         : state.status?.armed
           ? "Next: controls unavailable"
-          : "Next: arm a paper pack";
+          : "Next: start your paper run";
 
   return (
     <section
@@ -1321,37 +1332,63 @@ export function StatusPanel({
             Checking paper status…
           </p>
         ) : (
-          // Confirmed unarmed: offer the arm form + honest empty chart
-          // (no fabricated series when no journal exists).
-          <>
-            <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
-              No pack armed
-            </p>
-            <div
-              className="kbot-paper-chart kbot-paper-chart--honest-empty"
-              data-testid="paper-chart-honest-empty"
-              aria-label="Paper chart empty"
+          // Confirmed unarmed (first session): one job panel — prompt + arm.
+          // Empty chart / rehearsal stay demoted until armed (M25.6).
+          <div
+            className="kbot-paper-status__first-session"
+            data-testid="paper-first-session-arm"
+          >
+            <p
+              className="kbot-paper-status__prompt"
+              data-testid="paper-status-empty"
             >
-              <p className="kbot-paper-chart__empty">
-                No journal series yet. Start a paper run to plot P&L from
-                recorded fills — never fabricated.
-              </p>
-            </div>
+              Start a paper run with the strategy you picked
+            </p>
             <ArmForm
               client={client}
               onArmConfirmed={handleArmConfirmed}
               preferredRevisionId={preferredRevisionId}
             />
-          </>
+            <DisclosureSection
+              title="Paper chart"
+              summary="Empty until a paper run records fills — never fabricated"
+              badge="Advanced"
+              badgeTone="advanced"
+              defaultOpen={false}
+              storageKey="krellbot.disclosure.paper.first-session-chart"
+              data-testid="paper-first-session-chart-disclosure"
+            >
+              <div
+                className="kbot-paper-chart kbot-paper-chart--honest-empty"
+                data-testid="paper-chart-honest-empty"
+                aria-label="Paper chart empty"
+              >
+                <p className="kbot-paper-chart__empty">
+                  No journal series yet. Start a paper run to plot P&L from
+                  recorded fills — never fabricated.
+                </p>
+              </div>
+            </DisclosureSection>
+          </div>
         )}
         </div>
-        {/* The isolated synthetic rehearsal surface is mounted exactly once
-            outside the armed/unarmed paper branch: its own client, commands
-            and disclosure stay accessible whatever the ordinary paper pack
-            state is, and it never remounts on a paper state transition.
-            Kept visible (not Advanced): paper/test-run journeys treat
-            Start/Pause/Stop as primary controls. */}
-        <RehearsalPanel client={rehearsalClient} />
+        {/* Rehearsal mounts once; Advanced + collapsed until armed so the
+            first session stays a single arm prompt (M25.6). forceOpen when
+            armed keeps controls reachable without remounting. */}
+        <DisclosureSection
+          title="Synthetic paper rehearsal"
+          summary="Fixture walkthrough — not market data"
+          badge={state.status?.armed === true ? undefined : "Advanced"}
+          badgeTone={
+            state.status?.armed === true ? "default" : "advanced"
+          }
+          defaultOpen={false}
+          forceOpen={state.status?.armed === true}
+          storageKey="krellbot.disclosure.paper.rehearsal"
+          data-testid="paper-rehearsal-disclosure"
+        >
+          <RehearsalPanel client={rehearsalClient} />
+        </DisclosureSection>
       </div>
     </section>
   );

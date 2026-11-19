@@ -2,7 +2,13 @@ import {expect, test, type Page} from "@playwright/test";
 import {readFileSync, writeFileSync, readdirSync, statSync, existsSync} from "node:fs";
 import {join} from "node:path";
 import {runGuardedCli, type JourneyScope} from "../../e2e/journey-harness/journey-harness";
-import {clickNav, saveJson, validateRevision, SMA_CROSS_FIXTURE_JSON} from "./journey-steps";
+import {
+  clickNav,
+  saveJson,
+  skipFirstRunCoach,
+  validateRevision,
+  SMA_CROSS_FIXTURE_JSON,
+} from "./journey-steps";
 
 export async function armPaper(page: Page, balance = "1000") {
   await clickNav(page, "Strategies");
@@ -47,6 +53,25 @@ export async function expandArmedRecords(page: Page): Promise<void> {
   }
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
+
+/**
+ * M25.6 demotes synthetic rehearsal behind Advanced until a paper pack is
+ * armed (forceOpen) or the operator expands it. Journeys that need Start
+ * rehearsal on a fresh install must expand first — do not weaken demotion.
+ */
+export async function expandRehearsalDisclosure(page: Page): Promise<void> {
+  // Coach card can sit over Advanced toggles; skip without undoing demotion.
+  await skipFirstRunCoach(page);
+  const disclosure = page.getByTestId("paper-rehearsal-disclosure");
+  await expect(disclosure).toBeVisible();
+  const toggle = page.getByTestId("paper-rehearsal-disclosure-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("rehearsal-command-start")).toBeVisible();
+}
+
 export function quantity(text: string): number {
   const found = text.match(/(?:Position\s*)?(-?\d+(?:\.\d+)?)/i);
   if (!found) throw new Error(`No quantity in ${JSON.stringify(text)}`);
@@ -54,6 +79,7 @@ export function quantity(text: string): number {
 }
 export async function holdRehearsal(page: Page) {
   await clickNav(page, "Workstation");
+  await expandRehearsalDisclosure(page);
   await expect(page.getByTestId("rehearsal-label")).toContainText(/simulated data, not market/i);
   await page.getByTestId("rehearsal-command-start").click();
   await expect.poll(async () => {
