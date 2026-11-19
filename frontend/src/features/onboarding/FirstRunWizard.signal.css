@@ -1,0 +1,194 @@
+/*
+ * Full-screen FirstRunWizard — Signal (KRELL-SIGNAL-20261010).
+ * Navy canvas; sage primary CTA only; Manrope; honor prefers-reduced-motion.
+ * No neon effects, particles, or cockpit chrome.
+ */
+
+.kbot-first-run-wizard {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px 20px 28px;
+  box-sizing: border-box;
+  background: var(--navy, #0e1c29);
+  color: var(--text, #e9f0f5);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-first-run-wizard__chrome {
+  width: min(100%, 520px);
+  display: grid;
+  gap: 20px;
+  justify-items: center;
+  text-align: center;
+}
+
+.kbot-first-run-wizard__progress {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.kbot-first-run-wizard__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--line, #22465d) 80%, transparent);
+}
+
+.kbot-first-run-wizard__dot--on {
+  background: var(--seafoam, #a8d8d1);
+}
+
+.kbot-first-run-wizard__stage {
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  width: 100%;
+  animation: kbot-first-run-wizard-enter var(--motion-duration-enter, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.kbot-first-run-wizard--win .kbot-first-run-wizard__stage {
+  animation-name: kbot-first-run-wizard-win-enter;
+}
+
+.kbot-first-run-wizard__visual {
+  display: block;
+  width: min(72vw, 280px);
+  height: auto;
+  max-height: 42vh;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.kbot-first-run-wizard__sentence {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-first-run-wizard__primary {
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-control, 7px);
+  padding: 12px 22px;
+  min-height: 44px;
+  min-width: 160px;
+  background: var(--action-primary-bg, var(--sage, #b3dda8));
+  color: var(--action-primary-text, #172a1d);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform var(--motion-duration-fast, 120ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.kbot-first-run-wizard__primary:active {
+  transform: scale(0.98);
+}
+
+.kbot-first-run-wizard__primary:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+.kbot-first-run-wizard__skip {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted, #abc4d8);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 44px;
+  padding: 8px 4px;
+}
+
+.kbot-first-run-wizard__skip:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.kbot-first-run-wizard__tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.kbot-first-run-wizard__tile {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  background: color-mix(
+    in srgb,
+    var(--panel, #18354a) 55%,
+    var(--surface, #14222e)
+  );
+}
+
+.kbot-first-run-wizard__tile-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-first-run-wizard__tile .kbot-first-run-wizard__primary {
+  min-width: 120px;
+  width: min(100%, 200px);
+}
+
+@keyframes kbot-first-run-wizard-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kbot-first-run-wizard-win-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-first-run-wizard__stage,
+  .kbot-first-run-wizard--win .kbot-first-run-wizard__stage {
+    animation: none;
+  }
+
+  .kbot-first-run-wizard__primary {
+    transition: none;
+  }
+
+  .kbot-first-run-wizard__primary:active {
+    transform: none;
+  }
+}
