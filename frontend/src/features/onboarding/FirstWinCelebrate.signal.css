@@ -1,0 +1,87 @@
+/*
+ * First-win celebrate toast — Signal (KRELL-SIGNAL-20261010).
+ * Brief, non-blocking; honor prefers-reduced-motion.
+ */
+
+.kbot-first-win-celebrate {
+  position: fixed;
+  z-index: 90;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(100% - 32px, 420px);
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px 12px;
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 45%, var(--line, #22465d));
+  border-radius: var(--radius-panel, 11px);
+  background: color-mix(in srgb, var(--panel, #18354a) 92%, var(--sage, #b3dda8));
+  color: var(--text, #e9f0f5);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--navy, #0e1c29) 45%, transparent);
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  animation: kbot-first-win-celebrate-enter var(--motion-duration-enter, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.kbot-first-win-celebrate__eyebrow {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-first-win-celebrate__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-first-win-celebrate__body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted, #abc4d8);
+  max-width: 42ch;
+}
+
+.kbot-first-win-celebrate__dismiss {
+  appearance: none;
+  justify-self: start;
+  margin-top: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--seafoam, #a8d8d1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 44px;
+  padding: 8px 0;
+}
+
+.kbot-first-win-celebrate__dismiss:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@keyframes kbot-first-win-celebrate-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-first-win-celebrate {
+    animation: none;
+  }
+}

@@ -97,3 +97,30 @@ test("J5.5 On a fresh install, the built-in rehearsal walks a sample strategy th
   expect(fills).toMatch(/buy/); expect(fills).toMatch(/sell/);
   await expect(page.getByTestId("rehearsal-label")).toContainText(/simulated data, not market/i);
 });
+
+test("J5.6 After the first paper arm, a brief celebrate shows once and the coach stays silent", async ({journey}) => {
+  const page = journey.page;
+  await armPaper(page, "1000");
+  await clickNav(page, "Workstation");
+  await expect(page.getByTestId("first-win-celebrate")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("first-win-celebrate-title")).toContainText(
+    /Paper run is live on this computer/i,
+  );
+  // Coach dismissed; no soft Studio tip nag after the win.
+  await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
+  await expect(page.locator("[data-testid='soft-studio-tip']")).toHaveCount(0);
+  await page.getByTestId("first-win-celebrate-dismiss").click();
+  await expect(page.getByTestId("first-win-celebrate")).toHaveCount(0);
+  await page.reload();
+  await journey.waitForSessionReady(page);
+  await clickNav(page, "Workstation");
+  await expect(page.getByTestId("first-win-celebrate")).toHaveCount(0);
+  await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
+  // Power path still reachable via More / Advanced after silence.
+  await clickNav(page, "Strategy studio");
+  await expect(
+    page.getByRole("navigation", { name: "Workstation navigation" }).getByTestId(
+      "kbot-nav-more-toggle",
+    ),
+  ).toHaveAttribute("aria-expanded", "true");
+});
