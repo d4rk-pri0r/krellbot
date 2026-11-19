@@ -12,7 +12,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import { clickNav, skipFirstRunWizard } from "../journeys/helpers/journey-steps";
 
 /**
  * NS20 studio-edit spec.
@@ -120,6 +120,7 @@ async function gotoStudioView(page: Page): Promise<void> {
 }
 
 async function waitForSessionReady(page: Page): Promise<void> {
+  await skipFirstRunWizard(page);
   await page.waitForFunction(
     () => {
       const root = document.querySelector('[data-testid="kbot-shell"]');

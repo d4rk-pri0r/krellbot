@@ -12,7 +12,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import { clickNav, skipFirstRunWizard } from "../journeys/helpers/journey-steps";
 
 /**
  * M1.9 — Operations shows every unresolved order.
@@ -73,6 +73,7 @@ function seedUnresolved(home: string): void {
 }
 
 async function waitForSessionReady(page: Page): Promise<void> {
+  await skipFirstRunWizard(page);
   await page.waitForFunction(
     () => {
       const root = document.querySelector('[data-testid="kbot-shell"]');

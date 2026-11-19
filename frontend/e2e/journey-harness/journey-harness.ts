@@ -1,5 +1,6 @@
 /** Fresh guarded workstation and browser per scenario: no order-dependent state. */
 import {test as base, expect, chromium, type Page} from "@playwright/test";
+import {skipFirstRunWizard} from "../../journeys/helpers/journey-steps";
 import {attachNetworkGuard, assertNoOffLoopback, type NetworkGuard} from "./network-guard";
 import {attachCommandLog, assertNoLiveOrderCommands, type CommandLog} from "./command-log";
 import {startJourneyWorkstation, runGuardedCli, spawnGuardedPython, sanitizedJourneyEnv, type JourneyWorkstationHandle} from "./spawn-layer";
@@ -15,6 +16,8 @@ export type JourneyScope = {
 };
 
 export async function waitForSessionReady(page: Page): Promise<void> {
+  // M26.4: cold open mounts FirstRunWizard alone — skip so shell can bootstrap.
+  await skipFirstRunWizard(page);
   await page.waitForFunction(() => document.querySelector('[data-testid="kbot-shell"]')?.getAttribute("data-bootstrap-done") === "1", undefined, {timeout: 20_000});
 }
 

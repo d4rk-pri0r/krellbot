@@ -5,8 +5,9 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { writeFirstRunWizardState } from "./features/onboarding/FirstRunWizard";
 import type { PaperClient } from "./features/paper/client";
 import type {
   ResearchClient,
@@ -32,6 +33,15 @@ beforeAll(() => {
     globalThis.ResizeObserver =
       ResizeObserverStub as unknown as typeof ResizeObserver;
   }
+});
+
+/** App shell suites exercise post-wizard IA; cold-open gate is pinned elsewhere. */
+beforeEach(() => {
+  writeFirstRunWizardState({
+    status: "skipped",
+    stepId: "welcome",
+    selectedStarterId: null,
+  });
 });
 
 function makePaperClient(

@@ -72,6 +72,34 @@ export async function expandDisclosure(page: Page, panelTestId: string): Promise
 }
 
 /**
+ * Dismiss FirstRunWizard when e2e/journeys need WorkstationShell (M26.4).
+ * Welcome has no Skip — Let’s go once, then Skip setup. No-op when absent.
+ */
+export async function skipFirstRunWizard(page: Page): Promise<void> {
+  const wizard = page.getByTestId("first-run-wizard");
+  if ((await wizard.count()) === 0) {
+    return;
+  }
+  const skip = page.getByTestId("first-run-wizard-skip");
+  if ((await skip.count()) === 0) {
+    await page
+      .getByTestId("first-run-wizard-primary")
+      .click({ timeout: 5_000 })
+      .catch(() => undefined);
+  }
+  if ((await wizard.count()) === 0) {
+    return;
+  }
+  if ((await page.getByTestId("first-run-wizard-skip").count()) > 0) {
+    await page
+      .getByTestId("first-run-wizard-skip")
+      .click({ timeout: 5_000 })
+      .catch(() => undefined);
+  }
+  await expect(wizard).toHaveCount(0);
+}
+
+/**
  * Dismiss FirstRunCoach when tests need Advanced / demoted controls.
  * Welcome has no Skip — Start once, then Skip guide. No-op when absent.
  * Keeps product demotion; only clears the overlay that can intercept clicks.

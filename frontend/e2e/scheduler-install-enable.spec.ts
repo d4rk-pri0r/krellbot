@@ -10,7 +10,7 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import { clickNav, skipFirstRunWizard } from "../journeys/helpers/journey-steps";
 
 /**
  * M2.8 — Scheduler UI install / enable / status happy path with fakes.
@@ -53,6 +53,7 @@ function attachConsoleGuard(page: Page): ConsoleGuard {
 }
 
 async function waitForSessionReady(page: Page): Promise<void> {
+  await skipFirstRunWizard(page);
   await page.waitForFunction(
     () => {
       const root = document.querySelector('[data-testid="kbot-shell"]');
