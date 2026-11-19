@@ -132,8 +132,6 @@ function renderHome(
     versionClient?: VersionClient;
     sessionPending?: boolean;
     sessionFailed?: boolean;
-    /** Defaults true so existing Advanced-rail pins stay meaningful. */
-    showHomeAdvanced?: boolean;
   } = {},
 ): KeysClient {
   const keysClient = props.keysClient ?? fakeKeysClient();
@@ -145,7 +143,6 @@ function renderHome(
       versionClient={props.versionClient ?? fakeVersionClient()}
       sessionPending={props.sessionPending}
       sessionFailed={props.sessionFailed}
-      showHomeAdvanced={props.showHomeAdvanced ?? true}
     />,
   );
   return keysClient;
@@ -241,9 +238,8 @@ describe("AppHome — application overview", () => {
 
   it("replaces the old not-connected copy with Kraken and Coinbase keys forms", async () => {
     renderHome();
-    const works = screen.getByRole("region", { name: /your next steps/i });
-    expect(works.textContent).toMatch(/free strategy/i);
-    expect(works.textContent).toMatch(/paper run/i);
+    expect(screen.queryByRole("region", { name: /your next steps/i })).toBeNull();
+    expect(screen.queryByTestId("activation-checklist")).toBeNull();
     expect(screen.queryByText(/No exchange is connected in this build/i)).toBeNull();
     const kraken = await screen.findByTestId("keys-onboarding-kraken");
     expect(kraken.textContent).toMatch(/Kraken exchange key/i);
@@ -266,7 +262,6 @@ describe("AppHome — application overview", () => {
         keysClient={fakeKeysClient()}
         trustClient={fakeTrustClient()}
         versionClient={fakeVersionClient()}
-        showHomeAdvanced
       />,
     );
     await screen.findByTestId("keys-form-kraken");
@@ -293,7 +288,6 @@ describe("AppHome — application overview", () => {
         keysClient={fakeKeysClient()}
         trustClient={fakeTrustClient()}
         versionClient={fakeVersionClient()}
-        showHomeAdvanced
       />,
     );
     await screen.findByTestId("keys-form-kraken");
@@ -338,7 +332,6 @@ describe("AppHome — application overview", () => {
         keysClient={keysClient}
         trustClient={trustClient}
         versionClient={versionClient}
-        showHomeAdvanced
       />,
     );
     expect(screen.queryByTestId("app-home-session")).toBeNull();
@@ -348,7 +341,6 @@ describe("AppHome — application overview", () => {
         keysClient={keysClient}
         trustClient={trustClient}
         versionClient={versionClient}
-        showHomeAdvanced
         sessionPending
       />,
     );
@@ -363,7 +355,6 @@ describe("AppHome — application overview", () => {
         keysClient={keysClient}
         trustClient={trustClient}
         versionClient={versionClient}
-        showHomeAdvanced
         sessionPending={false}
       />,
     );

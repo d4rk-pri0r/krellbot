@@ -181,12 +181,8 @@ export async function skipFirstRunWizard(page: Page): Promise<void> {
 }
 
 /**
- * Dismiss FirstRunCoach when tests need Advanced / demoted controls.
- * Welcome has no Skip — Start once, then Skip guide. No-op when absent.
- * Keeps product demotion; only clears the overlay that can intercept clicks.
- *
- * Race-safe with M25.8 first-win celebrate: a confirmed paper arm can
- * complete the coach while this helper runs — treat a detached coach as done.
+ * Legacy helper. The hotspot coach is not mounted on the default path.
+ * No-op when the overlay is absent so older specs can still call it.
  */
 export async function skipFirstRunCoach(page: Page): Promise<void> {
   const coach = page.getByTestId("first-run-coach");

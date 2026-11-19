@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { writeFirstRunCoachState } from "./features/onboarding/firstRunCoachPersistence";
 import {
   FIRST_RUN_WIZARD_STORAGE_KEY,
   writeFirstRunWizardState,
@@ -57,6 +58,9 @@ function expectShellAbsent(): void {
   expect(screen.queryByRole("dialog", { name: "Jobs" })).toBeNull();
   expect(screen.queryByRole("button", { name: /jobs/i })).toBeNull();
   expect(screen.queryByTestId("app-home-advanced-stack")).toBeNull();
+  expect(screen.queryByTestId("first-run-coach")).toBeNull();
+  expect(screen.queryByTestId("first-run-coach-spotlight")).toBeNull();
+  expect(screen.queryByTestId("activation-checklist")).toBeNull();
 }
 
 describe("App cold open mounts only FirstRunWizard until complete", () => {
@@ -90,6 +94,11 @@ describe("App mounts WorkstationShell after wizard skip", () => {
     expect(screen.getByTestId("kbot-nav")).toBeDefined();
     expect(screen.getByTestId("app-home")).toBeDefined();
     expect(screen.getByTestId("kbot-shell-brand")).toBeDefined();
+    expect(screen.queryByTestId("first-run-coach")).toBeNull();
+    expect(screen.queryByTestId("activation-checklist")).toBeNull();
+    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
+      "1",
+    );
 
     const raw = window.localStorage.getItem(FIRST_RUN_WIZARD_STORAGE_KEY);
     expect(raw).toBeTruthy();
@@ -137,6 +146,40 @@ describe("App deep link stays behind incomplete wizard", () => {
     expect(screen.queryByTestId("first-run-wizard")).toBeNull();
     expect(screen.getByTestId("kbot-shell")).toBeDefined();
     expect(window.location.search).toContain("view=studio");
+  });
+});
+
+describe("App adopts a prior coach skip or complete without re-trap", () => {
+  it("mounts the shell when the hotspot coach was already skipped", () => {
+    writeFirstRunCoachState({ status: "skipped", stepId: "choose_starter" });
+    render(<App />);
+    expect(screen.queryByTestId("first-run-wizard")).toBeNull();
+    expect(screen.queryByTestId("first-run-coach")).toBeNull();
+    expect(screen.queryByTestId("activation-checklist")).toBeNull();
+    expect(screen.getByTestId("kbot-shell")).toBeDefined();
+    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
+      "1",
+    );
+    const raw = window.localStorage.getItem(FIRST_RUN_WIZARD_STORAGE_KEY);
+    expect(JSON.parse(raw!).status).toBe("skipped");
+  });
+
+  it("mounts the shell when the hotspot coach was already completed", () => {
+    writeFirstRunCoachState({ status: "completed", stepId: "win" });
+    render(<App />);
+    expect(screen.queryByTestId("first-run-wizard")).toBeNull();
+    expect(screen.getByTestId("app-home")).toBeDefined();
+    expect(screen.queryByTestId("activation-checklist")).toBeNull();
+    expect(
+      JSON.parse(window.localStorage.getItem(FIRST_RUN_WIZARD_STORAGE_KEY)!).status,
+    ).toBe("completed");
+  });
+
+  it("still shows the wizard when coach setup was left active", () => {
+    writeFirstRunCoachState({ status: "active", stepId: "arm_paper" });
+    render(<App />);
+    expect(screen.getByTestId("first-run-wizard")).toBeDefined();
+    expectShellAbsent();
   });
 });
 

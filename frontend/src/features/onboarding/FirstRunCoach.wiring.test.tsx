@@ -121,27 +121,30 @@ function fakeStrategy(over: Partial<StrategyClient> = {}): StrategyClient {
   };
 }
 
-describe("FirstRunCoach wiring — home CTA opens chooser under spotlight", () => {
-  it("marks the home CTA as the choose_starter coach anchor", () => {
+describe("home paper CTA opens the starter chooser without a spotlight anchor", () => {
+  it("does not mark the home CTA as a coach spotlight target", () => {
     render(
       <AppHome onNavigate={vi.fn()} keysClient={fakeKeys()} trustClient={fakeTrust()} />,
     );
     expect(
-      screen.getByTestId("app-home-cta-paper").getAttribute("data-coach-anchor"),
-    ).toBe("choose_starter");
+      screen.getByTestId("app-home-cta-paper").hasAttribute("data-coach-anchor"),
+    ).toBe(false);
+    expect(screen.queryByTestId("activation-checklist")).toBeNull();
+    expect(screen.queryByTestId("first-run-coach")).toBeNull();
   });
 
-  it("opens the starter chooser when the coach open signal bumps", async () => {
-    const props = {
-      onNavigate: vi.fn(),
-      strategyClient: fakeStrategy(),
-      loadStarters: async () => catalogue,
-      keysClient: fakeKeys(),
-      trustClient: fakeTrust(),
-    };
-    const { rerender } = render(<AppHome {...props} openChooserSignal={0} />);
+  it("opens the starter chooser from the home paper CTA", async () => {
+    render(
+      <AppHome
+        onNavigate={vi.fn()}
+        strategyClient={fakeStrategy()}
+        loadStarters={async () => catalogue}
+        keysClient={fakeKeys()}
+        trustClient={fakeTrust()}
+      />,
+    );
     expect(screen.queryByTestId("paper-starter-chooser")).toBeNull();
-    rerender(<AppHome {...props} openChooserSignal={1} />);
+    fireEvent.click(screen.getByTestId("app-home-cta-paper"));
     expect(await screen.findByTestId("paper-starter-chooser")).toBeTruthy();
   });
 });
@@ -201,7 +204,7 @@ describe("FirstRunCoach wiring — Run arm and status anchors", () => {
     } as PaperClient;
   }
 
-  it("spotlights Start paper run via data-coach-anchor and reports onPaperArmed", async () => {
+  it("starts a paper run from the arm control and reports onPaperArmed", async () => {
     const onPaperArmed = vi.fn();
     const client = fakePaper();
     render(
@@ -213,10 +216,10 @@ describe("FirstRunCoach wiring — Run arm and status anchors", () => {
     );
     await screen.findByTestId("paper-arm-form");
     const submit = await screen.findByTestId("paper-arm-submit");
-    expect(submit.getAttribute("data-coach-anchor")).toBe("arm_paper");
+    expect(submit.hasAttribute("data-coach-anchor")).toBe(false);
     expect(
-      screen.getByTestId("paper-status-panel").getAttribute("data-coach-anchor"),
-    ).toBe("status");
+      screen.getByTestId("paper-status-panel").hasAttribute("data-coach-anchor"),
+    ).toBe(false);
     fireEvent.click(submit);
     await waitFor(() => {
       expect(client.arm).toHaveBeenCalled();
