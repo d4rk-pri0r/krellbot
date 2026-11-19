@@ -1,8 +1,11 @@
 /**
- * Krell character visuals for FirstRunWizard (M26.3).
+ * Krell character visuals for FirstRunWizard (KRELL-SIGNAL-20261010).
  *
- * Paths match M26.2 staged assets under `frontend/src/assets/character/`
- * and PROVENANCE step mapping. Do not invent poses.
+ * One illustration per step, each showing the Astra Signal Krell
+ * (navy-to-cyan bob, glasses, hoodie, KRELLBOT shirt, circuit tattoo,
+ * cybernetic arm) with a prop that matches that step's sentence.
+ * Backgrounds are transparent so the art blends on the navy canvas.
+ * Filenames stay stable for wizard visual assertions.
  */
 import krellHero from "../../assets/character/krell-hero.webp";
 import krellGuide from "../../assets/character/krell-guide.webp";
@@ -20,9 +23,14 @@ export type WizardVisual = {
 export const WIZARD_STEP_VISUALS: Readonly<
   Record<FirstRunWizardStepId, WizardVisual>
 > = {
+  // Waving beside a local laptop with a toy bot and play-coins.
   welcome: { src: krellHero, name: "krell-hero.webp" },
+  // Presenting three chart cards: moving-average cross, mean-reversion band, range breakout.
   choose: { src: krellGuide, name: "krell-guide.webp" },
+  // Pressing a play switch beside a simulation gauge and play tokens.
   start_paper: { src: krellWaistup, name: "krell_waistup.png" },
+  // Watching a local monitor with a seafoam pulse and a paper shield on the bezel.
   status: { src: krellPortrait, name: "krell_portrait.png" },
+  // Unveiling a workspace window with a seafoam check and sparkles.
   win: { src: krellSecurity, name: "krell_security.png" },
 };
