@@ -7,7 +7,7 @@
 import krellHero from "../../assets/character/krell-hero.webp";
 import krellGuide from "../../assets/character/krell-guide.webp";
 import krellWaistup from "../../assets/character/krell_waistup.png";
-import krellChibi from "../../assets/character/krell_chibi.png";
+import krellPortrait from "../../assets/character/krell_portrait.png";
 import krellSecurity from "../../assets/character/krell_security.png";
 import type { FirstRunWizardStepId } from "./firstRunWizardPersistence";
 
@@ -23,6 +23,6 @@ export const WIZARD_STEP_VISUALS: Readonly<
   welcome: { src: krellHero, name: "krell-hero.webp" },
   choose: { src: krellGuide, name: "krell-guide.webp" },
   start_paper: { src: krellWaistup, name: "krell_waistup.png" },
-  status: { src: krellChibi, name: "krell_chibi.png" },
+  status: { src: krellPortrait, name: "krell_portrait.png" },
   win: { src: krellSecurity, name: "krell_security.png" },
 };

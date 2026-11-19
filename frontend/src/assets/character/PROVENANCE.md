@@ -43,7 +43,7 @@ Signal poses.
 | 1 | Welcome | `krell-hero.webp` (or `krell_portrait.png`) |
 | 2 | Choose | `krell-guide.webp` |
 | 3 | Start paper | `krell_waistup.png` or `krell-guide.webp` |
-| 4 | Status | `krell_chibi.png` or `emote-thinking-112.png` as micro-accent |
+| 4 | Status | `krell_portrait.png` (blends cleanly on `#0e1c29`; `krell_chibi.png` remains staged) |
 | 5 | Win | `krell-hero.webp` celebrate framing / `krell_security.png` calm confidence |
 
 `-768` variants are optional smaller bundles for denser viewports; full-size

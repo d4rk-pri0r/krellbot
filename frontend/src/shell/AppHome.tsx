@@ -19,9 +19,11 @@ import {
   createReferralHttpClient,
   type ReferralClient,
 } from "../features/referral/client";
+import type { DeploymentRow } from "../features/operations/client";
 import type { ReconnectIssue } from "../session";
 import { PaperStarterChooser } from "../features/onboarding/PaperStarterChooser";
 import type { StrategyClient } from "../features/strategies/client";
+import { CONSUMER_STARTER_CARDS } from "../features/strategies/consumerStarterCopy";
 import type { StarterCatalogue } from "../features/strategies/StarterPicker.client";
 import { AboutPanel } from "./AboutPanel";
 import type { View } from "./Navigation";
@@ -125,7 +127,13 @@ type AppHomeProps = {
   loadStarters?: () => Promise<StarterCatalogue>;
   /** After create+validate, hand off to Run with this revision selected. */
   onStarterReady?: (ready: { revisionId: string; label: string }) => void;
+  /** Real armed paper runs reported by /api/v1/operations (empty when none). */
+  armedPaperRuns?: ReadonlyArray<DeploymentRow>;
 };
+
+function friendlyPaperRunName(packId: string): string {
+  return CONSUMER_STARTER_CARDS[packId]?.title ?? packId;
+}
 
 export function AppHome({
   onNavigate,
@@ -141,6 +149,7 @@ export function AppHome({
   strategyClient,
   loadStarters,
   onStarterReady,
+  armedPaperRuns = [],
 }: AppHomeProps): JSX.Element {
   const [chooserOpen, setChooserOpen] = useState(false);
   const [recoverError, setRecoverError] = useState<string | null>(null);
@@ -223,6 +232,13 @@ export function AppHome({
     : sessionPending
       ? "Starting the local session"
       : "Local session ready";
+  const primaryPaperRun = armedPaperRuns[0] ?? null;
+  const hasPaperRun = primaryPaperRun !== null;
+  const primaryPaperTitle = primaryPaperRun
+    ? friendlyPaperRunName(primaryPaperRun.pack_id)
+    : null;
+  const extraPaperRunCount =
+    armedPaperRuns.length > 1 ? armedPaperRuns.length - 1 : 0;
 
   return (
     <section
@@ -241,10 +257,42 @@ export function AppHome({
             <h1 className="app-home__title" id="app-home-title">
               Paper trading on this computer
             </h1>
-            <p className="app-home__purpose">
-              Start a free strategy with pretend money. Live trading stays off
-              in this release.
-            </p>
+            {hasPaperRun ? (
+              <div
+                className="app-home__active-paper"
+                data-testid="app-home-active-paper"
+                data-paper-state={
+                  primaryPaperRun.entries_paused ? "waiting" : "running"
+                }
+                role="status"
+              >
+                <span
+                  className={
+                    primaryPaperRun.entries_paused
+                      ? "app-home__active-paper-dot app-home__active-paper-dot--waiting"
+                      : "app-home__active-paper-dot"
+                  }
+                  aria-hidden="true"
+                />
+                <div className="app-home__active-paper-copy">
+                  <p className="app-home__active-paper-title">
+                    {primaryPaperRun.entries_paused ? "Waiting" : "Running"}:{" "}
+                    {primaryPaperTitle}
+                    {extraPaperRunCount > 0
+                      ? ` (+${extraPaperRunCount} more)`
+                      : ""}
+                  </p>
+                  <p className="app-home__active-paper-note">
+                    Paper only on this computer — pretend money, no real orders.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="app-home__purpose">
+                Start a free strategy with pretend money. Live trading stays off
+                in this release.
+              </p>
+            )}
             <p
               className="app-home__availability"
               data-testid="app-home-availability"
@@ -348,16 +396,41 @@ export function AppHome({
         </div>
         {chooserOpen ? null : (
           <div className="app-home__cta-group">
-            <button
-              type="button"
-              className="app-home__cta"
-              data-testid="app-home-cta-paper"
-              onClick={() => {
-                setChooserOpen(true);
-              }}
-            >
-              Start with a free paper strategy
-            </button>
+            {hasPaperRun ? (
+              <>
+                <button
+                  type="button"
+                  className="app-home__cta"
+                  data-testid="app-home-cta-paper"
+                  onClick={() => {
+                    onNavigate("workstation");
+                  }}
+                >
+                  Open paper run
+                </button>
+                <button
+                  type="button"
+                  className="app-home__cta-link"
+                  data-testid="app-home-cta-try-another"
+                  onClick={() => {
+                    setChooserOpen(true);
+                  }}
+                >
+                  Try another strategy
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="app-home__cta"
+                data-testid="app-home-cta-paper"
+                onClick={() => {
+                  setChooserOpen(true);
+                }}
+              >
+                Start with a free paper strategy
+              </button>
+            )}
             <button
               type="button"
               className="app-home__cta-link"

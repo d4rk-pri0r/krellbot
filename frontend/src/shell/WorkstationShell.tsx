@@ -71,6 +71,7 @@ import { LivePreflight } from "../features/deployments/LivePreflight";
 import { createHttpClient as createOperationsHttpClient } from "../features/operations/client";
 import type {
   AlertRow,
+  DeploymentRow,
   OperationsClient,
 } from "../features/operations/client";
 import { PackLibrary } from "../features/packs/PackLibrary";
@@ -238,6 +239,18 @@ export function WorkstationShell({
       setFirstWinOpen(true);
     }
   }, []);
+  const handlePaperArmedChange = useCallback(
+    (armed: boolean): void => {
+      if (armed) {
+        celebrateFirstPaperWin();
+      }
+    },
+    [celebrateFirstPaperWin],
+  );
+  const handlePaperArmed = useCallback((): void => {
+    setOperationsRefreshKey((key) => key + 1);
+    celebrateFirstPaperWin();
+  }, [celebrateFirstPaperWin]);
   const setActive = useCallback((view: View): void => {
     setActiveState(view);
     // No-ops when the URL already encodes ``view`` (re-clicking the
@@ -806,6 +819,25 @@ export function WorkstationShell({
 
   const [bootstrapDone, setBootstrapDone] = useState(false);
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
+  const [armedDeployments, setArmedDeployments] = useState<
+    ReadonlyArray<DeploymentRow>
+  >([]);
+  const [operationsRefreshKey, setOperationsRefreshKey] = useState(0);
+  const prevActiveRef = useRef<View>(active);
+  useEffect(() => {
+    const previous = prevActiveRef.current;
+    prevActiveRef.current = active;
+    if (
+      active === "home" &&
+      (previous === "workstation" || previous === "operations")
+    ) {
+      setOperationsRefreshKey((key) => key + 1);
+    }
+  }, [active]);
+  const armedPaperRuns = useMemo(
+    () => armedDeployments.filter((row) => row.mode === "paper"),
+    [armedDeployments],
+  );
   const [inspectorSelection, setInspectorSelection] =
     useState<InspectorSelection | null>(null);
 
@@ -1084,7 +1116,11 @@ export function WorkstationShell({
           </button>
           <Navigation active={active} onChange={setActive} />
           <div className="kbot-shell__head-utils">
-            <StatusStrip live={bootstrapDone ? undefined : null} />
+            <StatusStrip
+              live={bootstrapDone ? undefined : null}
+              onDeploymentsChange={setArmedDeployments}
+              refreshKey={operationsRefreshKey}
+            />
             <JobsDrawer onOpenResult={(id) => {
               setOpenedResearchJob({ id, revisionKey: researchRevisionKey });
               setActive("research");
@@ -1119,6 +1155,7 @@ export function WorkstationShell({
               bootstrapFailed ? handleRedeemReconnect : undefined
             }
             strategyClient={client}
+            armedPaperRuns={armedPaperRuns}
             onStarterReady={({ revisionId }) => {
               setPreferredArmRevisionId(revisionId);
               setActive("workstation");
@@ -1149,14 +1186,8 @@ export function WorkstationShell({
                         inspectorSelection?.kind === "position"
                       }
                       preferredRevisionId={preferredArmRevisionId}
-                      onArmedChange={(armed) => {
-                        if (armed) {
-                          celebrateFirstPaperWin();
-                        }
-                      }}
-                      onPaperArmed={() => {
-                        celebrateFirstPaperWin();
-                      }}
+                      onArmedChange={handlePaperArmedChange}
+                      onPaperArmed={handlePaperArmed}
                     />
                     <FleetArmedList
                       client={paperFleet}
