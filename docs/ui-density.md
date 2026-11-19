@@ -88,6 +88,16 @@ short and actionable. **No Learn nav.**
 | 1440×900 | Packs view chrome; refresh/filters; at least the list head or a short empty/install prompt; first useful row(s) when data exists | Deep pack detail after selection; long catalogue tails (internal scroll OK) |
 | ~390×844 | Toolbar + first row or empty prompt, stacked; ≥44px install/refresh targets | Same detail below |
 
+## First-run gate
+
+A fresh install does not density-compose the cockpit. Cold open mounts
+only the full-screen Krell wizard. `WorkstationShell`, AppHome, nav,
+Jobs, and Advanced rails stay unmounted until the wizard is completed
+or skipped, then the tables above apply unchanged: one sage home CTA,
+Advanced collapsed, no coach overlay, no activation checklist, and no
+second celebrate toast on top of the wizard win screen. Skip before
+the win screen still lands in this shell. No Beginner/Power mode.
+
 ## Verification
 
 Composition PRs name a unit/visual assertion for the view at **1440×900** (and
@@ -97,6 +107,9 @@ follow M7.6 patterns without inventing live performance fixtures.
 Chromium geometry smoke (M18.6): `frontend/e2e/density-first-viewport-smoke.spec.ts`
 pins Workspace home + Workstation first-viewport density at **1440×900** via
 `getBoundingClientRect` (same class as M7.6 starter-home layout smoke).
+Wizard-first cold open → paper path → post-win shell density is pinned by
+`frontend/e2e/wizard-post-win-handoff.spec.ts` and
+`frontend/journeys/j5-wizard-handoff.journey.ts`.
 
 ## Out of scope
 

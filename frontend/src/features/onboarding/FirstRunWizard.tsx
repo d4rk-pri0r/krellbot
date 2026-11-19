@@ -6,6 +6,8 @@
  * When strategy and paper clients are passed (the App gate does), step 2
  * saves a free starter, step 3 arms paper only, and step 4 quotes real
  * paper status. Without those clients the shell still walks the steps.
+ * The win screen is the celebration: completing it (or skipping from
+ * that screen) consumes the shell toast so the workspace stays quiet.
  */
 import {
   useCallback,
@@ -34,6 +36,7 @@ import {
   type FirstRunWizardPersisted,
   type FirstRunWizardStepId,
 } from "./firstRunWizardPersistence";
+import { markFirstWinCelebrateShown } from "./firstWinCelebratePersistence";
 import { WIZARD_STEP_VISUALS } from "./wizardAssets";
 import "./FirstRunWizard.signal.css";
 
@@ -124,6 +127,11 @@ export type FirstRunWizardProps = {
   loadStarters?: () => Promise<StarterCatalogue>;
   /** Existing paper client. Omit to advance Start paper run without arming. */
   paperClient?: PaperClient;
+  /**
+   * Loopback session started by App. Real starter and paper calls wait
+   * for it so a fast Use click is not refused with 403.
+   */
+  sessionReady?: Promise<boolean>;
 };
 
 function stepIndexOf(
@@ -253,6 +261,7 @@ export function FirstRunWizard({
   strategyClient,
   loadStarters,
   paperClient,
+  sessionReady,
 }: FirstRunWizardProps): JSX.Element | null {
   const [state, setState] = useState<FirstRunWizardPersisted>(() =>
     readFirstRunWizardState(storageKey),
@@ -349,6 +358,23 @@ export function FirstRunWizard({
     );
   }
 
+  async function requireSession(kind: "choose" | "arm"): Promise<boolean> {
+    if (sessionReady === undefined) {
+      return true;
+    }
+    const ready = await sessionReady;
+    if (ready) {
+      return true;
+    }
+    const message = "Local session unavailable";
+    if (kind === "choose") {
+      setChooseError(`Could not save that strategy: ${message}`);
+    } else {
+      setArmError(message);
+    }
+    return false;
+  }
+
   async function saveStarter(starterId: string): Promise<void> {
     if (!strategyClient) {
       persist(persisted("active", "start_paper", starterId));
@@ -361,6 +387,9 @@ export function FirstRunWizard({
     setChooseError(null);
     setChooseBusyId(starterId);
     try {
+      if (!(await requireSession("choose"))) {
+        return;
+      }
       const saved = await validateStarter(
         strategyClient,
         catalogueLoader,
@@ -388,6 +417,9 @@ export function FirstRunWizard({
     setArmError(null);
     setArmBusy(true);
     try {
+      if (!(await requireSession("arm"))) {
+        return;
+      }
       let revisionId = state.revisionId;
       if (!revisionId) {
         const starterId = state.selectedStarterId;
@@ -474,6 +506,8 @@ export function FirstRunWizard({
       return;
     }
     if (activeStep.id === "win") {
+      // Win screen already said "you're set". Do not toast again in the shell.
+      markFirstWinCelebrateShown();
       persist(
         persisted(
           "completed",
@@ -498,6 +532,7 @@ export function FirstRunWizard({
     const index = stepIndexOf(steps, activeStep.id);
     const nextStep = steps[index + 1];
     if (!nextStep) {
+      markFirstWinCelebrateShown();
       persist(
         persisted(
           "completed",
@@ -521,6 +556,10 @@ export function FirstRunWizard({
   }
 
   function handleSkip(): void {
+    // Skipping from the win screen has already shown the celebration.
+    if (activeStep.id === "win") {
+      markFirstWinCelebrateShown();
+    }
     persist(
       persisted(
         "skipped",

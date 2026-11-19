@@ -77,10 +77,10 @@ import { PackLibrary } from "../features/packs/PackLibrary";
 import { PacksView } from "../features/packs/PacksView";
 import { createPacksHttpClient } from "../features/packs/client";
 import type { PackLibraryClient, PacksClient } from "../features/packs/client";
+import { ensureLoopbackSession } from "../loopbackSession";
 import {
   issueReconnectToken,
   recoverCsrf,
-  redeemBootstrap,
   redeemReconnectToken,
   type ReconnectIssue,
 } from "../session";
@@ -109,7 +109,6 @@ import {
 import { StatusStrip } from "./StatusStrip";
 import { WorkstationAlerts } from "./WorkstationAlerts";
 
-const BOOTSTRAP_META = "krellbot-bootstrap";
 const WORKLOAD_NODE_COUNT = 200;
 const STUDIO_SAVE_ERROR_MESSAGE =
   "save execution failed: see server response for status code";
@@ -170,21 +169,6 @@ const STUDIO_DEMO_NODES: ReadonlyArray<GraphCanvasNode> = [
     data: { timeframe: "1h", label: studioNodeLabel("n2") },
   },
 ];
-
-function consumeBootstrapToken(): string | null {
-  if (typeof document === "undefined") {
-    return null;
-  }
-  const meta = document.querySelector(
-    `meta[name="${BOOTSTRAP_META}"]`,
-  );
-  if (meta === null) {
-    return null;
-  }
-  const token = meta.getAttribute("content") ?? "";
-  meta.remove();
-  return token;
-}
 
 /** Read and strip `?reconnect=` from the URL (second-browser local re-pair). */
 function consumeReconnectToken(): string | null {
@@ -929,46 +913,18 @@ export function WorkstationShell({
       };
     }
 
-    const token = consumeBootstrapToken();
-    if (!token) {
-      // Reload with a redeemed (or absent) bootstrap token: the
-      // session cookie may still be valid, so try to recover the
-      // CSRF before mounting. A refused or failed recovery is
-      // surfaced honestly instead of silently presenting startup
-      // as complete.
-      let cancelled = false;
-      void recoverCsrf()
-        .catch(() => false)
-        .then((ok: boolean) => {
-          if (cancelled) {
-            return;
-          }
-          setBootstrapDone(true);
-          if (!ok) {
-            setBootstrapFailed(true);
-          }
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
+    // Same one-shot redeem the wizard starts. A reload with the meta
+    // already spent recovers CSRF. Failure still mounts the shell.
     let cancelled = false;
-    void redeemBootstrap(token)
-      .then(() => {
-        if (!cancelled) {
-          setBootstrapDone(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          // Bootstrap failed: the shell still mounts so navigation
-          // works, but the failure is surfaced on Home instead of
-          // being presented silently as startup complete. The token
-          // is consumed and never retried.
-          setBootstrapDone(true);
-          setBootstrapFailed(true);
-        }
-      });
+    void ensureLoopbackSession().then((ok) => {
+      if (cancelled) {
+        return;
+      }
+      setBootstrapDone(true);
+      if (!ok) {
+        setBootstrapFailed(true);
+      }
+    });
     return () => {
       cancelled = true;
     };

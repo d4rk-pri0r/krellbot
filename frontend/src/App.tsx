@@ -7,13 +7,15 @@
  * the wizard is completed or skipped. Deep-link query params remain in the
  * URL; the shell reads them after mount (never a half-cockpit under the
  * wizard). Choose, Start paper run, and status use the existing strategy
- * and paper clients (paper arm only — no live).
+ * and paper clients (paper arm only — no live). The wizard win screen
+ * is the celebration; the shell does not toast over it.
  */
 import { useRef, useState, type JSX } from "react";
 import {
   FirstRunWizard,
   isFirstRunWizardDismissed,
 } from "./features/onboarding/FirstRunWizard";
+import { ensureLoopbackSession } from "./loopbackSession";
 import { adoptLegacyFirstRunDismissal } from "./features/onboarding/legacyFirstRunMigration";
 import {
   createHttpClient as createPaperHttpClient,
@@ -32,6 +34,10 @@ export function App(): JSX.Element {
   });
   const strategyClientRef = useRef<StrategyClient | null>(null);
   const paperClientRef = useRef<PaperClient | null>(null);
+  const sessionReadyRef = useRef<Promise<boolean> | null>(null);
+  if (sessionReadyRef.current === null) {
+    sessionReadyRef.current = ensureLoopbackSession();
+  }
   if (strategyClientRef.current === null) {
     strategyClientRef.current = createStrategyHttpClient();
   }
@@ -44,6 +50,7 @@ export function App(): JSX.Element {
       <FirstRunWizard
         strategyClient={strategyClientRef.current}
         paperClient={paperClientRef.current}
+        sessionReady={sessionReadyRef.current}
         onComplete={() => {
           setWizardDismissed(true);
         }}
