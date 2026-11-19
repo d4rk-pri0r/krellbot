@@ -12,7 +12,11 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav, skipFirstRunWizard } from "../journeys/helpers/journey-steps";
+import {
+  clickNav,
+  seedDismissedFirstRunWizard,
+  skipFirstRunWizard,
+} from "../journeys/helpers/journey-steps";
 
 /**
  * NS20 studio-edit spec.
@@ -160,6 +164,7 @@ test("200-node studio edit changes a backtest result", async ({ page }) => {
   test.setTimeout(180_000);
   const guard = attachConsoleGuard(page);
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
+  await seedDismissedFirstRunWizard(page);
   await page.goto(baseURL + "/");
   // Bootstrap meta present (it will be consumed on first render).
   await expect(page.locator('meta[name="krellbot-bootstrap"]')).toHaveCount(0, {

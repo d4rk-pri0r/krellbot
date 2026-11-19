@@ -10,7 +10,11 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav, skipFirstRunWizard } from "../journeys/helpers/journey-steps";
+import {
+  clickNav,
+  seedDismissedFirstRunWizard,
+  skipFirstRunWizard,
+} from "../journeys/helpers/journey-steps";
 
 /**
  * M2.8 — Scheduler UI install / enable / status happy path with fakes.
@@ -147,6 +151,7 @@ test("Operations scheduler panel install/enable happy path and unavailable copy 
   await installSchedulerFakes(page, state);
 
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
+  await seedDismissedFirstRunWizard(page);
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
   await clickNav(page, "Operations");

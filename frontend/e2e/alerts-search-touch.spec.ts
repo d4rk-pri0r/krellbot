@@ -12,7 +12,11 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav, skipFirstRunWizard } from "../journeys/helpers/journey-steps";
+import {
+  clickNav,
+  seedDismissedFirstRunWizard,
+  skipFirstRunWizard,
+} from "../journeys/helpers/journey-steps";
 
 /**
  * Alerts Search touch-target geometry regression (issue179).
@@ -148,6 +152,7 @@ test("Operations Alerts Search keeps >=44px touch targets <=640px and compact de
   test.setTimeout(120_000);
   const guard = attachConsoleGuard(page);
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
+  await seedDismissedFirstRunWizard(page);
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
 
