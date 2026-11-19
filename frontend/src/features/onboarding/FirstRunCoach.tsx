@@ -29,7 +29,7 @@ export type FirstRunCoachStep = {
 export const DEFAULT_FIRST_RUN_STEPS: ReadonlyArray<FirstRunCoachStep> = [
   {
     id: "welcome",
-    title: "Paper trading on this computer",
+    title: "Take the guided paper setup",
     body: "Pick a free starter, start a paper run, and see honest status — no exchange key.",
     primaryLabel: "Start",
   },
