@@ -71,6 +71,7 @@ function renderShell(): void {
 afterEach(() => {
   cleanup();
   document.head.innerHTML = "";
+  window.localStorage.clear();
   window.history.pushState({}, "", "/");
   vi.restoreAllMocks();
 });
@@ -145,23 +146,43 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
   });
 
   it("drives the whole user journey from the Home cards", async () => {
+    function openHomeAllAreas(): void {
+      const toggle = screen.getByTestId("app-home-path-toggle");
+      if (toggle.getAttribute("aria-expanded") !== "true") {
+        fireEvent.click(toggle);
+      }
+    }
+
     renderShell();
+    // M25.7: All-areas cards mount only after coach skip/complete.
+    fireEvent.click(screen.getByTestId("first-run-coach-primary"));
+    fireEvent.click(screen.getByTestId("first-run-coach-skip"));
+    await waitFor(() =>
+      expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
+        "1",
+      ),
+    );
+    openHomeAllAreas();
     fireEvent.click(screen.getByTestId("app-home-card-strategies"));
     expect(screen.getByTestId("library-toggle")).toBeDefined();
 
     clickShellNav("Workspace");
+    openHomeAllAreas();
     fireEvent.click(screen.getByTestId("app-home-card-research"));
     expect(screen.getByTestId("research-host")).toBeDefined();
 
     clickShellNav("Workspace");
+    openHomeAllAreas();
     fireEvent.click(screen.getByTestId("app-home-card-studio"));
     expect(screen.getByTestId("studio-node-count").textContent).toBe("3");
 
     clickShellNav("Workspace");
+    openHomeAllAreas();
     fireEvent.click(screen.getByTestId("app-home-card-workstation"));
     expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
 
     clickShellNav("Workspace");
+    openHomeAllAreas();
     fireEvent.click(screen.getByTestId("app-home-card-operations"));
     // Operations mounts after bootstrap resolves; wait for its view.
     await waitFor(() =>

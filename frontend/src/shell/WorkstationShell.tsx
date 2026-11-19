@@ -91,6 +91,7 @@ import {
   FirstRunCoach,
   isFirstRunCoachDismissed,
   readFirstRunCoachState,
+  resumeFirstRunCoachState,
 } from "../features/onboarding/FirstRunCoach";
 import type { FirstRunCoachStepId } from "../features/onboarding/firstRunCoachPersistence";
 import { AppHome } from "./AppHome";
@@ -1168,6 +1169,14 @@ export function WorkstationShell({
             }
             strategyClient={client}
             openChooserSignal={openChooserSignal}
+            showHomeAdvanced={activationUnlocked}
+            coachSyncKey={coachSyncKey}
+            suppressActivationChecklist={!activationUnlocked}
+            onResumeActivationSetup={() => {
+              resumeFirstRunCoachState();
+              setActivationUnlocked(false);
+              setCoachSyncKey((value) => value + 1);
+            }}
             onStarterReady={({ revisionId }) => {
               setPreferredArmRevisionId(revisionId);
               const coach = readFirstRunCoachState();
@@ -1708,9 +1717,11 @@ export function WorkstationShell({
         syncKey={coachSyncKey}
         onSkip={() => {
           setActivationUnlocked(true);
+          setCoachSyncKey((value) => value + 1);
         }}
         onComplete={() => {
           setActivationUnlocked(true);
+          setCoachSyncKey((value) => value + 1);
         }}
         onPrimaryAction={(stepId: FirstRunCoachStepId) => {
           if (stepId === "choose_starter") {

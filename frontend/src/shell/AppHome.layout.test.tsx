@@ -75,6 +75,7 @@ describe("home first-viewport composition at 1440×900", () => {
         onNavigate={() => {}}
         keysClient={absentKeysClient()}
         versionClient={previewVersionClient()}
+        showHomeAdvanced
       />,
     );
     const first = screen.getByTestId("app-home-first-viewport");
@@ -104,6 +105,7 @@ describe("home first-viewport composition at 1440×900", () => {
         onNavigate={() => {}}
         keysClient={absentKeysClient()}
         versionClient={previewVersionClient()}
+        showHomeAdvanced
       />,
     );
     for (const testid of CARD_TESTIDS) {

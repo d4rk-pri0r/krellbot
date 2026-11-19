@@ -6,7 +6,7 @@
  * come from the guarded workstation.
  */
 import { test, expect } from "./journey-harness/journey-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import { clickNav, skipFirstRunCoach } from "../journeys/helpers/journey-steps";
 
 const FAKE_KRAKEN_PUBLIC = "fake-kraken-public-key";
 const FAKE_KRAKEN_PRIVATE = "fake-kraken-private-secret";
@@ -15,12 +15,18 @@ const FAKE_COINBASE_PRIVATE =
   "-----BEGIN PRIVATE KEY-----\nfake-coinbase-pem\n-----END PRIVATE KEY-----";
 
 /**
- * M18.2 collapses Exchange keys under Advanced on Workspace home.
- * Expand before interacting so probe/store controls are visible.
+ * M18.2 collapses Exchange keys under Advanced; M25.7 unmounts the whole
+ * Advanced stack until coach skip/complete. Skip coach, then expand so
+ * probe/store controls are visible — do not put keys back on first viewport.
  */
 async function expandHomeKeysAdvanced(
   page: import("@playwright/test").Page,
 ): Promise<void> {
+  await skipFirstRunCoach(page);
+  await expect(page.getByTestId("app-home")).toHaveAttribute(
+    "data-home-advanced",
+    "1",
+  );
   const toggle = page.getByTestId("app-home-keys-rail-toggle");
   await expect(toggle).toBeVisible();
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {

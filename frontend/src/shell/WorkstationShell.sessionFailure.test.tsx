@@ -133,6 +133,7 @@ function renderShell(): ReturnType<typeof render> {
 afterEach(() => {
   cleanup();
   document.head.innerHTML = "";
+  window.localStorage.clear();
   vi.clearAllMocks();
 });
 
@@ -264,7 +265,21 @@ describe("WorkstationShell — failed session bootstrap", () => {
     await waitFor(() => {
       expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
     });
+    // M25.7: destination cards live under Advanced until coach skip.
+    // Skip clears the overlay; failure alert stays — offline nav still works.
+    fireEvent.click(screen.getByTestId("first-run-coach-primary"));
+    fireEvent.click(screen.getByTestId("first-run-coach-skip"));
+    await waitFor(() =>
+      expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
+        "1",
+      ),
+    );
+    expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
     const home = within(screen.getByTestId("app-home"));
+    const pathToggle = home.getByTestId("app-home-path-toggle");
+    if (pathToggle.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(pathToggle);
+    }
     for (const testid of [
       "app-home-card-strategies",
       "app-home-card-research",
