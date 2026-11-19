@@ -1,22 +1,31 @@
 /**
- * Full-screen Krell first-run wizard shell (M26.3 / KRELL-SIGNAL-20261010).
+ * Full-screen Krell first-run wizard (KRELL-SIGNAL-20261010).
  *
  * ≤5 steps; one visual; ≤1 short sentence; one big sage CTA; quiet Skip
  * setup after welcome; persist complete/skip so users are never re-trapped.
- * App gate (unmount WorkstationShell) is M26.4 — this component is mountable
- * alone. Paper-arm wiring is M26.5.
+ * When strategy and paper clients are passed (the App gate does), step 2
+ * saves a free starter, step 3 arms paper only, and step 4 quotes real
+ * paper status. Without those clients the shell still walks the steps.
  */
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type JSX,
 } from "react";
+import type { PaperClient, PaperCommandResult, PaperStatus } from "../paper/client";
+import type { StrategyClient } from "../strategies/client";
 import {
   CONSUMER_STARTER_CARD_ORDER,
   CONSUMER_STARTER_CARDS,
 } from "../strategies/consumerStarterCopy";
+import {
+  fetchStarters,
+  type StarterCatalogue,
+  type StarterExample,
+} from "../strategies/StarterPicker.client";
 import {
   FIRST_RUN_WIZARD_STORAGE_KEY,
   isFirstRunWizardDismissed,
@@ -66,6 +75,25 @@ export const DEFAULT_FIRST_RUN_WIZARD_STEPS: ReadonlyArray<FirstRunWizardStep> =
     },
   ];
 
+/** Same initial paper-arm defaults as the Run panel. Paper mode only. */
+const WIZARD_PAPER_VENUE = "kraken";
+const WIZARD_PAPER_BALANCE = "1000";
+
+export const WIZARD_LIVE_TRADING_UNAVAILABLE = "Live trading unavailable";
+
+export type WizardStatusPhase =
+  | { kind: "loading" }
+  | { kind: "unavailable" }
+  | { kind: "ready"; status: PaperStatus };
+
+export type WizardStatusChipKind =
+  | "checking"
+  | "running"
+  | "waiting"
+  | "not-running"
+  | "unavailable"
+  | "live-blocked";
+
 export type FirstRunWizardProps = {
   storageKey?: string;
   steps?: ReadonlyArray<FirstRunWizardStep>;
@@ -78,19 +106,24 @@ export type FirstRunWizardProps = {
   onSkip?: () => void;
   onComplete?: () => void;
   /**
-   * Fired when the step primary is pressed. Return false to keep the step
-   * (M26.5 wiring can advance only after the real action).
+   * Fired when the step primary is pressed. Return false to keep the step.
    */
   onPrimaryAction?: (stepId: FirstRunWizardStepId) => boolean | void;
   /**
    * Fired when a starter tile Use is pressed on the choose step.
-   * Return false to keep the choose step (M26.5).
+   * Return false to keep the choose step.
    */
   onSelectStarter?: (starterId: string) => boolean | void;
   /**
    * When this value changes, re-read persisted wizard state.
    */
   syncKey?: number | string;
+  /** Existing strategy draft client. Omit to keep the choose step local. */
+  strategyClient?: StrategyClient;
+  /** Catalogue loader. Defaults to the session starter fetch when saving. */
+  loadStarters?: () => Promise<StarterCatalogue>;
+  /** Existing paper client. Omit to advance Start paper run without arming. */
+  paperClient?: PaperClient;
 };
 
 function stepIndexOf(
@@ -99,6 +132,112 @@ function stepIndexOf(
 ): number {
   const index = steps.findIndex((step) => step.id === stepId);
   return index < 0 ? 0 : index;
+}
+
+function persisted(
+  status: FirstRunWizardPersisted["status"],
+  stepId: FirstRunWizardStepId,
+  selectedStarterId: string | null,
+  revisionId?: string,
+): FirstRunWizardPersisted {
+  const next: FirstRunWizardPersisted = {
+    status,
+    stepId,
+    selectedStarterId,
+  };
+  if (typeof revisionId === "string" && revisionId.length > 0) {
+    next.revisionId = revisionId;
+  }
+  return next;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * One honest sentence from a real paper status read. Never invents P&L
+ * and never calls an unconfirmed or non-paper arm "running".
+ */
+export function honestWizardStatusSentence(phase: WizardStatusPhase): string {
+  if (phase.kind === "loading") {
+    return "Checking this computer…";
+  }
+  if (phase.kind === "unavailable") {
+    return "Paper status unavailable.";
+  }
+  const status = phase.status;
+  if (status.armed === true && status.mode === "paper") {
+    if (status.entries_paused === true) {
+      return "Waiting on this computer (paper only — not live trading).";
+    }
+    return "It’s running on this computer (paper only — not live trading).";
+  }
+  if (status.armed === true) {
+    return "Live trading unavailable.";
+  }
+  return "Not running on this computer yet.";
+}
+
+export function wizardStatusChipKind(
+  phase: WizardStatusPhase,
+): WizardStatusChipKind {
+  if (phase.kind === "loading") {
+    return "checking";
+  }
+  if (phase.kind === "unavailable") {
+    return "unavailable";
+  }
+  const status = phase.status;
+  if (status.armed === true && status.mode === "paper") {
+    return status.entries_paused === true ? "waiting" : "running";
+  }
+  if (status.armed === true) {
+    return "live-blocked";
+  }
+  return "not-running";
+}
+
+async function validateStarter(
+  strategyClient: StrategyClient,
+  loadStarters: () => Promise<StarterCatalogue>,
+  starterId: string,
+): Promise<{ revisionId: string } | { message: string }> {
+  let catalogue: StarterCatalogue;
+  try {
+    catalogue = await loadStarters();
+  } catch (error) {
+    return { message: `Could not save that strategy: ${errorText(error)}` };
+  }
+  const example: StarterExample | undefined = catalogue.examples.find(
+    (row) => row.id === starterId,
+  );
+  if (!example) {
+    return { message: "That free strategy is not available." };
+  }
+  try {
+    const created = await strategyClient.create(example.pack);
+    const validated = await strategyClient.validate(created.revision_id);
+    if (validated.state !== "validated" && validated.state !== "deployed") {
+      const detail =
+        validated.errors
+          .map((error) => error.message)
+          .filter((message) => message.length > 0)
+          .join("; ") || `validation left state ${validated.state}`;
+      return { message: `Could not save that strategy: ${detail}` };
+    }
+    return { revisionId: validated.revision_id };
+  } catch (error) {
+    return { message: `Could not save that strategy: ${errorText(error)}` };
+  }
+}
+
+function armRefusal(result: PaperCommandResult | null | undefined): string {
+  const message = result?.message;
+  if (typeof message === "string" && message.length > 0) {
+    return message;
+  }
+  return "Start paper run refused";
 }
 
 export function FirstRunWizard({
@@ -111,11 +250,22 @@ export function FirstRunWizard({
   onPrimaryAction,
   onSelectStarter,
   syncKey = 0,
+  strategyClient,
+  loadStarters,
+  paperClient,
 }: FirstRunWizardProps): JSX.Element | null {
   const [state, setState] = useState<FirstRunWizardPersisted>(() =>
     readFirstRunWizardState(storageKey),
   );
   const [enterKey, setEnterKey] = useState(0);
+  const [chooseBusyId, setChooseBusyId] = useState<string | null>(null);
+  const [chooseError, setChooseError] = useState<string | null>(null);
+  const [armBusy, setArmBusy] = useState(false);
+  const [armError, setArmError] = useState<string | null>(null);
+  const [statusPhase, setStatusPhase] = useState<WizardStatusPhase>({
+    kind: "loading",
+  });
+  const inFlight = useRef(false);
 
   useEffect(() => {
     setState(readFirstRunWizardState(storageKey));
@@ -145,22 +295,173 @@ export function FirstRunWizard({
     onStepChange?.(activeStep.id);
   }, [activeStep.id, onStepChange, visible]);
 
+  useEffect(() => {
+    if (!visible || activeStep.id !== "status" || !paperClient) {
+      return;
+    }
+    let cancelled = false;
+    setStatusPhase({ kind: "loading" });
+    paperClient
+      .getStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setStatusPhase({ kind: "ready", status });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatusPhase({ kind: "unavailable" });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStep.id, paperClient, visible]);
+
   if (!visible) {
     return null;
   }
 
-  const showSkip =
-    state.status === "active" || activeStep.id !== "welcome";
+  const showSkip = state.status === "active" || activeStep.id !== "welcome";
   const visual = WIZARD_STEP_VISUALS[activeStep.id];
   const stepNumber = stepIndexOf(steps, activeStep.id) + 1;
   const isWin = activeStep.id === "win";
+  const statusWired = activeStep.id === "status" && paperClient !== undefined;
+  const sentence = statusWired
+    ? honestWizardStatusSentence(statusPhase)
+    : activeStep.sentence;
+  const statusLoading = statusWired && statusPhase.kind === "loading";
+  const catalogueLoader = loadStarters ?? fetchStarters;
 
-  function advanceTo(nextId: FirstRunWizardStepId): void {
-    persist({
-      status: "active",
-      stepId: nextId,
-      selectedStarterId: state.selectedStarterId ?? null,
-    });
+  function dismissedNow(): boolean {
+    const latest = readFirstRunWizardState(storageKey);
+    return latest.status === "skipped" || latest.status === "completed";
+  }
+
+  function advanceTo(nextId: FirstRunWizardStepId, revisionId?: string): void {
+    persist(
+      persisted(
+        "active",
+        nextId,
+        state.selectedStarterId ?? null,
+        revisionId ?? state.revisionId,
+      ),
+    );
+  }
+
+  async function saveStarter(starterId: string): Promise<void> {
+    if (!strategyClient) {
+      persist(persisted("active", "start_paper", starterId));
+      return;
+    }
+    if (inFlight.current) {
+      return;
+    }
+    inFlight.current = true;
+    setChooseError(null);
+    setChooseBusyId(starterId);
+    try {
+      const saved = await validateStarter(
+        strategyClient,
+        catalogueLoader,
+        starterId,
+      );
+      if (dismissedNow()) {
+        return;
+      }
+      if ("message" in saved) {
+        setChooseError(saved.message);
+        return;
+      }
+      persist(persisted("active", "start_paper", starterId, saved.revisionId));
+    } finally {
+      inFlight.current = false;
+      setChooseBusyId(null);
+    }
+  }
+
+  async function armAndAdvance(): Promise<void> {
+    if (!paperClient || inFlight.current) {
+      return;
+    }
+    inFlight.current = true;
+    setArmError(null);
+    setArmBusy(true);
+    try {
+      let revisionId = state.revisionId;
+      if (!revisionId) {
+        const starterId = state.selectedStarterId;
+        if (!starterId || !strategyClient) {
+          setArmError("Pick a strategy first.");
+          return;
+        }
+        const saved = await validateStarter(
+          strategyClient,
+          catalogueLoader,
+          starterId,
+        );
+        if (dismissedNow()) {
+          return;
+        }
+        if ("message" in saved) {
+          setArmError(saved.message);
+          return;
+        }
+        revisionId = saved.revisionId;
+        persist(
+          persisted(
+            "active",
+            "start_paper",
+            starterId,
+            revisionId,
+          ),
+        );
+      }
+      const arm = paperClient.arm;
+      if (arm === undefined) {
+        setArmError("Start paper run controls unavailable");
+        return;
+      }
+      let result: PaperCommandResult;
+      try {
+        result = await arm.call(paperClient, {
+          revision_id: revisionId,
+          venue: WIZARD_PAPER_VENUE,
+          mode: "paper",
+          paper_balance: WIZARD_PAPER_BALANCE,
+        });
+      } catch (reason) {
+        if (!dismissedNow()) {
+          setArmError(
+            `Start paper run outcome unknown: ${errorText(reason)}. Refresh status to see the server state before retrying.`,
+          );
+        }
+        return;
+      }
+      if (dismissedNow()) {
+        return;
+      }
+      if (result?.ok !== true) {
+        setArmError(armRefusal(result));
+        return;
+      }
+      const index = stepIndexOf(steps, "start_paper");
+      const nextStep = steps[index + 1];
+      if (!nextStep) {
+        return;
+      }
+      persist(
+        persisted(
+          "active",
+          nextStep.id,
+          state.selectedStarterId ?? null,
+          revisionId,
+        ),
+      );
+    } finally {
+      inFlight.current = false;
+      setArmBusy(false);
+    }
   }
 
   function handlePrimary(): void {
@@ -169,34 +470,42 @@ export function FirstRunWizard({
       return;
     }
     if (activeStep.id === "welcome") {
-      persist({
-        status: "active",
-        stepId: "choose",
-        selectedStarterId: null,
-      });
+      persist(persisted("active", "choose", null));
       return;
     }
     if (activeStep.id === "win") {
-      persist({
-        status: "completed",
-        stepId: "win",
-        selectedStarterId: state.selectedStarterId ?? null,
-      });
+      persist(
+        persisted(
+          "completed",
+          "win",
+          state.selectedStarterId ?? null,
+          state.revisionId,
+        ),
+      );
       onComplete?.();
       return;
     }
-    // choose advances via tile Use; other steps advance linearly
     if (activeStep.id === "choose") {
+      return;
+    }
+    if (activeStep.id === "start_paper" && paperClient) {
+      void armAndAdvance();
+      return;
+    }
+    if (statusLoading) {
       return;
     }
     const index = stepIndexOf(steps, activeStep.id);
     const nextStep = steps[index + 1];
     if (!nextStep) {
-      persist({
-        status: "completed",
-        stepId: "win",
-        selectedStarterId: state.selectedStarterId ?? null,
-      });
+      persist(
+        persisted(
+          "completed",
+          "win",
+          state.selectedStarterId ?? null,
+          state.revisionId,
+        ),
+      );
       onComplete?.();
       return;
     }
@@ -208,21 +517,25 @@ export function FirstRunWizard({
     if (gate === false) {
       return;
     }
-    persist({
-      status: "active",
-      stepId: "start_paper",
-      selectedStarterId: starterId,
-    });
+    void saveStarter(starterId);
   }
 
   function handleSkip(): void {
-    persist({
-      status: "skipped",
-      stepId: activeStep.id,
-      selectedStarterId: state.selectedStarterId ?? null,
-    });
+    persist(
+      persisted(
+        "skipped",
+        activeStep.id,
+        state.selectedStarterId ?? null,
+        state.revisionId,
+      ),
+    );
     onSkip?.();
   }
+
+  const primaryLabel =
+    activeStep.id === "start_paper" && armBusy
+      ? "Starting…"
+      : activeStep.primaryLabel;
 
   return (
     <div
@@ -275,49 +588,84 @@ export function FirstRunWizard({
             className="kbot-first-run-wizard__sentence"
             data-testid="first-run-wizard-sentence"
           >
-            {activeStep.sentence}
+            {sentence}
           </p>
 
-          {activeStep.id === "choose" ? (
-            <ul
-              className="kbot-first-run-wizard__tiles"
-              data-testid="first-run-wizard-tiles"
+          {statusWired ? (
+            <p
+              className="kbot-first-run-wizard__chip"
+              data-testid="first-run-wizard-status-chip"
+              data-paper-status={wizardStatusChipKind(statusPhase)}
             >
-              {CONSUMER_STARTER_CARD_ORDER.map((id) => {
-                const card = CONSUMER_STARTER_CARDS[id]!;
-                return (
-                  <li key={id} className="kbot-first-run-wizard__tile">
-                    <p className="kbot-first-run-wizard__tile-title">
-                      {card.title}
-                    </p>
-                    <button
-                      type="button"
-                      className="kbot-first-run-wizard__primary"
-                      data-testid={`first-run-wizard-use-${id}`}
-                      onClick={() => handleSelectStarter(id)}
-                    >
-                      Use
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+              {WIZARD_LIVE_TRADING_UNAVAILABLE}
+            </p>
+          ) : null}
+
+          {activeStep.id === "choose" ? (
+            <>
+              <ul
+                className="kbot-first-run-wizard__tiles"
+                data-testid="first-run-wizard-tiles"
+              >
+                {CONSUMER_STARTER_CARD_ORDER.map((id) => {
+                  const card = CONSUMER_STARTER_CARDS[id]!;
+                  const busy = chooseBusyId === id;
+                  return (
+                    <li key={id} className="kbot-first-run-wizard__tile">
+                      <p className="kbot-first-run-wizard__tile-title">
+                        {card.title}
+                      </p>
+                      <button
+                        type="button"
+                        className="kbot-first-run-wizard__primary"
+                        data-testid={`first-run-wizard-use-${id}`}
+                        disabled={chooseBusyId !== null}
+                        onClick={() => handleSelectStarter(id)}
+                      >
+                        {busy ? "Saving…" : "Use"}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {chooseError !== null ? (
+                <p
+                  className="kbot-first-run-wizard__alert"
+                  data-testid="first-run-wizard-choose-error"
+                  role="alert"
+                >
+                  {chooseError}
+                </p>
+              ) : null}
+            </>
           ) : (
             <button
               type="button"
               className="kbot-first-run-wizard__primary"
               data-testid="first-run-wizard-primary"
+              disabled={armBusy || statusLoading}
               onClick={handlePrimary}
             >
-              {activeStep.primaryLabel}
+              {primaryLabel}
             </button>
           )}
+
+          {activeStep.id === "start_paper" && armError !== null ? (
+            <p
+              className="kbot-first-run-wizard__alert"
+              data-testid="first-run-wizard-arm-error"
+              role="alert"
+            >
+              {armError}
+            </p>
+          ) : null}
 
           {showSkip ? (
             <button
               type="button"
               className="kbot-first-run-wizard__skip"
               data-testid="first-run-wizard-skip"
+              disabled={chooseBusyId !== null || armBusy}
               onClick={handleSkip}
             >
               Skip setup
