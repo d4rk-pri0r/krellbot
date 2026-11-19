@@ -23,8 +23,13 @@ export type FirstRunWizardStepId =
 export type FirstRunWizardPersisted = {
   status: FirstRunWizardStatus;
   stepId: FirstRunWizardStepId;
-  /** Stub selection id for choose step (real clients land in M26.5). */
+  /** Consumer starter id chosen on step 2. */
   selectedStarterId?: string | null;
+  /**
+   * Draft revision from a successful starter validate. Omitted until the
+   * paper clients save one, so older stub state stays unchanged.
+   */
+  revisionId?: string;
 };
 
 export const DEFAULT_FIRST_RUN_WIZARD_STATE: FirstRunWizardPersisted = {
@@ -72,15 +77,18 @@ export function readFirstRunWizardState(
       isStatus((parsed as FirstRunWizardPersisted).status) &&
       isStepId((parsed as FirstRunWizardPersisted).stepId)
     ) {
-      const selected = (parsed as FirstRunWizardPersisted).selectedStarterId;
-      return {
-        status: (parsed as FirstRunWizardPersisted).status,
-        stepId: (parsed as FirstRunWizardPersisted).stepId,
+      const record = parsed as FirstRunWizardPersisted;
+      const selected = record.selectedStarterId;
+      const next: FirstRunWizardPersisted = {
+        status: record.status,
+        stepId: record.stepId,
         selectedStarterId:
-          typeof selected === "string" || selected === null
-            ? selected
-            : null,
+          typeof selected === "string" || selected === null ? selected : null,
       };
+      if (typeof record.revisionId === "string" && record.revisionId.length > 0) {
+        next.revisionId = record.revisionId;
+      }
+      return next;
     }
     return { ...DEFAULT_FIRST_RUN_WIZARD_STATE };
   } catch {
