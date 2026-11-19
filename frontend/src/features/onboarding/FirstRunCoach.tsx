@@ -29,7 +29,7 @@ export type FirstRunCoachStep = {
 export const DEFAULT_FIRST_RUN_STEPS: ReadonlyArray<FirstRunCoachStep> = [
   {
     id: "welcome",
-    title: "Paper trading on this computer",
+    title: "Take the guided paper setup",
     body: "Pick a free starter, start a paper run, and see honest status — no exchange key.",
     primaryLabel: "Start",
   },
@@ -38,21 +38,21 @@ export const DEFAULT_FIRST_RUN_STEPS: ReadonlyArray<FirstRunCoachStep> = [
     title: "Choose a free paper strategy",
     body: "Use the sage button to open three plain starter cards.",
     anchor: "choose_starter",
-    primaryLabel: "Next",
+    primaryLabel: "Open starters",
   },
   {
     id: "arm_paper",
     title: "Start your paper run",
     body: "Arm the strategy you picked with pretend money on this machine.",
     anchor: "arm_paper",
-    primaryLabel: "Next",
+    primaryLabel: "Show Start paper run",
   },
   {
     id: "status",
     title: "Read honest status",
     body: "Armed, waiting, or paper-only — never invented live performance.",
     anchor: "status",
-    primaryLabel: "Next",
+    primaryLabel: "Continue",
   },
   {
     id: "win",
@@ -80,6 +80,11 @@ export type FirstRunCoachProps = {
    * (M25.3 wiring can advance only after the real action).
    */
   onPrimaryAction?: (stepId: FirstRunCoachStepId) => boolean | void;
+  /**
+   * When this value changes, re-read persisted coach state (external
+   * advances from starter ready / paper arm).
+   */
+  syncKey?: number | string;
 };
 
 type SpotlightBox = {
@@ -111,11 +116,16 @@ export function FirstRunCoach({
   onSkip,
   onComplete,
   onPrimaryAction,
+  syncKey = 0,
 }: FirstRunCoachProps): JSX.Element | null {
   const [state, setState] = useState<FirstRunCoachPersisted>(() =>
     readFirstRunCoachState(storageKey),
   );
   const [spotlight, setSpotlight] = useState<SpotlightBox | null>(null);
+
+  useEffect(() => {
+    setState(readFirstRunCoachState(storageKey));
+  }, [storageKey, syncKey]);
 
   const persist = useCallback(
     (next: FirstRunCoachPersisted) => {

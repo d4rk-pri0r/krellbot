@@ -36,6 +36,8 @@ export type StatusPanelProps = {
   select?: PaperStatusSelect | null;
   /** Prefer this runnable revision in the arm form (home starter handoff). */
   preferredRevisionId?: string | null;
+  /** Fired after a backend-confirmed paper arm (first-run coach wiring). */
+  onPaperArmed?: () => void;
 };
 
 type EntriesSentence = "Entries active" | "Entries paused";
@@ -681,6 +683,8 @@ function ArmForm({
           <button
             type="button"
             className="kbot-paper-status__action"
+            data-testid="paper-arm-submit"
+            data-coach-anchor="arm_paper"
             disabled={armDisabled}
             onClick={() => {
               void handleArm();
@@ -719,6 +723,7 @@ export function StatusPanel({
   positionSelected = false,
   select = null,
   preferredRevisionId = null,
+  onPaperArmed,
 }: StatusPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   // Synchronous guard so a rapid double click cannot dispatch a duplicate
@@ -813,7 +818,8 @@ export function StatusPanel({
 
   const handleArmConfirmed = useCallback((): void => {
     setArmEpoch((current) => current + 1);
-  }, []);
+    onPaperArmed?.();
+  }, [onPaperArmed]);
 
 
   // The owned position is a separate read from the status: the status body
@@ -1069,6 +1075,7 @@ export function StatusPanel({
       role="region"
       aria-label="Paper controls"
       data-testid="paper-status-panel"
+      data-coach-anchor="status"
       data-pending={state.pending ?? ""}
     >
       <header className="kbot-paper-status__head">
