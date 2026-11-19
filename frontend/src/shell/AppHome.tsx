@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useRef, useState, type JSX } from "react";
 import type { VersionClient } from "../api/version";
 import { BrandMark } from "../components/brand/BrandMark";
 import { DisclosureSection } from "../components/disclosure/DisclosureSection";
@@ -20,14 +20,6 @@ import {
   type ReferralClient,
 } from "../features/referral/client";
 import type { ReconnectIssue } from "../session";
-import {
-  ActivationChecklist,
-  markActivationStarterChosen,
-} from "../features/onboarding/ActivationChecklist";
-import {
-  isFirstRunCoachDismissed,
-  readFirstRunCoachState,
-} from "../features/onboarding/firstRunCoachPersistence";
 import { PaperStarterChooser } from "../features/onboarding/PaperStarterChooser";
 import type { StrategyClient } from "../features/strategies/client";
 import type { StarterCatalogue } from "../features/strategies/StarterPicker.client";
@@ -39,10 +31,10 @@ import "./AppHome.signal.css";
 /**
  * Application Home — Signal workspace composition (KRELL-SIGNAL-20261010).
  *
- * First-viewport density (docs/ui-density.md / M25.7): brand + one headline
- * + one supporting sentence + one sage CTA while the first-run coach is
- * active. Advanced rails and the activation checklist stay out of the first
- * viewport until coach skip/complete — checklist **or** coach, never both.
+ * Post-wizard M24 home (docs/ui-density.md): brand + one headline + one
+ * supporting sentence + one sage CTA in the first viewport. Advanced rails
+ * stay mounted and collapsed. First-run is the full-screen wizard; this
+ * surface does not mount a hotspot overlay or an activation checklist.
  */
 
 type HomePath = {
@@ -133,26 +125,6 @@ type AppHomeProps = {
   loadStarters?: () => Promise<StarterCatalogue>;
   /** After create+validate, hand off to Run with this revision selected. */
   onStarterReady?: (ready: { revisionId: string; label: string }) => void;
-  /**
-   * When true, hide the activation checklist so an active FirstRunCoach
-   * step owns the chrome (M25.2+). Checklist stays mountable otherwise.
-   */
-  suppressActivationChecklist?: boolean;
-  /** Incomplete checklist: reopen guided setup (coach resume). */
-  onResumeActivationSetup?: () => void;
-  /**
-   * Bump to request opening the home starter chooser (first-run coach).
-   * Does not rewrite chooser cards — open only.
-   */
-  openChooserSignal?: number;
-  /**
-   * When set, controls whether Advanced home chrome is mounted. When
-   * omitted, derived from first-run coach persistence (shown only after
-   * skip/complete). Shell passes activationUnlocked.
-   */
-  showHomeAdvanced?: boolean;
-  /** Re-read coach persistence when this bumps (skip / resume / arm). */
-  coachSyncKey?: number;
 };
 
 export function AppHome({
@@ -169,31 +141,8 @@ export function AppHome({
   strategyClient,
   loadStarters,
   onStarterReady,
-  suppressActivationChecklist = false,
-  onResumeActivationSetup,
-  openChooserSignal = 0,
-  showHomeAdvanced,
-  coachSyncKey = 0,
 }: AppHomeProps): JSX.Element {
   const [chooserOpen, setChooserOpen] = useState(false);
-  const lastChooserSignal = useRef(0);
-  useEffect(() => {
-    if (openChooserSignal > 0 && openChooserSignal !== lastChooserSignal.current) {
-      lastChooserSignal.current = openChooserSignal;
-      setChooserOpen(true);
-    }
-  }, [openChooserSignal]);
-  const [coachDismissed, setCoachDismissed] = useState(() =>
-    isFirstRunCoachDismissed(readFirstRunCoachState()),
-  );
-  useEffect(() => {
-    setCoachDismissed(isFirstRunCoachDismissed(readFirstRunCoachState()));
-  }, [coachSyncKey]);
-  const advancedVisible =
-    showHomeAdvanced !== undefined ? showHomeAdvanced : coachDismissed;
-  // Coach owns chrome until skip/complete — never fight the checklist.
-  const checklistVisible =
-    advancedVisible && !suppressActivationChecklist;
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const recoveryAttempt = useRef(0);
   const fallbackKeysRef = useRef<KeysClient | null>(null);
@@ -279,7 +228,7 @@ export function AppHome({
     <section
       className="app-home"
       data-testid="app-home"
-      data-home-advanced={advancedVisible ? "1" : "0"}
+      data-home-advanced="1"
       aria-labelledby="app-home-title"
     >
       <header
@@ -403,7 +352,6 @@ export function AppHome({
               type="button"
               className="app-home__cta"
               data-testid="app-home-cta-paper"
-              data-coach-anchor="choose_starter"
               onClick={() => {
                 setChooserOpen(true);
               }}
@@ -437,7 +385,6 @@ export function AppHome({
           }}
           onReady={(ready) => {
             setChooserOpen(false);
-            markActivationStarterChosen(ready);
             if (onStarterReady) {
               onStarterReady(ready);
               return;
@@ -447,18 +394,8 @@ export function AppHome({
         />
       ) : null}
 
-      {advancedVisible ? (
       <div className="app-home__layout" data-testid="app-home-advanced-stack">
         <div className="app-home__main">
-          {checklistVisible ? (
-            <div className="app-home__activity" data-testid="app-home-works">
-              <ActivationChecklist
-                onResumeSetup={onResumeActivationSetup}
-                lede="One path: choose a free strategy, start a paper run, and watch status on this machine. Nothing here places real orders."
-              />
-            </div>
-          ) : null}
-
           <DisclosureSection
             title="All areas"
             summary="Every destination in this app"
@@ -740,7 +677,6 @@ export function AppHome({
 
         </aside>
       </div>
-      ) : null}
     </section>
   );
 }

@@ -14,6 +14,7 @@ import {
   FirstRunWizard,
   isFirstRunWizardDismissed,
 } from "./features/onboarding/FirstRunWizard";
+import { adoptLegacyFirstRunDismissal } from "./features/onboarding/legacyFirstRunMigration";
 import {
   createHttpClient as createPaperHttpClient,
   type PaperClient,
@@ -25,9 +26,10 @@ import {
 import { WorkstationShell } from "./shell/WorkstationShell";
 
 export function App(): JSX.Element {
-  const [wizardDismissed, setWizardDismissed] = useState(() =>
-    isFirstRunWizardDismissed(),
-  );
+  const [wizardDismissed, setWizardDismissed] = useState(() => {
+    adoptLegacyFirstRunDismissal();
+    return isFirstRunWizardDismissed();
+  });
   const strategyClientRef = useRef<StrategyClient | null>(null);
   const paperClientRef = useRef<PaperClient | null>(null);
   if (strategyClientRef.current === null) {

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type JSX } from "react";
 import { DisclosureSection } from "../../components/disclosure/DisclosureSection";
-import { markActivationPaperStatusVisible } from "../onboarding/ActivationChecklist";
 import { getCsrf } from "../../session";
 import type {
   PaperArmDraftSummary,
@@ -37,9 +36,9 @@ export type StatusPanelProps = {
   select?: PaperStatusSelect | null;
   /** Prefer this runnable revision in the arm form (home starter handoff). */
   preferredRevisionId?: string | null;
-  /** Fired after a backend-confirmed paper arm (first-run coach wiring). */
+  /** Fired after a backend-confirmed paper arm. */
   onPaperArmed?: () => void;
-  /** Reports confirmed armed/unarmed so the shell can demote Run chrome. */
+  /** Reports confirmed armed/unarmed so the shell can celebrate a first win. */
   onArmedChange?: (armed: boolean) => void;
 };
 
@@ -540,8 +539,6 @@ function ArmForm({
       setErrorMessage(null);
       // Offer this balance again on the next arm attempt in this session.
       writeLastArmedBalance(balance);
-      // Activation checklist (M25.4): real confirmed arm, not a local click.
-      markActivationPaperStatusVisible(true);
       // Signal the panel: its post-arm read makes the armed controls render
       // without a manual refresh, navigation or remount.
       onArmConfirmed();
@@ -687,7 +684,6 @@ function ArmForm({
             type="button"
             className="kbot-paper-status__action"
             data-testid="paper-arm-submit"
-            data-coach-anchor="arm_paper"
             disabled={armDisabled}
             onClick={() => {
               void handleArm();
@@ -1086,7 +1082,6 @@ export function StatusPanel({
       role="region"
       aria-label="Paper controls"
       data-testid="paper-status-panel"
-      data-coach-anchor="status"
       data-pending={state.pending ?? ""}
     >
       <header className="kbot-paper-status__head">

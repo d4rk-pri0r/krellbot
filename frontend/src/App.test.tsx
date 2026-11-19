@@ -267,10 +267,6 @@ describe("App inspector", () => {
   it("renders an inspector region whose empty state reads 'Nothing selected'", () => {
     render(<App />);
     clickShellNav("Run");
-    // First session demotes inspector behind Advanced until arm or skip (M25.6).
-    fireEvent.click(
-      screen.getByTestId("paper-first-session-inspector-disclosure-toggle"),
-    );
     const inspector = screen.getByTestId("inspector-root");
     expect(inspector.textContent).toMatch(/Nothing selected/);
   });
@@ -336,9 +332,6 @@ describe("App view routing", () => {
     expect(screen.getByTestId("app-home")).toBeDefined();
     clickShellNav("Run");
     expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
-    fireEvent.click(
-      screen.getByTestId("paper-first-session-inspector-disclosure-toggle"),
-    );
     expect(screen.getByTestId("inspector-root")).toBeDefined();
   });
 

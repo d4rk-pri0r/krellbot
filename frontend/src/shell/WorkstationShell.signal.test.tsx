@@ -154,14 +154,12 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     }
 
     renderShell();
-    // M25.7: All-areas cards mount only after coach skip/complete.
-    fireEvent.click(screen.getByTestId("first-run-coach-primary"));
-    fireEvent.click(screen.getByTestId("first-run-coach-skip"));
-    await waitFor(() =>
-      expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
-        "1",
-      ),
+    // Post-wizard M24: All-areas cards are mounted under collapsed Advanced.
+    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
+      "1",
     );
+    expect(screen.queryByTestId("first-run-coach")).toBeNull();
+    expect(screen.queryByTestId("activation-checklist")).toBeNull();
     openHomeAllAreas();
     fireEvent.click(screen.getByTestId("app-home-card-strategies"));
     expect(screen.getByTestId("library-toggle")).toBeDefined();
@@ -314,16 +312,8 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
   it("keeps the honest inspector empty state behind first-session Advanced, not a marketing hero", () => {
     renderShell();
     clickShellNav("Run");
-    // M25.6 demotes Inspector until paper arm or coach skip.
-    expect(
-      screen.getByTestId("paper-first-session-inspector-disclosure").getAttribute(
-        "data-open",
-      ),
-    ).toBe("0");
-    fireEvent.click(
-      screen.getByTestId("paper-first-session-inspector-disclosure-toggle"),
-    );
     const inspector = screen.getByTestId("inspector-root");
     expect(inspector.textContent).toMatch(/Nothing selected/);
+    expect(screen.queryByTestId("paper-first-session-inspector-disclosure")).toBeNull();
   });
 });

@@ -48,6 +48,10 @@ test("capture first-run activation walkthrough demo frames", async ({
   journey,
 }, testInfo) => {
   test.skip(
+    true,
+    "hotspot coach walkthrough retired (M26.6); full-screen wizard demo is M26.8",
+  );
+  test.skip(
     !OUT,
     "set FIRST_RUN_ACTIVATION_DEMO_DIR to capture activation demos",
   );

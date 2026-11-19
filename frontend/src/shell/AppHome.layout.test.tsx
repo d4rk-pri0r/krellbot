@@ -75,7 +75,6 @@ describe("home first-viewport composition at 1440×900", () => {
         onNavigate={() => {}}
         keysClient={absentKeysClient()}
         versionClient={previewVersionClient()}
-        showHomeAdvanced
       />,
     );
     const first = screen.getByTestId("app-home-first-viewport");
@@ -93,7 +92,8 @@ describe("home first-viewport composition at 1440×900", () => {
     expect(screen.getByTestId("app-home-path").getAttribute("data-open")).toBe(
       "0",
     );
-    expect(screen.getByTestId("app-home-works")).toBeTruthy();
+    expect(screen.queryByTestId("app-home-works")).toBeNull();
+    expect(screen.queryByTestId("activation-checklist")).toBeNull();
     expect(screen.getByTestId("app-home-keys-rail").getAttribute("data-open")).toBe(
       "0",
     );
@@ -105,7 +105,6 @@ describe("home first-viewport composition at 1440×900", () => {
         onNavigate={() => {}}
         keysClient={absentKeysClient()}
         versionClient={previewVersionClient()}
-        showHomeAdvanced
       />,
     );
     for (const testid of CARD_TESTIDS) {

@@ -51,7 +51,6 @@ describe("AppHome reconnect invite (primary session)", () => {
         keysClient={silentKeysClient()}
         versionClient={silentVersionClient()}
         onIssueReconnect={onIssue}
-        showHomeAdvanced
       />,
     );
 

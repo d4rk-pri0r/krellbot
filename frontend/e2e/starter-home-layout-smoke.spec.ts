@@ -16,7 +16,7 @@
  * Do not assert geometry on collapsed Advanced cards (width 0 is expected).
  */
 import { test, expect } from "./journey-harness/journey-harness";
-import { clickNav, skipFirstRunCoach } from "../journeys/helpers/journey-steps";
+import { clickNav } from "../journeys/helpers/journey-steps";
 
 const VIEWPORT = { width: 1440, height: 900 } as const;
 
@@ -232,17 +232,13 @@ test("home first-viewport and starter picker stay readable at 1440×900", async 
   ).toBeGreaterThanOrEqual(MIN_HOME_CTA_WIDTH_PX);
   expect(cta.height, "sage CTA is tappable").toBeGreaterThanOrEqual(34);
 
-  // M25.7: Advanced is unmounted while coach owns chrome — skip, then pin.
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "0",
-  );
-  await skipFirstRunCoach(page);
-  await settle(page);
+  // Post-wizard M24: Advanced is mounted collapsed, with no checklist.
   await expect(page.getByTestId("app-home")).toHaveAttribute(
     "data-home-advanced",
     "1",
   );
+  await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
+  await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
   // Peer cards are intentionally collapsed under Advanced — pin that, then
   // expand and measure real laid-out geometry (never assert width on hidden).
   await expect(page.getByTestId("app-home-path")).toHaveAttribute(

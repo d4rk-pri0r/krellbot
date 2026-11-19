@@ -86,16 +86,6 @@ import {
 } from "../session";
 import { Wordmark } from "../components/brand/Wordmark";
 import { DisclosureSection } from "../components/disclosure/DisclosureSection";
-import {
-  advanceFirstRunCoachTo,
-  FirstRunCoach,
-  isFirstRunCoachDismissed,
-  readFirstRunCoachState,
-  resumeFirstRunCoachState,
-  writeFirstRunCoachState,
-} from "../features/onboarding/FirstRunCoach";
-import type { FirstRunCoachStepId } from "../features/onboarding/firstRunCoachPersistence";
-import { markActivationPaperRunStarted } from "../features/onboarding/ActivationChecklist";
 import { FirstWinCelebrate } from "../features/onboarding/FirstWinCelebrate";
 import {
   isFirstWinCelebrateShown,
@@ -256,31 +246,14 @@ export function WorkstationShell({
   const [preferredArmRevisionId, setPreferredArmRevisionId] = useState<
     string | null
   >(null);
-  /** Bumps FirstRunCoach to re-read persistence after external advances. */
-  const [coachSyncKey, setCoachSyncKey] = useState(0);
-  /** Bumps AppHome to open the starter chooser from the coach primary. */
-  const [openChooserSignal, setOpenChooserSignal] = useState(0);
-  /** Run secondary chrome unlocks after paper arm or coach skip/complete. */
-  const [paperArmed, setPaperArmed] = useState(false);
-  const [activationUnlocked, setActivationUnlocked] = useState(() =>
-    isFirstRunCoachDismissed(),
-  );
   /** M25.8: brief first-win toast after first successful paper arm. */
   const [firstWinOpen, setFirstWinOpen] = useState(false);
   const celebrateFirstPaperWin = useCallback((): void => {
-    markActivationPaperRunStarted();
     if (!isFirstWinCelebrateShown()) {
       markFirstWinCelebrateShown();
       setFirstWinOpen(true);
     }
-    const coach = readFirstRunCoachState();
-    if (coach.status === "active" || coach.status === "idle") {
-      writeFirstRunCoachState({ status: "completed", stepId: "win" });
-      setActivationUnlocked(true);
-      setCoachSyncKey((value) => value + 1);
-    }
   }, []);
-  const showRunSecondaryChrome = paperArmed || activationUnlocked;
   const setActive = useCallback((view: View): void => {
     setActiveState(view);
     // No-ops when the URL already encodes ``view`` (re-clicking the
@@ -1190,22 +1163,8 @@ export function WorkstationShell({
               bootstrapFailed ? handleRedeemReconnect : undefined
             }
             strategyClient={client}
-            openChooserSignal={openChooserSignal}
-            showHomeAdvanced={activationUnlocked}
-            coachSyncKey={coachSyncKey}
-            suppressActivationChecklist={!activationUnlocked}
-            onResumeActivationSetup={() => {
-              resumeFirstRunCoachState();
-              setActivationUnlocked(false);
-              setCoachSyncKey((value) => value + 1);
-            }}
             onStarterReady={({ revisionId }) => {
               setPreferredArmRevisionId(revisionId);
-              const coach = readFirstRunCoachState();
-              if (coach.status === "active" || coach.status === "idle") {
-                advanceFirstRunCoachTo("arm_paper");
-                setCoachSyncKey((value) => value + 1);
-              }
               setActive("workstation");
             }}
           />
@@ -1235,45 +1194,21 @@ export function WorkstationShell({
                       }
                       preferredRevisionId={preferredArmRevisionId}
                       onArmedChange={(armed) => {
-                        setPaperArmed(armed);
                         if (armed) {
                           celebrateFirstPaperWin();
                         }
                       }}
                       onPaperArmed={() => {
-                        setPaperArmed(true);
                         celebrateFirstPaperWin();
                       }}
                     />
-                    {showRunSecondaryChrome ? (
-                      <>
-                        <FleetArmedList
-                          client={paperFleet}
-                          onOpenDetail={handleFleetOpenDetail}
-                          onSelectionChange={handleFleetSelection}
-                          unresolvedClient={operations}
-                        />
-                        <LastRunsPanel client={paperRuns} />
-                      </>
-                    ) : (
-                      <DisclosureSection
-                        title="Last runs & fleet"
-                        summary="Unlocks after you start a paper run or skip the guide"
-                        badge="Advanced"
-                        badgeTone="advanced"
-                        defaultOpen={false}
-                        storageKey="krellbot.disclosure.paper.first-session-fleet"
-                        data-testid="paper-first-session-fleet-disclosure"
-                      >
-                        <FleetArmedList
-                          client={paperFleet}
-                          onOpenDetail={handleFleetOpenDetail}
-                          onSelectionChange={handleFleetSelection}
-                          unresolvedClient={operations}
-                        />
-                        <LastRunsPanel client={paperRuns} />
-                      </DisclosureSection>
-                    )}
+                    <FleetArmedList
+                      client={paperFleet}
+                      onOpenDetail={handleFleetOpenDetail}
+                      onSelectionChange={handleFleetSelection}
+                      unresolvedClient={operations}
+                    />
+                    <LastRunsPanel client={paperRuns} />
                     <DisclosureSection
                       title="Forward paper ledger"
                       summary="Chronological paper evidence (arms, ticks, fills, refusals) for outsider reproduction — not live P&L."
@@ -1337,21 +1272,7 @@ export function WorkstationShell({
                 )}
               </div>
               <aside className="kbot-shell__workstation-aside">
-                {showRunSecondaryChrome ? (
-                  <Inspector selection={inspectorSelection} />
-                ) : (
-                  <DisclosureSection
-                    title="Inspector"
-                    summary="Selection detail unlocks after a paper run or skip"
-                    badge="Advanced"
-                    badgeTone="advanced"
-                    defaultOpen={false}
-                    storageKey="krellbot.disclosure.paper.first-session-inspector"
-                    data-testid="paper-first-session-inspector-disclosure"
-                  >
-                    <Inspector selection={inspectorSelection} />
-                  </DisclosureSection>
-                )}
+                <Inspector selection={inspectorSelection} />
               </aside>
             </div>
           </>
@@ -1732,38 +1653,6 @@ export function WorkstationShell({
             researchDetachedRef.current,
           )
         : null}
-      <FirstRunCoach
-        syncKey={coachSyncKey}
-        onSkip={() => {
-          setActivationUnlocked(true);
-          setCoachSyncKey((value) => value + 1);
-        }}
-        onComplete={() => {
-          setActivationUnlocked(true);
-          setCoachSyncKey((value) => value + 1);
-        }}
-        onPrimaryAction={(stepId: FirstRunCoachStepId) => {
-          if (stepId === "choose_starter") {
-            setActive("home");
-            setOpenChooserSignal((value) => value + 1);
-            return false;
-          }
-          if (stepId === "arm_paper") {
-            setActive("workstation");
-            window.requestAnimationFrame(() => {
-              const arm = document.querySelector(
-                '[data-coach-anchor="arm_paper"]',
-              );
-              if (arm instanceof HTMLElement) {
-                arm.focus();
-                arm.scrollIntoView({ block: "nearest", behavior: "smooth" });
-              }
-            });
-            return false;
-          }
-          return undefined;
-        }}
-      />
       <FirstWinCelebrate
         open={firstWinOpen}
         onDismiss={() => {

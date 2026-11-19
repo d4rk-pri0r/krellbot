@@ -10,7 +10,7 @@
  * No CSS mocks, no backend mocks: fresh guarded workstation per run.
  */
 import { test, expect } from "./journey-harness/journey-harness";
-import { clickNav, skipFirstRunCoach } from "../journeys/helpers/journey-steps";
+import { clickNav } from "../journeys/helpers/journey-steps";
 
 const VIEWPORT = { width: 1440, height: 900 } as const;
 
@@ -88,7 +88,7 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     80,
   );
 
-  // M25.7: one sage CTA while coach owns chrome; Advanced stack hidden.
+  // Post-wizard M24: one sage CTA; Advanced rails mounted and collapsed.
   await expect(page.getByTestId("app-home-cta-paper")).toContainText(
     /Start with a free paper strategy/i,
   );
@@ -99,10 +99,15 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
   await expect(page.getByTestId("app-home-cta-packs")).toBeVisible();
   await expect(page.getByTestId("app-home")).toHaveAttribute(
     "data-home-advanced",
+    "1",
+  );
+  await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
+  await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
+  await expect(page.getByTestId("app-home-works")).toHaveCount(0);
+  await expect(page.getByTestId("app-home-path")).toHaveAttribute(
+    "data-open",
     "0",
   );
-  await expect(page.getByTestId("app-home-path")).toHaveCount(0);
-  await expect(page.getByTestId("app-home-works")).toHaveCount(0);
 
   // Document should not be padded with sparse empty viewport below the hero.
   const homeScroll = await page.evaluate(() => ({
@@ -114,23 +119,10 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     "fresh home must not invent a multi-viewport empty scroll",
   ).toBeLessThan(VIEWPORT.height * 3);
 
-  // After skip: Advanced + checklist mount collapsed (not first-viewport dump).
-  await skipFirstRunCoach(page);
-  await settle(page);
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "1",
-  );
-  await expect(page.getByTestId("app-home-path")).toHaveAttribute(
-    "data-open",
-    "0",
-  );
-  const works = page.getByTestId("app-home-works");
-  await expect(works).toBeVisible();
-  const worksBox = await boxFor(page, "app-home-works");
+  const pathBox = await boxFor(page, "app-home-path");
   expect(
-    worksBox.top,
-    "next-steps activity begins near the first viewport",
+    pathBox.top,
+    "collapsed All areas begins near the first viewport",
   ).toBeLessThanOrEqual(MAX_PATH_TOP_PX);
 
   const keysToggle = page.getByTestId("app-home-keys-rail-toggle");
@@ -145,9 +137,6 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
   await expect(page.getByTestId("paper-status-panel")).toBeVisible({
     timeout: 20_000,
   });
-  await settle(page);
-  // Clear coach overlay before Advanced toggles (demotion stays).
-  await skipFirstRunCoach(page);
   await settle(page);
 
   const workstationFirst = page.getByTestId("paper-workstation-first-viewport");
