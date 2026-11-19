@@ -1,5 +1,6 @@
 /** Fresh guarded workstation and browser per scenario: no order-dependent state. */
 import {test as base, expect, chromium, type Page} from "@playwright/test";
+import {seedDismissedFirstRunWizard, skipFirstRunWizard} from "../../journeys/helpers/journey-steps";
 import {attachNetworkGuard, assertNoOffLoopback, type NetworkGuard} from "./network-guard";
 import {attachCommandLog, assertNoLiveOrderCommands, type CommandLog} from "./command-log";
 import {startJourneyWorkstation, runGuardedCli, spawnGuardedPython, sanitizedJourneyEnv, type JourneyWorkstationHandle} from "./spawn-layer";
@@ -15,6 +16,8 @@ export type JourneyScope = {
 };
 
 export async function waitForSessionReady(page: Page): Promise<void> {
+  // M26.4: cold open mounts FirstRunWizard alone — dismiss so shell can bootstrap.
+  await skipFirstRunWizard(page);
   await page.waitForFunction(() => document.querySelector('[data-testid="kbot-shell"]')?.getAttribute("data-bootstrap-done") === "1", undefined, {timeout: 20_000});
 }
 
@@ -23,6 +26,8 @@ export const jTest = base.extend<{journey: JourneyScope}>({
     const workstation = await startJourneyWorkstation();
     const browserEnv = Object.fromEntries(Object.entries(sanitizedJourneyEnv(workstation.homeDir)).filter((entry): entry is [string, string] => entry[1] !== undefined));
     const context = await chromium.launchPersistentContext(`${workstation.homeDir}/.chromium-profile`, {headless: true, serviceWorkers: "block", acceptDownloads: true, env: browserEnv});
+    // Shell suites: seed dismissed wizard before any navigation (M26.4 gate).
+    await seedDismissedFirstRunWizard(context);
     const page = context.pages()[0] ?? await context.newPage();
     // Install BOTH guards while the page is still about:blank. Scenario
     // beforeEach performs the first real navigation only after fixture yield.

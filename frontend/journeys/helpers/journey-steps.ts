@@ -71,6 +71,115 @@ export async function expandDisclosure(page: Page, panelTestId: string): Promise
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
 
+/** Matches `FIRST_RUN_WIZARD_STORAGE_KEY` in firstRunWizardPersistence. */
+export const FIRST_RUN_WIZARD_E2E_STORAGE_KEY = "krellbot.home.firstRunWizard";
+
+/** Skipped persistence so App mounts WorkstationShell (shell suites). */
+export const DISMISSED_FIRST_RUN_WIZARD_JSON = JSON.stringify({
+  status: "skipped",
+  stepId: "welcome",
+  selectedStarterId: null,
+});
+
+/**
+ * Playwright Page/BrowserContext both expose addInitScript; the return type
+ * is Promise<Disposable> (not void), so keep the host structural and loose
+ * on the Promise result.
+ */
+type InitScriptHost = {
+  addInitScript: (
+    script: (arg: { key: string; value: string }) => void,
+    arg: { key: string; value: string },
+  ) => Promise<unknown>;
+};
+
+/**
+ * Seed dismissed wizard before the first navigation so App cold-opens the
+ * shell (M26.4). Call on BrowserContext / Page before goto.
+ */
+export async function seedDismissedFirstRunWizard(
+  host: InitScriptHost,
+): Promise<void> {
+  await host.addInitScript(
+    ({ key, value }) => {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        // Best-effort only.
+      }
+    },
+    {
+      key: FIRST_RUN_WIZARD_E2E_STORAGE_KEY,
+      value: DISMISSED_FIRST_RUN_WIZARD_JSON,
+    },
+  );
+}
+
+/**
+ * Dismiss FirstRunWizard when e2e/journeys need WorkstationShell (M26.4).
+ *
+ * Prefers the real Skip UI (Let’s go → Skip setup). If the wizard is still
+ * mounted, seeds dismissed persistence and reloads so App remounts the shell.
+ * Awaits wizard unmount + persisted dismiss — never swallows click failures.
+ */
+export async function skipFirstRunWizard(page: Page): Promise<void> {
+  const wizard = page.getByTestId("first-run-wizard");
+  const shell = page.getByTestId("kbot-shell");
+
+  // Cold open may still be choosing wizard vs shell.
+  await Promise.race([
+    wizard.waitFor({ state: "attached", timeout: 8_000 }).catch(() => undefined),
+    shell.waitFor({ state: "attached", timeout: 8_000 }).catch(() => undefined),
+  ]);
+
+  if ((await wizard.count()) === 0) {
+    return;
+  }
+
+  const skip = page.getByTestId("first-run-wizard-skip");
+  const primary = page.getByTestId("first-run-wizard-primary");
+  // Welcome has no Skip — advance once so Skip setup appears.
+  if ((await skip.count()) === 0 && (await primary.count()) > 0) {
+    await primary.click({ timeout: 5_000 });
+    await expect(skip).toBeVisible({ timeout: 5_000 });
+  }
+  if ((await skip.count()) > 0) {
+    await skip.click({ timeout: 5_000 });
+  }
+
+  // Fallback: force dismissed persistence + remount App gate.
+  if ((await wizard.count()) > 0) {
+    await page.evaluate(
+      ({ key, value }) => {
+        window.localStorage.setItem(key, value);
+      },
+      {
+        key: FIRST_RUN_WIZARD_E2E_STORAGE_KEY,
+        value: DISMISSED_FIRST_RUN_WIZARD_JSON,
+      },
+    );
+    await page.reload({ waitUntil: "domcontentloaded" });
+  }
+
+  await expect(wizard).toHaveCount(0, { timeout: 15_000 });
+  await page.waitForFunction(
+    (key) => {
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) {
+          return false;
+        }
+        const status = JSON.parse(raw).status as string;
+        return status === "skipped" || status === "completed";
+      } catch {
+        return false;
+      }
+    },
+    FIRST_RUN_WIZARD_E2E_STORAGE_KEY,
+    { timeout: 5_000 },
+  );
+}
+
 /**
  * Dismiss FirstRunCoach when tests need Advanced / demoted controls.
  * Welcome has no Skip — Start once, then Skip guide. No-op when absent.

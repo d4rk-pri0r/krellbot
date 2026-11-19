@@ -4,7 +4,11 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import {
+  clickNav,
+  seedDismissedFirstRunWizard,
+  skipFirstRunWizard,
+} from "../journeys/helpers/journey-steps";
 
 /**
  * NS20 100k-rows spec.
@@ -79,10 +83,12 @@ test("100000-row inspection renders and scrolls", async ({ page }) => {
   test.setTimeout(180_000);
   const guard = attachConsoleGuard(page);
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
+  await seedDismissedFirstRunWizard(page);
   await page.goto(baseURL + "/");
   await expect(page.locator('meta[name="krellbot-bootstrap"]')).toHaveCount(0, {
     timeout: 5_000,
   });
+  await skipFirstRunWizard(page);
   await page.waitForFunction(
     () => {
       const root = document.querySelector('[data-testid="kbot-shell"]');

@@ -13,7 +13,11 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import {
+  clickNav,
+  seedDismissedFirstRunWizard,
+  skipFirstRunWizard,
+} from "../journeys/helpers/journey-steps";
 
 /**
  * M3-GUI operations spec.
@@ -89,6 +93,7 @@ function seedHome(home: string): void {
 }
 
 async function waitForSessionReady(page: Page): Promise<void> {
+  await skipFirstRunWizard(page);
   await page.waitForFunction(
     () => {
       const root = document.querySelector('[data-testid="kbot-shell"]');
@@ -105,6 +110,7 @@ test("M3-GUI operations surface refuses promotion, drives pause/resume, and enga
   test.setTimeout(120_000);
   const guard = attachConsoleGuard(page);
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
+  await seedDismissedFirstRunWizard(page);
   await page.goto(baseURL + "/");
   await expect(page.locator('meta[name="krellbot-bootstrap"]')).toHaveCount(0, {
     timeout: 5_000,

@@ -12,7 +12,11 @@ import {
   stopWorkstationForSpec,
   type WorkstationHandle,
 } from "./workstation-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import {
+  clickNav,
+  seedDismissedFirstRunWizard,
+  skipFirstRunWizard,
+} from "../journeys/helpers/journey-steps";
 
 /**
  * M1.9 — Operations shows every unresolved order.
@@ -73,6 +77,7 @@ function seedUnresolved(home: string): void {
 }
 
 async function waitForSessionReady(page: Page): Promise<void> {
+  await skipFirstRunWizard(page);
   await page.waitForFunction(
     () => {
       const root = document.querySelector('[data-testid="kbot-shell"]');
@@ -89,6 +94,7 @@ test("Operations shows unresolved orders with client order ID, age, and last loo
   test.setTimeout(120_000);
   const guard = attachConsoleGuard(page);
   const baseURL = workstation!.baseURL.replace(/\/$/, "");
+  await seedDismissedFirstRunWizard(page);
   await page.goto(baseURL + "/");
   await waitForSessionReady(page);
   await clickNav(page, "Operations");

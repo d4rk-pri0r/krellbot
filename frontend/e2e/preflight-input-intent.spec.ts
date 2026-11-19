@@ -2,7 +2,7 @@ import { test, expect, chromium } from "@playwright/test";
 import { startJourneyWorkstation, sanitizedJourneyEnv } from "./journey-harness/spawn-layer";
 import { attachNetworkGuard, assertNoOffLoopback } from "./journey-harness/network-guard";
 import { waitForSessionReady } from "./journey-harness/journey-harness";
-import { clickNav } from "../journeys/helpers/journey-steps";
+import { clickNav, seedDismissedFirstRunWizard } from "../journeys/helpers/journey-steps";
 
 // The ordinary journey command guard rejects every live.* name, including this
 // dry-run. This test uses an explicit sandbox-preflight-only command allowlist;
@@ -51,6 +51,7 @@ for (const width of [1280, 390]) {
       await route.fulfill({ response });
     });
     try {
+      await seedDismissedFirstRunWizard(page);
       await page.goto(workstation.baseURL);
       await waitForSessionReady(page);
       await clickNav(page, "Deploy");
