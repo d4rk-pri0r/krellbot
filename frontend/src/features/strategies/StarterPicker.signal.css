@@ -68,3 +68,104 @@
   outline: 2px solid var(--seafoam, #a8d8d1);
   outline-offset: 2px;
 }
+
+/*
+ * Consumer (home) presentation — three clear cards, sage Use control.
+ * Hosted outside the Editor, so styles live on the picker root itself.
+ */
+.kbot-starter-picker--consumer {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+}
+
+.kbot-starter-picker--consumer .kbot-starter-picker__list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kbot-starter-picker--consumer .kbot-starter-picker__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label action"
+    "description action";
+  column-gap: 14px;
+  row-gap: 4px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 12px);
+  background: color-mix(in srgb, var(--surface, #14222e) 55%, var(--panel, #18354a));
+}
+
+.kbot-starter-picker--consumer .kbot-starter-picker__item-label {
+  grid-area: label;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-starter-picker--consumer .kbot-starter-picker__item-description {
+  grid-area: description;
+  margin: 0;
+  max-width: 46ch;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-starter-picker--consumer .kbot-starter-picker__action {
+  grid-area: action;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 72px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--radius-control, 7px);
+  background: var(--action-primary-bg, var(--sage, #b3dda8));
+  color: var(--action-primary-text, #172a1d);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.kbot-starter-picker--consumer .kbot-starter-picker__action:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+.kbot-starter-picker--consumer .kbot-starter-picker__status,
+.kbot-starter-picker--consumer .kbot-starter-picker__empty,
+.kbot-starter-picker--consumer .kbot-starter-picker__error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-starter-picker--consumer .kbot-starter-picker__error {
+  color: var(--coral, #cc9689);
+}
+
+@media (max-width: 520px) {
+  .kbot-starter-picker--consumer .kbot-starter-picker__item {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "label"
+      "description"
+      "action";
+    justify-items: start;
+  }
+
+  .kbot-starter-picker--consumer .kbot-starter-picker__action {
+    width: 100%;
+  }
+}

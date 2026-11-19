@@ -89,8 +89,8 @@ export function PaperStarterChooser({
           Choose a free paper strategy
         </h2>
         <p className="kbot-paper-starter-chooser__lede">
-          Local starters work offline with pretend money. Catalogue packs stay
-          secondary — use Browse packs when you already know what you want.
+          Three free starters with pretend money on this computer. Browse packs
+          instead when you already know what you want.
         </p>
         {onDismiss ? (
           <button
@@ -105,6 +105,7 @@ export function PaperStarterChooser({
       </div>
       <StarterPicker
         eager
+        variant="consumer"
         loadStarters={loadStarters}
         onPick={(example) => {
           void handlePick(example);
@@ -136,7 +137,7 @@ export function PaperStarterChooser({
             data-testid="paper-starter-chooser-packs"
             onClick={onBrowsePacks}
           >
-            Browse catalogue packs instead
+            Browse packs instead
           </button>
         </p>
       ) : null}

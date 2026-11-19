@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, type JSX } from "react";
 import type { StarterCatalogue, StarterExample } from "./StarterPicker.client";
 import { fetchStarters } from "./StarterPicker.client";
+import {
+  consumerCardForExample,
+  orderConsumerStarterExamples,
+} from "./consumerStarterCopy";
 import "./StarterPicker.signal.css";
 
 export type StarterPickerProps = {
@@ -15,6 +19,11 @@ export type StarterPickerProps = {
    * waiting for IntersectionObserver visibility.
    */
   eager?: boolean;
+  /**
+   * `consumer` — home-mounted three-card chooser with plain titles and
+   * short blurbs. `editor` — Studio raw-JSON seeding list (default).
+   */
+  variant?: "editor" | "consumer";
 };
 
 type LoadState =
@@ -27,10 +36,10 @@ type LoadState =
  * Free starter examples section.
  *
  * Fetches the shipped read-only catalogue from the backend and offers
- * each example as a one-click seed for the editor's raw JSON. Picking a
- * starter never opens an existing revision and never saves anything by
- * itself: it only hands the pack bytes to the editor, and the editor's
- * existing Save/Validate/Arm flow takes over from there.
+ * each example as a one-click pick. Editor variant hands pack bytes to
+ * the raw JSON field; consumer variant presents three plain cards and
+ * leaves save/validate/arm to the home chooser handoff. Picking never
+ * opens an existing revision by itself.
  *
  * The catalogue request is lazy on visibility: the strategies view must
  * not perform network I/O merely because the editor mounted (the pack
@@ -38,12 +47,14 @@ type LoadState =
  * section actually enters the viewport. Environments without
  * `IntersectionObserver` (jsdom) stay in the idle/loading state and
  * never touch the network; real browsers load as soon as the section is
- * shown, which is immediately when the Editor opens.
+ * shown, which is immediately when the Editor opens. Pass `eager` for
+ * the home chooser.
  */
 export function StarterPicker({
   onPick,
   loadStarters = fetchStarters,
   eager = false,
+  variant = "editor",
 }: StarterPickerProps): JSX.Element {
   const rootRef = useRef<HTMLElement | null>(null);
   const [state, setState] = useState<LoadState>({ kind: "idle" });
@@ -52,6 +63,7 @@ export function StarterPicker({
   // is the only way a second load ever happens; a successful load
   // never bumps it, so nothing refetches on its own.
   const [retryTrigger, setRetryTrigger] = useState(0);
+  const consumer = variant === "consumer";
 
   useEffect(() => {
     const element = rootRef.current;
@@ -112,21 +124,35 @@ export function StarterPicker({
     };
   }, [loadStarters, retryTrigger, eager]);
 
+  const visibleExamples =
+    state.kind === "loaded"
+      ? consumer
+        ? orderConsumerStarterExamples(state.examples)
+        : state.examples
+      : [];
+
   return (
     <section
       ref={rootRef}
-      className="kbot-starter-picker"
+      className={
+        consumer
+          ? "kbot-starter-picker kbot-starter-picker--consumer"
+          : "kbot-starter-picker"
+      }
       data-testid="starter-picker"
-      aria-label="Free starter examples"
+      data-variant={variant}
+      aria-label={consumer ? "Free paper strategies" : "Free starter examples"}
     >
-      <h3 className="kbot-starter-picker__title">Free Starter Examples</h3>
-      <p className="kbot-starter-picker__hint">
-        Free, read-only educational example packs. Picking one seeds the raw JSON
-        below as a fresh editable copy — it is not a reopen of any saved revision.
-        Save, Validate, and Arm behave exactly as before. Teaching packs still use
-        SUIUSD; the paper wave market is Kraken BTC/USD stored as XXBTZUSD (pick it
-        from the owned-strategy or live-authorization pair controls).
-      </p>
+      {consumer ? null : (
+        <>
+          <h3 className="kbot-starter-picker__title">Free Starter Examples</h3>
+          <p className="kbot-starter-picker__hint">
+            Free, read-only example packs. Picking one loads a fresh editable
+            copy — it is not a reopen of any saved revision. Save, Validate, and
+            Arm behave exactly as before.
+          </p>
+        </>
+      )}
       {state.kind === "error" ? (
         <div className="kbot-starter-picker__error-row">
           <p
@@ -154,7 +180,7 @@ export function StarterPicker({
           Loading starter examples…
         </p>
       ) : null}
-      {state.kind === "loaded" && state.examples.length === 0 ? (
+      {state.kind === "loaded" && visibleExamples.length === 0 ? (
         <p
           className="kbot-starter-picker__empty"
           data-testid="starter-picker-empty"
@@ -162,27 +188,46 @@ export function StarterPicker({
           No starter examples available
         </p>
       ) : null}
-      {state.kind === "loaded" && state.examples.length > 0 ? (
+      {state.kind === "loaded" && visibleExamples.length > 0 ? (
         <ul className="kbot-starter-picker__list">
-          {state.examples.map((example) => (
-            <li
-              key={example.id}
-              className="kbot-starter-picker__item"
-              data-testid={`starter-picker-item-${example.id}`}
-            >
-              <span className="kbot-starter-picker__item-label">{example.label}</span>
-              <span className="kbot-starter-picker__item-description">
-                {example.description}
-              </span>
-              <button
-                type="button"
-                className="kbot-starter-picker__action"
-                onClick={() => onPick(example)}
+          {visibleExamples.map((example) => {
+            const card = consumer
+              ? consumerCardForExample(example)
+              : {
+                  id: example.id,
+                  title: example.label,
+                  description: example.description,
+                };
+            const pickPayload: StarterExample = consumer
+              ? {
+                  ...example,
+                  label: card.title,
+                  description: card.description,
+                }
+              : example;
+            return (
+              <li
+                key={example.id}
+                className="kbot-starter-picker__item"
+                data-testid={`starter-picker-item-${example.id}`}
               >
-                Use {example.label}
-              </button>
-            </li>
-          ))}
+                <span className="kbot-starter-picker__item-label">
+                  {card.title}
+                </span>
+                <span className="kbot-starter-picker__item-description">
+                  {card.description}
+                </span>
+                <button
+                  type="button"
+                  className="kbot-starter-picker__action"
+                  aria-label={`Use ${card.title}`}
+                  onClick={() => onPick(pickPayload)}
+                >
+                  {consumer ? "Use" : `Use ${card.title}`}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </section>
