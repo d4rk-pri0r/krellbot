@@ -92,6 +92,19 @@ import {
   isFirstWinCelebrateShown,
   markFirstWinCelebrateShown,
 } from "../features/onboarding/firstWinCelebratePersistence";
+import { WorkspaceSetupTour } from "../features/onboarding/WorkspaceSetupTour";
+import {
+  clickPaperArmSubmit,
+  prepareStarterRevision,
+  waitForPaperArmSurface,
+} from "../features/onboarding/workspaceSetupTourLaunch";
+import {
+  adjacentSetupTourStep,
+  readWorkspaceSetupTourState,
+  writeWorkspaceSetupTourState,
+  type WorkspaceSetupTourPersisted,
+  type WorkspaceSetupTourStepId,
+} from "../features/onboarding/workspaceSetupTourPersistence";
 import { AppHome } from "./AppHome";
 import { CommandPalette } from "./CommandPalette";
 import {
@@ -838,6 +851,110 @@ export function WorkstationShell({
     () => armedDeployments.filter((row) => row.mode === "paper"),
     [armedDeployments],
   );
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const armedPaperRunsRef = useRef(armedPaperRuns);
+  armedPaperRunsRef.current = armedPaperRuns;
+  const [setupTour, setSetupTour] = useState<WorkspaceSetupTourPersisted>(
+    readWorkspaceSetupTourState,
+  );
+  const setupTourRef = useRef(setupTour);
+  setupTourRef.current = setupTour;
+  const [keysTourOpen, setKeysTourOpen] = useState(false);
+  const [tourLaunchBusy, setTourLaunchBusy] = useState(false);
+  const [tourLaunchError, setTourLaunchError] = useState<string | null>(null);
+  const revealTourStep = useCallback(
+    (step: WorkspaceSetupTourStepId): void => {
+      if (step === "workspace") {
+        setKeysTourOpen(false);
+        return;
+      }
+      const view: View =
+        step === "run"
+          ? "workstation"
+          : step === "strategy"
+            ? armedPaperRunsRef.current.length > 0
+              ? "home"
+              : "workstation"
+            : "home";
+      if (view !== activeRef.current) {
+        setActive(view);
+      }
+      setKeysTourOpen(step === "keys");
+    },
+    [setActive],
+  );
+  const commitTour = useCallback(
+    (next: WorkspaceSetupTourPersisted): void => {
+      writeWorkspaceSetupTourState(next);
+      setSetupTour(next);
+      setTourLaunchError(null);
+      if (next.status === "active") {
+        revealTourStep(next.stepId);
+      } else {
+        setKeysTourOpen(false);
+      }
+    },
+    [revealTourStep],
+  );
+  const tourBooted = useRef(false);
+  useEffect(() => {
+    if (tourBooted.current) {
+      return;
+    }
+    tourBooted.current = true;
+    if (setupTour.status === "active") {
+      revealTourStep(setupTour.stepId);
+    }
+  }, [revealTourStep, setupTour.status, setupTour.stepId]);
+  const replaySetupTour = useCallback((): void => {
+    if (activeRef.current !== "home") {
+      setActive("home");
+    }
+    commitTour({ status: "active", stepId: "workspace" });
+  }, [commitTour, setActive]);
+  const launchPaperFromTour = useCallback(async (): Promise<string | null> => {
+    if (activeRef.current !== "workstation") {
+      setActive("workstation");
+    }
+    const first = await waitForPaperArmSurface(2500);
+    if (first === "running") {
+      return null;
+    }
+    if (first === "ready" && clickPaperArmSubmit()) {
+      return null;
+    }
+    try {
+      const revisionId = await prepareStarterRevision(client);
+      setPreferredArmRevisionId(revisionId);
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    const second = await waitForPaperArmSurface(5000);
+    if (second === "running") {
+      return null;
+    }
+    if (second === "ready" && clickPaperArmSubmit()) {
+      return null;
+    }
+    return "The paper run control is not ready yet. Choose a strategy and a pretend balance, then start the simulation from Run.";
+  }, [client, setActive]);
+  const startPaperFromTour = useCallback((): void => {
+    if (tourLaunchBusy) {
+      return;
+    }
+    setTourLaunchBusy(true);
+    setTourLaunchError(null);
+    void launchPaperFromTour()
+      .then((error) => {
+        if (error) {
+          setTourLaunchError(error);
+        }
+      })
+      .finally(() => {
+        setTourLaunchBusy(false);
+      });
+  }, [launchPaperFromTour, tourLaunchBusy]);
   const [inspectorSelection, setInspectorSelection] =
     useState<InspectorSelection | null>(null);
 
@@ -1156,6 +1273,8 @@ export function WorkstationShell({
             }
             strategyClient={client}
             armedPaperRuns={armedPaperRuns}
+            exchangeKeysForceOpen={keysTourOpen}
+            onReplaySetupTour={replaySetupTour}
             onStarterReady={({ revisionId }) => {
               setPreferredArmRevisionId(revisionId);
               setActive("workstation");
@@ -1638,6 +1757,39 @@ export function WorkstationShell({
               revisionId={savedRevision?.revision_id ?? null}
             />,
             researchDetachedRef.current,
+          )
+        : null}
+      {setupTour.status === "active" && typeof document !== "undefined"
+        ? createPortal(
+            <WorkspaceSetupTour
+              stepId={setupTour.stepId}
+              paperArmed={armedPaperRuns.length > 0}
+              launchBusy={tourLaunchBusy}
+              launchError={tourLaunchError}
+              onBack={() => {
+                commitTour({
+                  status: "active",
+                  stepId: adjacentSetupTourStep(setupTourRef.current.stepId, -1),
+                });
+              }}
+              onNext={() => {
+                commitTour({
+                  status: "active",
+                  stepId: adjacentSetupTourStep(setupTourRef.current.stepId, 1),
+                });
+              }}
+              onStartPaper={startPaperFromTour}
+              onComplete={() => {
+                commitTour({ status: "completed", stepId: "run" });
+              }}
+              onDismiss={() => {
+                commitTour({
+                  status: "skipped",
+                  stepId: setupTourRef.current.stepId,
+                });
+              }}
+            />,
+            document.body,
           )
         : null}
       <FirstWinCelebrate

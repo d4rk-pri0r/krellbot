@@ -37,6 +37,8 @@ import "./AppHome.signal.css";
  * supporting sentence + one sage CTA in the first viewport. Advanced rails
  * stay mounted and collapsed. First-run is the full-screen wizard; this
  * surface does not mount a hotspot overlay or an activation checklist.
+ * A quiet “Take setup tour” replay sits in the session rail when the
+ * shell asks for one; it does not cover the hero.
  */
 
 type HomePath = {
@@ -129,6 +131,10 @@ type AppHomeProps = {
   onStarterReady?: (ready: { revisionId: string; label: string }) => void;
   /** Real armed paper runs reported by /api/v1/operations (empty when none). */
   armedPaperRuns?: ReadonlyArray<DeploymentRow>;
+  /** Open the Exchange keys rail while the setup tour is on that step. */
+  exchangeKeysForceOpen?: boolean;
+  /** Replay the post-wizard setup tour. Absent in tests that render home alone. */
+  onReplaySetupTour?: () => void;
 };
 
 function friendlyPaperRunName(packId: string): string {
@@ -150,6 +156,8 @@ export function AppHome({
   loadStarters,
   onStarterReady,
   armedPaperRuns = [],
+  exchangeKeysForceOpen = false,
+  onReplaySetupTour,
 }: AppHomeProps): JSX.Element {
   const [chooserOpen, setChooserOpen] = useState(false);
   const [recoverError, setRecoverError] = useState<string | null>(null);
@@ -549,6 +557,16 @@ export function AppHome({
               >
                 Open operations →
               </button>
+              {onReplaySetupTour ? (
+                <button
+                  type="button"
+                  className="app-home__rail-link"
+                  data-testid="workspace-setup-tour-replay"
+                  onClick={onReplaySetupTour}
+                >
+                  Take setup tour
+                </button>
+              ) : null}
             </div>
           </section>
 
@@ -641,6 +659,7 @@ export function AppHome({
             badge="Advanced"
             badgeTone="advanced"
             defaultOpen={false}
+            forceOpen={exchangeKeysForceOpen}
             storageKey="krellbot.disclosure.home.keys"
             bare
             data-testid="app-home-keys-rail"

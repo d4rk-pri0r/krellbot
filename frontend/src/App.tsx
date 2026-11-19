@@ -8,7 +8,8 @@
  * URL; the shell reads them after mount (never a half-cockpit under the
  * wizard). Choose, Start paper run, and status use the existing strategy
  * and paper clients (paper arm only — no live). The wizard win screen
- * is the celebration; the shell does not toast over it.
+ * is the celebration; the shell does not toast over it. The setup tour
+ * arms in the same exit and is not mounted while this wizard is up.
  */
 import { useRef, useState, type JSX } from "react";
 import {
@@ -25,6 +26,7 @@ import {
   createHttpClient as createStrategyHttpClient,
   type StrategyClient,
 } from "./features/strategies/client";
+import { armWorkspaceSetupTour } from "./features/onboarding/workspaceSetupTourPersistence";
 import { WorkstationShell } from "./shell/WorkstationShell";
 
 export function App(): JSX.Element {
@@ -52,9 +54,11 @@ export function App(): JSX.Element {
         paperClient={paperClientRef.current}
         sessionReady={sessionReadyRef.current}
         onComplete={() => {
+          armWorkspaceSetupTour();
           setWizardDismissed(true);
         }}
         onSkip={() => {
+          armWorkspaceSetupTour();
           setWizardDismissed(true);
         }}
       />
