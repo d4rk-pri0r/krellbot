@@ -24,6 +24,10 @@ import {
   ActivationChecklist,
   markActivationStarterChosen,
 } from "../features/onboarding/ActivationChecklist";
+import {
+  isFirstRunCoachDismissed,
+  readFirstRunCoachState,
+} from "../features/onboarding/firstRunCoachPersistence";
 import { PaperStarterChooser } from "../features/onboarding/PaperStarterChooser";
 import type { StrategyClient } from "../features/strategies/client";
 import type { StarterCatalogue } from "../features/strategies/StarterPicker.client";
@@ -35,10 +39,10 @@ import "./AppHome.signal.css";
 /**
  * Application Home — Signal workspace composition (KRELL-SIGNAL-20261010).
  *
- * First-viewport density (docs/ui-density.md): one composition with brand
- * signal, one short path into work, and status honesty — not a tall stack
- * of sparse cards. Informational navigation only: no fabricated equity,
- * returns, health, or sample bots. Advanced rails stay collapsed.
+ * First-viewport density (docs/ui-density.md / M25.7): brand + one headline
+ * + one supporting sentence + one sage CTA while the first-run coach is
+ * active. Advanced rails and the activation checklist stay out of the first
+ * viewport until coach skip/complete — checklist **or** coach, never both.
  */
 
 type HomePath = {
@@ -141,6 +145,14 @@ type AppHomeProps = {
    * Does not rewrite chooser cards — open only.
    */
   openChooserSignal?: number;
+  /**
+   * When set, controls whether Advanced home chrome is mounted. When
+   * omitted, derived from first-run coach persistence (shown only after
+   * skip/complete). Shell passes activationUnlocked.
+   */
+  showHomeAdvanced?: boolean;
+  /** Re-read coach persistence when this bumps (skip / resume / arm). */
+  coachSyncKey?: number;
 };
 
 export function AppHome({
@@ -160,6 +172,8 @@ export function AppHome({
   suppressActivationChecklist = false,
   onResumeActivationSetup,
   openChooserSignal = 0,
+  showHomeAdvanced,
+  coachSyncKey = 0,
 }: AppHomeProps): JSX.Element {
   const [chooserOpen, setChooserOpen] = useState(false);
   const lastChooserSignal = useRef(0);
@@ -169,6 +183,17 @@ export function AppHome({
       setChooserOpen(true);
     }
   }, [openChooserSignal]);
+  const [coachDismissed, setCoachDismissed] = useState(() =>
+    isFirstRunCoachDismissed(readFirstRunCoachState()),
+  );
+  useEffect(() => {
+    setCoachDismissed(isFirstRunCoachDismissed(readFirstRunCoachState()));
+  }, [coachSyncKey]);
+  const advancedVisible =
+    showHomeAdvanced !== undefined ? showHomeAdvanced : coachDismissed;
+  // Coach owns chrome until skip/complete — never fight the checklist.
+  const checklistVisible =
+    advancedVisible && !suppressActivationChecklist;
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const recoveryAttempt = useRef(0);
   const fallbackKeysRef = useRef<KeysClient | null>(null);
@@ -254,6 +279,7 @@ export function AppHome({
     <section
       className="app-home"
       data-testid="app-home"
+      data-home-advanced={advancedVisible ? "1" : "0"}
       aria-labelledby="app-home-title"
     >
       <header
@@ -386,7 +412,7 @@ export function AppHome({
             </button>
             <button
               type="button"
-              className="app-home__cta-secondary"
+              className="app-home__cta-link"
               data-testid="app-home-cta-packs"
               onClick={() => {
                 onNavigate("packs");
@@ -421,16 +447,17 @@ export function AppHome({
         />
       ) : null}
 
-      <div className="app-home__layout">
+      {advancedVisible ? (
+      <div className="app-home__layout" data-testid="app-home-advanced-stack">
         <div className="app-home__main">
-          {suppressActivationChecklist ? null : (
+          {checklistVisible ? (
             <div className="app-home__activity" data-testid="app-home-works">
               <ActivationChecklist
                 onResumeSetup={onResumeActivationSetup}
                 lede="One path: choose a free strategy, start a paper run, and watch status on this machine. Nothing here places real orders."
               />
             </div>
-          )}
+          ) : null}
 
           <DisclosureSection
             title="All areas"
@@ -713,6 +740,7 @@ export function AppHome({
 
         </aside>
       </div>
+      ) : null}
     </section>
   );
 }

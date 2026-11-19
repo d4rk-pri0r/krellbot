@@ -129,6 +129,8 @@
       var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
+/* Text link — not a peer button competing with the sage CTA (M25.7). */
+.app-home__cta-link,
 .app-home__cta-secondary {
   flex: none;
   min-height: 40px;
@@ -144,8 +146,14 @@
   cursor: pointer;
 }
 
+.app-home__cta-link:hover,
 .app-home__cta-secondary:hover {
   color: var(--text, #e9f0f5);
+}
+
+.app-home__cta-link:focus-visible {
+  outline: 2px solid var(--seafoam, #a8d8d1);
+  outline-offset: 2px;
 }
 
 .app-home__availability {

@@ -88,7 +88,7 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     80,
   );
 
-  // M24: single sage CTA in the hero; peer destinations sit under Advanced.
+  // M25.7: one sage CTA while coach owns chrome; Advanced stack hidden.
   await expect(page.getByTestId("app-home-cta-paper")).toContainText(
     /Start with a free paper strategy/i,
   );
@@ -96,6 +96,31 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     await page.getByTestId("app-home-cta-paper").count(),
     "exactly one primary paper CTA",
   ).toBe(1);
+  await expect(page.getByTestId("app-home-cta-packs")).toBeVisible();
+  await expect(page.getByTestId("app-home")).toHaveAttribute(
+    "data-home-advanced",
+    "0",
+  );
+  await expect(page.getByTestId("app-home-path")).toHaveCount(0);
+  await expect(page.getByTestId("app-home-works")).toHaveCount(0);
+
+  // Document should not be padded with sparse empty viewport below the hero.
+  const homeScroll = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    clientHeight: document.documentElement.clientHeight,
+  }));
+  expect(
+    homeScroll.scrollHeight,
+    "fresh home must not invent a multi-viewport empty scroll",
+  ).toBeLessThan(VIEWPORT.height * 3);
+
+  // After skip: Advanced + checklist mount collapsed (not first-viewport dump).
+  await skipFirstRunCoach(page);
+  await settle(page);
+  await expect(page.getByTestId("app-home")).toHaveAttribute(
+    "data-home-advanced",
+    "1",
+  );
   await expect(page.getByTestId("app-home-path")).toHaveAttribute(
     "data-open",
     "0",
@@ -115,16 +140,6 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     "data-open",
     "0",
   );
-
-  // Document should not be padded with sparse empty viewport below the hero.
-  const homeScroll = await page.evaluate(() => ({
-    scrollHeight: document.documentElement.scrollHeight,
-    clientHeight: document.documentElement.clientHeight,
-  }));
-  expect(
-    homeScroll.scrollHeight,
-    "fresh home must not invent a multi-viewport empty scroll",
-  ).toBeLessThan(VIEWPORT.height * 3);
 
   await clickNav(page, "Run");
   await expect(page.getByTestId("paper-status-panel")).toBeVisible({

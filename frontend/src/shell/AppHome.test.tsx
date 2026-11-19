@@ -132,6 +132,8 @@ function renderHome(
     versionClient?: VersionClient;
     sessionPending?: boolean;
     sessionFailed?: boolean;
+    /** Defaults true so existing Advanced-rail pins stay meaningful. */
+    showHomeAdvanced?: boolean;
   } = {},
 ): KeysClient {
   const keysClient = props.keysClient ?? fakeKeysClient();
@@ -143,6 +145,7 @@ function renderHome(
       versionClient={props.versionClient ?? fakeVersionClient()}
       sessionPending={props.sessionPending}
       sessionFailed={props.sessionFailed}
+      showHomeAdvanced={props.showHomeAdvanced ?? true}
     />,
   );
   return keysClient;
@@ -263,6 +266,7 @@ describe("AppHome — application overview", () => {
         keysClient={fakeKeysClient()}
         trustClient={fakeTrustClient()}
         versionClient={fakeVersionClient()}
+        showHomeAdvanced
       />,
     );
     await screen.findByTestId("keys-form-kraken");
@@ -289,6 +293,7 @@ describe("AppHome — application overview", () => {
         keysClient={fakeKeysClient()}
         trustClient={fakeTrustClient()}
         versionClient={fakeVersionClient()}
+        showHomeAdvanced
       />,
     );
     await screen.findByTestId("keys-form-kraken");
@@ -333,6 +338,7 @@ describe("AppHome — application overview", () => {
         keysClient={keysClient}
         trustClient={trustClient}
         versionClient={versionClient}
+        showHomeAdvanced
       />,
     );
     expect(screen.queryByTestId("app-home-session")).toBeNull();
@@ -342,6 +348,7 @@ describe("AppHome — application overview", () => {
         keysClient={keysClient}
         trustClient={trustClient}
         versionClient={versionClient}
+        showHomeAdvanced
         sessionPending
       />,
     );
@@ -356,6 +363,7 @@ describe("AppHome — application overview", () => {
         keysClient={keysClient}
         trustClient={trustClient}
         versionClient={versionClient}
+        showHomeAdvanced
         sessionPending={false}
       />,
     );
