@@ -92,8 +92,15 @@ import {
   isFirstRunCoachDismissed,
   readFirstRunCoachState,
   resumeFirstRunCoachState,
+  writeFirstRunCoachState,
 } from "../features/onboarding/FirstRunCoach";
 import type { FirstRunCoachStepId } from "../features/onboarding/firstRunCoachPersistence";
+import { markActivationPaperRunStarted } from "../features/onboarding/ActivationChecklist";
+import { FirstWinCelebrate } from "../features/onboarding/FirstWinCelebrate";
+import {
+  isFirstWinCelebrateShown,
+  markFirstWinCelebrateShown,
+} from "../features/onboarding/firstWinCelebratePersistence";
 import { AppHome } from "./AppHome";
 import { CommandPalette } from "./CommandPalette";
 import {
@@ -258,6 +265,21 @@ export function WorkstationShell({
   const [activationUnlocked, setActivationUnlocked] = useState(() =>
     isFirstRunCoachDismissed(),
   );
+  /** M25.8: brief first-win toast after first successful paper arm. */
+  const [firstWinOpen, setFirstWinOpen] = useState(false);
+  const celebrateFirstPaperWin = useCallback((): void => {
+    markActivationPaperRunStarted();
+    if (!isFirstWinCelebrateShown()) {
+      markFirstWinCelebrateShown();
+      setFirstWinOpen(true);
+    }
+    const coach = readFirstRunCoachState();
+    if (coach.status === "active" || coach.status === "idle") {
+      writeFirstRunCoachState({ status: "completed", stepId: "win" });
+      setActivationUnlocked(true);
+      setCoachSyncKey((value) => value + 1);
+    }
+  }, []);
   const showRunSecondaryChrome = paperArmed || activationUnlocked;
   const setActive = useCallback((view: View): void => {
     setActiveState(view);
@@ -1212,18 +1234,15 @@ export function WorkstationShell({
                         inspectorSelection?.kind === "position"
                       }
                       preferredRevisionId={preferredArmRevisionId}
-                      onArmedChange={setPaperArmed}
+                      onArmedChange={(armed) => {
+                        setPaperArmed(armed);
+                        if (armed) {
+                          celebrateFirstPaperWin();
+                        }
+                      }}
                       onPaperArmed={() => {
                         setPaperArmed(true);
-                        const coach = readFirstRunCoachState();
-                        if (
-                          coach.status === "active" &&
-                          (coach.stepId === "arm_paper" ||
-                            coach.stepId === "choose_starter")
-                        ) {
-                          advanceFirstRunCoachTo("status");
-                          setCoachSyncKey((value) => value + 1);
-                        }
+                        celebrateFirstPaperWin();
                       }}
                     />
                     {showRunSecondaryChrome ? (
@@ -1743,6 +1762,12 @@ export function WorkstationShell({
             return false;
           }
           return undefined;
+        }}
+      />
+      <FirstWinCelebrate
+        open={firstWinOpen}
+        onDismiss={() => {
+          setFirstWinOpen(false);
         }}
       />
     </div>

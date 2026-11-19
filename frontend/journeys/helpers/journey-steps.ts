@@ -75,17 +75,28 @@ export async function expandDisclosure(page: Page, panelTestId: string): Promise
  * Dismiss FirstRunCoach when tests need Advanced / demoted controls.
  * Welcome has no Skip — Start once, then Skip guide. No-op when absent.
  * Keeps product demotion; only clears the overlay that can intercept clicks.
+ *
+ * Race-safe with M25.8 first-win celebrate: a confirmed paper arm can
+ * complete the coach while this helper runs — treat a detached coach as done.
  */
 export async function skipFirstRunCoach(page: Page): Promise<void> {
   const coach = page.getByTestId("first-run-coach");
   if ((await coach.count()) === 0) {
     return;
   }
-  if ((await page.getByTestId("first-run-coach-skip").count()) === 0) {
-    await page.getByTestId("first-run-coach-primary").click();
+  const skip = page.getByTestId("first-run-coach-skip");
+  if ((await skip.count()) === 0) {
+    await page
+      .getByTestId("first-run-coach-primary")
+      .click({ timeout: 5_000 })
+      .catch(() => undefined);
   }
-  await expect(page.getByTestId("first-run-coach-skip")).toBeVisible();
-  await page.getByTestId("first-run-coach-skip").click();
+  if ((await coach.count()) === 0) {
+    return;
+  }
+  if ((await skip.count()) > 0) {
+    await skip.click({ timeout: 5_000 }).catch(() => undefined);
+  }
   await expect(coach).toHaveCount(0);
 }
 
