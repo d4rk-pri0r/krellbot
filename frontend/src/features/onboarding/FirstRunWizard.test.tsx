@@ -161,7 +161,7 @@ describe("FirstRunWizard — primary walks paper steps until win completes", () 
     );
     expect(
       screen.getByTestId("first-run-wizard-visual").getAttribute("data-wizard-visual"),
-    ).toBe("krell_chibi.png");
+    ).toBe("krell_portrait.png");
 
     fireEvent.click(screen.getByTestId("first-run-wizard-primary"));
     expect(

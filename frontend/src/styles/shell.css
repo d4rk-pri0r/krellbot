@@ -863,6 +863,11 @@
     gap: 10px;
   }
 
+  .kbot-shell__brandbar .kbot-shell__nav-root {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
   .kbot-shell__head-utils {
     width: 100%;
     align-items: center;

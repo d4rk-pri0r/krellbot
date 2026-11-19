@@ -83,6 +83,53 @@
   line-height: 1.45;
 }
 
+.app-home__active-paper {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 56ch;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--seafoam) 38%, var(--line));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--panel) 48%, var(--surface));
+}
+
+.app-home__active-paper-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--seafoam);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--seafoam) 24%, transparent);
+  flex: none;
+}
+
+.app-home__active-paper-dot--waiting {
+  background: var(--caution-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--caution-text) 24%, transparent);
+}
+
+.app-home__active-paper-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-home__active-paper-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.app-home__active-paper-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .app-home__summary-lead {
   margin: 0;
   color: var(--muted);
@@ -130,11 +177,11 @@
 }
 
 /* Text link — not a peer button competing with the sage CTA (M25.7). */
-.app-home__cta-link,
-.app-home__cta-secondary {
+.app-home button.app-home__cta-link,
+.app-home button.app-home__cta-secondary {
   flex: none;
   min-height: 40px;
-  padding: 0;
+  padding: 0 2px;
   border: 0;
   background: transparent;
   color: var(--seafoam, #a8d8d1);
@@ -146,12 +193,13 @@
   cursor: pointer;
 }
 
-.app-home__cta-link:hover,
-.app-home__cta-secondary:hover {
+.app-home button.app-home__cta-link:hover,
+.app-home button.app-home__cta-secondary:hover {
   color: var(--text, #e9f0f5);
+  border-color: transparent;
 }
 
-.app-home__cta-link:focus-visible {
+.app-home button.app-home__cta-link:focus-visible {
   outline: 2px solid var(--seafoam, #a8d8d1);
   outline-offset: 2px;
 }
@@ -159,9 +207,11 @@
 .app-home__availability {
   margin: 0;
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   width: fit-content;
+  max-width: 100%;
   padding: 6px 12px;
   border: 1px solid color-mix(in srgb, var(--caution-text) 45%, var(--line));
   border-radius: 999px;
@@ -169,6 +219,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.03em;
+  line-height: 1.35;
 }
 
 .app-home__availability-mode {
@@ -176,10 +227,12 @@
   text-transform: uppercase;
   font-size: 10.5px;
   letter-spacing: 0.07em;
+  white-space: nowrap;
 }
 
 .app-home__availability-live {
   color: var(--caution-text);
+  white-space: nowrap;
 }
 
 .app-home__session {
@@ -604,12 +657,19 @@
     width: 28px;
   }
 
+  .app-home__cta-group {
+    width: 100%;
+  }
+
   .app-home__cta {
     width: 100%;
     min-height: 44px;
   }
 
   .app-home__availability {
+    border-radius: 12px;
+    padding: 6px 10px;
+    gap: 4px 6px;
     white-space: normal;
   }
 

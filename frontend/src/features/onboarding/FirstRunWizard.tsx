@@ -576,13 +576,16 @@ export function FirstRunWizard({
       ? "Starting…"
       : activeStep.primaryLabel;
 
+  const isChoose = activeStep.id === "choose";
+  const wizardClassName = isWin
+    ? "kbot-first-run-wizard kbot-first-run-wizard--win"
+    : isChoose
+      ? "kbot-first-run-wizard kbot-first-run-wizard--choose"
+      : "kbot-first-run-wizard";
+
   return (
     <div
-      className={
-        isWin
-          ? "kbot-first-run-wizard kbot-first-run-wizard--win"
-          : "kbot-first-run-wizard"
-      }
+      className={wizardClassName}
       data-testid="first-run-wizard"
       data-wizard-status={state.status}
       data-wizard-step={activeStep.id}
@@ -651,9 +654,17 @@ export function FirstRunWizard({
                   const busy = chooseBusyId === id;
                   return (
                     <li key={id} className="kbot-first-run-wizard__tile">
-                      <p className="kbot-first-run-wizard__tile-title">
-                        {card.title}
-                      </p>
+                      <div className="kbot-first-run-wizard__tile-copy">
+                        <p className="kbot-first-run-wizard__tile-title">
+                          {card.title}
+                        </p>
+                        <p
+                          className="kbot-first-run-wizard__tile-blurb"
+                          data-testid={`first-run-wizard-blurb-${id}`}
+                        >
+                          {card.description}
+                        </p>
+                      </div>
                       <button
                         type="button"
                         className="kbot-first-run-wizard__primary"

@@ -2,7 +2,11 @@ import { useEffect, useRef, useState, type JSX } from "react";
 import "../styles/fonts.css";
 import "../styles/shell.css";
 import "./StatusStrip.signal.css";
-import { createHttpClient, type LiveStatus } from "../features/operations/client";
+import {
+  createHttpClient,
+  type DeploymentRow,
+  type LiveStatus,
+} from "../features/operations/client";
 import { useOperationsRefresh } from "../features/operations/useOperationsRefresh";
 
 const ORDERS_UNAVAILABLE_TEXT = "Live orders unavailable";
@@ -24,17 +28,48 @@ export type StatusStripProps = {
    * unavailable placeholder rather than invented state.
    */
   live?: LiveStatus | null;
+  /**
+   * Optional read-only mirror of deployments from the same /api/v1/operations
+   * poll so sibling surfaces (e.g. AppHome) stay truthful without adding a
+   * second polling loop or extra HTTP request.
+   */
+  onDeploymentsChange?: (deployments: ReadonlyArray<DeploymentRow>) => void;
+  /** Increment to trigger an immediate re-read of /api/v1/operations. */
+  refreshKey?: number;
 };
 
 // A read-only view onto the operations model: the strip needs only the live
 // block, so it narrows the full OperationsViewModel the shared refresh hook
 // produces instead of declaring a parallel shape. The hook only ever calls
 // getOperations; engage/release stay unreachable from this surface.
-function SelfReadStatusStripBody(): JSX.Element {
+function SelfReadStatusStripBody({
+  onDeploymentsChange,
+  refreshKey,
+}: {
+  onDeploymentsChange?: (deployments: ReadonlyArray<DeploymentRow>) => void;
+  refreshKey?: number;
+}): JSX.Element {
   // The client is a stable read-only adapter; keep one per mount so the
   // refresh effect does not restart on every render.
   const clientRef = useRef(createHttpClient());
   const refresh = useOperationsRefresh(clientRef.current);
+  const onDeploymentsChangeRef = useRef(onDeploymentsChange);
+  onDeploymentsChangeRef.current = onDeploymentsChange;
+  const lastRefreshKeyRef = useRef(refreshKey);
+
+  useEffect(() => {
+    if (refresh.view && Array.isArray(refresh.view.deployments)) {
+      onDeploymentsChangeRef.current?.(refresh.view.deployments);
+    }
+  }, [refresh.view]);
+
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey !== lastRefreshKeyRef.current) {
+      lastRefreshKeyRef.current = refreshKey;
+      void refresh.refresh();
+    }
+  }, [refreshKey, refresh.refresh]);
+
   return <StatusStripBody live={refresh.view?.live ?? null} />;
 }
 
@@ -42,7 +77,13 @@ function SelfReadStatusStripBody(): JSX.Element {
 // first render (and the zero-fetch-on-mount contracts its tests pin) is never
 // raced by the strip, while the periodic cadence afterwards is exactly the
 // hook's existing interval — no tighter loop is introduced.
-function DeferredSelfReadStatusStrip(): JSX.Element {
+function DeferredSelfReadStatusStrip({
+  onDeploymentsChange,
+  refreshKey,
+}: {
+  onDeploymentsChange?: (deployments: ReadonlyArray<DeploymentRow>) => void;
+  refreshKey?: number;
+}): JSX.Element {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     const tick = window.setTimeout(() => {
@@ -52,7 +93,14 @@ function DeferredSelfReadStatusStrip(): JSX.Element {
       window.clearTimeout(tick);
     };
   }, []);
-  return armed ? <SelfReadStatusStripBody /> : <StatusStripBody live={null} />;
+  return armed ? (
+    <SelfReadStatusStripBody
+      onDeploymentsChange={onDeploymentsChange}
+      refreshKey={refreshKey}
+    />
+  ) : (
+    <StatusStripBody live={null} />
+  );
 }
 
 // Largest magnitude Date can represent (±8.64e15 ms); beyond this the
@@ -104,11 +152,20 @@ function ordersText(live: LiveStatus): string {
  * OperationsView: it renders state only and exposes no engage/release
  * control.
  */
-export function StatusStrip({ live }: StatusStripProps = {}): JSX.Element {
+export function StatusStrip({
+  live,
+  onDeploymentsChange,
+  refreshKey,
+}: StatusStripProps = {}): JSX.Element {
   if (live !== undefined) {
     return <StatusStripBody live={live} />;
   }
-  return <DeferredSelfReadStatusStrip />;
+  return (
+    <DeferredSelfReadStatusStrip
+      onDeploymentsChange={onDeploymentsChange}
+      refreshKey={refreshKey}
+    />
+  );
 }
 
 function StatusStripBody({ live }: { live: LiveStatus | null }): JSX.Element {
