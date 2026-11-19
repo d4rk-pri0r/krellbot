@@ -290,10 +290,19 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     }
   });
 
-  it("keeps the honest inspector empty state, not a marketing hero", () => {
+  it("keeps the honest inspector empty state behind first-session Advanced, not a marketing hero", () => {
     renderShell();
     clickShellNav("Run");
-    const inspector = screen.getByRole("region", { name: "Inspector" });
+    // M25.6 demotes Inspector until paper arm or coach skip.
+    expect(
+      screen.getByTestId("paper-first-session-inspector-disclosure").getAttribute(
+        "data-open",
+      ),
+    ).toBe("0");
+    fireEvent.click(
+      screen.getByTestId("paper-first-session-inspector-disclosure-toggle"),
+    );
+    const inspector = screen.getByTestId("inspector-root");
     expect(inspector.textContent).toMatch(/Nothing selected/);
   });
 });

@@ -99,15 +99,23 @@ function stripComments(source: string): string {
 }
 
 describe("workstation first-viewport empty vs fixture-seeded", () => {
-  it("empty unarmed state shows status, next action, and honest empty chart", async () => {
+  it("empty unarmed state shows arm prompt, next action, and demoted honest empty chart", async () => {
     render(<StatusPanel client={makeClient()} />);
     await screen.findByTestId("paper-status-empty");
 
     const first = screen.getByTestId("paper-workstation-first-viewport");
     expect(first.contains(screen.getByTestId("paper-status-empty"))).toBe(true);
-    expect(screen.getByTestId("paper-status-next-action").textContent).toMatch(
-      /Next: arm a paper pack/i,
+    expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
+      /Start a paper run with the strategy you picked/i,
     );
+    expect(screen.getByTestId("paper-status-next-action").textContent).toMatch(
+      /Next: start your paper run/i,
+    );
+    expect(screen.getByTestId("paper-first-session-arm")).toBeTruthy();
+    // Chart stays honest but Advanced-collapsed in the first session (M25.6).
+    expect(
+      screen.getByTestId("paper-first-session-chart-disclosure").getAttribute("data-open"),
+    ).toBe("0");
     const honest = screen.getByTestId("paper-chart-honest-empty");
     expect(first.contains(honest)).toBe(true);
     expect(honest.textContent).toMatch(/No journal series yet/i);
