@@ -71,6 +71,24 @@ export async function expandDisclosure(page: Page, panelTestId: string): Promise
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
 
+/**
+ * Dismiss FirstRunCoach when tests need Advanced / demoted controls.
+ * Welcome has no Skip — Start once, then Skip guide. No-op when absent.
+ * Keeps product demotion; only clears the overlay that can intercept clicks.
+ */
+export async function skipFirstRunCoach(page: Page): Promise<void> {
+  const coach = page.getByTestId("first-run-coach");
+  if ((await coach.count()) === 0) {
+    return;
+  }
+  if ((await page.getByTestId("first-run-coach-skip").count()) === 0) {
+    await page.getByTestId("first-run-coach-primary").click();
+  }
+  await expect(page.getByTestId("first-run-coach-skip")).toBeVisible();
+  await page.getByTestId("first-run-coach-skip").click();
+  await expect(coach).toHaveCount(0);
+}
+
 /** Open the technical JSON disclosure and return the textarea locator. */
 export async function openTechnicalJson(page: Page): Promise<Locator> {
   const details = page.getByTestId("editor-technical-section");
