@@ -1,0 +1,161 @@
+/*
+ * Workspace setup tour — Signal (KRELL-SIGNAL-20261010).
+ *
+ * Arrow callout over the real cockpit. The overlay never takes pointer
+ * events; only the card does, so nav, paper CTAs, and Advanced stay
+ * clickable underneath.
+ */
+
+.kbot-setup-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: var(--font-ui, "Manrope", system-ui, sans-serif);
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-setup-tour__spotlight {
+  position: absolute;
+  pointer-events: none;
+  border-radius: var(--radius-control, 7px);
+  box-shadow:
+    0 0 0 2px var(--seafoam, #a8d8d1),
+    0 0 0 6px color-mix(in srgb, var(--seafoam, #a8d8d1) 32%, transparent);
+}
+
+.kbot-setup-tour__arrow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-setup-tour__arrow line {
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.kbot-setup-tour__arrow path {
+  fill: currentColor;
+}
+
+.kbot-setup-tour__card {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  max-height: calc(100% - 24px);
+  padding: 14px 14px 12px;
+  overflow: auto;
+  pointer-events: auto;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  background: color-mix(in srgb, var(--panel, #18354a) 92%, var(--surface, #14222e));
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--navy, #0e1c29) 55%, transparent);
+}
+
+.kbot-setup-tour__progress {
+  margin: 0;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-setup-tour__title {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--text, #e9f0f5);
+}
+
+.kbot-setup-tour__body {
+  margin: 0;
+  color: var(--muted, #abc4d8);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.kbot-setup-tour__error {
+  margin: 0;
+  color: var(--danger-text, #e0a296);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.kbot-setup-tour__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.kbot-setup-tour__next,
+.kbot-setup-tour__back,
+.kbot-setup-tour__skip {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: var(--radius-control, 7px);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.kbot-setup-tour__next {
+  background: var(--action-primary-bg, var(--sage, #b3dda8));
+  color: var(--action-primary-text, #172a1d);
+  border: 1px solid color-mix(in srgb, var(--sage, #b3dda8) 55%, var(--line, #22465d));
+}
+
+.kbot-setup-tour__back,
+.kbot-setup-tour__skip {
+  background: color-mix(in srgb, var(--panel, #18354a) 40%, var(--surface, #14222e));
+  color: var(--text, #e9f0f5);
+  border: 1px solid var(--line, #22465d);
+  font-weight: 600;
+}
+
+.kbot-setup-tour__skip {
+  margin-left: auto;
+  background: transparent;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-setup-tour__next:hover:not(:disabled),
+.kbot-setup-tour__back:hover:not(:disabled),
+.kbot-setup-tour__skip:hover:not(:disabled) {
+  border-color: var(--seafoam, #a8d8d1);
+}
+
+.kbot-setup-tour__next:focus-visible,
+.kbot-setup-tour__back:focus-visible,
+.kbot-setup-tour__skip:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--seafoam, #a8d8d1));
+  outline-offset: 2px;
+}
+
+.kbot-setup-tour__next:disabled,
+.kbot-setup-tour__back:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbot-setup-tour__card,
+  .kbot-setup-tour__spotlight {
+    animation: none;
+  }
+}
