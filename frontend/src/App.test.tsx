@@ -257,7 +257,11 @@ describe("App inspector", () => {
   it("renders an inspector region whose empty state reads 'Nothing selected'", () => {
     render(<App />);
     clickShellNav("Run");
-    const inspector = screen.getByRole("region", { name: "Inspector" });
+    // First session demotes inspector behind Advanced until arm or skip (M25.6).
+    fireEvent.click(
+      screen.getByTestId("paper-first-session-inspector-disclosure-toggle"),
+    );
+    const inspector = screen.getByTestId("inspector-root");
     expect(inspector.textContent).toMatch(/Nothing selected/);
   });
 });
@@ -322,9 +326,10 @@ describe("App view routing", () => {
     expect(screen.getByTestId("app-home")).toBeDefined();
     clickShellNav("Run");
     expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
-    expect(
-      screen.getByRole("region", { name: "Inspector" }),
-    ).toBeDefined();
+    fireEvent.click(
+      screen.getByTestId("paper-first-session-inspector-disclosure-toggle"),
+    );
+    expect(screen.getByTestId("inspector-root")).toBeDefined();
   });
 
   it("does not render the strategy editor before Strategies is selected", () => {
@@ -395,7 +400,7 @@ describe("App paper controls (NS10b)", () => {
     // Await the confirmed unarmed response; the initial pending state must
     // not claim anything about armed state.
     expect(await screen.findByTestId("paper-status-empty")).toBeDefined();
-    expect(panel.textContent).toMatch(/No pack armed/);
+    expect(panel.textContent).toMatch(/Start a paper run with the strategy you picked/);
     // No controls while not armed.
     expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /resume new buys/i })).toBeNull();

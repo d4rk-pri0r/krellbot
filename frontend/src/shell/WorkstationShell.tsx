@@ -89,6 +89,7 @@ import { DisclosureSection } from "../components/disclosure/DisclosureSection";
 import {
   advanceFirstRunCoachTo,
   FirstRunCoach,
+  isFirstRunCoachDismissed,
   readFirstRunCoachState,
 } from "../features/onboarding/FirstRunCoach";
 import type { FirstRunCoachStepId } from "../features/onboarding/firstRunCoachPersistence";
@@ -251,6 +252,12 @@ export function WorkstationShell({
   const [coachSyncKey, setCoachSyncKey] = useState(0);
   /** Bumps AppHome to open the starter chooser from the coach primary. */
   const [openChooserSignal, setOpenChooserSignal] = useState(0);
+  /** Run secondary chrome unlocks after paper arm or coach skip/complete. */
+  const [paperArmed, setPaperArmed] = useState(false);
+  const [activationUnlocked, setActivationUnlocked] = useState(() =>
+    isFirstRunCoachDismissed(),
+  );
+  const showRunSecondaryChrome = paperArmed || activationUnlocked;
   const setActive = useCallback((view: View): void => {
     setActiveState(view);
     // No-ops when the URL already encodes ``view`` (re-clicking the
@@ -1196,7 +1203,9 @@ export function WorkstationShell({
                         inspectorSelection?.kind === "position"
                       }
                       preferredRevisionId={preferredArmRevisionId}
+                      onArmedChange={setPaperArmed}
                       onPaperArmed={() => {
+                        setPaperArmed(true);
                         const coach = readFirstRunCoachState();
                         if (
                           coach.status === "active" &&
@@ -1208,13 +1217,35 @@ export function WorkstationShell({
                         }
                       }}
                     />
-                    <FleetArmedList
-                      client={paperFleet}
-                      onOpenDetail={handleFleetOpenDetail}
-                      onSelectionChange={handleFleetSelection}
-                      unresolvedClient={operations}
-                    />
-                    <LastRunsPanel client={paperRuns} />
+                    {showRunSecondaryChrome ? (
+                      <>
+                        <FleetArmedList
+                          client={paperFleet}
+                          onOpenDetail={handleFleetOpenDetail}
+                          onSelectionChange={handleFleetSelection}
+                          unresolvedClient={operations}
+                        />
+                        <LastRunsPanel client={paperRuns} />
+                      </>
+                    ) : (
+                      <DisclosureSection
+                        title="Last runs & fleet"
+                        summary="Unlocks after you start a paper run or skip the guide"
+                        badge="Advanced"
+                        badgeTone="advanced"
+                        defaultOpen={false}
+                        storageKey="krellbot.disclosure.paper.first-session-fleet"
+                        data-testid="paper-first-session-fleet-disclosure"
+                      >
+                        <FleetArmedList
+                          client={paperFleet}
+                          onOpenDetail={handleFleetOpenDetail}
+                          onSelectionChange={handleFleetSelection}
+                          unresolvedClient={operations}
+                        />
+                        <LastRunsPanel client={paperRuns} />
+                      </DisclosureSection>
+                    )}
                     <DisclosureSection
                       title="Forward paper ledger"
                       summary="Chronological paper evidence (arms, ticks, fills, refusals) for outsider reproduction — not live P&L."
@@ -1278,7 +1309,21 @@ export function WorkstationShell({
                 )}
               </div>
               <aside className="kbot-shell__workstation-aside">
-                <Inspector selection={inspectorSelection} />
+                {showRunSecondaryChrome ? (
+                  <Inspector selection={inspectorSelection} />
+                ) : (
+                  <DisclosureSection
+                    title="Inspector"
+                    summary="Selection detail unlocks after a paper run or skip"
+                    badge="Advanced"
+                    badgeTone="advanced"
+                    defaultOpen={false}
+                    storageKey="krellbot.disclosure.paper.first-session-inspector"
+                    data-testid="paper-first-session-inspector-disclosure"
+                  >
+                    <Inspector selection={inspectorSelection} />
+                  </DisclosureSection>
+                )}
               </aside>
             </div>
           </>
@@ -1661,6 +1706,12 @@ export function WorkstationShell({
         : null}
       <FirstRunCoach
         syncKey={coachSyncKey}
+        onSkip={() => {
+          setActivationUnlocked(true);
+        }}
+        onComplete={() => {
+          setActivationUnlocked(true);
+        }}
         onPrimaryAction={(stepId: FirstRunCoachStepId) => {
           if (stepId === "choose_starter") {
             setActive("home");

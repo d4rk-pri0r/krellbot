@@ -60,7 +60,7 @@ describe("StatusPanel beginner copy honesty", () => {
     expect(
       await screen.findByRole("button", { name: /^start paper run$/i }),
     ).toBeDefined();
-    expect(screen.getByText("Start a paper run")).toBeDefined();
+    expect(screen.getByText("Start your paper run")).toBeDefined();
   });
 
   it("pairs Start/Stop paper run and pause parenthetical when armed", async () => {

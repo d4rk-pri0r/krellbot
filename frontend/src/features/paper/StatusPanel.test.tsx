@@ -66,14 +66,14 @@ function armedStatus(extra: Partial<PaperStatus> = {}): PaperStatus {
 }
 
 describe("StatusPanel empty state", () => {
-  it("renders 'No pack armed' when status says armed=false", async () => {
+  it("renders a first-session arm prompt when status says armed=false", async () => {
     const client = makeClient();
     render(<StatusPanel client={client} />);
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-empty")).toBeDefined();
     });
     expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
-      /No pack armed/,
+      /Start a paper run with the strategy you picked/,
     );
     // No controls while not armed.
     expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
@@ -278,7 +278,7 @@ describe("StatusPanel visible status", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /pause new buys/i })).toBeNull();
     });
-    expect(screen.getByTestId("paper-status-empty").textContent).toMatch(/No pack armed/);
+    expect(screen.getByTestId("paper-status-empty").textContent).toMatch(/Start a paper run with the strategy you picked/);
   });
 });
 
@@ -375,7 +375,7 @@ describe("StatusPanel unavailable state", () => {
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
-        /No pack armed/,
+        /Start a paper run with the strategy you picked/,
       );
     });
     expect(client.getStatus).toHaveBeenCalledTimes(2);
@@ -443,7 +443,7 @@ describe("StatusPanel pending initial status", () => {
       gate.resolve({ schema_version: "1", armed: false });
     });
     expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
-      /No pack armed/,
+      /Start a paper run with the strategy you picked/,
     );
     expect(screen.queryByTestId("paper-status-loading")).toBeNull();
   });
@@ -571,7 +571,7 @@ describe("StatusPanel command pending guard", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /^stop paper run$/i })).toBeNull();
     });
-    expect(screen.getByTestId("paper-status-empty").textContent).toMatch(/No pack armed/);
+    expect(screen.getByTestId("paper-status-empty").textContent).toMatch(/Start a paper run with the strategy you picked/);
   });
 });
 
@@ -852,7 +852,7 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
     fireEvent.click(screen.getByRole("button", { name: /^stop paper run$/i }));
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
-        /No pack armed/,
+        /Start a paper run with the strategy you picked/,
       );
     });
 
@@ -888,7 +888,7 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
     fireEvent.click(paperRefreshButton());
     await waitFor(() => {
       expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
-        /No pack armed/,
+        /Start a paper run with the strategy you picked/,
       );
     });
 

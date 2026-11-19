@@ -79,6 +79,33 @@
   line-height: 1.45;
 }
 
+/* First-session unarmed: one job panel (prompt + arm), not a cockpit dump. */
+.kbot-paper-status__first-session {
+  display: grid;
+  gap: var(--space-stack, 12px);
+  align-content: start;
+  min-width: 0;
+  padding: 14px 14px 16px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-panel, 11px);
+  background: color-mix(in srgb, var(--panel, #18354a) 72%, var(--surface, #14222e));
+}
+
+.kbot-paper-status__prompt {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text, #e9f0f5);
+  max-width: 48ch;
+}
+
+.kbot-paper-status__first-session .kbot-paper-status__arm {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .kbot-paper-chart--honest-empty {
   padding: 10px 12px;
   border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
