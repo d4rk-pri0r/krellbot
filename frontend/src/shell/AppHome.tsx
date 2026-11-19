@@ -136,7 +136,8 @@ type AppHomeProps = {
   suppressActivationChecklist?: boolean;
   /** Incomplete checklist: reopen guided setup (coach resume). */
   onResumeActivationSetup?: () => void;
-* Bump to request opening the home starter chooser (first-run coach).
+  /**
+   * Bump to request opening the home starter chooser (first-run coach).
    * Does not rewrite chooser cards — open only.
    */
   openChooserSignal?: number;
@@ -158,7 +159,7 @@ export function AppHome({
   onStarterReady,
   suppressActivationChecklist = false,
   onResumeActivationSetup,
-openChooserSignal = 0,
+  openChooserSignal = 0,
 }: AppHomeProps): JSX.Element {
   const [chooserOpen, setChooserOpen] = useState(false);
   const lastChooserSignal = useRef(0);
