@@ -61,6 +61,24 @@ describe("ArmedRecordsList loading / empty / rows", () => {
     expect(screen.queryAllByTestId("paper-armed-row")).toHaveLength(0);
   });
 
+  it("quietly re-reads armed records when refreshKey changes", async () => {
+    const listArmed = vi
+      .fn()
+      .mockResolvedValueOnce(viewOf([]))
+      .mockResolvedValueOnce(viewOf([record()]));
+    const client = makeClient(listArmed);
+    const { rerender } = render(
+      <ArmedRecordsList client={client} refreshKey={0} />,
+    );
+    await screen.findByTestId("paper-armed-empty");
+    expect(listArmed).toHaveBeenCalledTimes(1);
+
+    rerender(<ArmedRecordsList client={client} refreshKey={1} />);
+    await screen.findByTestId("paper-armed-row");
+    expect(listArmed).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("paper-armed-loading")).toBeNull();
+  });
+
   it("renders one row per armed record with venue, pair, mode, pack, entries", async () => {
     const client = makeClient(
       vi.fn().mockResolvedValue(

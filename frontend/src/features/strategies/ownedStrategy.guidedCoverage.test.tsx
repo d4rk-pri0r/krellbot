@@ -112,11 +112,13 @@ describe("guided code-pack coverage expansion", () => {
       errors: [],
     });
     const arm = vi.fn().mockResolvedValue(undefined);
+    const onOpenInRun = vi.fn();
     const client = makeClient({ validate, arm });
 
     render(
       <Editor
         client={client}
+        onOpenInRun={onOpenInRun}
         initial={{
           revision_id: "rev-1",
           state: "draft",
@@ -125,8 +127,8 @@ describe("guided code-pack coverage expansion", () => {
       />,
     );
 
-    const armButton = screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
-    expect(armButton.disabled).toBe(true);
+    const openRun = screen.getByTestId("editor-open-in-run") as HTMLButtonElement;
+    expect(openRun.disabled).toBe(true);
     expect(screen.getByTestId("owned-strategy-form")).toBeDefined();
     expect((screen.getByLabelText(/indicator type/i) as HTMLSelectElement).value).toBe(
       "hma",
@@ -143,17 +145,16 @@ describe("guided code-pack coverage expansion", () => {
     await waitFor(() => {
       expect(validate).toHaveBeenCalled();
       expect(
-        (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement).disabled,
+        (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
       ).toBe(false);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^arm$/i }));
-    await waitFor(() => {
-      expect(arm).toHaveBeenCalledTimes(1);
-    });
+    fireEvent.click(screen.getByTestId("editor-open-in-run"));
+    expect(onOpenInRun).toHaveBeenCalledWith("rev-1");
+    expect(arm).not.toHaveBeenCalled();
   });
 
-  it("refuses to arm an expanded pack that is only saved as draft", async () => {
+  it("keeps Open in Run disabled for an expanded pack that is only saved as draft", async () => {
     const expanded = buildOwnedStrategyPack(
       {
         ...seedOwnedStrategyForm(),
@@ -188,7 +189,7 @@ describe("guided code-pack coverage expansion", () => {
       expect(client.validate).toHaveBeenCalled();
     });
     expect(
-      (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement).disabled,
+      (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(client.arm).not.toHaveBeenCalled();
   });

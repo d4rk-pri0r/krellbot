@@ -118,7 +118,7 @@ describe("Editor signal slice — grouped layout", () => {
       name: /save and validation/i,
     });
     const run = screen.getByRole("region", {
-      name: /paper run and risk reduction/i,
+      name: /run this strategy/i,
     });
     expect(identity).toBeDefined();
     expect(technical).toBeDefined();

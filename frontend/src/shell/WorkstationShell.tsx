@@ -165,27 +165,6 @@ function workloadOnlyNodes(): ReadonlyArray<GraphCanvasNode> {
   return syntheticWorkloadNodes();
 }
 
-const STUDIO_DEMO_NODES: ReadonlyArray<GraphCanvasNode> = [
-  {
-    id: "n0",
-    type: "default",
-    position: { x: 0, y: 0 },
-    data: { timeframe: "1h", label: studioNodeLabel("n0") },
-  },
-  {
-    id: "n1",
-    type: "default",
-    position: { x: 0, y: 0 },
-    data: { timeframe: "4h", label: studioNodeLabel("n1") },
-  },
-  {
-    id: "n2",
-    type: "default",
-    position: { x: 0, y: 0 },
-    data: { timeframe: "1h", label: studioNodeLabel("n2") },
-  },
-];
-
 /** Read and strip `?reconnect=` from the URL (second-browser local re-pair). */
 function consumeReconnectToken(): string | null {
   if (typeof window === "undefined") {
@@ -579,7 +558,7 @@ export function WorkstationShell({
     if (workingPack) {
       return nodesFromPack(workingPack);
     }
-    return STUDIO_DEMO_NODES;
+    return [];
   }, [workloadWithPack, plainWorkload, workingPack]);
 
   const client = useMemo(
@@ -1417,6 +1396,7 @@ export function WorkstationShell({
                             PaperArmedClient
                         }
                         onSelectionChange={handleDeploymentSelection}
+                        refreshKey={operationsRefreshKey}
                       />
                     </DisclosureSection>
                   </>
@@ -1591,6 +1571,11 @@ export function WorkstationShell({
               >
                 Synthetic preview canvas — {WORKLOAD_NODE_COUNT} sample nodes
                 for load testing, not a saved strategy.
+              </p>
+            ) : null}
+            {!plainWorkload && !workingPack && studioNodes.length === 0 ? (
+              <p className="kbot-shell__hint" data-testid="studio-empty-canvas">
+                No graph yet. Open a built-in mode or a saved pack.
               </p>
             ) : null}
             {workingPack && !plainWorkload ? (

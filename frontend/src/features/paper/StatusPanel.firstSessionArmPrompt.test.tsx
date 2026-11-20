@@ -125,8 +125,10 @@ describe("StatusPanel — first-session empty is a single arm prompt", () => {
     const disclosure = screen.getByTestId("paper-rehearsal-disclosure");
     expect(disclosure.getAttribute("data-open")).toBe("0");
     expect(
-      screen.getByTestId("paper-rehearsal-disclosure-badge").textContent,
-    ).toBe("Advanced");
+      within(screen.getByTestId("paper-rehearsal-disclosure-toggle")).getByText(
+        "Advanced",
+      ),
+    ).toBeTruthy();
     expect(screen.getAllByTestId("rehearsal-panel").length).toBe(1);
 
     fireEvent.click(screen.getByTestId("paper-rehearsal-disclosure-toggle"));

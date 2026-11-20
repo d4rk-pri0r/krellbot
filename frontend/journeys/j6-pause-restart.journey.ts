@@ -1,7 +1,7 @@
 import {test, expect} from "../e2e/journey-harness/journey-harness";
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
-import {armPaper, tickPaper, paperRefresh, holdRehearsal, quantity, persistedState} from "./helpers/paper-steps";
+import {armPaper, tickPaper, paperRefresh, holdRehearsal, quantity, persistedState, expandArmedRecords} from "./helpers/paper-steps";
 import {clickNav, readJournalTicks, saveJson, validateRevision, SMA_CROSS_FIXTURE_JSON, runResearch, openLibrary} from "./helpers/journey-steps";
 
 test.beforeEach(async ({journey})=>{await journey.page.goto(journey.workstation.baseURL); await journey.waitForSessionReady(journey.page);});
@@ -10,8 +10,8 @@ test("J6.1 Pausing entries stops new entries while stops and exits keep working,
   const page=journey.page; await armPaper(page);
   tickPaper(journey,[100,90,95]);
   expect(Number(readJournalTicks(journey.workstation.homeDir).at(-1)!.detail.owned_qty_after)).toBeGreaterThan(0);
-  await page.getByTestId("editor-inline-stop-pause").click();
-  await expect(page.getByTestId("editor-inline-stop-entries")).toContainText(/paused/i);
+  await page.getByRole("button", { name: "Pause new buys (doesn't sell)", exact: true }).click();
+  await expect(page.getByTestId("paper-status-entries")).toContainText(/paused/i);
   await clickNav(page,"Workstation"); await expect(page.getByTestId("paper-status-entries")).toContainText(/paused/i);
   // First a profitable normal exit. A huge stop loss first would exhaust
   // the capital needed to seed the independent second position.
@@ -46,14 +46,14 @@ test("J6.1 Pausing entries stops new entries while stops and exits keep working,
 
 test("J6.2 Resuming entries lets the strategy enter again on its next signal", async ({journey})=>{
   const page=journey.page; await armPaper(page);
-  await page.getByTestId("editor-inline-stop-pause").click();
-  await expect(page.getByTestId("editor-inline-stop-entries")).toContainText(/paused/i);
+  await page.getByRole("button", { name: "Pause new buys (doesn't sell)", exact: true }).click();
+  await expect(page.getByTestId("paper-status-entries")).toContainText(/paused/i);
   tickPaper(journey,[100,90,95]);
   const suppressed=readJournalTicks(journey.workstation.homeDir).at(-1)!;
   expect(Number(suppressed.detail.entry_qty)).toBe(0); expect(suppressed.detail.entries_paused).toBe(true);
   tickPaper(journey,[100,90,95,90]);
-  await page.getByTestId("editor-inline-stop-resume").click();
-  await expect(page.getByTestId("editor-inline-stop-entries")).toContainText(/active/i);
+  await page.getByRole("button", { name: "Resume new buys", exact: true }).click();
+  await expect(page.getByTestId("paper-status-entries")).toContainText(/active/i);
   tickPaper(journey,[100,90,95,90,95]); // ONE next signal, not repeated identical CSV ticks
   const entered=readJournalTicks(journey.workstation.homeDir).at(-1)!;
   expect(Number(entered.detail.entry_qty)).toBeGreaterThan(0);
@@ -65,11 +65,12 @@ test("J6.2 Resuming entries lets the strategy enter again on its next signal", a
 test("J6.3 After a restart, armed strategies, positions, pause state, saved strategies and paper history are exactly as they were", async ({journey})=>{
   const page=journey.page;
   await armPaper(page,"1800");
-  await page.getByTestId("editor-inline-stop-pause").click();
-  await expect(page.getByTestId("editor-inline-stop-entries")).toContainText(/paused/i);
+  await page.getByRole("button", { name: "Pause new buys (doesn't sell)", exact: true }).click();
+  await expect(page.getByTestId("paper-status-entries")).toContainText(/paused/i);
   // Only the GUI runs here: the shipped rehearsal creates a genuine open
   // paper position and nonempty journal, then pauses at that position.
   await holdRehearsal(page);
+  await expandArmedRecords(page);
   expect(quantity(await page.getByTestId("rehearsal-position").innerText())).toBeGreaterThan(0);
   expect(readJournalTicks(journey.workstation.homeDir+"/rehearsal").length).toBeGreaterThan(0);
   const beforeFiles=persistedState(journey.workstation.homeDir);
@@ -82,6 +83,7 @@ test("J6.3 After a restart, armed strategies, positions, pause state, saved stra
   await journey.workstation.restartSameHome();
   await page.goto(journey.workstation.baseURL); await journey.waitForSessionReady(page);
   await clickNav(page,"Workstation");
+  await expandArmedRecords(page);
   await expect(page.getByTestId("paper-status-entries")).toHaveText(before.entries);
   await expect(page.getByTestId("paper-armed-table")).toHaveText(before.armed,{useInnerText:true});
   await expect(page.getByTestId("rehearsal-state-chip")).toContainText(/paused/i);
