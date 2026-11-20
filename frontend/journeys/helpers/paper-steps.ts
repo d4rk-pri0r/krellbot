@@ -14,11 +14,12 @@ export async function armPaper(page: Page, balance = "1000") {
   await clickNav(page, "Strategies");
   const revision = await saveJson(page, SMA_CROSS_FIXTURE_JSON);
   await validateRevision(page, "validated");
-  const editor = page.getByRole("region", {name: "Strategy editor"});
-  await editor.getByLabel(/^venue$/i).fill("kraken");
-  await editor.getByLabel(/balance/i).fill(balance);
-  await editor.getByRole("button", {name: /^arm$/i}).click();
-  await expect(page.getByTestId("editor-inline-stop-entries")).toContainText(/active|armed/i);
+  await page.getByTestId("editor-open-in-run").click();
+  await expect(page.getByTestId("paper-arm-form")).toBeVisible();
+  await page.locator("#paper-arm-venue").selectOption("kraken");
+  await page.locator("#paper-arm-balance").fill(balance);
+  await page.getByTestId("paper-arm-submit").click();
+  await expect(page.getByTestId("paper-status-entries")).toContainText(/active/i);
   return revision;
 }
 

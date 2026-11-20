@@ -1417,6 +1417,7 @@ export function WorkstationShell({
                             PaperArmedClient
                         }
                         onSelectionChange={handleDeploymentSelection}
+                        refreshKey={operationsRefreshKey}
                       />
                     </DisclosureSection>
                   </>

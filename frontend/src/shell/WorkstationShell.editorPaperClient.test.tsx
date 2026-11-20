@@ -242,7 +242,7 @@ describe("WorkstationShell → Strategies handoff to Run paperClient", () => {
 
     const error = await screen.findByTestId("paper-status-error");
     expect(error.getAttribute("role")).toBe("alert");
-    expect(error.textContent).toMatch(/not armed/i);
+    expect(error.textContent).toMatch(/Stop paper run refused/);
     expect(
       (screen.getByRole("button", { name: /^stop paper run$/i }) as HTMLButtonElement).disabled,
     ).toBe(false);

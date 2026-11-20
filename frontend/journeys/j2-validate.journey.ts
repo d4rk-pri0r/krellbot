@@ -85,11 +85,10 @@ test.describe("J2 validate", () => {
       `Using revision ${revision}`,
     );
 
-    // "available to paper trading": the Arm control is enabled with
-    // this validated revision (Arm requires a validated revision).
+    // "available to paper trading": Open in Run is enabled for this
+    // validated revision (paper arming itself lives on Run).
     await clickNav(page, "Strategies");
-    const armButton = page.getByRole("button", { name: /^arm$/i });
-    await expect(armButton).toBeEnabled();
+    await expect(page.getByTestId("editor-open-in-run")).toBeEnabled();
   });
 
   test("J2.2 When something is wrong, such as an unknown indicator, a missing required field or a value out of range, validation names the problem and marks the field it is in", async () => {
@@ -193,12 +192,10 @@ test.describe("J2 validate", () => {
       .locator('[data-testid^="editor-error-"]');
     await expect(invalidBlocks.first()).toBeVisible({ timeout: 30_000 });
 
-    // ARM refusal: the editor's gate disables Arm for a non-validated
-    // revision and states the precondition ("Arm needs a validated
-    // revision").
-    const armButton = page.getByRole("button", { name: /^arm$/i });
-    await expect(armButton).toBeDisabled();
-    await expect(page.getByText("Arm needs a validated revision")).toBeVisible();
+    // Paper handoff refusal: Open in Run stays disabled until the
+    // revision validates, and the group states that precondition.
+    await expect(page.getByTestId("editor-open-in-run")).toBeDisabled();
+    await expect(page.getByText("Needs a validated revision")).toBeVisible();
 
     // BACKTEST refusal: the run cannot produce a backtest. The product
     // submits the job and the job FAILS with a visible typed refusal
