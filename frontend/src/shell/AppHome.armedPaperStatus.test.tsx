@@ -226,19 +226,15 @@ describe("AppHome armed paper run status", () => {
   });
 });
 
-describe("mobile home pill, header flex-basis, and favicon", () => {
-  it("wraps the home availability pill cleanly without breaking phrases", () => {
+describe("mobile home header compactness, nav flex-basis, and favicon", () => {
+  it("omits the duplicate home availability pill in favor of the single shell status strip", () => {
+    render(<AppHome onNavigate={() => {}} />);
+    expect(screen.queryByTestId("app-home-availability")).toBeNull();
     const css = readFileSync(join(here, "AppHome.signal.css"), "utf8").replace(
       /\/\*[\s\S]*?\*\//g,
       "",
     );
-    expect(css).toMatch(/\.app-home__availability\s*\{[^}]*flex-wrap:\s*wrap/);
-    expect(css).toMatch(
-      /\.app-home__availability-mode\s*\{[^}]*white-space:\s*nowrap/,
-    );
-    expect(css).toMatch(
-      /\.app-home__availability-live\s*\{[^}]*white-space:\s*nowrap/,
-    );
+    expect(css).not.toMatch(/\.app-home__availability\s*\{/);
   });
 
   it("resets mobile header nav flex-basis to avoid a vertical gap", () => {

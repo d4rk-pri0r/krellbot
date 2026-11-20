@@ -1,18 +1,37 @@
 /**
- * Pins shell honesty strings for the beginner vocabulary pass (M24.5):
- * Live trading unavailable stays visible in the nav note.
+ * Pins shell honesty: StatusStrip is the single shell-level paper-only status
+ * pill, and Navigation renders destinations without duplicating Local preview.
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Navigation } from "./Navigation";
+import { StatusStrip } from "./StatusStrip";
 
 afterEach(() => {
   cleanup();
 });
 
-describe("Navigation beginner copy honesty", () => {
-  it("keeps Live trading unavailable in the local-preview note", () => {
-    render(<Navigation active="home" onChange={() => {}} />);
-    expect(screen.getByText("Live trading unavailable")).toBeDefined();
+describe("Shell paper-only status honesty", () => {
+  it("keeps paper-only status in StatusStrip rather than repeating it inside Navigation", () => {
+    render(
+      <>
+        <Navigation active="home" onChange={() => {}} />
+        <StatusStrip
+          live={{
+            schema_version: "1",
+            live_enabled: false,
+            authorized: [],
+            kill_switch: { engaged: false, reason: null, engaged_at: null },
+            promotion_available: false,
+            promotion_code: "live_promotion_owner_deferred",
+          }}
+        />
+      </>,
+    );
+    expect(screen.queryByTestId("nav-local-preview")).toBeNull();
+    expect(screen.queryByTestId("nav-local-preview-note")).toBeNull();
+    expect(screen.getByTestId("kbot-status-strip").textContent).toContain(
+      "No live venues authorized",
+    );
   });
 });

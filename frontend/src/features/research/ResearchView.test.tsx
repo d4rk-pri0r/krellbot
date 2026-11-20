@@ -1153,7 +1153,7 @@ describe("ResearchView setup refusal (BUILD-RESEARCH-INPUTS-01)", () => {
 });
 
 describe("ResearchView honest states: idle / submitting / submission failed", () => {
-  it("idle: with no summary, no error and not submitting, the panel says no research run yet with a local preview badge", () => {
+  it("idle: with no summary, no error and not submitting, the panel says no research run yet without duplicating the shell status chip", () => {
     render(<ResearchView client={makeClient()} />);
 
     const empty = screen.getByTestId("research-state-empty");
@@ -1161,9 +1161,7 @@ describe("ResearchView honest states: idle / submitting / submission failed", ()
       empty.querySelector(".kbot-research__state-copy")?.textContent,
     ).toBe("No research run yet. Submit a window to populate this view.");
 
-    const badge = screen.getByTestId("research-local-preview");
-    expect(badge.textContent).toContain("Local preview only");
-    expect(badge.textContent).toContain("live trading unavailable");
+    expect(screen.queryByTestId("research-local-preview")).toBeNull();
 
     // Nothing has been submitted, so no result panel and no job identity.
     expect(screen.queryByTestId("research-result")).toBeNull();

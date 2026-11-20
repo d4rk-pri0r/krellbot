@@ -188,9 +188,8 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     );
     expect(screen.getByTestId("app-home")).toBeDefined();
     expect(screen.queryByTestId("app-home-session")).toBeNull();
-    expect(screen.getByTestId("app-home-availability").textContent).toMatch(
-      /Live trading unavailable/i,
-    );
+    expect(screen.queryByTestId("app-home-availability")).toBeNull();
+    expect(screen.getByTestId("kbot-status-strip")).toBeDefined();
   });
 
   it("still opens Studio for the synthetic workload deep link and labels it honestly", () => {

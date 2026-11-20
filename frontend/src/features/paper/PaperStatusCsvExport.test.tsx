@@ -145,39 +145,32 @@ describe("PaperStatusCsvExport visibility", () => {
 });
 
 describe("PaperStatusCsvExport Signal presentation", () => {
-  it("renders the Seafoam 'Local preview' badge above the Export CSV button for an armed paper status", () => {
+  it("renders the Export CSV button inside the scoped wrapper without duplicating the shell status badge", () => {
     render(<PaperStatusCsvExport status={armedStatus()} />);
 
-    const badge = screen.getByTestId("paper-status-csv-local-preview");
-    expect(badge.textContent).toBe("Local preview");
+    expect(screen.queryByTestId("paper-status-csv-local-preview")).toBeNull();
+    expect(screen.queryByText("Local preview")).toBeNull();
 
     const button = screen.getByTestId(EXPORT_ID) as HTMLButtonElement;
-    // The badge sits inside the same scoped wrapper and precedes the button.
     const wrapper = button.closest(".kbot-feature__paper-csv-root");
     expect(wrapper).not.toBeNull();
-    expect(wrapper!.contains(badge)).toBe(true);
-    expect(badge.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("hides the badge in the same branches that hide the button (null status, armed=false)", () => {
+  it("hides the export control in the same branches that hide the button (null status, armed=false)", () => {
     const { unmount } = render(<PaperStatusCsvExport status={null} />);
     expect(screen.queryByTestId(EXPORT_ID)).toBeNull();
     expect(screen.queryByTestId("paper-status-csv-local-preview")).toBeNull();
-    expect(screen.queryByText("Local preview")).toBeNull();
     unmount();
 
     render(<PaperStatusCsvExport status={{ schema_version: "1", armed: false }} />);
     expect(screen.queryByTestId(EXPORT_ID)).toBeNull();
     expect(screen.queryByTestId("paper-status-csv-local-preview")).toBeNull();
-    expect(screen.queryByText("Local preview")).toBeNull();
   });
 
-  it("renders the badge from the armed StatusPanel mount and still produces the same CSV on click", async () => {
+  it("mounts cleanly in the armed StatusPanel action row and still produces the same CSV on click", async () => {
     render(<StatusPanel client={makeClient(armedStatus({ pack_id: "trend" }))} />);
     const button = (await screen.findByTestId(EXPORT_ID)) as HTMLButtonElement;
-    expect(screen.getByTestId("paper-status-csv-local-preview").textContent).toBe(
-      "Local preview",
-    );
+    expect(screen.queryByTestId("paper-status-csv-local-preview")).toBeNull();
     expect(button.closest(".kbot-feature__paper-csv-root")).not.toBeNull();
 
     const { captured, restore } = captureDownloads();

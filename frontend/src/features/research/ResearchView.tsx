@@ -58,7 +58,6 @@ const NOT_SET = "not set";
 
 const EMPTY_STATE_COPY =
   "No research run yet. Submit a window to populate this view.";
-const LOCAL_PREVIEW_COPY = "Local preview only — live trading unavailable";
 const RESULT_HONESTY_COPY =
   "Backtest / pinned fixture — not live market performance.";
 const SUBMITTING_STATE_COPY = "Submitting research run…";
@@ -1109,12 +1108,6 @@ export function ResearchView({
           data-testid="research-state-empty"
         >
           <p className="kbot-research__state-copy">{EMPTY_STATE_COPY}</p>
-          <p
-            className="kbot-research__local-preview"
-            data-testid="research-local-preview"
-          >
-            {LOCAL_PREVIEW_COPY}
-          </p>
         </div>
       ) : null}
 

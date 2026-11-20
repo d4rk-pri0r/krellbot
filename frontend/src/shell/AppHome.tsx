@@ -164,16 +164,6 @@ export function AppHome({
                 in this release.
               </p>
             )}
-            <p
-              className="app-home__availability"
-              data-testid="app-home-availability"
-            >
-              <span className="app-home__availability-mode">Local preview</span>
-              <span aria-hidden="true"> · </span>
-              <span className="app-home__availability-live">
-                Live trading unavailable
-              </span>
-            </p>
             {sessionPending && !sessionFailed ? (
               <p
                 className="app-home__session"

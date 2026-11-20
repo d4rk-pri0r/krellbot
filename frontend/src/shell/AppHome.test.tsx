@@ -84,11 +84,12 @@ describe("AppHome — focused workspace front door", () => {
     expect(onReplaySetupTour).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the local-preview / live-unavailable copy conspicuous", () => {
+  it("states paper-only scope in plain hero copy without repeating the shell status pill", () => {
     renderHome();
-    const availability = screen.getByTestId("app-home-availability");
-    expect(availability.textContent).toMatch(/Local preview/i);
-    expect(availability.textContent).toMatch(/Live trading unavailable/i);
+    expect(screen.queryByTestId("app-home-availability")).toBeNull();
+    expect(
+      screen.getByText(/Live trading stays off in this release/i),
+    ).toBeDefined();
   });
 
   it("never fabricates live readiness, profit, financial metrics, or sign-in marketing", () => {

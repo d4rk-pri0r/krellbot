@@ -102,33 +102,17 @@ function scopedRoots(): HTMLElement[] {
 }
 
 describe("PaperStatusCsvExport Signal presentation", () => {
-  it("renders the scoped Signal root wrapping the existing badge and export testids for an armed paper status", () => {
+  it("renders the scoped Signal root wrapping the export button without a duplicate Local preview badge", () => {
     render(<PaperStatusCsvExport status={armedStatus()} />);
 
-    const badge = screen.getByTestId(BADGE_TESTID);
     const button = screen.getByTestId(EXPORT_TESTID);
+    expect(screen.queryByTestId(BADGE_TESTID)).toBeNull();
 
     const roots = scopedRoots();
     expect(roots.length).toBe(1);
     const root = roots[0] as HTMLElement;
     expect(root.getAttribute("class")).toBe(ROOT_SCOPE);
-    expect(badge.closest(`.${ROOT_SCOPE}`)).toBe(root);
     expect(button.closest(`.${ROOT_SCOPE}`)).toBe(root);
-    // The badge row sits above the button inside the same scoped wrapper.
-    expect(badge.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it("keeps the Local preview badge in the scoped meta row with the scoped badge class", () => {
-    render(<PaperStatusCsvExport status={armedStatus()} />);
-
-    const badge = screen.getByTestId(BADGE_TESTID);
-    expect(badge.textContent).toBe("Local preview");
-    expect(badge.getAttribute("class")).toBe("kbot-feature__paper-csv-root__badge");
-
-    const meta = badge.closest(".kbot-feature__paper-csv-root__meta");
-    expect(meta).not.toBeNull();
-    expect(meta?.tagName).toBe("P");
-    expect(meta?.getAttribute("class")).toBe("kbot-feature__paper-csv-root__meta");
   });
 
   it("carries the scoped action class on the button alongside the existing kbot-paper-status__action class", () => {
@@ -183,7 +167,7 @@ describe("PaperStatusCsvExport Signal presentation", () => {
 
     const button = (await screen.findByTestId(EXPORT_TESTID)) as HTMLButtonElement;
     expect(button.closest(`.${ROOT_SCOPE}`)).not.toBeNull();
-    expect(screen.getByTestId(BADGE_TESTID).textContent).toBe("Local preview");
+    expect(screen.queryByTestId(BADGE_TESTID)).toBeNull();
     // Sibling paper controls keep rendering in the same actions row.
     const siblings = document.querySelectorAll(".kbot-paper-status__action");
     expect(siblings.length).toBeGreaterThanOrEqual(1);
@@ -233,7 +217,7 @@ describe("PaperStatusCsvExport Signal presentation", () => {
 
   it("scopes every stylesheet rule under the Signal paper-csv root", () => {
     render(<PaperStatusCsvExport status={armedStatus()} />);
-    expect(screen.getByTestId(BADGE_TESTID).closest(`.${ROOT_SCOPE}`)).not.toBeNull();
+    expect(screen.getByTestId(EXPORT_TESTID).closest(`.${ROOT_SCOPE}`)).not.toBeNull();
 
     const selectors =
       cssSource

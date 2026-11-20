@@ -23,10 +23,9 @@ export type JobsClient = {
 
 const LOADING_TEXT = "Loading jobs…";
 const EMPTY_TITLE = "No jobs";
-const EMPTY_TEXT = "No jobs yet. Local preview only — live trading unavailable.";
+const EMPTY_TEXT = "No jobs yet.";
 const LIST_ERROR_TEXT = "Could not load jobs — check the workstation is running.";
 const BLOCKED_TEXT = "Jobs blocked — local-only preview.";
-const LOCAL_PREVIEW_BADGE = "Local preview";
 const RETRY_TEXT = "Retry";
 
 /** Bounded periodic refresh while the drawer is open (#98). */
@@ -261,9 +260,6 @@ export function JobsDrawer({ client, onOpenResult }: JobsDrawerProps = {}): JSX.
           <div className="kbot-jobs__dialog" data-testid="kbot-jobs-dialog">
             <div className="kbot-jobs__head">
               <h2 className="kbot-jobs__title">Jobs</h2>
-              <p className="kbot-jobs__preview-badge" data-testid="jobs-local-preview">
-                {LOCAL_PREVIEW_BADGE}
-              </p>
               <button
                 type="button"
                 className="kbot-jobs__close"

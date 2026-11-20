@@ -46,32 +46,13 @@ describe("CommandPalette Signal presentation (KRELL-SIGNAL-20261010)", () => {
     expect(root.getAttribute("aria-label")).toBe("Command palette");
   });
 
-  it("renders the scoped box and meta under the scoped root", () => {
+  it("renders the scoped box without a duplicate Local preview badge", () => {
     const root = renderPalette();
     const box = root.querySelector<HTMLElement>(".kbot-shell__palette-box");
     expect(box).toBeInstanceOf(HTMLElement);
     expect(box?.classList.contains("kbot-palette__box")).toBe(true);
     expect(box?.parentElement).toBe(root);
-    const meta = box?.querySelector<HTMLElement>(".kbot-shell__palette-meta");
-    expect(meta).toBeInstanceOf(HTMLElement);
-    expect(meta?.tagName).toBe("P");
-    expect(meta?.parentElement).toBe(box);
-  });
-
-  it("renders the Seafoam Local preview badge in the shared badge vocabulary above the input", () => {
-    const root = renderPalette();
-    const badge = screen.getByTestId("command-palette-badge");
-    expect(badge.classList.contains("kbot-shell__palette-badge")).toBe(true);
-    expect(badge.textContent).toBe("Local preview");
-    expect(badge.tagName).toBe("SPAN");
-    expect(badge.parentElement).toBe(
-      root.querySelector<HTMLElement>(".kbot-shell__palette-meta"),
-    );
-    const input = root.querySelector<HTMLElement>(".kbot-shell__palette-input");
-    expect(
-      badge.compareDocumentPosition(input as Node) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.queryByTestId("command-palette-badge")).toBeNull();
   });
 
   it("un-hides the scoped label into the visible Signal heading and names the input", () => {
@@ -80,9 +61,7 @@ describe("CommandPalette Signal presentation (KRELL-SIGNAL-20261010)", () => {
     expect(label).toBeInstanceOf(HTMLElement);
     expect(label?.classList.contains("kbot-palette__label")).toBe(true);
     expect(label?.tagName).toBe("LABEL");
-    expect(label?.textContent).toBe(
-      "Find an action, strategy, or view — local preview only.",
-    );
+    expect(label?.textContent).toBe("Find an action, strategy, or view");
     const input = root.querySelector<HTMLElement>(".kbot-shell__palette-input");
     expect(label?.getAttribute("for")).toBe(input?.getAttribute("id"));
     expect(input?.getAttribute("aria-label")).toBe("Command input");

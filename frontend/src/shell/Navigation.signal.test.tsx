@@ -66,8 +66,11 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
   it("reports every view selection through the existing onChange wiring", () => {
     const onChange = vi.fn();
     render(<Navigation active="home" onChange={onChange} />);
+    for (const view of PRIMARY_VIEWS) {
+      fireEvent.click(screen.getByRole("button", { name: view.label }));
+    }
     fireEvent.click(screen.getByTestId("kbot-nav-more-toggle"));
-    for (const view of [...PRIMARY_VIEWS, ...MORE_VIEWS]) {
+    for (const view of MORE_VIEWS) {
       fireEvent.click(screen.getByRole("button", { name: view.label }));
     }
     expect(onChange.mock.calls).toEqual(
@@ -75,19 +78,10 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
     );
   });
 
-  it("renders the honest Local preview badge under the scoped note classes", () => {
+  it("leaves status reporting to StatusStrip instead of duplicating Local preview inside nav", () => {
     render(<Navigation active="home" onChange={() => {}} />);
-    const badge = screen.getByTestId("nav-local-preview");
-    expect(badge.textContent?.trim()).toBe("Local preview");
-    expect(badge.classList.contains("kbot-shell__nav-preview")).toBe(true);
-    const caption = screen.getByTestId("nav-local-preview-note");
-    expect(caption.textContent).toBe("Live trading unavailable");
-    expect(caption.classList.contains("kbot-shell__nav-note-text")).toBe(true);
-    const note = caption.closest(".kbot-shell__nav-note");
-    expect(note).not.toBeNull();
-    expect(note?.contains(badge)).toBe(true);
-    const nav = screen.getByTestId("kbot-nav");
-    expect(note).toBe(nav.lastElementChild);
+    expect(screen.queryByTestId("nav-local-preview")).toBeNull();
+    expect(screen.queryByTestId("nav-local-preview-note")).toBeNull();
   });
 
   it("scopes every stylesheet rule under the approved nav root selector", () => {
@@ -102,9 +96,8 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
     for (const scoped of [
       ".kbot-shell__nav-item",
       ".kbot-shell__nav-item--active",
-      ".kbot-shell__nav-note",
-      ".kbot-shell__nav-preview",
-      ".kbot-shell__nav-note-text",
+      ".kbot-nav__primary",
+      ".kbot-nav__more",
     ]) {
       expect(cssSource).toContain(`${".kbot-shell__nav-root"} ${scoped}`);
     }
@@ -112,8 +105,7 @@ describe("Navigation Signal presentation (KRELL-SIGNAL-20261010)", () => {
 
   it("keeps the approved Signal token fallbacks and the narrow-viewport layer", () => {
     render(<Navigation active="home" onChange={() => {}} />);
-    const badge = screen.getByTestId("nav-local-preview");
-    expect(badge.classList.contains("kbot-shell__nav-preview")).toBe(true);
+    expect(screen.getByTestId("kbot-nav-primary")).toBeInstanceOf(HTMLElement);
     expect(cssSource).toContain('var(--font-ui, "Manrope"');
     expect(cssSource).toContain("var(--seafoam, #a8d8d1)");
     expect(cssSource).toContain("var(--sage, #b3dda8)");

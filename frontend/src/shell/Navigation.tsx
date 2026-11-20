@@ -77,10 +77,8 @@ export function Navigation({ active, onChange }: NavigationProps): JSX.Element {
   const [moreOpen, setMoreOpen] = useState(activeInMore);
 
   useEffect(() => {
-    if (activeInMore) {
-      setMoreOpen(true);
-    }
-  }, [activeInMore]);
+    setMoreOpen(activeInMore);
+  }, [active, activeInMore]);
 
   const effectiveMoreOpen = activeInMore || moreOpen;
 
@@ -154,7 +152,12 @@ export function Navigation({ active, onChange }: NavigationProps): JSX.Element {
         aria-pressed={isActive}
         aria-current={isActive ? "page" : undefined}
         tabIndex={isActive ? 0 : -1}
-        onClick={() => onChange(view.id)}
+        onClick={() => {
+          if (!isMoreView(view.id)) {
+            setMoreOpen(false);
+          }
+          onChange(view.id);
+        }}
         onKeyDown={(event) =>
           handleKeyDown(event, { kind: "view", id: view.id })
         }
@@ -207,20 +210,6 @@ export function Navigation({ active, onChange }: NavigationProps): JSX.Element {
       >
         {MORE_VIEWS.map((view) => renderViewButton(view))}
       </div>
-      <p className="kbot-shell__nav-note">
-        <span
-          className="kbot-shell__nav-preview"
-          data-testid="nav-local-preview"
-        >
-          Local preview
-        </span>
-        <span
-          className="kbot-shell__nav-note-text"
-          data-testid="nav-local-preview-note"
-        >
-          Live trading unavailable
-        </span>
-      </p>
     </nav>
   );
 }
