@@ -1,23 +1,26 @@
 import { useCallback, useState, type JSX } from "react";
+import type { SettingsSection } from "../../shell/route";
 import { CommunityIndex } from "./CommunityIndex";
 import { PackCatalogue } from "./PackCatalogue";
 import { PackLibrary } from "./PackLibrary";
-import { PaidDisclosuresPanel } from "./PaidDisclosuresPanel";
 import type { PacksClient } from "./client";
 import { PACK_SOURCES } from "./packSources";
 import "./PacksView.signal.css";
 
 export type PacksViewProps = {
   client: PacksClient;
+  /** Optional navigation hook to open Settings → Trust & billing / Privacy. */
+  onOpenSettings?: (section: SettingsSection) => void;
 };
 
 /**
  * First-class Packs destination: signed catalogue, community browse/install,
  * and local library. Starters live on Strategies — never conflated here.
+ * Disclosures, telemetry, activation redeem, and refund live in Settings.
  * First-viewport density (docs/ui-density.md): catalogue rows (or short
  * actionable empty) above the fold. Contract: KRELL-SIGNAL-20261010.
  */
-export function PacksView({ client }: PacksViewProps): JSX.Element {
+export function PacksView({ client, onOpenSettings }: PacksViewProps): JSX.Element {
   // Bumping the key remounts PackLibrary so it re-reads after install.
   const [libraryEpoch, setLibraryEpoch] = useState(0);
 
@@ -38,12 +41,25 @@ export function PacksView({ client }: PacksViewProps): JSX.Element {
             unpaid community index, and starter examples on Strategies. Community
             entries are never paid SKUs.
           </p>
-          <div
-            className="kbot-packs-view__disclosures"
-            data-testid="packs-paid-disclosures"
+          <p
+            className="kbot-packs-view__settings-note"
+            data-testid="packs-settings-note"
           >
-            <PaidDisclosuresPanel variant="packs" />
-          </div>
+            Disclosures, activation keys, refunds, and telemetry live in{" "}
+            {onOpenSettings ? (
+              <button
+                type="button"
+                className="kbot-packs-view__settings-link"
+                data-testid="packs-settings-trust-link"
+                onClick={() => onOpenSettings("trust")}
+              >
+                Settings → Trust &amp; billing
+              </button>
+            ) : (
+              <span>Settings → Trust &amp; billing</span>
+            )}
+            .
+          </p>
           <ul
             className="kbot-packs-view__sources"
             data-testid="packs-source-legend"

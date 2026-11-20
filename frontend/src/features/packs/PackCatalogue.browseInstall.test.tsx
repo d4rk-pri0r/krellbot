@@ -282,32 +282,10 @@ describe("PackCatalogue browse and one-click install", () => {
     expect(screen.getByTestId("pack-catalogue-checkout-paid-launch-dca")).toBeDefined();
   });
 
-  it("exposes opt-in funnel telemetry consent defaulted off", async () => {
-    const setTelemetryConsent = vi.fn(async (enabled: boolean) => ({
-      schema_version: "1",
-      enabled,
-      default_off: true,
-      funnel_events: ["view", "checkout_start", "checkout_success", "checkout_fail", "install", "arm"],
-      disclosure:
-        "Telemetry is opt-in and off by default. Never includes keys, secrets, or strategy source.",
-    }));
-    render(<PackCatalogue client={makeClient({ setTelemetryConsent })} />);
+  it("does not duplicate the opt-in telemetry checkbox on the catalogue (lives in Settings → Privacy)", async () => {
+    render(<PackCatalogue client={makeClient()} />);
     await screen.findByTestId("pack-catalogue-list");
-    const checkbox = screen.getByTestId(
-      "pack-catalogue-telemetry-opt-in",
-    ) as HTMLInputElement;
-    expect(checkbox.checked).toBe(false);
-    expect(screen.getByTestId("pack-catalogue-telemetry-hint").textContent).toMatch(
-      /opt-in|default off|strategy source/i,
-    );
-    fireEvent.click(checkbox);
-    await waitFor(() => {
-      expect(setTelemetryConsent).toHaveBeenCalledWith(true);
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId("pack-catalogue-telemetry-status").textContent).toMatch(
-        /enabled \(opt-in\)/i,
-      );
-    });
+    expect(screen.queryByTestId("pack-catalogue-telemetry-consent")).toBeNull();
+    expect(screen.queryByTestId("pack-catalogue-telemetry-opt-in")).toBeNull();
   });
 });

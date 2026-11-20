@@ -45,7 +45,7 @@ describe("PackLibrary refund request", () => {
       entitlements: [],
       refund_id: "re_fake_paid-launch-dca",
     }));
-    render(<PackLibrary client={makeClient({ requestRefund })} />);
+    render(<PackLibrary client={makeClient({ requestRefund })} showBillingForms />);
 
     await screen.findByTestId("pack-library-refund");
     fireEvent.change(screen.getByTestId("pack-library-refund-input"), {
@@ -70,7 +70,7 @@ describe("PackLibrary refund request", () => {
       entitlements: ["paid-launch-dca"],
       refund_id: null,
     }));
-    render(<PackLibrary client={makeClient({ requestRefund })} />);
+    render(<PackLibrary client={makeClient({ requestRefund })} showBillingForms />);
 
     await screen.findByTestId("pack-library-refund");
     fireEvent.change(screen.getByTestId("pack-library-refund-input"), {
@@ -88,6 +88,7 @@ describe("PackLibrary refund request", () => {
   it("hides the refund form when requestRefund is absent", async () => {
     render(
       <PackLibrary
+        showBillingForms
         client={{
           listInstalled: vi.fn(async () => []),
           redeemActivation: vi.fn(async () => ({
@@ -100,6 +101,13 @@ describe("PackLibrary refund request", () => {
       />,
     );
     await screen.findByTestId("pack-library-redeem");
+    expect(screen.queryByTestId("pack-library-refund")).toBeNull();
+  });
+
+  it("hides billing forms by default on PackLibrary (mounted under Settings → Trust & billing)", async () => {
+    render(<PackLibrary client={makeClient()} />);
+    await screen.findByTestId("pack-library-empty");
+    expect(screen.queryByTestId("pack-library-redeem")).toBeNull();
     expect(screen.queryByTestId("pack-library-refund")).toBeNull();
   });
 });

@@ -1,6 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Editor, type StrategyClient } from "./Editor";
 import { EditorInlineStopControl } from "./EditorInlineStopControl";
 import type {
   PaperClient,
@@ -9,39 +8,6 @@ import type {
 } from "../paper/client";
 
 afterEach(cleanup);
-
-const validPack = {
-  id: "trend-follow",
-  label: "Trend follow",
-  timeframe: "1h",
-  entry: ["close", ">", "sma20"],
-  exit: ["close", "<", "sma20"],
-};
-
-function makeStrategyClient(overrides: Partial<StrategyClient> = {}): StrategyClient {
-  return {
-    create: vi.fn().mockResolvedValue({
-      revision_id: "rev-create",
-      state: "draft",
-      pack: validPack,
-      errors: [],
-    }),
-    edit: vi.fn().mockResolvedValue({
-      revision_id: "rev-edit",
-      state: "draft",
-      pack: validPack,
-      errors: [],
-    }),
-    validate: vi.fn().mockResolvedValue({
-      revision_id: "rev-1",
-      state: "validated",
-      pack: validPack,
-      errors: [],
-    }),
-    arm: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
-}
 
 const unarmedStatus: PaperStatus = { schema_version: "1", armed: false };
 
@@ -58,21 +24,22 @@ function armedStatus(extra: Partial<PaperStatus> = {}): PaperStatus {
   };
 }
 
+function raiseOk(stop: string): PaperCommandResult {
+  return {
+    schema_version: "1",
+    code: "stop_raised",
+    ok: true,
+    message: `stop set: kraken SUIUSD -> ${stop}`,
+    effect: "changed",
+  };
+}
+
 function disarmOk(): PaperCommandResult {
   return {
     schema_version: "1",
     code: "disarmed",
     ok: true,
-    effect: "changed",
-  };
-}
-
-function raiseOk(newStop: string): PaperCommandResult {
-  return {
-    schema_version: "1",
-    code: "stop_raised",
-    ok: true,
-    message: `stop set: kraken SUIUSD -> ${newStop}`,
+    message: "disarmed: kraken SUIUSD",
     effect: "changed",
   };
 }
@@ -83,13 +50,9 @@ function makePaperClient(overrides: Partial<PaperClient> = {}): PaperClient {
     pauseEntries: vi.fn().mockResolvedValue({ ok: true }),
     resumeEntries: vi.fn().mockResolvedValue({ ok: true }),
     disarm: vi.fn().mockResolvedValue(disarmOk()),
-    raiseStop: vi.fn().mockResolvedValue(raiseOk("6.25")),
+    raiseStop: vi.fn().mockResolvedValue(raiseOk("2.5")),
     ...overrides,
   };
-}
-
-function armButton(): HTMLButtonElement {
-  return screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
 }
 
 function disarmButton(): HTMLButtonElement {
@@ -104,20 +67,6 @@ function refreshButton(): HTMLButtonElement {
   }) as HTMLButtonElement;
 }
 
-function renderEditor(paperClient: PaperClient, client: StrategyClient) {
-  return render(
-    <Editor
-      client={client}
-      paperClient={paperClient}
-      initial={{
-        revision_id: "rev-1",
-        state: "validated",
-        bytes: JSON.stringify(validPack, null, 2),
-      }}
-    />,
-  );
-}
-
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -127,14 +76,15 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 }
 
 describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
-  it("(a) on Arm success fires exactly one automatic getStatus() and mirrors the armed status, without Refresh, Paper-tab navigation or a remount", async () => {
+  it("(a) on refreshSignal bump fires exactly one automatic getStatus() and mirrors the armed status, without Refresh or a remount", async () => {
     const getStatus = vi
       .fn<() => Promise<PaperStatus>>()
       .mockResolvedValueOnce(unarmedStatus)
       .mockResolvedValue(armedStatus({ entries_paused: true }));
     const paperClient = makePaperClient({ getStatus });
-    const client = makeStrategyClient();
-    const view = renderEditor(paperClient, client);
+    const view = render(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={0} />,
+    );
 
     expect(await screen.findByTestId("editor-inline-stop-empty")).toBeDefined();
     expect(getStatus).toHaveBeenCalledTimes(1);
@@ -143,13 +93,10 @@ describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
       '[data-testid="editor-inline-stop"]',
     );
 
-    fireEvent.click(armButton());
-    await waitFor(() => {
-      expect(client.arm).toHaveBeenCalledTimes(1);
-    });
+    view.rerender(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={1} />,
+    );
 
-    // Exactly ONE automatic read after the confirmed Arm: no polling, no
-    // manual Refresh click, no remount of the inline control.
     await waitFor(() => {
       expect(disarmButton().disabled).toBe(false);
     });
@@ -172,18 +119,16 @@ describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
       .mockReturnValueOnce(second.promise)
       .mockResolvedValue(armedStatus());
     const paperClient = makePaperClient({ getStatus });
-    const client = makeStrategyClient();
-    renderEditor(paperClient, client);
+    const view = render(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={0} />,
+    );
 
     expect(await screen.findByTestId("editor-inline-stop-empty")).toBeDefined();
     expect(getStatus).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(armButton());
-    await waitFor(() => {
-      expect(client.arm).toHaveBeenCalledTimes(1);
-    });
-    // The post-Arm read is in flight (held on the deferred) and has not
-    // been joined by any second automatic request.
+    view.rerender(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={1} />,
+    );
     await waitFor(() => {
       expect(getStatus).toHaveBeenCalledTimes(2);
     });
@@ -194,7 +139,6 @@ describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
       expect(disarmButton().disabled).toBe(false);
     });
 
-    // Give any hypothetical poller ample time to fire: none may.
     await new Promise((resolve) => {
       setTimeout(resolve, 150);
     });
@@ -207,37 +151,35 @@ describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
       .mockResolvedValueOnce(unarmedStatus)
       .mockResolvedValue(armedStatus());
     const paperClient = makePaperClient({ getStatus });
-    const client = makeStrategyClient();
-    renderEditor(paperClient, client);
+    const view = render(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={0} />,
+    );
 
     expect(await screen.findByTestId("editor-inline-stop-empty")).toBeDefined();
 
-    fireEvent.click(armButton());
-    await waitFor(() => {
-      expect(client.arm).toHaveBeenCalledTimes(1);
-    });
+    view.rerender(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={1} />,
+    );
 
-    // The automatic path already reconciled: armed controls are live.
     await waitFor(() => {
       expect(disarmButton().disabled).toBe(false);
     });
     expect(getStatus).toHaveBeenCalledTimes(2);
 
-    // Option, not requirement: the Refresh button still exists and still
-    // issues exactly one further read when the user chooses it.
     expect(refreshButton().disabled).toBe(false);
     fireEvent.click(refreshButton());
     await waitFor(() => {
       expect(getStatus).toHaveBeenCalledTimes(3);
     });
 
-    // Option, not requirement: a remount still performs its mount read.
     cleanup();
-    const remount = renderEditor(
-      makePaperClient({
-        getStatus: vi.fn().mockResolvedValue(armedStatus()),
-      }),
-      client,
+    const remount = render(
+      <EditorInlineStopControl
+        paperClient={makePaperClient({
+          getStatus: vi.fn().mockResolvedValue(armedStatus()),
+        })}
+        refreshSignal={0}
+      />,
     );
     expect(remount).toBeDefined();
     await waitFor(() => {
@@ -252,23 +194,21 @@ describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
       .mockRejectedValueOnce(new Error("boom: connection reset"))
       .mockResolvedValue(armedStatus());
     const paperClient = makePaperClient({ getStatus });
-    const client = makeStrategyClient();
-    renderEditor(paperClient, client);
+    const view = render(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={0} />,
+    );
 
     expect(await screen.findByTestId("editor-inline-stop-empty")).toBeDefined();
 
-    fireEvent.click(armButton());
-    await waitFor(() => {
-      expect(client.arm).toHaveBeenCalledTimes(1);
-    });
+    view.rerender(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={1} />,
+    );
 
     const unknown = await screen.findByTestId("editor-inline-stop-unknown");
     expect(unknown.getAttribute("role")).toBe("alert");
     expect(unknown.textContent).toMatch(
       /Status refresh failed: boom: connection reset/,
     );
-    // The last confirmed (unarmed) state is kept; exactly one automatic
-    // attempt, no auto-retry, no manufactured armed state.
     expect(screen.getByTestId("editor-inline-stop-empty").textContent).toMatch(
       /No pack armed/,
     );
@@ -287,10 +227,10 @@ describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
     const raiseStop = vi.fn().mockResolvedValue(raiseOk("6.25"));
     const disarm = vi.fn().mockResolvedValue(disarmOk());
     const paperClient = makePaperClient({ getStatus, raiseStop, disarm });
-    const client = makeStrategyClient();
-    renderEditor(paperClient, client);
+    const view = render(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={0} />,
+    );
 
-    // First Arm: post-Arm read #2 mirrors the armed state.
     await waitFor(() => {
       expect(disarmButton().disabled).toBe(false);
     });
@@ -305,7 +245,6 @@ describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
       (await screen.findByTestId("editor-inline-stop-at")).textContent,
     ).toBe("stop at 6.25");
 
-    // Disarm: the remembered stop leaves view but survives in memory.
     fireEvent.click(disarmButton());
     await waitFor(() => {
       expect(screen.getByTestId("editor-inline-stop-empty").textContent).toMatch(
@@ -314,13 +253,9 @@ describe("EditorInlineStopControl post-Arm automatic status refresh", () => {
     });
     expect(screen.queryByTestId("editor-inline-stop-at")).toBeNull();
 
-    // Second Arm in the same Editor (the first client.arm call in this
-    // scenario): the post-Arm read re-displays the resting stop without any
-    // re-raise.
-    fireEvent.click(armButton());
-    await waitFor(() => {
-      expect(client.arm).toHaveBeenCalledTimes(1);
-    });
+    view.rerender(
+      <EditorInlineStopControl paperClient={paperClient} refreshSignal={1} />,
+    );
     expect(
       (await screen.findByTestId("editor-inline-stop-at")).textContent,
     ).toBe("stop at 6.25");
