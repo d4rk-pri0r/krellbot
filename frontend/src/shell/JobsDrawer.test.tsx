@@ -70,7 +70,7 @@ async function rejectRequest(gate: Deferred<JobRow[]>, reason: unknown): Promise
 }
 
 describe("JobsDrawer", () => {
-  it("shows a job returned by the client under the Local preview badge", async () => {
+  it("shows a job returned by the client without duplicating the shell status badge", async () => {
     render(
       <JobsDrawer
         client={{
@@ -82,8 +82,7 @@ describe("JobsDrawer", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /jobs/i }));
     expect((await screen.findByTestId("job-row")).textContent).toContain("job-1 Research backtest (succeeded)");
-    const badge = screen.getByTestId("jobs-local-preview");
-    expect(badge.textContent).toBe("Local preview");
+    expect(screen.queryByTestId("jobs-local-preview")).toBeNull();
     // Selection affordance: each row is a keyboard-reachable selection target
     // carrying the shared sage/seafoam selection pattern from the CSS layer.
     expect(screen.getByTestId("job-row").tabIndex).toBe(0);
@@ -130,18 +129,14 @@ describe("JobsDrawer", () => {
     ]);
   });
 
-  it("keeps a valid empty jobs response empty with truthful local-preview copy", async () => {
+  it("keeps a valid empty jobs response empty with concise copy", async () => {
     vi.stubGlobal("fetch", stubJobsFetch({ jobs: [] }));
     render(<JobsDrawer />);
     openJobsDrawer();
     expect(await screen.findByTestId("jobs-empty")).not.toBeNull();
-    // The short empty title stays (pinned by the shell-level tests); the
-    // truthful local-preview sentence sits beside it in the same state block.
     expect(screen.getByText("No jobs")).not.toBeNull();
-    expect(
-      screen.getByText("No jobs yet. Local preview only — live trading unavailable."),
-    ).not.toBeNull();
-    expect(screen.getByTestId("jobs-local-preview").textContent).toBe("Local preview");
+    expect(screen.getByText("No jobs yet.")).not.toBeNull();
+    expect(screen.queryByTestId("jobs-local-preview")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 

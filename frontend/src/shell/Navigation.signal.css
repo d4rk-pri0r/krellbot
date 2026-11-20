@@ -115,84 +115,53 @@
   box-shadow: inset 0 -2px 0 var(--seafoam, #a8d8d1);
 }
 
-/* ============ honest Local preview caption ============ */
-
-.kbot-shell__nav-root .kbot-shell__nav-note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin: 0;
-  padding: 0 4px;
-  min-height: 0;
-  border-top: 0;
-  font-size: 11px;
-}
-
-/* Same seafoam "Local preview" badge vocabulary as the other Signal
- * shell surfaces (StatusStrip / AppHome / JobsDrawer / CommandPalette). */
-.kbot-shell__nav-root .kbot-shell__nav-preview {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  border: 1px solid color-mix(in srgb, var(--seafoam, #a8d8d1) 45%, var(--line, #22465d));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--panel, #18354a) 45%, var(--surface, #14222e));
-  color: var(--seafoam, #a8d8d1);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-
-.kbot-shell__nav-root .kbot-shell__nav-note-text {
-  min-width: 0;
-  color: var(--muted, #abc4d8);
-  overflow-wrap: anywhere;
-}
-
-/* On wide brand bars, tuck the preview note after the tabs instead of
- * forcing a full-width second row when space allows. */
-@media (min-width: 1100px) {
-  .kbot-shell__nav-root {
-    flex-wrap: nowrap;
-    align-items: center;
-  }
-
-  .kbot-shell__nav-root .kbot-shell__nav-note {
-    width: auto;
-    margin-left: 6px;
-    padding-left: 10px;
-    border-left: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
-  }
-}
-
 /* ============ narrow layouts (<=640px) ============ */
 
 @media (max-width: 640px) {
   .kbot-shell__nav-root {
     padding: 0;
+    border-top: 1px solid color-mix(in srgb, var(--line, #22465d) 55%, transparent);
+    background: var(--surface, #14222e);
   }
 
-  /* Reachable tabs + More overflow with >=44px touch targets; labels
-   * ellipsize inside the tab instead of overflowing the 390px composition. */
+  .kbot-shell__nav-root .kbot-nav__primary {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    gap: 2px;
+  }
+
+  .kbot-shell__nav-root .kbot-nav__primary::-webkit-scrollbar {
+    display: none;
+  }
+
+  .kbot-shell__nav-root .kbot-nav__more {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding: 2px 0;
+    border-top: 1px solid color-mix(in srgb, var(--line, #22465d) 45%, transparent);
+    overflow-wrap: anywhere;
+  }
+
+  .kbot-shell__nav-root .kbot-nav__more::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Reachable tabs + More overflow with >=44px touch targets in one compact row. */
   .kbot-shell__nav-root .kbot-shell__nav-item,
   .kbot-shell__nav-root .kbot-nav__more-toggle,
   .kbot-shell__nav-root .kbot-nav__more .kbot-shell__nav-item {
+    flex: 0 0 auto;
     min-height: 44px;
     min-width: 44px;
-    padding: 10px 10px;
+    padding: 8px 10px;
     font-size: 12.5px;
-  }
-
-  .kbot-shell__nav-root .kbot-shell__nav-note {
-    gap: 6px;
-    padding: 0 2px;
-  }
-
-  .kbot-shell__nav-root .kbot-shell__nav-note-text {
-    overflow-wrap: anywhere;
   }
 }
 

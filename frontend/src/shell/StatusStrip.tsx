@@ -178,6 +178,7 @@ function StatusStripBody({ live }: { live: LiveStatus | null }): JSX.Element {
       className={engaged ? "kbot-status kbot-status--engaged" : "kbot-status"}
       role="region"
       aria-label={engaged ? "Status — kill switch engaged" : "Status"}
+      data-testid="kbot-status-strip"
     >
       <span
         className={

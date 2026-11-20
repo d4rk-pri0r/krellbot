@@ -45,12 +45,13 @@ function renderPalette(open = true): HTMLElement {
 /* ------------------------------------------------------------------ */
 
 describe("CommandPalette — honest Signal copy", () => {
-  it("labels the palette with the honest find-an-action copy including local preview", () => {
+  it("labels the palette with the concise find-an-action heading", () => {
     renderPalette();
 
     expect(
-      screen.getByText("Find an action, strategy, or view — local preview only."),
+      screen.getByText("Find an action, strategy, or view"),
     ).toBeDefined();
+    expect(screen.queryByTestId("command-palette-badge")).toBeNull();
   });
 
   it("keeps the palette closed when open is false", () => {
@@ -79,25 +80,12 @@ describe("CommandPalette — honest Signal copy", () => {
 /* 2. Seafoam Local preview badge                                      */
 /* ------------------------------------------------------------------ */
 
-describe("CommandPalette — Local preview badge", () => {
-  it("renders the Local preview badge above the input in the shared badge vocabulary", () => {
+describe("CommandPalette — single status discipline", () => {
+  it("omits a duplicate Local preview badge (StatusStrip is the single shell status pill)", () => {
     renderPalette();
 
-    const badge = screen.getByText("Local preview");
-    expect(badge.className).toContain("kbot-shell__palette-badge");
-
-    const input = screen.getByPlaceholderText(
-      "Type to search actions, strategies, or views",
-    );
-    expect(
-      badge.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it("marks the badge with its own test id for the browser journey", () => {
-    renderPalette();
-
-    expect(screen.getByTestId("command-palette-badge")).toBeDefined();
+    expect(screen.queryByTestId("command-palette-badge")).toBeNull();
+    expect(screen.queryByText("Local preview")).toBeNull();
   });
 });
 

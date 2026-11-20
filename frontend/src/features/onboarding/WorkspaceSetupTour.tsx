@@ -74,7 +74,6 @@ function targetIds(stepId: WorkspaceSetupTourStepId): readonly string[] {
   if (stepId === "workspace") {
     return [
       "app-home-active-paper",
-      "app-home-availability",
       "app-home-first-viewport",
       "kbot-status-strip",
     ];
@@ -164,7 +163,6 @@ function blockedBoxes(anchor: HTMLElement | null): Box[] {
   return collectBoxes(anchor, [
     '[data-testid="kbot-nav"]',
     '[data-testid="app-home-cta-paper"]',
-    '[data-testid="app-home-availability"]',
     ".kbot-shell__header",
   ]);
 }

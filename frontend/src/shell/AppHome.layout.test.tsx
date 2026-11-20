@@ -34,14 +34,10 @@ describe("home first-viewport composition at 1440×900", () => {
     const first = screen.getByTestId("app-home-first-viewport");
     expect(first.classList.contains("app-home__hero")).toBe(true);
     expect(first.querySelector(".kbot-brandmark")).not.toBeNull();
-    expect(first.contains(screen.getByTestId("app-home-availability"))).toBe(
-      true,
-    );
     expect(first.contains(screen.getByTestId("app-home-cta-paper"))).toBe(true);
     expect(first.contains(screen.getByTestId("app-home-cta-packs"))).toBe(true);
-    expect(
-      screen.getByTestId("app-home-availability").textContent,
-    ).toMatch(/Local preview/i);
+    expect(screen.queryByTestId("app-home-availability")).toBeNull();
+    expect(first.textContent).toMatch(/Live trading stays off/i);
     expect(screen.queryByTestId("app-home-path")).toBeNull();
     expect(screen.queryByTestId("app-home-keys-rail")).toBeNull();
     expect(screen.queryByTestId("app-home-works")).toBeNull();
