@@ -298,9 +298,13 @@
 
 .kbot-shell__workstation {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-stack, 12px);
   align-items: start;
+}
+
+.kbot-shell__workstation--with-inspector {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
 }
 
 .kbot-shell__workstation-main {
@@ -326,7 +330,8 @@
 }
 
 @media (max-width: 920px) {
-  .kbot-shell__workstation {
+  .kbot-shell__workstation,
+  .kbot-shell__workstation--with-inspector {
     grid-template-columns: 1fr;
   }
 
