@@ -78,6 +78,7 @@ import { PackLibrary } from "../features/packs/PackLibrary";
 import { PacksView } from "../features/packs/PacksView";
 import { createPacksHttpClient } from "../features/packs/client";
 import type { PackLibraryClient, PacksClient } from "../features/packs/client";
+import { SettingsView } from "../features/settings/SettingsView";
 import { ensureLoopbackSession } from "../loopbackSession";
 import {
   issueReconnectToken,
@@ -117,8 +118,10 @@ import {
 import { JobsDrawer } from "./JobsDrawer";
 import { Navigation, type View } from "./Navigation";
 import {
+  resolveSettingsSectionFromSearch,
   resolveViewFromSearch,
   syncViewToHistory,
+  type SettingsSection,
 } from "./route";
 import { StatusStrip } from "./StatusStrip";
 import { WorkstationAlerts } from "./WorkstationAlerts";
@@ -240,6 +243,12 @@ export function WorkstationShell({
       typeof window === "undefined" ? "" : window.location.search,
     ),
   );
+  const [settingsSection, setSettingsSectionState] = useState<SettingsSection>(
+    () =>
+      resolveSettingsSectionFromSearch(
+        typeof window === "undefined" ? "" : window.location.search,
+      ),
+  );
   /** Revision selected by the home starter chooser for the Run arm form. */
   const [preferredArmRevisionId, setPreferredArmRevisionId] = useState<
     string | null
@@ -264,12 +273,31 @@ export function WorkstationShell({
     setOperationsRefreshKey((key) => key + 1);
     celebrateFirstPaperWin();
   }, [celebrateFirstPaperWin]);
-  const setActive = useCallback((view: View): void => {
-    setActiveState(view);
-    // No-ops when the URL already encodes ``view`` (re-clicking the
-    // active tab must not stack duplicate history entries).
-    syncViewToHistory(view, "push");
-  }, []);
+  const navigateTo = useCallback(
+    (view: View, section?: SettingsSection): void => {
+      setActiveState(view);
+      if (view === "settings" && section) {
+        setSettingsSectionState(section);
+      }
+      // No-ops when the URL already encodes ``view`` (re-clicking the
+      // active tab must not stack duplicate history entries).
+      syncViewToHistory(view, "push", view === "settings" ? section : undefined);
+    },
+    [],
+  );
+  const setActive = useCallback(
+    (view: View): void => {
+      navigateTo(view);
+    },
+    [navigateTo],
+  );
+  const handleSettingsSectionChange = useCallback(
+    (section: SettingsSection): void => {
+      setSettingsSectionState(section);
+      syncViewToHistory("settings", "push", section);
+    },
+    [],
+  );
   const fleetSelect: PaperStatusSelect | null =
     venue !== null &&
     venue !== "" &&
@@ -290,6 +318,9 @@ export function WorkstationShell({
     const onPopState = (): void => {
       setSearchRevision((value) => value + 1);
       setActiveState(resolveViewFromSearch(window.location.search));
+      setSettingsSectionState(
+        resolveSettingsSectionFromSearch(window.location.search),
+      );
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -853,36 +884,33 @@ export function WorkstationShell({
   );
   const activeRef = useRef(active);
   activeRef.current = active;
-  const armedPaperRunsRef = useRef(armedPaperRuns);
-  armedPaperRunsRef.current = armedPaperRuns;
   const [setupTour, setSetupTour] = useState<WorkspaceSetupTourPersisted>(
     readWorkspaceSetupTourState,
   );
   const setupTourRef = useRef(setupTour);
   setupTourRef.current = setupTour;
-  const [keysTourOpen, setKeysTourOpen] = useState(false);
   const [tourLaunchBusy, setTourLaunchBusy] = useState(false);
   const [tourLaunchError, setTourLaunchError] = useState<string | null>(null);
   const revealTourStep = useCallback(
-    (step: WorkspaceSetupTourStepId): void => {
+    (
+      step: WorkspaceSetupTourStepId,
+      options: { navigateWorkspace: boolean },
+    ): void => {
       if (step === "workspace") {
-        setKeysTourOpen(false);
+        if (options.navigateWorkspace && activeRef.current !== "home") {
+          navigateTo("home");
+        }
         return;
       }
-      const view: View =
-        step === "run"
-          ? "workstation"
-          : step === "strategy"
-            ? armedPaperRunsRef.current.length > 0
-              ? "home"
-              : "workstation"
-            : "home";
-      if (view !== activeRef.current) {
-        setActive(view);
+      if (step === "keys") {
+        navigateTo("settings", "keys");
+        return;
       }
-      setKeysTourOpen(step === "keys");
+      if (activeRef.current !== "workstation") {
+        navigateTo("workstation");
+      }
     },
-    [setActive],
+    [navigateTo],
   );
   const commitTour = useCallback(
     (next: WorkspaceSetupTourPersisted): void => {
@@ -890,9 +918,7 @@ export function WorkstationShell({
       setSetupTour(next);
       setTourLaunchError(null);
       if (next.status === "active") {
-        revealTourStep(next.stepId);
-      } else {
-        setKeysTourOpen(false);
+        revealTourStep(next.stepId, { navigateWorkspace: true });
       }
     },
     [revealTourStep],
@@ -904,7 +930,7 @@ export function WorkstationShell({
     }
     tourBooted.current = true;
     if (setupTour.status === "active") {
-      revealTourStep(setupTour.stepId);
+      revealTourStep(setupTour.stepId, { navigateWorkspace: false });
     }
   }, [revealTourStep, setupTour.status, setupTour.stepId]);
   const replaySetupTour = useCallback((): void => {
@@ -1265,20 +1291,35 @@ export function WorkstationShell({
             sessionPending={!bootstrapDone}
             sessionFailed={bootstrapFailed}
             onRecoverSession={handleRecoverSession}
-            onIssueReconnect={
-              bootstrapDone && !bootstrapFailed ? handleIssueReconnect : undefined
-            }
             onRedeemReconnect={
               bootstrapFailed ? handleRedeemReconnect : undefined
             }
             strategyClient={client}
             armedPaperRuns={armedPaperRuns}
-            exchangeKeysForceOpen={keysTourOpen}
             onReplaySetupTour={replaySetupTour}
             onStarterReady={({ revisionId }) => {
               setPreferredArmRevisionId(revisionId);
               setActive("workstation");
             }}
+          />
+        ) : null}
+        {active === "settings" ? (
+          <SettingsView
+            section={settingsSection}
+            onSectionChange={handleSettingsSectionChange}
+            onNavigate={setActive}
+            sessionPending={!bootstrapDone}
+            sessionFailed={bootstrapFailed}
+            onRecoverSession={handleRecoverSession}
+            onIssueReconnect={
+              bootstrapDone && !bootstrapFailed
+                ? handleIssueReconnect
+                : undefined
+            }
+            onRedeemReconnect={
+              bootstrapFailed ? handleRedeemReconnect : undefined
+            }
+            packsClient={packs}
           />
         ) : null}
         {active === "workstation" ? (
@@ -1714,8 +1755,8 @@ export function WorkstationShell({
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onNavigate={(view) => {
-          setActive(view);
+        onNavigate={(view, section) => {
+          navigateTo(view, section);
           setPaletteOpen(false);
         }}
       />

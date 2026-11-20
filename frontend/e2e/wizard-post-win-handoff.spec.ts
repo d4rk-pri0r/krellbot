@@ -31,16 +31,14 @@ test("wizard paper path opens the shell without a second celebrate and keeps Adv
   await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
   await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
   await expect(page.locator("[data-testid='soft-studio-tip']")).toHaveCount(0);
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "1",
-  );
   await expect(page.getByTestId("app-home-cta-paper")).toHaveCount(1);
-  await expect(page.getByTestId("app-home-path")).toHaveAttribute("data-open", "0");
-  await expect(page.getByTestId("app-home-keys-rail-toggle")).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
+  await expect(page.getByTestId("app-home-path")).toHaveCount(0);
+  await expect(page.getByTestId("app-home-keys-rail")).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Workstation navigation" })
+      .getByRole("button", { name: "Settings", exact: true }),
+  ).toBeVisible();
 
   const hero = await page.getByTestId("app-home-first-viewport").evaluate((el) => {
     const rect = el.getBoundingClientRect();

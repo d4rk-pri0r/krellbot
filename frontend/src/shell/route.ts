@@ -25,12 +25,48 @@
 import type { View } from "./Navigation";
 
 export const VIEW_QUERY = "view";
+export const SECTION_QUERY = "section";
+
+export type SettingsSection =
+  | "keys"
+  | "safety"
+  | "trust"
+  | "privacy"
+  | "computer"
+  | "about";
+
+export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSection> = [
+  "keys",
+  "safety",
+  "trust",
+  "privacy",
+  "computer",
+  "about",
+];
+
+const KNOWN_SETTINGS_SECTIONS: ReadonlySet<string> = new Set(SETTINGS_SECTIONS);
+
+export function isSettingsSection(
+  value: string | null | undefined,
+): value is SettingsSection {
+  return typeof value === "string" && KNOWN_SETTINGS_SECTIONS.has(value);
+}
+
+export function resolveSettingsSectionFromSearch(
+  search: string,
+): SettingsSection {
+  const raw = search.startsWith("?") ? search.slice(1) : search;
+  const params = new URLSearchParams(raw);
+  const candidate = params.get(SECTION_QUERY);
+  return isSettingsSection(candidate) ? candidate : "keys";
+}
 
 const KNOWN_VIEWS: ReadonlySet<string> = new Set([
   "home",
   "workstation",
   "strategies",
   "packs",
+  "settings",
   "research",
   "studio",
   "operations",
@@ -69,17 +105,28 @@ export function resolveViewFromSearch(search: string): View {
 /**
  * Build a same-origin path+search(+hash) that selects `view` while
  * preserving every other current search param and the hash.
+ * Clears `section` when leaving `settings`.
  */
 export function buildLocationForView(
   view: View,
   currentSearch: string,
   currentHash = "",
+  settingsSection?: SettingsSection,
 ): string {
   const raw = currentSearch.startsWith("?")
     ? currentSearch.slice(1)
     : currentSearch;
   const params = new URLSearchParams(raw);
   params.set(VIEW_QUERY, view);
+  if (view === "settings") {
+    if (settingsSection) {
+      params.set(SECTION_QUERY, settingsSection);
+    } else if (!isSettingsSection(params.get(SECTION_QUERY))) {
+      params.delete(SECTION_QUERY);
+    }
+  } else {
+    params.delete(SECTION_QUERY);
+  }
   const qs = params.toString();
   const hash = currentHash && !currentHash.startsWith("#")
     ? `#${currentHash}`
@@ -99,6 +146,7 @@ function locationKey(pathname: string, search: string, hash: string): string {
 export function syncViewToHistory(
   view: View,
   mode: "push" | "replace" = "push",
+  settingsSection?: SettingsSection,
 ): void {
   if (typeof window === "undefined") {
     return;
@@ -107,6 +155,7 @@ export function syncViewToHistory(
     view,
     window.location.search,
     window.location.hash,
+    settingsSection,
   );
   const current = locationKey(
     window.location.pathname,

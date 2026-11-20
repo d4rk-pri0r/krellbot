@@ -114,9 +114,6 @@ describe("AppHome armed paper run status", () => {
     const { container } = render(
       <AppHome
         onNavigate={onNavigate}
-        keysClient={fakeKeysClient()}
-        trustClient={fakeTrustClient()}
-        versionClient={fakeVersionClient()}
         armedPaperRuns={[paperDeployment()]}
       />,
     );
@@ -143,9 +140,6 @@ describe("AppHome armed paper run status", () => {
     render(
       <AppHome
         onNavigate={() => {}}
-        keysClient={fakeKeysClient()}
-        trustClient={fakeTrustClient()}
-        versionClient={fakeVersionClient()}
         armedPaperRuns={[
           paperDeployment({
             pack_id: "starter-mean-reversion-band",

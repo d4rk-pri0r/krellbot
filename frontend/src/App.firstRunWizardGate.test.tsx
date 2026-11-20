@@ -96,9 +96,8 @@ describe("App mounts WorkstationShell after wizard skip", () => {
     expect(screen.getByTestId("kbot-shell-brand")).toBeDefined();
     expect(screen.queryByTestId("first-run-coach")).toBeNull();
     expect(screen.queryByTestId("activation-checklist")).toBeNull();
-    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
-      "1",
-    );
+    expect(screen.getByRole("button", { name: "Settings" })).toBeDefined();
+    expect(screen.queryByTestId("app-home-path")).toBeNull();
 
     const raw = window.localStorage.getItem(FIRST_RUN_WIZARD_STORAGE_KEY);
     expect(raw).toBeTruthy();
@@ -157,9 +156,8 @@ describe("App adopts a prior coach skip or complete without re-trap", () => {
     expect(screen.queryByTestId("first-run-coach")).toBeNull();
     expect(screen.queryByTestId("activation-checklist")).toBeNull();
     expect(screen.getByTestId("kbot-shell")).toBeDefined();
-    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
-      "1",
-    );
+    expect(screen.getByRole("button", { name: "Settings" })).toBeDefined();
+    expect(screen.queryByTestId("app-home-path")).toBeNull();
     const raw = window.localStorage.getItem(FIRST_RUN_WIZARD_STORAGE_KEY);
     expect(JSON.parse(raw!).status).toBe("skipped");
   });

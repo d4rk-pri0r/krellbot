@@ -33,7 +33,7 @@ as fixture / demo / rehearsal (or an equivalent opt-in badge). Rules:
    market performance.
 
 **Opt-in helper:** `krellbot.application.demo_fixture_seed` plus
-`GET/POST /api/v1/demo-fixture` (and Workspace Advanced → Demo fixture seed).
+`GET/POST /api/v1/demo-fixture` (and Settings → This computer → Demo fixture seed).
 Requires explicit confirm to enable; clear restores an empty honest home.
 See `tests/test_demo_fixture_seed_honesty.py`.
 
@@ -44,13 +44,15 @@ These honesty rules bind every M18 composition pass and any later density work.
 ### Workspace home (`?view=home` — `AppHome`)
 
 **One composition:** brand/product signal + **one** sage CTA into the free
-paper-starter path + status honesty — not a tall stack of sparse peer cards.
-(M24 beginner-default front door.)
+paper-starter path (or Open paper run when armed) + status honesty — not a tall
+stack of sparse peer cards or a squeezed settings sidebar. Configuration,
+exchange keys, disclosures, privacy, reconnect, and About live in the dedicated
+Settings view (`?view=settings`).
 
-| Viewport | Must appear without page scroll | Stays below / collapsed |
+| Viewport | Must appear without page scroll | Moved to dedicated Settings view (`?view=settings`) |
 | --- | --- | --- |
-| 1440×900 | Sticky brand bar; hero (title + purpose + paper-only honesty); single sage CTA “Start with a free paper strategy”; Local preview / Live unavailable honesty | Advanced: keys, reconnect, live-ready wizard, demo fixture, Settings & trust (About/disclosures/referral/telemetry); demoted “all areas” / secondary links below the fold — not a first-viewport card wall |
-| ~390×844 | Same essential hero + CTA + honesty, stacked; ≥44px controls | Same Advanced blocks; long secondary lists continue below |
+| 1440×900 | Sticky brand bar (including Settings tab); hero (title + purpose or running paper status + honesty); single sage CTA “Start with a free paper strategy” / “Open paper run”; quiet setup tour link | Exchange keys, Paper & safety / Live-ready wizard, Trust & billing disclosures, Privacy & telemetry, Local session / Reconnect QR / Demo fixture, About |
+| ~390×844 | Same essential hero + CTA + honesty, stacked; ≥44px controls | Same Settings sections behind the Settings tab |
 
 Tighten progressive disclosure before adding card chrome. No fabricated equity
 or sample-bot strip. No Beginner/Power toggle.

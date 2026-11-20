@@ -41,13 +41,6 @@ type Box = {
   bottom: number;
 };
 
-type HomeCardGeometry = {
-  card: Box;
-  detail: Box;
-  bodyChildCount: number;
-  detailBelowAction: boolean;
-};
-
 type StarterItemGeometry = {
   label: Box & {
     whiteSpace: string;
@@ -87,49 +80,6 @@ async function boxFor(
       bottom: r.bottom,
     };
   }, testId);
-}
-
-async function measureHomeCards(
-  page: import("@playwright/test").Page,
-): Promise<HomeCardGeometry[]> {
-  return page.evaluate(() => {
-    const cards = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-testid^="app-home-card-"]'),
-    ).filter((card) => {
-      const rect = card.getBoundingClientRect();
-      // Skip collapsed Advanced content (zero laid-out size).
-      return rect.width > 0 && rect.height > 0;
-    });
-    return cards.map((card) => {
-      const detail = card.querySelector<HTMLElement>(".app-home__card-detail");
-      const action = card.querySelector<HTMLElement>(".app-home__card-action");
-      const body = card.querySelector<HTMLElement>(".app-home__card-body");
-      if (!detail || !action || !body) {
-        throw new Error("home card missing body/action/detail");
-      }
-      const cardRect = card.getBoundingClientRect();
-      const detailRect = detail.getBoundingClientRect();
-      const actionRect = action.getBoundingClientRect();
-      return {
-        card: {
-          width: cardRect.width,
-          height: cardRect.height,
-          top: cardRect.top,
-          left: cardRect.left,
-          bottom: cardRect.bottom,
-        },
-        detail: {
-          width: detailRect.width,
-          height: detailRect.height,
-          top: detailRect.top,
-          left: detailRect.left,
-          bottom: detailRect.bottom,
-        },
-        bodyChildCount: body.children.length,
-        detailBelowAction: detailRect.top >= actionRect.bottom - 1,
-      };
-    });
-  });
 }
 
 async function measureStarterItem(
@@ -232,46 +182,21 @@ test("home first-viewport and starter picker stay readable at 1440×900", async 
   ).toBeGreaterThanOrEqual(MIN_HOME_CTA_WIDTH_PX);
   expect(cta.height, "sage CTA is tappable").toBeGreaterThanOrEqual(34);
 
-  // Post-wizard M24: Advanced is mounted collapsed, with no checklist.
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "1",
-  );
+  // Focused Home: no duplicate All areas wall, no keys rail, no checklist.
   await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
   await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
-  // Peer cards are intentionally collapsed under Advanced — pin that, then
-  // expand and measure real laid-out geometry (never assert width on hidden).
-  await expect(page.getByTestId("app-home-path")).toHaveAttribute(
-    "data-open",
-    "0",
-  );
-  const collapsedCards = await measureHomeCards(page);
-  expect(
-    collapsedCards.length,
-    "collapsed Advanced path must not expose laid-out cards",
-  ).toBe(0);
+  await expect(page.getByTestId("app-home-path")).toHaveCount(0);
+  await expect(page.getByTestId("app-home-keys-rail")).toHaveCount(0);
 
-  await page.getByTestId("app-home-path-toggle").click();
-  await expect(page.getByTestId("app-home-path")).toHaveAttribute(
-    "data-open",
-    "1",
-  );
+  // Dedicated Settings view renders a readable two-column layout at 1440×900.
+  await clickNav(page, "Settings");
+  await expect(page.getByTestId("settings-view")).toBeVisible();
   await settle(page);
-
-  const homeGeometry = await measureHomeCards(page);
-  expect(homeGeometry.length).toBeGreaterThanOrEqual(5);
-  for (const [index, card] of homeGeometry.entries()) {
-    expect(
-      card.detail.width,
-      `home card[${index}] detail width`,
-    ).toBeGreaterThanOrEqual(MIN_HOME_DETAIL_WIDTH_PX);
-    expect(
-      card.detail.width,
-      `home card[${index}] detail uses most of the card track`,
-    ).toBeGreaterThan(card.card.width * 0.55);
-    expect(card.bodyChildCount).toBeGreaterThanOrEqual(3);
-    expect(card.detailBelowAction).toBe(true);
-  }
+  const settingsContent = await boxFor(page, "settings-content");
+  expect(
+    settingsContent.width,
+    "Settings content pane has generous readable width (not a narrow sidebar)",
+  ).toBeGreaterThanOrEqual(MIN_HOME_DETAIL_WIDTH_PX * 3);
 
   await clickNav(page, "Strategies");
   const picker = page.getByTestId("starter-picker");

@@ -1,7 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { VersionClient } from "../api/version";
-import type { KeysClient } from "../features/keys/client";
 import { recoverCsrf, redeemBootstrap } from "../session";
 import { AppHome } from "./AppHome";
 import { WorkstationShell } from "./WorkstationShell";
@@ -21,34 +19,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function silentKeysClient(): KeysClient {
-  return {
-    getStatus: vi.fn().mockResolvedValue({
-      schema_version: "1",
-      venue: "kraken",
-      present: false,
-      corrupt: false,
-      message: "no key stored",
-      backend_label: null,
-      balances: null,
-      balances_available: false,
-    }),
-    probeAndStore: vi.fn(),
-    remove: vi.fn(),
-  };
-}
-
-function silentVersionClient(): VersionClient {
-  return {
-    getVersion: vi.fn().mockResolvedValue({
-      schema_version: "1",
-      version: "0.9.7",
-      channel: "prerelease",
-      artifacts_signed: false,
-    }),
-  };
-}
-
 describe("Home session recovery", () => {
   it("shows each click's cause, clears it on retry, and keeps retry enabled", async () => {
     let finish: (result: { ok: boolean; error?: string }) => void = () => {};
@@ -56,8 +26,6 @@ describe("Home session recovery", () => {
     render(
       <AppHome
         onNavigate={() => {}}
-        keysClient={silentKeysClient()}
-        versionClient={silentVersionClient()}
         sessionFailed
         onRecoverSession={recover}
       />,
@@ -84,8 +52,6 @@ describe("Home session recovery", () => {
     render(
       <AppHome
         onNavigate={() => {}}
-        keysClient={silentKeysClient()}
-        versionClient={silentVersionClient()}
         sessionFailed
         onRecoverSession={async () => ({ ok: false })}
       />,

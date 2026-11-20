@@ -14,25 +14,14 @@ const FAKE_COINBASE_PUBLIC = "organizations/fake-org/apiKeys/fake-coinbase-key";
 const FAKE_COINBASE_PRIVATE =
   "-----BEGIN PRIVATE KEY-----\nfake-coinbase-pem\n-----END PRIVATE KEY-----";
 
-/**
- * M18.2 collapses Exchange keys under Advanced; M25.7 unmounts the whole
- * Advanced stack until coach skip/complete. Skip coach, then expand so
- * probe/store controls are visible — do not put keys back on first viewport.
- */
-async function expandHomeKeysAdvanced(
+async function openSettingsExchangeKeys(
   page: import("@playwright/test").Page,
 ): Promise<void> {
   await skipFirstRunCoach(page);
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "1",
-  );
-  const toggle = page.getByTestId("app-home-keys-rail-toggle");
-  await expect(toggle).toBeVisible();
-  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
-    await toggle.click();
-  }
-  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("keys-onboarding-kraken")).toHaveCount(0);
+  await clickNav(page, "Settings");
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await expect(page.getByTestId("settings-section-keys")).toBeVisible();
 }
 
 async function stubVenue(
@@ -136,7 +125,7 @@ test("keys onboarding: Kraken probe-store, show holdings, then remove with fakes
   await page.goto(journey.workstation.baseURL);
   await journey.waitForSessionReady(page);
   await clickNav(page, "Workspace");
-  await expandHomeKeysAdvanced(page);
+  await openSettingsExchangeKeys(page);
 
   const panel = page.getByTestId("keys-onboarding-kraken");
   await expect(panel).toBeVisible();
@@ -180,7 +169,7 @@ test("keys onboarding: Coinbase probe-store, show holdings, then remove with fak
   await page.goto(journey.workstation.baseURL);
   await journey.waitForSessionReady(page);
   await clickNav(page, "Workspace");
-  await expandHomeKeysAdvanced(page);
+  await openSettingsExchangeKeys(page);
 
   const panel = page.getByTestId("keys-onboarding-coinbase");
   await expect(panel).toBeVisible();
@@ -270,7 +259,7 @@ test("keys onboarding: honest unsupported keyring backend from probe-and-store",
   await page.goto(journey.workstation.baseURL);
   await journey.waitForSessionReady(page);
   await clickNav(page, "Workspace");
-  await expandHomeKeysAdvanced(page);
+  await openSettingsExchangeKeys(page);
 
   await page.getByTestId("keys-public-kraken").fill(FAKE_KRAKEN_PUBLIC);
   await page.getByTestId("keys-private-kraken").fill(FAKE_KRAKEN_PRIVATE);

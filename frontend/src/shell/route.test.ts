@@ -4,10 +4,13 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  SECTION_QUERY,
   VIEW_QUERY,
   buildLocationForView,
+  isSettingsSection,
   isView,
   parseViewFromSearch,
+  resolveSettingsSectionFromSearch,
   resolveViewFromSearch,
   syncViewToHistory,
 } from "./route";
@@ -23,6 +26,7 @@ describe("route — parse and resolve", () => {
       "workstation",
       "strategies",
       "packs",
+      "settings",
       "research",
       "studio",
       "operations",
@@ -33,6 +37,16 @@ describe("route — parse and resolve", () => {
     expect(isView("jobs")).toBe(false);
     expect(isView("")).toBe(false);
     expect(isView(null)).toBe(false);
+  });
+
+  it("resolves settings sections and falls back to keys", () => {
+    for (const sec of ["keys", "safety", "trust", "privacy", "computer", "about"]) {
+      expect(isSettingsSection(sec)).toBe(true);
+      expect(resolveSettingsSectionFromSearch(`?view=settings&${SECTION_QUERY}=${sec}`)).toBe(sec);
+    }
+    expect(isSettingsSection("unknown")).toBe(false);
+    expect(resolveSettingsSectionFromSearch("?view=settings")).toBe("keys");
+    expect(resolveSettingsSectionFromSearch("?view=settings&section=nope")).toBe("keys");
   });
 
   it("parses an explicit view query param", () => {
@@ -68,6 +82,12 @@ describe("route — build and sync history", () => {
     );
     expect(buildLocationForView("home", "?workload=200", "#frag")).toBe(
       "/?workload=200&view=home#frag",
+    );
+    expect(buildLocationForView("settings", "", "", "privacy")).toBe(
+      "/?view=settings&section=privacy",
+    );
+    expect(buildLocationForView("home", "?view=settings&section=privacy")).toBe(
+      "/?view=home",
     );
   });
 

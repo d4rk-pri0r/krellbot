@@ -265,28 +265,15 @@ describe("WorkstationShell — failed session bootstrap", () => {
     await waitFor(() => {
       expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
     });
-    // Post-wizard home keeps Advanced mounted; the failure alert stays.
-    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
-      "1",
-    );
     expect(screen.queryByTestId("first-run-coach")).toBeNull();
     expect(screen.getByTestId("app-home-session-failure")).toBeDefined();
-    const home = within(screen.getByTestId("app-home"));
-    const pathToggle = home.getByTestId("app-home-path-toggle");
-    if (pathToggle.getAttribute("aria-expanded") !== "true") {
-      fireEvent.click(pathToggle);
+    const nav = within(screen.getByTestId("kbot-nav"));
+    for (const label of ["Workspace", "Run", "Strategies", "Packs", "Settings"]) {
+      const btn = nav.getByRole("button", { name: label });
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
     }
-    for (const testid of [
-      "app-home-card-strategies",
-      "app-home-card-research",
-      "app-home-card-studio",
-      "app-home-card-workstation",
-      "app-home-card-operations",
-    ]) {
-      const card = home.getByTestId(testid);
-      expect((card as HTMLButtonElement).disabled).toBe(false);
-    }
-    home.getByTestId("app-home-card-studio").click();
+    fireEvent.click(nav.getByTestId("kbot-nav-more-toggle"));
+    fireEvent.click(nav.getByRole("button", { name: "Strategy studio" }));
     await waitFor(() => {
       expect(screen.queryByTestId("app-home")).toBeNull();
     });
@@ -389,33 +376,11 @@ describe("WorkstationShell — reload without bootstrap metadata (APP-BONES-SESS
   });
 });
 
-function silentKeysClient() {
-  return {
-    getStatus: vi.fn().mockResolvedValue({
-      schema_version: "1",
-      venue: "kraken",
-      present: false,
-      corrupt: false,
-      message: "no key stored",
-      backend_label: null,
-      balances: null,
-      balances_available: false,
-    }),
-    probeAndStore: vi.fn(),
-    remove: vi.fn(),
-  };
-}
-
 describe("AppHome — failed-session prop contract", () => {
   it("renders the failed-session alert only when sessionFailed is set", () => {
-    const keysClient = silentKeysClient();
-    const { rerender } = render(
-      <AppHome onNavigate={() => {}} keysClient={keysClient} />,
-    );
+    const { rerender } = render(<AppHome onNavigate={() => {}} />);
     expect(screen.queryByTestId("app-home-session-failure")).toBeNull();
-    rerender(
-      <AppHome onNavigate={() => {}} keysClient={keysClient} sessionFailed />,
-    );
+    rerender(<AppHome onNavigate={() => {}} sessionFailed />);
     expect(
       screen.getByTestId("app-home-session-failure").getAttribute("role"),
     ).toBe("alert");
@@ -423,22 +388,13 @@ describe("AppHome — failed-session prop contract", () => {
       screen.getByTestId("app-home-session-failure").textContent,
     ).toMatch(/local session could not start/i);
     expect(document.body.innerHTML.includes("bootstrap failed")).toBe(false);
-    rerender(
-      <AppHome
-        onNavigate={() => {}}
-        keysClient={keysClient}
-        sessionFailed={false}
-      />,
-    );
+    rerender(<AppHome onNavigate={() => {}} sessionFailed={false} />);
     expect(screen.queryByTestId("app-home-session-failure")).toBeNull();
   });
 
   it("shows the recovery control only on failure and only when a handler is provided", () => {
     const onRecoverSession = vi.fn();
-    const keysClient = silentKeysClient();
-    const first = render(
-      <AppHome onNavigate={() => {}} keysClient={keysClient} sessionFailed />,
-    );
+    const first = render(<AppHome onNavigate={() => {}} sessionFailed />);
     expect(
       screen.queryByRole("button", { name: /recover the local session/i }),
     ).toBeNull();
@@ -446,7 +402,6 @@ describe("AppHome — failed-session prop contract", () => {
     const second = render(
       <AppHome
         onNavigate={() => {}}
-        keysClient={keysClient}
         sessionFailed
         onRecoverSession={onRecoverSession}
       />,

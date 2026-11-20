@@ -118,29 +118,10 @@ it.each(["bootstrap", "csrf"])(
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    // Post-wizard home mounts Advanced rails, so keys / trust / version
-    // may read in the same commit as the status strip. Operations still
-    // must not precede the session settle.
+    // Settings rails live in the dedicated Settings view, so Home only reads
+    // Operations for the status strip after session settle.
     const afterSession = requests.slice(1);
-    expect(afterSession).toContain("/api/v1/operations");
-    expect(afterSession).toEqual(
-      expect.arrayContaining([
-        "/api/v1/operations",
-        "/api/v1/trust",
-        "/api/v1/keys/kraken",
-        "/api/v1/keys/coinbase",
-        "/api/v1/version",
-      ]),
-    );
-    for (const url of afterSession) {
-      expect([
-        "/api/v1/operations",
-        "/api/v1/trust",
-        "/api/v1/keys/kraken",
-        "/api/v1/keys/coinbase",
-        "/api/v1/version",
-      ]).toContain(url);
-    }
+    expect(afterSession).toEqual(["/api/v1/operations"]);
     expect(screen.getByTestId("live-orders-status").textContent).toBe("No live venues authorized");
   },
 );

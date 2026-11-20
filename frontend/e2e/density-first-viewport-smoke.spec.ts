@@ -88,7 +88,7 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     80,
   );
 
-  // Post-wizard M24: one sage CTA; Advanced rails mounted and collapsed.
+  // Focused Home hero: one sage CTA; no duplicate destination wall or home keys rail.
   await expect(page.getByTestId("app-home-cta-paper")).toContainText(
     /Start with a free paper strategy/i,
   );
@@ -97,17 +97,11 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
     "exactly one primary paper CTA",
   ).toBe(1);
   await expect(page.getByTestId("app-home-cta-packs")).toBeVisible();
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "1",
-  );
   await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
   await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
   await expect(page.getByTestId("app-home-works")).toHaveCount(0);
-  await expect(page.getByTestId("app-home-path")).toHaveAttribute(
-    "data-open",
-    "0",
-  );
+  await expect(page.getByTestId("app-home-path")).toHaveCount(0);
+  await expect(page.getByTestId("app-home-keys-rail")).toHaveCount(0);
 
   // Document should not be padded with sparse empty viewport below the hero.
   const homeScroll = await page.evaluate(() => ({
@@ -117,21 +111,17 @@ test("home and workstation first-viewports stay dense at 1440×900", async ({
   expect(
     homeScroll.scrollHeight,
     "fresh home must not invent a multi-viewport empty scroll",
-  ).toBeLessThan(VIEWPORT.height * 3);
+  ).toBeLessThan(VIEWPORT.height * 2);
 
-  const pathBox = await boxFor(page, "app-home-path");
+  // Dedicated Settings view hosts Exchange keys in a clean spacious layout.
+  await clickNav(page, "Settings");
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await expect(page.getByTestId("settings-section-keys")).toBeVisible();
+  const keysBox = await boxFor(page, "settings-section-keys");
   expect(
-    pathBox.top,
-    "collapsed All areas begins near the first viewport",
+    keysBox.top,
+    "Settings Exchange keys begins above the fold",
   ).toBeLessThanOrEqual(MAX_PATH_TOP_PX);
-
-  const keysToggle = page.getByTestId("app-home-keys-rail-toggle");
-  await expect(keysToggle).toBeVisible();
-  await expect(keysToggle).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("app-home-keys-rail")).toHaveAttribute(
-    "data-open",
-    "0",
-  );
 
   await clickNav(page, "Run");
   await expect(page.getByTestId("paper-status-panel")).toBeVisible({

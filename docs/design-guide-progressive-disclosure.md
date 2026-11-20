@@ -41,11 +41,11 @@ Navigation destinations (`?view=`) stay stable. Capabilities relocate only via p
 
 First-run is a full-screen wizard gate, not a coach painted on the cockpit. After complete or skip, this guide applies to the mounted shell: Advanced stays collapsed and reachable, and the wizard win screen is the only celebration.
 
-**Nav tiers (M24):** Primary = Workspace (`home`), Run (`workstation` — UI label **Run**), Packs (`packs`), Strategies (`strategies`). More = Research (`research`), Strategy studio (`studio`), Operations (`operations`), Deploy (`deployments`). Pause/disarm stay on Run; Operations kill switch remains ≤2 clicks from an armed paper state (deep link from Run when needed).
+**Nav tiers:** Primary = Workspace (`home`), Run (`workstation` — UI label **Run**), Strategies (`strategies`), Packs (`packs`), Settings (`settings`). More = Research (`research`), Strategy studio (`studio`), Operations (`operations`), Deploy (`deployments`). Pause/disarm stay on Run; Operations kill switch remains ≤2 clicks from an armed paper state (deep link from Run when needed).
 
 | Capability | Destination | Disclosure |
 | --- | --- | --- |
-| Workspace orientation / next step | `home` | Essential hero + **one** sage CTA into free paper starter |
+| Workspace orientation / next step | `home` | Essential hero + **one** sage CTA into free paper starter (or Open paper run when armed) + quiet setup tour replay |
 | Home-mounted starter chooser | `home` (Chooser A) | Primary task; free local starter default; catalogue secondary |
 | Paper arm / pause entries / resume / disarm / raise stop | `workstation` (Run) | Essential status + primary arm/controls |
 | Synthetic paper rehearsal | `workstation` (inside Paper status) | Primary (paper/test-run controls) |
@@ -59,7 +59,7 @@ First-run is a full-screen wizard gate, not a coach painted on the cockpit. Afte
 | Selection inspector | `workstation` aside | Contextual |
 | Strategy author / validate / library | `strategies` | Primary editor; Library toggle; deep JSON Advanced |
 | Pack library (installed) | `strategies` Packs toggle | Contextual toggle |
-| Catalogue browse / install | `packs` | Primary (“get a strategy”); paid/refund under Settings & trust |
+| Catalogue browse / install | `packs` | Primary (“get a strategy”); disclosures under Settings → Trust & billing |
 | Research / backtest / evidence | `research` | Full view unchanged; **nav: More** |
 | Strategy graph / authoring | `studio` | Full canvas unchanged; **nav: More**; no soft tips after first arm |
 | Kill switch / live status / deployments pause-resume | `operations` | Essential on Operations view; **nav: More** (reachable from Run) |
@@ -70,11 +70,12 @@ First-run is a full-screen wizard gate, not a coach painted on the cockpit. Afte
 | Journal browse | `operations` | Advanced |
 | Deployment history | `operations` | Advanced |
 | Live preflight | `deployments` | Primary on Deploy view (paper-only honesty); **nav: More** |
-| Exchange keys onboarding | `home` aside | Advanced (session setup) |
-| Live-ready wizard | `home` aside | Advanced |
-| Demo fixture seed | `home` aside | Advanced (honesty badges) |
-| Reconnect QR / token | `home` aside | Advanced |
-| Settings & trust (About, disclosures, referral, telemetry) | `home` aside | One Advanced “Settings & trust” cluster |
+| Exchange keys onboarding | `settings` (`section=keys`) | Primary Settings section (optional trade-only keys; local OS keyring) |
+| Live-ready wizard / paper-only posture | `settings` (`section=safety`) | Settings section |
+| Paid disclosures & exchange referral | `settings` (`section=trust`) | Settings section |
+| Opt-in telemetry consent | `settings` (`section=privacy`) | Settings section (off by default) |
+| Local session, reconnect QR/token, demo fixture seed | `settings` (`section=computer`) | Settings section (demo fixture collapsed, labeled Fixture) |
+| About this build | `settings` (`section=about`) | Settings section |
 | Jobs drawer / command palette | Shell chrome | Always reachable; palette leads with Start free paper strategy |
 
 ## Verification expectations
