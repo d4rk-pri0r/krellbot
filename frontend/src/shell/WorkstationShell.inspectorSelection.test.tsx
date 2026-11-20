@@ -151,15 +151,14 @@ async function openWorkstation(): Promise<void> {
   });
 }
 
-describe("WorkstationShell inspector selection wiring (M7.4)", () => {
-  it("starts with the honest empty inspector on Workstation", async () => {
+describe("WorkstationShell contextual inspector selection wiring", () => {
+  it("omits the idle inspector aside on Workstation until an item is selected", async () => {
     await openWorkstation();
-    expect(screen.getByTestId("inspector-empty").textContent).toMatch(
-      /Nothing selected/,
-    );
+    expect(screen.queryByTestId("inspector-root")).toBeNull();
+    expect(screen.queryByTestId("inspector-empty")).toBeNull();
   });
 
-  it("shows deployment context in the inspector when an armed row is selected", async () => {
+  it("opens contextual deployment detail on selection and closes back to full width", async () => {
     await openWorkstation();
     const row = await screen.findByTestId("paper-armed-row");
     fireEvent.click(row);
@@ -168,6 +167,9 @@ describe("WorkstationShell inspector selection wiring (M7.4)", () => {
     expect(selected.textContent).toContain("kraken:BTC/USD");
     expect(selected.textContent).toContain("pack.sma · paper");
     expect(screen.queryByTestId("inspector-empty")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("inspector-close"));
+    expect(screen.queryByTestId("inspector-root")).toBeNull();
   });
 
   it("shows position context when the owned position control is pressed", async () => {

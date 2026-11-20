@@ -56,7 +56,7 @@ First-run is a full-screen wizard gate, not a coach painted on the cockpit. Afte
 | Armed paper run records | `workstation` | Advanced (open by default; fleet is primary) |
 | Forward paper ledger | `workstation` | Advanced |
 | Paper alerts (compact) | `workstation` | Essential |
-| Selection inspector | `workstation` aside | Contextual |
+| Selection inspector | `workstation` aside (contextual) | Opens only when a deployment, position, or alert is selected; Run uses full width when idle |
 | Strategy author / validate / library | `strategies` | Primary editor; Library toggle; deep JSON Advanced |
 | Pack library (installed) | `strategies` Packs toggle | Contextual toggle |
 | Catalogue browse / install | `packs` | Primary (“get a strategy”); disclosures under Settings → Trust & billing |

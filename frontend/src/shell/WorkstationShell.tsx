@@ -1334,7 +1334,14 @@ export function WorkstationShell({
                 </p>
               </div>
             </div>
-            <div className="kbot-shell__workstation">
+            <div
+              className={
+                "kbot-shell__workstation" +
+                (inspectorSelection !== null
+                  ? " kbot-shell__workstation--with-inspector"
+                  : "")
+              }
+            >
               <div className="kbot-shell__workstation-main">
                 {bootstrapDone ? (
                   <>
@@ -1418,9 +1425,16 @@ export function WorkstationShell({
                   </p>
                 )}
               </div>
-              <aside className="kbot-shell__workstation-aside">
-                <Inspector selection={inspectorSelection} />
-              </aside>
+              {inspectorSelection !== null ? (
+                <aside className="kbot-shell__workstation-aside">
+                  <Inspector
+                    selection={inspectorSelection}
+                    onClose={() => {
+                      setInspectorSelection(null);
+                    }}
+                  />
+                </aside>
+              ) : null}
             </div>
           </>
         ) : null}

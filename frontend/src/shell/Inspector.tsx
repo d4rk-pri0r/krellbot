@@ -29,6 +29,7 @@ export type InspectorProps = {
   selection?: InspectorSelection | null;
   loading?: boolean;
   error?: string | null;
+  onClose?: () => void;
 };
 
 const KIND_LABEL: Record<InspectorSelectionKind, string> = {
@@ -111,6 +112,7 @@ export function Inspector({
   selection = null,
   loading = false,
   error = null,
+  onClose,
 }: InspectorProps = {}): JSX.Element {
   return (
     <section
@@ -121,6 +123,17 @@ export function Inspector({
     >
       <header className="kbot-inspector__head">
         <h2 className="kbot-inspector__title">Inspector</h2>
+        {onClose ? (
+          <button
+            type="button"
+            className="kbot-inspector__close"
+            data-testid="inspector-close"
+            aria-label="Close inspector"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        ) : null}
       </header>
       <div className="kbot-inspector__body">
         {error ? (

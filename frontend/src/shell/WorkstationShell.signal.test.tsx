@@ -295,11 +295,10 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     }
   });
 
-  it("keeps the honest inspector empty state behind first-session Advanced, not a marketing hero", () => {
+  it("keeps the Run layout single-column with no idle empty inspector when nothing is selected", () => {
     renderShell();
     clickShellNav("Run");
-    const inspector = screen.getByTestId("inspector-root");
-    expect(inspector.textContent).toMatch(/Nothing selected/);
+    expect(screen.queryByTestId("inspector-root")).toBeNull();
     expect(screen.queryByTestId("paper-first-session-inspector-disclosure")).toBeNull();
   });
 });

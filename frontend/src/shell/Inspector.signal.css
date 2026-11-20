@@ -53,11 +53,29 @@
 
 .kbot-shell__inspector-root .kbot-inspector__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   min-width: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--line, #22465d) 70%, transparent);
   padding-bottom: 8px;
+}
+
+.kbot-shell__inspector-root .kbot-inspector__close {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line, #22465d);
+  border-radius: var(--radius-control, 7px);
+  background: transparent;
+  color: var(--muted, #abc4d8);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kbot-shell__inspector-root .kbot-inspector__close:hover {
+  color: var(--text, #e9f0f5);
+  border-color: var(--seafoam, #a8d8d1);
 }
 
 .kbot-shell__inspector-root .kbot-inspector__title {
