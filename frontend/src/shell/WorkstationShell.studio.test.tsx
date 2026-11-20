@@ -283,51 +283,70 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
     expect(captured.onConnect).toBeDefined();
   });
 
-  it("refuses n0→n1 with the exact 'timeframe mismatch' string and records no connection", () => {
+  it("starts empty, shows the mode picker, and does not record a connection for nodes that are not on the canvas", () => {
     renderShell();
     clickShellNav("Strategy studio");
+    expect(screen.getByTestId("studio-node-count").textContent).toBe("0");
+    expect(screen.getByTestId("studio-empty-canvas")).toBeDefined();
+    expect(screen.getByTestId("studio-mode-pack-picker")).toBeDefined();
+    expect((getCaptured().nodes ?? []).map((node) => node.id)).not.toEqual(
+      expect.arrayContaining(["n0", "n1", "n2"]),
+    );
     triggerConnect("n1");
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Timeframe mismatch");
-    const walker = document.createTreeWalker(alert, NodeFilter.SHOW_TEXT);
-    const exact: Text[] = [];
-    let node = walker.nextNode();
-    while (node) {
-      if (node.nodeValue === "Timeframe mismatch") exact.push(node as Text);
-      node = walker.nextNode();
-    }
-    expect(exact.length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(countText()).toMatch(/0/);
   });
 
-  it("records exactly one connection for n0→n2 and shows no timeframe mismatch", () => {
+  it("records exactly one connection for pack→anchor after a mode is opened", async () => {
     renderShell();
     clickShellNav("Strategy studio");
-    triggerConnect("n2");
+    fireEvent.click(await screen.findByTestId("studio-mode-pack-mode-dca"));
+    await vi.waitFor(() => {
+      expect(screen.queryByTestId("studio-empty-canvas")).toBeNull();
+      expect((getCaptured().nodes ?? []).map((node) => node.id)).toEqual(
+        expect.arrayContaining(["pack", "anchor"]),
+      );
+    });
+    const before = (getCaptured().edges ?? []).length;
+    triggerConnect("anchor", "pack");
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(countText()).toMatch(/1/);
-    expect(getCaptured().edges).toHaveLength(1);
-    expect(getCaptured().edges?.[0]?.source).toBe("n0");
-    expect(getCaptured().edges?.[0]?.target).toBe("n2");
+    expect(getCaptured().edges).toHaveLength(before + 1);
+    expect(getCaptured().edges?.some(
+      (edge) => edge.source === "pack" && edge.target === "anchor",
+    )).toBe(true);
   });
 
-  it("records two connections when two valid edges are added in sequence", () => {
+  it("records two connections when two valid edges are added in sequence", async () => {
     renderShell();
     clickShellNav("Strategy studio");
-    triggerConnect("n2");
-    triggerConnect("n0", "n2");
-    expect(countText()).toMatch(/2/);
+    fireEvent.click(await screen.findByTestId("studio-mode-pack-mode-dca"));
+    await vi.waitFor(() => {
+      expect((getCaptured().nodes ?? []).map((node) => node.id)).toEqual(
+        expect.arrayContaining(["pack", "anchor", "entry"]),
+      );
+    });
+    const before = (getCaptured().edges ?? []).length;
+    triggerConnect("anchor", "pack");
+    triggerConnect("entry", "pack");
+    expect(getCaptured().edges).toHaveLength(before + 2);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("does not record a refused connection even after a successful one", () => {
+  it("does not record a connection to a missing node even after a successful one", async () => {
     renderShell();
     clickShellNav("Strategy studio");
-    triggerConnect("n2");
-    expect(countText()).toMatch(/1/);
-    triggerConnect("n1");
-    expect(countText()).toMatch(/1/);
-    expect(screen.getByRole("alert").textContent).toContain("Timeframe mismatch");
+    fireEvent.click(await screen.findByTestId("studio-mode-pack-mode-dca"));
+    await vi.waitFor(() => {
+      expect((getCaptured().nodes ?? []).some((node) => node.id === "pack")).toBe(
+        true,
+      );
+    });
+    const before = (getCaptured().edges ?? []).length;
+    triggerConnect("anchor", "pack");
+    expect(getCaptured().edges).toHaveLength(before + 1);
+    triggerConnect("n1", "pack");
+    expect(getCaptured().edges).toHaveLength(before + 1);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("workload=200 opens the studio with 200 nodes", () => {
@@ -340,7 +359,7 @@ describe("WorkstationShell — studio canvas drives refusal through mounted Grap
 });
 
 describe("WorkstationShell — built-in mode pack studio (M15.5)", () => {
-  it("loads mode-dca as readable nodes and drops demo n0/n1/n2", async () => {
+  it("loads mode-dca as readable nodes onto an empty canvas", async () => {
     const strategy = makeStrategyClient();
     render(
       <WorkstationShell
@@ -350,10 +369,8 @@ describe("WorkstationShell — built-in mode pack studio (M15.5)", () => {
       />,
     );
     clickShellNav("Strategy studio");
-    // Demo nodes before a mode is picked.
-    expect((getCaptured().nodes ?? []).map((n) => n.id)).toEqual(
-      expect.arrayContaining(["n0", "n1", "n2"]),
-    );
+    expect(screen.getByTestId("studio-node-count").textContent).toBe("0");
+    expect((getCaptured().nodes ?? []).map((n) => n.id)).toEqual([]);
     fireEvent.click(await screen.findByTestId("studio-mode-pack-mode-dca"));
     await vi.waitFor(() => {
       expect(screen.getByTestId("studio-pack-id").textContent).toBe("mode-dca");
@@ -370,7 +387,7 @@ describe("WorkstationShell — built-in mode pack studio (M15.5)", () => {
 });
 
 describe("WorkstationShell — saved strategy studio", () => {
-  it("renders the saved pack instead of the demo nodes", async () => {
+  it("renders the saved pack on an empty canvas", async () => {
     renderShell();
     clickShellNav("Strategies");
     fireEvent.change(screen.getByLabelText(/raw json/i), {
