@@ -163,7 +163,11 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     expect(screen.getByTestId("research-host")).toBeDefined();
 
     clickShellNav("Strategy studio");
-    expect(screen.getByTestId("studio-node-count").textContent).toBe("3");
+    expect(screen.getByTestId("studio-node-count").textContent).toBe("0");
+    expect(screen.getByTestId("studio-empty-canvas").textContent).toMatch(
+      /no graph yet/i,
+    );
+    expect(screen.getByTestId("studio-mode-pack-picker")).toBeDefined();
 
     clickShellNav("Run");
     expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
