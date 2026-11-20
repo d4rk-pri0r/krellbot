@@ -20,8 +20,6 @@ import { useOperationsRefresh } from "./useOperationsRefresh";
 import { summarizeAlertCode } from "./alertCodeLabel";
 import type { AlertRow, OperationsClient, OperationsViewModel } from "./client";
 import { summarizeAlertSeverity } from "./alertSeverityLabel";
-import { LiveArmConfirm } from "../deployments/LiveArmConfirm";
-import { LiveGuardrails } from "../deployments/LiveGuardrails";
 import { LiveAuthorizationPanel } from "./LiveAuthorizationPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import {
@@ -83,6 +81,8 @@ export type OperationsViewProps = {
   homeExportClient?: HomeExportClient;
   /** Local home restore with fence honesty (M16.6). Defaults to HTTP client. */
   homeRestoreClient?: HomeRestoreClient;
+  /** Optional navigation hook to open the Deploy view (preflight, guardrails, live arm). */
+  onOpenDeploy?: () => void;
 };
 
 function rowId(venue: string, pair: string): string {
@@ -269,6 +269,7 @@ export function OperationsView({
   notificationsClient,
   homeExportClient,
   homeRestoreClient,
+  onOpenDeploy,
 }: OperationsViewProps): JSX.Element {
   const defaultNotificationsClient = useMemo(
     () => createNotificationsHttpClient(),
@@ -535,6 +536,19 @@ export function OperationsView({
           >
             <h3 className="kbot-ops__panel-title">Live status</h3>
             {renderLiveBanner(view.live)}
+            {onOpenDeploy ? (
+              <p className="kbot-ops__deploy-handoff">
+                Live preflight, guardrails, and Kraken live arm live on{" "}
+                <button
+                  type="button"
+                  className="kbot-ops__deploy-link"
+                  data-testid="ops-open-deploy"
+                  onClick={onOpenDeploy}
+                >
+                  Deploy →
+                </button>
+              </p>
+            ) : null}
           </section>
 
           <section
@@ -924,35 +938,6 @@ export function OperationsView({
           data-testid="ops-live-authorization-panel"
         >
           <LiveAuthorizationPanel client={client} />
-        </DisclosureSection>
-
-        <DisclosureSection
-          title="Live guardrails"
-          summary="Active rails before arm: stop, max account pct, kill switch, grant expiry, paper-only."
-          badge="Advanced"
-          badgeTone="advanced"
-          defaultOpen={false}
-          storageKey="krellbot.disclosure.ops.live-guardrails"
-          data-testid="ops-live-guardrails-panel"
-        >
-          <LiveGuardrails />
-        </DisclosureSection>
-
-        <DisclosureSection
-          title="Kraken live arm"
-          summary="Confirm typed LIVE and arm a Kraken revision. Paper-only releases refuse arm."
-          badge="Advanced"
-          badgeTone="advanced"
-          defaultOpen={false}
-          storageKey="krellbot.disclosure.ops.live-arm"
-          data-testid="ops-live-arm-confirm-panel"
-        >
-          <LiveArmConfirm
-            client={{
-              getLiveAuthorization: client.getLiveAuthorization?.bind(client),
-              armLive: client.armLive?.bind(client),
-            }}
-          />
         </DisclosureSection>
 
         <DisclosureSection

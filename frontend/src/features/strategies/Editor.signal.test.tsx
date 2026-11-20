@@ -182,13 +182,12 @@ describe("Editor signal slice — grouped layout", () => {
     ).toBe(true);
 
     const run = screen.getByRole("region", {
-      name: /paper run and risk reduction/i,
+      name: /run this strategy/i,
     });
-    expect(run.contains(screen.getByRole("button", { name: /^arm$/i }))).toBe(
-      true,
-    );
-    expect(run.contains(screen.getByLabelText(/venue/i))).toBe(true);
-    expect(run.contains(screen.getByLabelText(/paper balance/i))).toBe(true);
+    expect(run.contains(screen.getByTestId("editor-open-in-run"))).toBe(true);
+    expect(screen.queryByRole("button", { name: /^arm$/i })).toBeNull();
+    expect(screen.queryByLabelText(/venue/i)).toBeNull();
+    expect(screen.queryByLabelText(/paper balance/i)).toBeNull();
   });
 
   it("keeps alert feedback outside the collapsed technical disclosure so it stays announced", async () => {
@@ -248,7 +247,7 @@ describe("Editor signal slice — behavior preserved under grouping", () => {
     );
   });
 
-  it("preserves the exact disabled semantics for Validate, Arm and CSV export", async () => {
+  it("preserves the exact disabled semantics for Validate, Open in Run and CSV export", async () => {
     const client = makeClient();
     render(<Editor client={client} />);
     // Fresh draft: no revision yet.
@@ -257,8 +256,7 @@ describe("Editor signal slice — behavior preserved under grouping", () => {
         .disabled,
     ).toBe(true);
     expect(
-      (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement)
-        .disabled,
+      (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(
       (screen.getByRole("button", { name: /export csv/i }) as HTMLButtonElement)
@@ -275,17 +273,15 @@ describe("Editor signal slice — behavior preserved under grouping", () => {
           .disabled,
       ).toBe(false),
     );
-    // Draft revision: Arm stays disabled until validated.
+    // Draft revision: Open in Run stays disabled until validated.
     expect(
-      (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement)
-        .disabled,
+      (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
     ).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: /^validate$/i }));
     await waitFor(() => {
       expect(
-        (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement)
-          .disabled,
+        (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
       ).toBe(false);
     });
     expect(
@@ -410,17 +406,13 @@ describe("Editor signal slice — behavior preserved under grouping", () => {
     ).toBe(true);
   });
 
-  it("arms through the paper-run group with the venue/balance inputs and refreshes the inline stop control", async () => {
-    const getStatus = vi
-      .fn<() => Promise<PaperStatus>>()
-      .mockResolvedValueOnce({ schema_version: "1", armed: false })
-      .mockResolvedValue(armedStatus());
-    const paperClient = makePaperClient({ getStatus });
+  it("hands off a validated revision to Run through onOpenInRun without duplicating Arm or stop controls", () => {
     const client = makeClient();
+    const onOpenInRun = vi.fn();
     render(
       <Editor
         client={client}
-        paperClient={paperClient}
+        onOpenInRun={onOpenInRun}
         initial={{
           revision_id: "rev-1",
           state: "validated",
@@ -429,40 +421,18 @@ describe("Editor signal slice — behavior preserved under grouping", () => {
       />,
     );
 
-    expect(await screen.findByTestId("editor-inline-stop-empty")).toBeDefined();
-    expect(getStatus).toHaveBeenCalledTimes(1);
-    // The risk-reduction control stays visible inside the paper-run group.
     const run = screen.getByRole("region", {
-      name: /paper run and risk reduction/i,
+      name: /run this strategy/i,
     });
-    expect(run.contains(screen.getByTestId("editor-inline-stop"))).toBe(true);
+    expect(screen.queryByTestId("editor-inline-stop")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^arm$/i })).toBeNull();
+    const openRunBtn = screen.getByTestId("editor-open-in-run") as HTMLButtonElement;
+    expect(run.contains(openRunBtn)).toBe(true);
+    expect(openRunBtn.disabled).toBe(false);
 
-    fireEvent.change(screen.getByLabelText(/venue/i), {
-      target: { value: "kraken" },
-    });
-    fireEvent.change(screen.getByLabelText(/paper balance/i), {
-      target: { value: "1000" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^arm$/i }));
-    await waitFor(() =>
-      expect(client.arm).toHaveBeenCalledWith("rev-1", "kraken", "1000"),
-    );
-    // armCounter bump forces the inline stop control to reconcile without
-    // a manual Refresh status click.
-    await waitFor(() => expect(getStatus).toHaveBeenCalledTimes(2));
-    expect(
-      screen.getByTestId("editor-inline-stop-entries").textContent,
-    ).toMatch(/Entries active/);
-  });
-
-  it("keeps paper balance as a plain input default, not an account read", () => {
-    render(<Editor client={makeClient()} />);
-    const venue = screen.getByLabelText(/venue/i) as HTMLInputElement;
-    const balance = screen.getByLabelText(/paper balance/i) as HTMLInputElement;
-    expect(venue.value).toBe("kraken");
-    expect(balance.value).toBe("1000");
-    expect(screen.queryByText(/\$1,000/)).toBeNull();
-    expect(screen.queryByText(/balance:/i)).toBeNull();
+    fireEvent.click(openRunBtn);
+    expect(onOpenInRun).toHaveBeenCalledExactlyOnceWith("rev-1");
+    expect(client.arm).not.toHaveBeenCalled();
   });
 
   it("never auto-saves, auto-validates or auto-arms on mount", () => {

@@ -1,49 +1,17 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Editor, type StrategyClient } from "./Editor";
 import type {
   PaperClient,
   PaperCommandResult,
   PaperStatus,
 } from "../paper/client";
 import {
+  EditorInlineStopControl,
   isValidRaiseStopDecimal,
   stopFromRaiseStopMessage,
 } from "./EditorInlineStopControl";
 
 afterEach(cleanup);
-
-const validPack = {
-  id: "trend-follow",
-  label: "Trend follow",
-  timeframe: "1h",
-  entry: ["close", ">", "sma20"],
-  exit: ["close", "<", "sma20"],
-};
-
-function makeStrategyClient(): StrategyClient {
-  return {
-    create: vi.fn().mockResolvedValue({
-      revision_id: "rev-create",
-      state: "draft",
-      pack: validPack,
-      errors: [],
-    }),
-    edit: vi.fn().mockResolvedValue({
-      revision_id: "rev-edit",
-      state: "draft",
-      pack: validPack,
-      errors: [],
-    }),
-    validate: vi.fn().mockResolvedValue({
-      revision_id: "rev-1",
-      state: "validated",
-      pack: validPack,
-      errors: [],
-    }),
-    arm: vi.fn().mockResolvedValue(undefined),
-  };
-}
 
 function armedStatus(extra: Partial<PaperStatus> = {}): PaperStatus {
   return {
@@ -83,17 +51,7 @@ function applyButton(): HTMLButtonElement {
 
 describe("EditorInlineStopControl raise-stop slice", () => {
   function renderEditor(paperClient: PaperClient) {
-    return render(
-      <Editor
-        client={makeStrategyClient()}
-        paperClient={paperClient}
-        initial={{
-          revision_id: "rev-1",
-          state: "validated",
-          bytes: JSON.stringify(validPack, null, 2),
-        }}
-      />,
-    );
+    return render(<EditorInlineStopControl paperClient={paperClient} />);
   }
 
   it("reflects the new resting stop from the backend success message echo", async () => {

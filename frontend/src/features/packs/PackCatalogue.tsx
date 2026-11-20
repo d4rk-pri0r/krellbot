@@ -11,7 +11,6 @@ import type {
   CheckoutResult,
   PackInstallResult,
   PacksClient,
-  TelemetryConsent,
 } from "./client";
 import { PackLibraryHttpError } from "./client";
 import {
@@ -21,11 +20,6 @@ import {
 } from "./launchPackFamily";
 import { PACK_SOURCES, SIGNED_CATALOGUE_BADGE } from "./packSources";
 import "./PackCatalogue.signal.css";
-
-const TELEMETRY_OPT_IN_LABEL =
-  "Share opt-in checkout funnel telemetry (default off)";
-const TELEMETRY_OPT_IN_HINT =
-  "When enabled, closed view → checkout → install/arm events may leave this machine. Never includes keys, secrets, session ids, or strategy source. See docs/telemetry.md.";
 
 export type PackCatalogueProps = {
   client: PacksClient;
@@ -59,12 +53,8 @@ export function PackCatalogue({
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowFeedback, setRowFeedback] = useState<Record<string, string>>({});
-  const [telemetry, setTelemetry] = useState<TelemetryConsent | null>(null);
-  const [telemetryBusy, setTelemetryBusy] = useState(false);
-  const [telemetryFeedback, setTelemetryFeedback] = useState<string | null>(null);
   const requestSeq = useRef(0);
   const actionSeq = useRef(0);
-  const telemetrySeq = useRef(0);
 
   const load = useCallback((): void => {
     const seq = (requestSeq.current += 1);
@@ -88,64 +78,9 @@ export function PackCatalogue({
       });
   }, [client]);
 
-  const loadTelemetry = useCallback((): void => {
-    if (typeof client.getTelemetryConsent !== "function") {
-      setTelemetry(null);
-      return;
-    }
-    const seq = (telemetrySeq.current += 1);
-    client
-      .getTelemetryConsent()
-      .then((next) => {
-        if (seq !== telemetrySeq.current) return;
-        setTelemetry(next);
-        setTelemetryFeedback(null);
-      })
-      .catch(() => {
-        if (seq !== telemetrySeq.current) return;
-        setTelemetryFeedback("Could not load telemetry consent.");
-      });
-  }, [client]);
-
   useEffect(() => {
     load();
   }, [load]);
-
-  useEffect(() => {
-    loadTelemetry();
-  }, [loadTelemetry]);
-
-  const handleTelemetryToggle = useCallback(
-    (enabled: boolean): void => {
-      if (typeof client.setTelemetryConsent !== "function") {
-        return;
-      }
-      const seq = (telemetrySeq.current += 1);
-      setTelemetryBusy(true);
-      setTelemetryFeedback(null);
-      client
-        .setTelemetryConsent(enabled)
-        .then((next) => {
-          if (seq !== telemetrySeq.current) return;
-          setTelemetry(next);
-          setTelemetryFeedback(
-            next.enabled
-              ? "Funnel telemetry enabled (opt-in)."
-              : "Funnel telemetry remains off.",
-          );
-        })
-        .catch(() => {
-          if (seq !== telemetrySeq.current) return;
-          setTelemetryFeedback("Could not update telemetry consent.");
-        })
-        .finally(() => {
-          if (seq === telemetrySeq.current) {
-            setTelemetryBusy(false);
-          }
-        });
-    },
-    [client],
-  );
 
   const handleInstall = useCallback(
     (pack: CataloguePack): void => {
@@ -290,40 +225,6 @@ export function PackCatalogue({
           {LAUNCH_PACK_FAMILY_HONESTY}
         </p>
       ) : null}
-      <div
-        className="kbot-pack-catalogue__telemetry"
-        data-testid="pack-catalogue-telemetry-consent"
-      >
-        <label className="kbot-pack-catalogue__telemetry-label">
-          <input
-            type="checkbox"
-            className="kbot-pack-catalogue__telemetry-input"
-            data-testid="pack-catalogue-telemetry-opt-in"
-            checked={telemetry?.enabled === true}
-            disabled={telemetryBusy || telemetry === null}
-            aria-disabled={telemetryBusy || telemetry === null}
-            onChange={(event) => {
-              handleTelemetryToggle(event.target.checked);
-            }}
-          />
-          <span>{TELEMETRY_OPT_IN_LABEL}</span>
-        </label>
-        <p
-          className="kbot-pack-catalogue__telemetry-hint"
-          data-testid="pack-catalogue-telemetry-hint"
-        >
-          {telemetry?.disclosure ?? TELEMETRY_OPT_IN_HINT}
-        </p>
-        {telemetryFeedback ? (
-          <p
-            className="kbot-pack-catalogue__telemetry-status"
-            role="status"
-            data-testid="pack-catalogue-telemetry-status"
-          >
-            {telemetryFeedback}
-          </p>
-        ) : null}
-      </div>
       {document !== null ? (
         <p className="kbot-pack-catalogue__meta" data-testid="pack-catalogue-version">
           catalogue {document.catalogue_version}

@@ -160,18 +160,15 @@ describe("Editor import → Save reset (previously-saved revision)", () => {
     expect(pack.label).toBe("Renamed import");
   });
 
-  it("importing clears the prior revision's outcome, validate error, arm error and identity", async () => {
+  it("importing clears the prior revision's outcome, validate error and identity", async () => {
     const client = makeClient({
       validate: vi.fn().mockRejectedValue(new Error("stale revision gone")),
-      arm: vi.fn().mockRejectedValue(new Error("arm refused")),
     });
     render(<Editor client={client} initial={loadedRevision(parentBytes)} />);
 
     // Produce real stale surfaces from the loaded revision first.
     fireEvent.click(screen.getByRole("button", { name: /^validate$/i }));
     expect(await screen.findByTestId("editor-validate-error")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: /^arm$/i }));
-    expect(await screen.findByTestId("editor-arm-error")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(await screen.findByTestId("editor-save-outcome")).toBeDefined();
 
@@ -179,7 +176,6 @@ describe("Editor import → Save reset (previously-saved revision)", () => {
 
     expect(screen.queryByTestId("editor-save-outcome")).toBeNull();
     expect(screen.queryByTestId("editor-validate-error")).toBeNull();
-    expect(screen.queryByTestId("editor-arm-error")).toBeNull();
     expect(screen.queryByTestId("editor-revision-id")).toBeNull();
     expect(
       screen.getByText(/no saved revision yet — save creates one\./i),
@@ -189,9 +185,8 @@ describe("Editor import → Save reset (previously-saved revision)", () => {
         .disabled,
     ).toBe(true);
     expect(
-      (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement).disabled,
+      (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
     ).toBe(true);
-    expect(client.arm).toHaveBeenCalledTimes(1);
   });
 
   it("derives the readable form from the imported bytes without inventing form state", async () => {
