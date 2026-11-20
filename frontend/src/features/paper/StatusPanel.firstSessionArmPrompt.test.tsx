@@ -1,7 +1,7 @@
 /**
  * M25.6 — first-session Run empty is a single arm prompt, not a cockpit dump.
  */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PaperClient } from "./client";
 import type { RehearsalClient, RehearsalStatus } from "./rehearsalClient";
