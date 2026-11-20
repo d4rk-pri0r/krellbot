@@ -74,7 +74,6 @@ import type {
   DeploymentRow,
   OperationsClient,
 } from "../features/operations/client";
-import { PackLibrary } from "../features/packs/PackLibrary";
 import { PacksView } from "../features/packs/PacksView";
 import { createPacksHttpClient } from "../features/packs/client";
 import type { PackLibraryClient, PacksClient } from "../features/packs/client";
@@ -269,7 +268,11 @@ export function WorkstationShell({
     },
     [celebrateFirstPaperWin],
   );
+  const handlePaperStatusMutated = useCallback((): void => {
+    setOperationsRefreshKey((key) => key + 1);
+  }, []);
   const handlePaperArmed = useCallback((): void => {
+    setPreferredArmRevisionId(null);
     setOperationsRefreshKey((key) => key + 1);
     celebrateFirstPaperWin();
   }, [celebrateFirstPaperWin]);
@@ -859,7 +862,6 @@ export function WorkstationShell({
       }),
     };
   }, [packClient]);
-  const [packsOpen, setPacksOpen] = useState(false);
 
   const [bootstrapDone, setBootstrapDone] = useState(false);
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
@@ -1355,12 +1357,14 @@ export function WorkstationShell({
                       preferredRevisionId={preferredArmRevisionId}
                       onArmedChange={handlePaperArmedChange}
                       onPaperArmed={handlePaperArmed}
+                      onStatusMutated={handlePaperStatusMutated}
                     />
                     <FleetArmedList
                       client={paperFleet}
                       onOpenDetail={handleFleetOpenDetail}
                       onSelectionChange={handleFleetSelection}
                       unresolvedClient={operations}
+                      refreshKey={operationsRefreshKey}
                     />
                     <LastRunsPanel client={paperRuns} />
                     <DisclosureSection
@@ -1413,6 +1417,7 @@ export function WorkstationShell({
                             PaperArmedClient
                         }
                         onSelectionChange={handleDeploymentSelection}
+                        refreshKey={operationsRefreshKey}
                       />
                     </DisclosureSection>
                   </>
@@ -1489,21 +1494,14 @@ export function WorkstationShell({
               bytes={savedRevision?.bytes ?? ""}
               revisionId={savedRevision?.revision_id ?? null}
             />
-            <button
-              type="button"
-              className="kbot-shell__packs-toggle"
-              data-testid="strategies-packs-toggle"
-              aria-pressed={packsOpen}
-              onClick={() => {
-                setPacksOpen((open) => !open);
-              }}
-            >
-              Packs
-            </button>
-            {packsOpen ? <PackLibrary client={packs} /> : null}
           </>
         ) : null}
-        {active === "packs" ? <PacksView client={packs} /> : null}
+        {active === "packs" ? (
+          <PacksView
+            client={packs}
+            onOpenSettings={(section) => navigateTo("settings", section)}
+          />
+        ) : null}
         {active === "research" ? (
           <div
             ref={researchHostRef}
@@ -1741,14 +1739,10 @@ export function WorkstationShell({
         ) : null}
         {active === "operations" ? (
           bootstrapDone ? (
-            <>
-              <FleetArmedList
-                client={paperFleet}
-                onOpenDetail={handleFleetOpenDetail}
-                onSelectionChange={handleFleetSelection}
-              />
-              <OperationsView client={operations} />
-            </>
+            <OperationsView
+              client={operations}
+              onOpenDeploy={() => setActive("deployments")}
+            />
           ) : (
             <p
               className="kbot-paper-status__empty"
@@ -1760,6 +1754,16 @@ export function WorkstationShell({
         ) : null}
         {active === "deployments" ? (
           <>
+            <div className="kbot-shell__pagehead">
+              <div className="kbot-shell__pagehead-copy">
+                <h1 className="kbot-shell__heading">Deploy</h1>
+                <p className="kbot-shell__pagesub">
+                  Live readiness preflight, active guardrails, and typed LIVE
+                  arm confirmation. Paper-only releases stay read-only and refuse
+                  live arming.
+                </p>
+              </div>
+            </div>
             <LivePreflight />
             <LiveGuardrails />
             <LiveArmConfirm />
@@ -1787,9 +1791,12 @@ export function WorkstationShell({
               <Editor
                 key={`editor-${editorEpoch}`}
                 client={client}
-                paperClient={defaultWorkstationPaperClient}
                 initial={savedRevision ?? undefined}
                 copiedDraft={copiedDraft ?? undefined}
+                onOpenInRun={(revisionId) => {
+                  setPreferredArmRevisionId(revisionId);
+                  setActive("workstation");
+                }}
                 onRevision={(summary, bytes) => {
                   setSavedRevision({
                     revision_id: summary.revision_id,

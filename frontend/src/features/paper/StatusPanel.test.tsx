@@ -788,8 +788,9 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
     expect(screen.getByRole("button", { name: /resume new buys/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /^stop paper run$/i })).toBeDefined();
 
-    // …and the honest isolated synthetic rehearsal surface with real status
-    // stays accessible alongside it.
+    // …and the honest isolated synthetic rehearsal surface stays collapsed
+    // behind Advanced until the operator explicitly expands it.
+    fireEvent.click(screen.getByTestId("paper-rehearsal-disclosure-toggle"));
     const panel = await screen.findByTestId("rehearsal-panel");
     await waitFor(() => {
       expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
@@ -929,12 +930,19 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
       getStatus: vi.fn().mockResolvedValue(armedStatus()),
       createRehearsalClient: () => rehearsal,
     });
+    window.localStorage.removeItem("krellbot.disclosure.paper.rehearsal");
     render(<StatusPanel client={client} />);
-    const panel = await screen.findByTestId("rehearsal-panel");
+    await screen.findByRole("button", { name: /pause new buys/i });
+    expect(
+      screen.getByTestId("paper-rehearsal-disclosure").getAttribute("data-open"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("paper-rehearsal-disclosure-toggle"));
+    const panel = screen.getByTestId("rehearsal-panel");
+    const start = await within(panel).findByRole("button", {
+      name: /start rehearsal/i,
+    });
 
-    fireEvent.click(
-      within(panel).getByRole("button", { name: /start rehearsal/i }),
-    );
+    fireEvent.click(start);
     await waitFor(() => {
       expect(rehearsal.start).toHaveBeenCalledTimes(1);
     });

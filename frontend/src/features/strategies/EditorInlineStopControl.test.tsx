@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Editor, type StrategyClient } from "./Editor";
+import { EditorInlineStopControl } from "./EditorInlineStopControl";
 import type {
   PaperClient,
   PaperCommandResult,
@@ -9,38 +9,6 @@ import type {
 import { summarizePaperCommandRefusal } from "../paper/paperCommandRefusalSummary";
 
 afterEach(cleanup);
-
-const validPack = {
-  id: "trend-follow",
-  label: "Trend follow",
-  timeframe: "1h",
-  entry: ["close", ">", "sma20"],
-  exit: ["close", "<", "sma20"],
-};
-
-function makeStrategyClient(): StrategyClient {
-  return {
-    create: vi.fn().mockResolvedValue({
-      revision_id: "rev-create",
-      state: "draft",
-      pack: validPack,
-      errors: [],
-    }),
-    edit: vi.fn().mockResolvedValue({
-      revision_id: "rev-edit",
-      state: "draft",
-      pack: validPack,
-      errors: [],
-    }),
-    validate: vi.fn().mockResolvedValue({
-      revision_id: "rev-1",
-      state: "validated",
-      pack: validPack,
-      errors: [],
-    }),
-    arm: vi.fn().mockResolvedValue(undefined),
-  };
-}
 
 function armedStatus(extra: Partial<PaperStatus> = {}): PaperStatus {
   return {
@@ -101,29 +69,12 @@ function resumeButton(): HTMLButtonElement {
 }
 
 describe("Editor inline stop control mount", () => {
-  it("renders the inline stop buttons inside the Editor view after the summary line when status says armed", async () => {
+  it("renders the inline stop buttons when status says armed", async () => {
     const paperClient = makePaperClient();
-    render(
-      <Editor
-        client={makeStrategyClient()}
-        paperClient={paperClient}
-        initial={{
-          revision_id: "rev-1",
-          state: "validated",
-          bytes: JSON.stringify(validPack, null, 2),
-        }}
-      />,
-    );
-
-    const summary = await screen.findByTestId("editor-revision-id");
-    expect(summary.textContent).toMatch(/rev-1 \(state: Validated\)/);
+    render(<EditorInlineStopControl paperClient={paperClient} />);
 
     const control = await screen.findByTestId("editor-inline-stop");
     expect(control).toBeDefined();
-    // Mounted immediately after the summary line, inside the Editor region.
-    expect(summary.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
 
     await waitFor(() => {
       expect(disarmButton().disabled).toBe(false);
@@ -139,17 +90,7 @@ describe("Editor inline stop control mount", () => {
         armed: false,
       }),
     });
-    render(
-      <Editor
-        client={makeStrategyClient()}
-        paperClient={paperClient}
-        initial={{
-          revision_id: "rev-1",
-          state: "validated",
-          bytes: JSON.stringify(validPack, null, 2),
-        }}
-      />,
-    );
+    render(<EditorInlineStopControl paperClient={paperClient} />);
 
     expect(await screen.findByTestId("editor-inline-stop-empty")).toBeDefined();
     await waitFor(() => {
@@ -162,17 +103,7 @@ describe("Editor inline stop control mount", () => {
 
   it("Disarm click calls paperClient.disarm once with the armed venue/pair and disables the controls after confirmed ok", async () => {
     const paperClient = makePaperClient();
-    render(
-      <Editor
-        client={makeStrategyClient()}
-        paperClient={paperClient}
-        initial={{
-          revision_id: "rev-1",
-          state: "validated",
-          bytes: JSON.stringify(validPack, null, 2),
-        }}
-      />,
-    );
+    render(<EditorInlineStopControl paperClient={paperClient} />);
 
     await waitFor(() => {
       expect(disarmButton().disabled).toBe(false);
@@ -203,17 +134,7 @@ describe("Editor inline stop control mount", () => {
     const paperClient = makePaperClient({
       disarm: vi.fn().mockResolvedValue(refusal),
     });
-    render(
-      <Editor
-        client={makeStrategyClient()}
-        paperClient={paperClient}
-        initial={{
-          revision_id: "rev-1",
-          state: "validated",
-          bytes: JSON.stringify(validPack, null, 2),
-        }}
-      />,
-    );
+    render(<EditorInlineStopControl paperClient={paperClient} />);
 
     await waitFor(() => {
       expect(disarmButton().disabled).toBe(false);
@@ -237,17 +158,7 @@ describe("Editor inline stop control mount", () => {
       .mockResolvedValueOnce(armedStatus({ entries_paused: false }))
       .mockResolvedValueOnce(armedStatus({ entries_paused: true }));
     const paperClient = makePaperClient({ getStatus });
-    render(
-      <Editor
-        client={makeStrategyClient()}
-        paperClient={paperClient}
-        initial={{
-          revision_id: "rev-1",
-          state: "validated",
-          bytes: JSON.stringify(validPack, null, 2),
-        }}
-      />,
-    );
+    render(<EditorInlineStopControl paperClient={paperClient} />);
 
     await waitFor(() => {
       expect(pauseButton().disabled).toBe(false);
@@ -278,17 +189,7 @@ describe("Editor inline stop control raise-stop", () => {
   }
 
   function renderEditor(paperClient: PaperClient) {
-    return render(
-      <Editor
-        client={makeStrategyClient()}
-        paperClient={paperClient}
-        initial={{
-          revision_id: "rev-1",
-          state: "validated",
-          bytes: JSON.stringify(validPack, null, 2),
-        }}
-      />,
-    );
+    return render(<EditorInlineStopControl paperClient={paperClient} />);
   }
 
   it("Apply click with a valid decimal calls paperClient.raiseStop once with the armed venue/pair and mirrors the success message", async () => {

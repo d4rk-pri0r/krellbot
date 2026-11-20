@@ -340,7 +340,7 @@ describe("Editor validation", () => {
     expect(errorBlock.textContent).toMatch(/operand is invalid/);
   });
 
-  it("Arm control is disabled when state is draft", () => {
+  it("Open in Run is disabled when state is draft", () => {
     const client = makeClient();
     render(
       <Editor
@@ -352,11 +352,12 @@ describe("Editor validation", () => {
         }}
       />,
     );
-    const arm = screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
-    expect(arm.disabled).toBe(true);
+    const openRun = screen.getByTestId("editor-open-in-run") as HTMLButtonElement;
+    expect(openRun.disabled).toBe(true);
+    expect(client.arm).not.toHaveBeenCalled();
   });
 
-  it("Arm control is enabled when state is validated", async () => {
+  it("Open in Run is enabled when state is validated", async () => {
     const client = makeClient({
       validate: vi.fn().mockResolvedValue({
         revision_id: "rev-1",
@@ -378,10 +379,10 @@ describe("Editor validation", () => {
     fireEvent.click(screen.getByRole("button", { name: /validate/i }));
     await waitFor(() => {
       expect(
-        (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement)
-          .disabled,
+        (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
       ).toBe(false);
     });
+    expect(client.arm).not.toHaveBeenCalled();
   });
 
   it("a rejected validate call shows a validation error alert, keeps the last known revision/state, and does not imply success", async () => {
@@ -413,9 +414,9 @@ describe("Editor validation", () => {
     );
     expect(onRevision).not.toHaveBeenCalled();
     expect(
-      (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement)
-        .disabled,
+      (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
     ).toBe(true);
+    expect(client.arm).not.toHaveBeenCalled();
   });
 
   it("an explicit retry that succeeds replaces the validation error and updates the real revision/state", async () => {
@@ -459,105 +460,39 @@ describe("Editor validation", () => {
   });
 });
 
-describe("Editor arm", () => {
-  it("a pending arm request refuses a second click, and its rejection shows an arm failure alert without fabricating or retrying", async () => {
+describe("Editor hands a validated revision to Run", () => {
+  it("Open in Run reports the validated revision once and never calls arm", () => {
+    const onOpenInRun = vi.fn();
     const onRevision = vi.fn();
-    const rejections: Array<(reason?: unknown) => void> = [];
-    const client = makeClient({
-      arm: vi.fn().mockImplementation(
-        () =>
-          new Promise<void>((_, reject) => {
-            rejections.push(reject);
-          }),
-      ),
-    });
+    const client = makeClient();
     render(
       <Editor
         client={client}
+        onOpenInRun={onOpenInRun}
+        onRevision={onRevision}
         initial={{
           revision_id: "rev-1",
           state: "validated",
           bytes: validPackBytes,
         }}
-        onRevision={onRevision}
       />,
     );
 
-    const arm = screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
-    fireEvent.click(arm);
-    fireEvent.click(arm);
-    expect(client.arm).toHaveBeenCalledTimes(1);
-
-    rejections[0](new Error("venue unreachable"));
-
-    const error = await screen.findByTestId("editor-arm-error");
-    expect(error.getAttribute("role")).toBe("alert");
-    expect(error.textContent).toMatch(/arm/i);
-    expect(error.textContent).toMatch(/venue unreachable/);
-
-    // Validated revision/state is preserved; nothing is invented or promoted.
-    expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
-      /rev-1 \(state: Validated\)/,
-    );
-    expect(screen.queryByTestId("editor-save-outcome")).toBeNull();
-    expect(onRevision).not.toHaveBeenCalled();
-
-    // Give any automatic retry a chance to happen, then prove it never did.
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(client.arm).toHaveBeenCalledTimes(1);
-    expect(arm.disabled).toBe(false);
-  });
-
-  it("an explicit retry after a rejected arm issues exactly a second call, clears the error, and does not claim a deployment", async () => {
-    const onRevision = vi.fn();
-    const client = makeClient({
-      arm: vi
-        .fn()
-        .mockRejectedValueOnce(new Error("venue unreachable"))
-        .mockResolvedValueOnce(undefined),
-    });
-    render(
-      <Editor
-        client={client}
-        initial={{
-          revision_id: "rev-1",
-          state: "validated",
-          bytes: validPackBytes,
-        }}
-        onRevision={onRevision}
-      />,
-    );
-
-    const arm = screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
-    fireEvent.click(arm);
-    expect(await screen.findByTestId("editor-arm-error")).toBeDefined();
-
-    fireEvent.click(arm);
-    await waitFor(() => {
-      expect(screen.queryByTestId("editor-arm-error")).toBeNull();
-    });
-    expect(client.arm).toHaveBeenCalledTimes(2);
-    expect((client.arm as ReturnType<typeof vi.fn>).mock.calls[0]).toEqual([
-      "rev-1",
-      "kraken",
-      "1000",
-    ]);
-    expect((client.arm as ReturnType<typeof vi.fn>).mock.calls[1]).toEqual([
-      "rev-1",
-      "kraken",
-      "1000",
-    ]);
-
-    // Controls are restored without implying a deployment from stale local state.
+    const openRun = screen.getByTestId("editor-open-in-run") as HTMLButtonElement;
+    expect(openRun.disabled).toBe(false);
+    fireEvent.click(openRun);
+    fireEvent.click(openRun);
+    expect(onOpenInRun).toHaveBeenCalledTimes(2);
+    expect(onOpenInRun).toHaveBeenCalledWith("rev-1");
+    expect(client.arm).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("editor-arm-error")).toBeNull();
     expect(screen.getByTestId("editor-revision-id").textContent).toMatch(
       /rev-1 \(state: Validated\)/,
     );
     expect(screen.getByTestId("editor-revision-id").textContent).not.toMatch(
       /deployed/,
     );
-    expect(screen.queryByTestId("editor-save-outcome")).toBeNull();
     expect(onRevision).not.toHaveBeenCalled();
-    expect(arm.disabled).toBe(false);
   });
 });
 
@@ -921,7 +856,7 @@ describe("Editor owned-strategy form: no-JSON creation", () => {
     ).toBe("Trend plan");
   });
 
-  it("creating a form-seeded strategy does not auto-arm and leaves Arm disabled", async () => {
+  it("creating a form-seeded strategy does not auto-arm and leaves Open in Run disabled", async () => {
     const client = makeClient();
     render(<Editor client={client} />);
     fireEvent.click(
@@ -933,8 +868,7 @@ describe("Editor owned-strategy form: no-JSON creation", () => {
     });
     expect(client.arm).not.toHaveBeenCalled();
     expect(
-      (screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement)
-        .disabled,
+      (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
     ).toBe(true);
   });
 });

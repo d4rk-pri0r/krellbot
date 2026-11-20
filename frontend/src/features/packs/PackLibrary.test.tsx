@@ -289,7 +289,7 @@ describe("PackLibrary inventory rows stay non-mutating", () => {
     const panelText =
       screen.getByTestId("pack-library-panel").textContent ?? "";
     expect(panelText).not.toMatch(/\b(install|catalog|rollback)\b/i);
-    expect(screen.getByTestId("pack-library-redeem")).toBeDefined();
+    expect(screen.queryByTestId("pack-library-redeem")).toBeNull();
   });
 });
 
@@ -305,7 +305,7 @@ describe("PackLibrary activation redeem refreshes entitlements", () => {
       message: "license verified",
       catalog_downloaded: true,
     }));
-    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} />);
+    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} showBillingForms />);
     await screen.findByTestId("pack-library-empty");
 
     fireEvent.change(screen.getByTestId("pack-library-redeem-input"), {
@@ -342,7 +342,7 @@ describe("PackLibrary activation redeem refreshes entitlements", () => {
       message: "license in grace period",
       catalog_downloaded: true,
     }));
-    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} />);
+    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} showBillingForms />);
     await screen.findByTestId("pack-library-empty");
     fireEvent.change(screen.getByTestId("pack-library-redeem-input"), {
       target: { value: "grace-key" },
@@ -362,7 +362,7 @@ describe("PackLibrary activation redeem refreshes entitlements", () => {
       message: "license not accepted",
       catalog_downloaded: false,
     }));
-    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} />);
+    render(<PackLibrary client={makeClient({ listInstalled, redeemActivation })} showBillingForms />);
     await screen.findByTestId("pack-library-empty");
     fireEvent.change(screen.getByTestId("pack-library-redeem-input"), {
       target: { value: "bad-key" },
@@ -381,7 +381,7 @@ describe("PackLibrary activation redeem refreshes entitlements", () => {
     const redeemActivation = vi.fn(async () => {
       throw new PackLibraryHttpError(403, "activation redeem failed: 403");
     });
-    render(<PackLibrary client={makeClient({ redeemActivation })} />);
+    render(<PackLibrary client={makeClient({ redeemActivation })} showBillingForms />);
     await screen.findByTestId("pack-library-empty");
     fireEvent.change(screen.getByTestId("pack-library-redeem-input"), {
       target: { value: "secret-key-xyz" },

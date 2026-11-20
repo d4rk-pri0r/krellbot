@@ -32,6 +32,11 @@ export type FleetArmedListProps = {
    * an unresolved summary count in the fleet header.
    */
   unresolvedClient?: Pick<OperationsClient, "listUnresolvedOrders">;
+  /**
+   * Incrementing this key triggers a quiet fleet refresh (for example right
+   * after StatusPanel confirms an arm, pause, resume, or stop).
+   */
+  refreshKey?: number;
 };
 
 type LoadState =
@@ -88,6 +93,7 @@ export function FleetArmedList({
   onOpenDetail,
   onSelectionChange,
   unresolvedClient,
+  refreshKey = 0,
 }: FleetArmedListProps): JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [inFlight, setInFlight] = useState(false);
@@ -172,6 +178,55 @@ export function FleetArmedList({
       cancelled = true;
     };
   }, [unresolvedClient]);
+
+  const lastRefreshKeyRef = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey === lastRefreshKeyRef.current) {
+      return;
+    }
+    lastRefreshKeyRef.current = refreshKey;
+    if (!canListFleet) {
+      return;
+    }
+    let cancelled = false;
+    client
+      .listFleet()
+      .then((view) => {
+        if (cancelled) {
+          return;
+        }
+        setState({
+          kind: "ready",
+          deployments: view.deployments,
+          armed_count:
+            typeof view.armed_count === "number"
+              ? view.armed_count
+              : view.deployments.length,
+        });
+        setLastError(null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        setLastError(err instanceof Error ? err.message : String(err));
+      });
+    const listUnresolved = unresolvedClient?.listUnresolvedOrders;
+    if (typeof listUnresolved === "function") {
+      listUnresolved()
+        .then((rows) => {
+          if (!cancelled) {
+            setUnresolvedCount(rows.length);
+          }
+        })
+        .catch(() => {
+          // Keep last known count on background sync failure.
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, client, canListFleet, unresolvedClient]);
 
   // Keep selection truthful after a refresh: drop it when the arm is gone,
   // otherwise refresh the selected snapshot from the new list.

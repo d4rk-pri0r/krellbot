@@ -427,15 +427,18 @@ export async function waitForResearchResult(page: Page): Promise<void> {
   });
 }
 
-/** Arm the current validated revision through the editor form. */
+/** Hand the validated editor revision to Run and start the paper run there. */
 export async function armCurrentRevision(
   page: Page,
   venue: string,
   balance: string,
 ): Promise<void> {
-  await page.locator("#kbot-strategy-editor-venue").fill(venue);
-  await page.locator("#kbot-strategy-editor-balance").fill(balance);
-  await page.getByRole("button", { name: /^arm$/i }).click();
+  await page.getByTestId("editor-open-in-run").click();
+  await expect(page.getByTestId("paper-arm-form")).toBeVisible();
+  await page.locator("#paper-arm-venue").selectOption(venue);
+  await page.locator("#paper-arm-balance").fill(balance);
+  await page.getByTestId("paper-arm-submit").click();
+  await expect(page.getByTestId("paper-status-entries")).toContainText(/active/i);
 }
 
 /** Journal tick records from the temp home (independent evidence). */

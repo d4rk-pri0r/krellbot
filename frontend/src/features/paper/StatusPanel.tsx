@@ -38,6 +38,8 @@ export type StatusPanelProps = {
   preferredRevisionId?: string | null;
   /** Fired after a backend-confirmed paper arm. */
   onPaperArmed?: () => void;
+  /** Fired after any backend-confirmed paper state mutation (arm, pause, resume, stop). */
+  onStatusMutated?: () => void;
   /** Reports confirmed armed/unarmed so the shell can celebrate a first win. */
   onArmedChange?: (armed: boolean) => void;
 };
@@ -749,6 +751,7 @@ export function StatusPanel({
   select = null,
   preferredRevisionId = null,
   onPaperArmed,
+  onStatusMutated,
   onArmedChange,
 }: StatusPanelProps): JSX.Element {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
@@ -842,10 +845,15 @@ export function StatusPanel({
     // itself: one bounded read per confirmed arm, no timer, no polling.
   }, [client, armEpoch, statusSelect?.venue, statusSelect?.pair]);
 
+  const [lastArmedPreferredId, setLastArmedPreferredId] = useState<string | null>(
+    null,
+  );
   const handleArmConfirmed = useCallback((): void => {
+    setLastArmedPreferredId(preferredRevisionId ?? null);
     setArmEpoch((current) => current + 1);
     onPaperArmed?.();
-  }, [onPaperArmed]);
+    onStatusMutated?.();
+  }, [onPaperArmed, onStatusMutated, preferredRevisionId]);
 
   useEffect(() => {
     if (state.status === null) {
@@ -996,6 +1004,7 @@ export function StatusPanel({
                 : null))
             : undefined,
       });
+      onStatusMutated?.();
       if (command !== "disarm") {
         // Reconcile the sentence with the server after a confirmed command:
         // a single follow-up read, not polling.
@@ -1319,6 +1328,25 @@ export function StatusPanel({
                 {state.errorMessage}
               </p>
             ) : null}
+            <DisclosureSection
+              title="Start another paper run"
+              summary="Arm another validated strategy on a different venue or pair"
+              badge="Advanced"
+              badgeTone="advanced"
+              defaultOpen={false}
+              forceOpen={
+                preferredRevisionId !== null &&
+                preferredRevisionId !== lastArmedPreferredId
+              }
+              storageKey="krellbot.disclosure.paper.arm-another"
+              data-testid="paper-arm-another-disclosure"
+            >
+              <ArmForm
+                client={client}
+                onArmConfirmed={handleArmConfirmed}
+                preferredRevisionId={preferredRevisionId}
+              />
+            </DisclosureSection>
           </>
         ) : state.status?.armed ? (
           <p className="kbot-paper-status__empty" data-testid="paper-status-empty">
@@ -1393,18 +1421,14 @@ export function StatusPanel({
           </div>
         )}
         </div>
-        {/* Rehearsal mounts once; Advanced + collapsed until armed so the
-            first session stays a single arm prompt (M25.6). forceOpen when
-            armed keeps controls reachable without remounting. */}
+        {/* Rehearsal stays collapsed behind Advanced even after arming so
+            arming a paper run never opens a caution-badged fixture walkthrough. */}
         <DisclosureSection
           title="Synthetic paper rehearsal"
           summary="Fixture walkthrough — not market data"
-          badge={state.status?.armed === true ? undefined : "Advanced"}
-          badgeTone={
-            state.status?.armed === true ? "default" : "advanced"
-          }
+          badge="Advanced"
+          badgeTone="advanced"
           defaultOpen={false}
-          forceOpen={state.status?.armed === true}
           storageKey="krellbot.disclosure.paper.rehearsal"
           data-testid="paper-rehearsal-disclosure"
         >

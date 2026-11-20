@@ -40,10 +40,35 @@
   line-height: 1.45;
 }
 
-.kbot-packs-view__disclosures {
+.kbot-packs-view__settings-note {
   margin: 0;
-  min-width: 0;
-  max-width: 52rem;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.kbot-packs-view__settings-link {
+  display: inline;
+  padding: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--seafoam);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.kbot-packs-view__settings-link:hover {
+  color: var(--text);
+}
+
+.kbot-packs-view__settings-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 
 .kbot-packs-view__sources {
@@ -51,8 +76,16 @@
   margin: 4px 0 0;
   padding: 0;
   display: grid;
-  gap: 8px;
-  max-width: 52rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .kbot-packs-view__sources {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
 }
 
 .kbot-packs-view__sources li {

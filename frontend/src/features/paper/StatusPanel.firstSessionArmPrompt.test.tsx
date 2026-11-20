@@ -1,7 +1,7 @@
 /**
  * M25.6 — first-session Run empty is a single arm prompt, not a cockpit dump.
  */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PaperClient } from "./client";
 import type { RehearsalClient, RehearsalStatus } from "./rehearsalClient";
@@ -102,7 +102,7 @@ describe("StatusPanel — first-session empty is a single arm prompt", () => {
     ).toBeNull();
   });
 
-  it("opens rehearsal when a pack is armed without remounting a second panel", async () => {
+  it("keeps rehearsal collapsed behind Advanced even when a pack is armed, opening only on explicit toggle", async () => {
     const client = makeClient({
       getStatus: vi.fn().mockResolvedValue({
         schema_version: "1",
@@ -122,13 +122,20 @@ describe("StatusPanel — first-session empty is a single arm prompt", () => {
     });
     render(<StatusPanel client={client} />);
     await screen.findByRole("button", { name: /pause new buys/i });
-    const panel = await screen.findByTestId("rehearsal-panel");
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("paper-rehearsal-disclosure").getAttribute("data-open"),
-      ).toBe("1");
-    });
+    const disclosure = screen.getByTestId("paper-rehearsal-disclosure");
+    expect(disclosure.getAttribute("data-open")).toBe("0");
+    expect(
+      within(screen.getByTestId("paper-rehearsal-disclosure-toggle")).getByText(
+        "Advanced",
+      ),
+    ).toBeTruthy();
     expect(screen.getAllByTestId("rehearsal-panel").length).toBe(1);
+
+    fireEvent.click(screen.getByTestId("paper-rehearsal-disclosure-toggle"));
+    await waitFor(() => {
+      expect(disclosure.getAttribute("data-open")).toBe("1");
+    });
+    const panel = screen.getByTestId("rehearsal-panel");
     expect(
       within(panel).getByRole("button", { name: /start rehearsal/i }),
     ).toBeTruthy();

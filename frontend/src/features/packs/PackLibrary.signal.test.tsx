@@ -376,7 +376,7 @@ describe("PackLibrary discovery stays non-mutating except redeem", () => {
       redeemActivation,
       listInstalled: vi.fn(async () => INVENTORY),
     });
-    render(<PackLibrary client={client} />);
+    render(<PackLibrary client={client} showBillingForms />);
     await screen.findByTestId("pack-library-list");
 
     fireEvent.change(screen.getByLabelText(/Search packs/i), {

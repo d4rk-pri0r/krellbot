@@ -8,9 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type {
-  PaperStatus,
-  PaperClient,
   PaperCommandResult,
+  PaperStatus,
 } from "../features/paper/client";
 import type { StrategyClient } from "../features/strategies/client";
 import { WorkstationShell } from "./WorkstationShell";
@@ -35,9 +34,6 @@ vi.mock("../session", () => ({
     new Promise<void>((resolve) => {
       resolveBootstrapRef = () => resolve();
     }),
-  // The default loopback paper client reads the CSRF token for its
-  // request headers: supply it so the production code path is exercised
-  // instead of failing on the header read.
   getCsrf: (): string => "test-csrf",
   recoverCsrf: (): Promise<boolean> => Promise.resolve(false),
   issueReconnectToken: (): Promise<never> => Promise.reject(new Error("not stubbed")),
@@ -101,13 +97,6 @@ function okResult(code: string): PaperCommandResult {
   };
 }
 
-/**
- * The shell is mounted with NO paperClient prop, so the Editor inline
- * stop control runs on the default loopback client
- * (`createPaperHttpClient`): route its fetches through a global stub so
- * the test stands in for the loopback backend the production App talks
- * to. Body payloads are read so request shape stays observable.
- */
 type DefaultPaperBackend = {
   status: PaperStatus;
   disarm: PaperCommandResult;
@@ -139,6 +128,39 @@ function stubDefaultPaperBackend(backend: DefaultPaperBackend): {
     if (url === "/api/v1/paper/status") {
       return { ok: true, json: async () => backend.status } as Response;
     }
+    if (url === "/api/v1/paper/position") {
+      return {
+        ok: true,
+        json: async () => ({
+          venue: "kraken",
+          pair: "SUIUSD",
+          free_cash: "1000",
+          holdings: [],
+        }),
+      } as Response;
+    }
+    if (url === "/api/v1/paper/fleet") {
+      return {
+        ok: true,
+        json: async () => ({
+          schema_version: "1",
+          armed_count: backend.status.armed ? 1 : 0,
+          deployments: backend.status.armed
+            ? [
+                {
+                  venue: "kraken",
+                  pair: "SUIUSD",
+                  pack_id: "trend-follow",
+                  entries_paused: false,
+                  last_tick_ts_ms: null,
+                  last_tick_result: null,
+                  detail_href: "/?view=workstation&venue=kraken&pair=SUIUSD",
+                },
+              ]
+            : [],
+        }),
+      } as Response;
+    }
     const command =
       (body as { command?: string } | null)?.command ?? "unknown";
     if (command === "paper.disarm") {
@@ -151,7 +173,6 @@ function stubDefaultPaperBackend(backend: DefaultPaperBackend): {
     if (command === "paper.resume_entries") {
       return { ok: true, json: async () => backend.resume } as Response;
     }
-    // The default clients are only used for the paper surface here.
     return { ok: true, json: async () => ({}) } as Response;
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -162,7 +183,6 @@ function setBootstrapMeta(content: string): void {
   document.head.innerHTML = `<meta name="krellbot-bootstrap" content="${content}">`;
 }
 
-/** Open the Strategies view; the Editor and its wire-up are there. */
 async function openStrategiesView(
   token: string,
   props: { strategyClient: StrategyClient },
@@ -176,13 +196,7 @@ async function openStrategiesView(
   await screen.findByRole("region", { name: "Strategy editor" });
 }
 
-/**
- * Save, then validate, then arm through the Editor's own buttons,
- * staying on the Strategies view the whole time.
- */
-async function armThroughEditor(
-  strategyClient: StrategyClient,
-): Promise<void> {
+async function saveValidateAndOpenInRun(): Promise<void> {
   fireEvent.change(screen.getByLabelText(/raw json/i), {
     target: { value: JSON.stringify(validPack, null, 2) },
   });
@@ -198,23 +212,8 @@ async function armThroughEditor(
       /rev-create \(state: Validated\)/,
     );
   });
-  fireEvent.click(screen.getByRole("button", { name: /^arm$/i }));
-  const arm = strategyClient.arm as unknown as ReturnType<typeof vi.fn>;
-  await waitFor(() => {
-    expect(arm).toHaveBeenCalledWith("rev-create", "kraken", "1000");
-  });
-}
-
-function disarmButton(): HTMLButtonElement {
-  return screen.getByTestId("editor-inline-stop-disarm") as HTMLButtonElement;
-}
-
-function pauseButton(): HTMLButtonElement {
-  return screen.getByTestId("editor-inline-stop-pause") as HTMLButtonElement;
-}
-
-function resumeButton(): HTMLButtonElement {
-  return screen.getByTestId("editor-inline-stop-resume") as HTMLButtonElement;
+  fireEvent.click(screen.getByTestId("editor-open-in-run"));
+  await screen.findByTestId("paper-status-panel");
 }
 
 afterEach(() => {
@@ -225,8 +224,8 @@ afterEach(() => {
   resolveBootstrapRef = null;
 });
 
-describe("WorkstationShell default paperClient → Editor inline stop control", () => {
-  it("mounts the inline stop control with the default loopback client when no paperClient prop is supplied", async () => {
+describe("WorkstationShell default paperClient — Strategies handoff to Run", () => {
+  it("omits inline Arm/stop controls from Strategies and hands off validated revisions to Run", async () => {
     stubDefaultPaperBackend({
       status: armedStatus(),
       disarm: okResult("disarmed"),
@@ -236,12 +235,12 @@ describe("WorkstationShell default paperClient → Editor inline stop control", 
     const strategyClient = makeStrategyClient();
     await openStrategiesView("test-token-default-paper-1", { strategyClient });
 
-    // The control is present before any arming: the default client is
-    // wired without a caller-side prop.
-    expect(screen.getByTestId("editor-inline-stop")).not.toBeNull();
+    expect(screen.queryByTestId("editor-inline-stop")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^arm$/i })).toBeNull();
+    expect(screen.getByTestId("editor-open-in-run")).toBeDefined();
   });
 
-  it("after the Editor's own Arm the inline Disarm/Pause/Resume become enabled without a manual refresh", async () => {
+  it("navigates to Run with the default loopback paper client and shows armed controls", async () => {
     stubDefaultPaperBackend({
       status: armedStatus(),
       disarm: okResult("disarmed"),
@@ -251,24 +250,16 @@ describe("WorkstationShell default paperClient → Editor inline stop control", 
     const strategyClient = makeStrategyClient();
     await openStrategiesView("test-token-default-paper-2", { strategyClient });
 
-    await armThroughEditor(strategyClient);
+    await saveValidateAndOpenInRun();
 
-    // No "Refresh status" click, no navigation: the refreshSignal the
-    // Editor bumps after its own Arm is the only trigger that ran.
-    await waitFor(
-      () => {
-        expect(disarmButton().disabled).toBe(false);
-      },
-      { timeout: 5000 },
-    );
-    expect(pauseButton().disabled).toBe(false);
-    expect(resumeButton().disabled).toBe(false);
-    expect(screen.getByTestId("editor-inline-stop-entries").textContent).toMatch(
+    const stopBtn = await screen.findByRole("button", { name: /^stop paper run$/i });
+    expect((stopBtn as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId("paper-status-entries").textContent).toMatch(
       /Entries active/,
     );
   }, 15000);
 
-  it("clicking the inline Disarm confirms through the default client and reverts to No pack armed", async () => {
+  it("confirming Stop paper run on Run sends paper.disarm through the default loopback client and reverts to unarmed", async () => {
     const { requests } = stubDefaultPaperBackend({
       status: armedStatus(),
       disarm: okResult("disarmed"),
@@ -278,14 +269,9 @@ describe("WorkstationShell default paperClient → Editor inline stop control", 
     const strategyClient = makeStrategyClient();
     await openStrategiesView("test-token-default-paper-3", { strategyClient });
 
-    await armThroughEditor(strategyClient);
-    await waitFor(
-      () => {
-        expect(disarmButton().disabled).toBe(false);
-      },
-      { timeout: 5000 },
-    );
-    fireEvent.click(disarmButton());
+    await saveValidateAndOpenInRun();
+    const stopBtn = await screen.findByRole("button", { name: /^stop paper run$/i });
+    fireEvent.click(stopBtn);
 
     await waitFor(
       () => {
@@ -305,12 +291,11 @@ describe("WorkstationShell default paperClient → Editor inline stop control", 
     );
     await waitFor(
       () => {
-        expect(disarmButton().disabled).toBe(true);
+        expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
+          /Start a paper run/,
+        );
       },
       { timeout: 5000 },
-    );
-    expect(screen.getByTestId("editor-inline-stop-empty").textContent).toMatch(
-      /No pack armed/,
     );
   }, 15000);
 });

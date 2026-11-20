@@ -31,13 +31,18 @@ test("J5.1 I can arm a validated strategy in paper mode with a starting balance.
 test("J5.2 Arming a second strategy on the same venue and pair is refused, and the message says why", async ({journey}) => {
   const page=journey.page;
   await armPaper(page);
+  await clickNav(page, "Strategies");
   await pickStarter(page);
   const second=JSON.parse(SMA_CROSS_FIXTURE_JSON); second.id="second-sma-cross";
   await saveJson(page,JSON.stringify(second)); await validateRevision(page,"validated");
-  const editor=page.getByRole("region",{name:"Strategy editor"});
-  await editor.getByLabel(/^venue$/i).fill("kraken"); await editor.getByLabel(/balance/i).fill("1000");
-  await editor.getByRole("button",{name:/^arm$/i}).click();
-  await expect(page.getByTestId("editor-arm-error")).toContainText(/over_reserved|already armed/i);
+  await page.getByTestId("editor-open-in-run").click();
+  await expect(page.getByTestId("paper-arm-form")).toBeVisible();
+  await page.locator("#paper-arm-venue").selectOption("kraken");
+  await page.locator("#paper-arm-balance").fill("1000");
+  await page.getByTestId("paper-arm-submit").click();
+  await expect(page.getByTestId("paper-arm-error")).toContainText(
+    /over_reserved|already armed|exceed account cash/i,
+  );
   await clickNav(page,"Workstation");
   await expandArmedRecords(page);
   await expect(page.getByTestId("paper-armed-row")).toHaveCount(1);

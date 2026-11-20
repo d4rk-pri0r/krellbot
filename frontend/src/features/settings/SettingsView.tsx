@@ -19,6 +19,7 @@ import { createKeysHttpClient, type KeysClient } from "../keys/client";
 import { LiveWizardPanel } from "../onboarding/LiveWizardPanel";
 import { createTrustHttpClient, type TrustClient } from "../onboarding/client";
 import { PaidDisclosuresPanel } from "../packs/PaidDisclosuresPanel";
+import { PackBillingForms, type PackBillingClient } from "../packs/PackBillingForms";
 import {
   createPacksHttpClient,
   type PacksClient,
@@ -51,7 +52,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<SectionMeta> = [
   {
     id: "trust",
     label: "Trust & billing",
-    shortNote: "Disclosures & referral",
+    shortNote: "Disclosures, keys & refunds",
   },
   {
     id: "privacy",
@@ -85,7 +86,8 @@ export type SettingsViewProps = {
   trustClient?: TrustClient;
   referralClient?: ReferralClient;
   versionClient?: VersionClient;
-  packsClient?: Pick<PacksClient, "getTelemetryConsent" | "setTelemetryConsent">;
+  packsClient?: Pick<PacksClient, "getTelemetryConsent" | "setTelemetryConsent"> &
+    Partial<Pick<PacksClient, "redeemActivation" | "requestRefund">>;
 };
 
 export function SettingsView({
@@ -124,10 +126,26 @@ export function SettingsView({
   const referral = referralClient ?? fallbackReferralRef.current!;
 
   const fallbackPacksRef = useRef<PacksClient | null>(null);
-  if (fallbackPacksRef.current === null && packsClient === undefined) {
+  if (
+    fallbackPacksRef.current === null &&
+    (packsClient === undefined || typeof packsClient.redeemActivation !== "function")
+  ) {
     fallbackPacksRef.current = createPacksHttpClient();
   }
   const telemetryApi = packsClient ?? fallbackPacksRef.current!;
+  const billingApi: PackBillingClient = {
+    redeemActivation: (key: string) =>
+      typeof packsClient?.redeemActivation === "function"
+        ? packsClient.redeemActivation(key)
+        : fallbackPacksRef.current!.redeemActivation(key),
+    requestRefund:
+      typeof packsClient?.requestRefund === "function"
+        ? (sku: string) => packsClient.requestRefund!(sku)
+        : packsClient === undefined ||
+            typeof packsClient.redeemActivation !== "function"
+          ? (sku: string) => fallbackPacksRef.current!.requestRefund(sku)
+          : undefined,
+  };
 
   // Privacy & telemetry consent (loaded only when Privacy section is active).
   const [telemetry, setTelemetry] = useState<TelemetryConsent | null>(null);
@@ -363,11 +381,13 @@ export function SettingsView({
                 Trust &amp; billing
               </h2>
               <p className="kbot-settings__panel-note">
-                Honest disclosures and exchange referral attribution. The engine
-                is free and open-source; packs are optional.
+                Honest disclosures, activation keys, refunds, and exchange
+                referral attribution. The engine is free and open-source; packs
+                are optional.
               </p>
             </header>
             <PaidDisclosuresPanel variant="settings" />
+            <PackBillingForms client={billingApi} />
             <ReferralDisclosurePanel
               client={referral}
               enabled={sessionReady}

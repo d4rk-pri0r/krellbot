@@ -8,6 +8,12 @@ export type ArmedRecordsListProps = {
   client: PaperArmedClient;
   /** Reports the current armed-row selection to the shell inspector. */
   onSelectionChange?: (record: PaperArmedRecord | null) => void;
+  /**
+   * Incrementing this key triggers a quiet re-read (for example right
+   * after StatusPanel confirms an arm, pause, resume, or stop) without
+   * flashing the loading state.
+   */
+  refreshKey?: number;
 };
 
 type LoadState =
@@ -39,6 +45,7 @@ function entriesChipTone(entries_paused: boolean): string {
 export function ArmedRecordsList({
   client,
   onSelectionChange,
+  refreshKey = 0,
 }: ArmedRecordsListProps): JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [selected, setSelected] = useState<PaperArmedRecord | null>(null);
@@ -59,17 +66,20 @@ export function ArmedRecordsList({
     client !== null &&
     typeof client.listArmed === "function";
 
+  const listGeneration = useRef(0);
+
   useEffect(() => {
     if (!canListArmed) {
       setState({ kind: "unavailable" });
       return;
     }
+    const generation = ++listGeneration.current;
     let cancelled = false;
     setState({ kind: "loading" });
     client
       .listArmed()
       .then((view) => {
-        if (cancelled) {
+        if (cancelled || generation !== listGeneration.current) {
           return;
         }
         setState({ kind: "ready", records: view.records });
@@ -84,7 +94,7 @@ export function ArmedRecordsList({
         });
       })
       .catch((err: unknown) => {
-        if (cancelled) {
+        if (cancelled || generation !== listGeneration.current) {
           return;
         }
         // A failed lookup means the list is unknown; never render an
@@ -96,6 +106,46 @@ export function ArmedRecordsList({
       cancelled = true;
     };
   }, [client, canListArmed]);
+
+  const lastRefreshKeyRef = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey === lastRefreshKeyRef.current) {
+      return;
+    }
+    lastRefreshKeyRef.current = refreshKey;
+    if (!canListArmed) {
+      return;
+    }
+    const generation = ++listGeneration.current;
+    let cancelled = false;
+    client
+      .listArmed()
+      .then((view) => {
+        if (cancelled || generation !== listGeneration.current) {
+          return;
+        }
+        setState({ kind: "ready", records: view.records });
+        setLastError(null);
+        setSelected((current) => {
+          if (current === null) {
+            return null;
+          }
+          const match = view.records.find(
+            (row) => rowKey(row) === rowKey(current),
+          );
+          return match ?? null;
+        });
+      })
+      .catch((err: unknown) => {
+        if (cancelled || generation !== listGeneration.current) {
+          return;
+        }
+        setLastError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, client, canListArmed]);
 
   const refresh = async (): Promise<void> => {
     if (!canListArmed || inFlight) {

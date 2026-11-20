@@ -19,7 +19,6 @@ import type {
   PaperCommandResult,
   PaperStatus,
 } from "../features/paper/client";
-import { summarizePaperCommandRefusal } from "../features/paper/paperCommandRefusalSummary";
 import type { StrategyClient } from "../features/strategies/client";
 import { WorkstationShell } from "./WorkstationShell";
 
@@ -125,7 +124,6 @@ function setBootstrapMeta(content: string): void {
   document.head.innerHTML = `<meta name="krellbot-bootstrap" content="${content}">`;
 }
 
-/** Open the Strategies view; the Editor and its wire-up are there. */
 async function openStrategiesView(
   token: string,
   clients: { paperClient?: PaperClient; strategyClient: StrategyClient },
@@ -139,13 +137,7 @@ async function openStrategiesView(
   await screen.findByRole("region", { name: "Strategy editor" });
 }
 
-/**
- * Arm a validated revision through the Editor's own Save → Validate →
- * Arm buttons, staying on the Strategies view the whole time.
- */
-async function armThroughEditor(
-  strategyClient: StrategyClient,
-): Promise<void> {
+async function saveValidateAndOpenInRun(): Promise<void> {
   fireEvent.change(screen.getByLabelText(/raw json/i), {
     target: { value: JSON.stringify(validPack, null, 2) },
   });
@@ -161,29 +153,8 @@ async function armThroughEditor(
       /rev-create \(state: Validated\)/,
     );
   });
-  fireEvent.click(screen.getByRole("button", { name: /^arm$/i }));
-  const arm = strategyClient.arm as unknown as ReturnType<typeof vi.fn>;
-  await waitFor(() => {
-    expect(arm).toHaveBeenCalledWith("rev-create", "kraken", "1000");
-  });
-}
-
-function disarmButton(): HTMLButtonElement {
-  return screen.getByRole("button", {
-    name: /^disarm$/i,
-  }) as HTMLButtonElement;
-}
-
-function pauseButton(): HTMLButtonElement {
-  return screen.getByRole("button", {
-    name: /pause entries/i,
-  }) as HTMLButtonElement;
-}
-
-function resumeButton(): HTMLButtonElement {
-  return screen.getByRole("button", {
-    name: /resume entries/i,
-  }) as HTMLButtonElement;
+  fireEvent.click(screen.getByTestId("editor-open-in-run"));
+  await screen.findByTestId("paper-status-panel");
 }
 
 afterEach(() => {
@@ -193,44 +164,41 @@ afterEach(() => {
   resolveBootstrapRef = null;
 });
 
-describe("WorkstationShell → Editor inline stop control wire-up", () => {
-  it("with no paperClient prop the inline stop control still wires through the default loopback paper client", async () => {
+describe("WorkstationShell → Strategies handoff to Run paperClient", () => {
+  it("never mounts duplicate inline paper stop controls on Strategies", async () => {
     const strategyClient = makeStrategyClient();
-    await openStrategiesView("test-token-editor-paper-1", { strategyClient });
+    await openStrategiesView("test-token-editor-paper-1", {
+      strategyClient,
+      paperClient: makePaperClient(),
+    });
 
-    // Arm a validated revision; the Editor is otherwise fully usable.
-    await armThroughEditor(strategyClient);
-    // The shell wires a default paper client (createPaperHttpClient) when no
-    // `paperClient` prop is supplied, so the inline stop control IS present
-    // even without an explicit caller-side prop. The dedicated default-client
-    // test file exercises its fetches end to end; this file only covers the
-    // explicit-prop wire-up.
-    const control = screen.queryByTestId("editor-inline-stop");
-    expect(control).not.toBeNull();
+    expect(screen.queryByTestId("editor-inline-stop")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^arm$/i })).toBeNull();
+    expect(
+      (screen.getByTestId("editor-open-in-run") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
-  it("with a paperClient prop the inline stop control renders inside the Strategies Editor after arming", async () => {
+  it("hands off a validated revision to Run where the injected paperClient renders armed controls", async () => {
     const strategyClient = makeStrategyClient();
     await openStrategiesView("test-token-editor-paper-2", {
       strategyClient,
       paperClient: makePaperClient(),
     });
 
-    await armThroughEditor(strategyClient);
+    await saveValidateAndOpenInRun();
 
-    const control = await screen.findByTestId("editor-inline-stop");
-    const summary = screen.getByTestId("editor-revision-id");
-    expect(summary.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    await waitFor(() => {
-      expect(disarmButton().disabled).toBe(false);
-    });
-    expect(pauseButton().disabled).toBe(false);
-    expect(resumeButton().disabled).toBe(false);
+    const stopBtn = await screen.findByRole("button", { name: /^stop paper run$/i });
+    expect((stopBtn as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: /pause new buys/i }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: /resume new buys/i }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
-  it("clicking the inline Disarm calls paperClient.disarm once with the armed venue/pair", async () => {
+  it("clicking Stop paper run on Run calls paperClient.disarm once with the armed venue/pair", async () => {
     const paperClient = makePaperClient();
     const strategyClient = makeStrategyClient();
     await openStrategiesView("test-token-editor-paper-3", {
@@ -238,25 +206,22 @@ describe("WorkstationShell → Editor inline stop control wire-up", () => {
       paperClient,
     });
 
-    await armThroughEditor(strategyClient);
-    await waitFor(() => {
-      expect(disarmButton().disabled).toBe(false);
-    });
-    fireEvent.click(disarmButton());
+    await saveValidateAndOpenInRun();
+    const stopBtn = await screen.findByRole("button", { name: /^stop paper run$/i });
+    fireEvent.click(stopBtn);
 
     await waitFor(() => {
       expect(paperClient.disarm).toHaveBeenCalledTimes(1);
     });
     expect(paperClient.disarm).toHaveBeenCalledWith("kraken", "SUIUSD");
     await waitFor(() => {
-      expect(disarmButton().disabled).toBe(true);
+      expect(screen.getByTestId("paper-status-empty").textContent).toMatch(
+        /Start a paper run/,
+      );
     });
-    expect(screen.getByTestId("editor-inline-stop-empty").textContent).toMatch(
-      /No pack armed/,
-    );
   });
 
-  it("a refused inline Disarm keeps the armed state and surfaces the summarizePaperCommandRefusal label", async () => {
+  it("a refused Stop paper run keeps the armed state and surfaces an alert error", async () => {
     const refusal: PaperCommandResult = {
       schema_version: "1",
       code: "not_armed",
@@ -271,19 +236,15 @@ describe("WorkstationShell → Editor inline stop control wire-up", () => {
       paperClient,
     });
 
-    await armThroughEditor(strategyClient);
-    await waitFor(() => {
-      expect(disarmButton().disabled).toBe(false);
-    });
-    fireEvent.click(disarmButton());
+    await saveValidateAndOpenInRun();
+    const stopBtn = await screen.findByRole("button", { name: /^stop paper run$/i });
+    fireEvent.click(stopBtn);
 
-    const error = await screen.findByTestId("editor-inline-stop-error");
+    const error = await screen.findByTestId("paper-status-error");
     expect(error.getAttribute("role")).toBe("alert");
-    expect(error.textContent).toBe(
-      summarizePaperCommandRefusal("Disarm", refusal).label,
-    );
-    await waitFor(() => {
-      expect(disarmButton().disabled).toBe(false);
-    });
+    expect(error.textContent).toMatch(/Stop paper run refused/);
+    expect(
+      (screen.getByRole("button", { name: /^stop paper run$/i }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 });

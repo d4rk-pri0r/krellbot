@@ -1,7 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { createHttpClient } from "./client";
-import { Editor } from "./Editor";
 import { redeemBootstrap } from "../../session";
 
 /**
@@ -254,92 +253,3 @@ describe("createHttpClient arm response confirmation", () => {
   });
 });
 
-const validPack = {
-  id: "trend-follow",
-  label: "Trend follow",
-  timeframe: "1h",
-  entry: ["close", ">", "sma20"],
-  exit: ["close", "<", "sma20"],
-};
-
-function renderEditorWithRealClient(): void {
-  render(
-    <Editor
-      client={createHttpClient()}
-      initial={{
-        revision_id: "rev-1",
-        state: "validated",
-        bytes: JSON.stringify(validPack, null, 2),
-      }}
-    />,
-  );
-}
-
-describe("Editor Arm confirmation through the real client (unchanged Editor)", () => {
-  it("SYNTHETIC wire fault — a 200 arm response missing ok shows a visible honest error, exactly one POST, no replay", async () => {
-    const fetchMock = await stubFetchWithSeededCsrf();
-    fetchMock.mockResolvedValue(
-      jsonResponse({ schema_version: "1", code: "armed", effect: "changed" }),
-    );
-    renderEditorWithRealClient();
-
-    fireEvent.click(screen.getByRole("button", { name: /^arm$/i }));
-
-    const error = await screen.findByTestId("editor-arm-error");
-    expect(error.getAttribute("role")).toBe("alert");
-    expect(error.textContent).toMatch(/arm unconfirmed: malformed response/);
-    expectSingleArmPost(fetchMock);
-
-    // No automatic retry/replay and no manufactured success afterwards.
-    await new Promise((resolve) => {
-      setTimeout(resolve, 100);
-    });
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(screen.queryByTestId("editor-save-outcome")).toBeNull();
-  });
-
-  it("explicit ok:false refusal surfaces the backend code through the unchanged Editor", async () => {
-    const fetchMock = await stubFetchWithSeededCsrf();
-    fetchMock.mockResolvedValue(
-      jsonResponse({
-        schema_version: "1",
-        code: "paper_not_disarmed",
-        ok: false,
-        effect: "refused",
-      }),
-    );
-    renderEditorWithRealClient();
-
-    fireEvent.click(screen.getByRole("button", { name: /^arm$/i }));
-
-    const error = await screen.findByTestId("editor-arm-error");
-    expect(error.textContent).toMatch(/paper_not_disarmed/);
-    expectSingleArmPost(fetchMock);
-  });
-
-  it("healthy control: ok=true arm shows no error and leaves the arm button usable", async () => {
-    const fetchMock = await stubFetchWithSeededCsrf();
-    fetchMock.mockResolvedValue(
-      jsonResponse({
-        schema_version: "1",
-        code: "armed",
-        ok: true,
-        effect: "changed",
-      }),
-    );
-    renderEditorWithRealClient();
-
-    const armButton = screen.getByRole("button", {
-      name: /^arm$/i,
-    }) as HTMLButtonElement;
-    expect(armButton.disabled).toBe(false);
-    fireEvent.click(armButton);
-
-    // Let the resolved arm settle, then assert no error surface appeared.
-    await new Promise((resolve) => {
-      setTimeout(resolve, 100);
-    });
-    expect(screen.queryByTestId("editor-arm-error")).toBeNull();
-    expectSingleArmPost(fetchMock);
-  });
-});
