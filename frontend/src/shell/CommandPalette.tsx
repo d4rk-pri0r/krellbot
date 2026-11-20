@@ -7,13 +7,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { View } from "./Navigation";
+import type { SettingsSection } from "./route";
 import "./CommandPalette.signal.css";
 
 type CommandPaletteProps = {
   open: boolean;
   onClose: () => void;
-  /** Navigate to a shell view. Required for real actions; optional in unit isolation. */
-  onNavigate?: (view: View) => void;
+  /** Navigate to a shell view (and optional settings section). */
+  onNavigate?: (view: View, section?: SettingsSection) => void;
 };
 
 export type PaletteActionKind = "view" | "paper-entry";
@@ -21,11 +22,12 @@ export type PaletteActionKind = "view" | "paper-entry";
 export type PaletteAction = {
   id: string;
   label: string;
-  group: "Views" | "Paper";
+  group: "Views" | "Paper" | "Settings";
   kind: PaletteActionKind;
   /** Extra terms matched by the filter (not shown). */
   keywords: string;
   view: View;
+  settingsSection?: SettingsSection;
 };
 
 const VIEW_ACTIONS: ReadonlyArray<PaletteAction> = [
@@ -60,6 +62,23 @@ const VIEW_ACTIONS: ReadonlyArray<PaletteAction> = [
     kind: "view",
     keywords: "packs catalogue install library store",
     view: "packs",
+  },
+  {
+    id: "view-settings",
+    label: "Go to Settings",
+    group: "Views",
+    kind: "view",
+    keywords: "settings preferences configuration trust privacy about computer",
+    view: "settings",
+  },
+  {
+    id: "settings-keys",
+    label: "Exchange keys",
+    group: "Settings",
+    kind: "view",
+    keywords: "keys kraken coinbase keyring api credentials exchange",
+    view: "settings",
+    settingsSection: "keys",
   },
   {
     id: "view-research",
@@ -226,7 +245,11 @@ export function CommandPalette({
   }, [open, onClose]);
 
   const runAction = (action: PaletteAction): void => {
-    onNavigate?.(action.view);
+    if (action.settingsSection !== undefined) {
+      onNavigate?.(action.view, action.settingsSection);
+    } else {
+      onNavigate?.(action.view);
+    }
     onClose();
   };
 

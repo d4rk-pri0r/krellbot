@@ -72,10 +72,9 @@ test("capture beginner UX ship-feel demo screenshots", async ({ journey }) => {
   await expect(page.getByRole("button", { name: /Studio/i })).toBeVisible();
   await shot(page, "04-more.png");
 
-  // Settings & trust Advanced cluster.
-  const settings = page.getByTestId("app-home-settings-trust");
-  await expect(settings).toBeVisible();
-  await settings.getByRole("button", { name: /Settings & trust/i }).click();
+  // Dedicated Settings view.
+  await clickNav(page, "Settings");
+  await expect(page.getByTestId("settings-view")).toBeVisible();
   await settle(page);
   await shot(page, "05-settings-trust.png");
 

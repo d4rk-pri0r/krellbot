@@ -183,12 +183,9 @@ function expectQuietShell(): void {
   expect(screen.queryByTestId("first-run-coach-spotlight")).toBeNull();
   expect(screen.queryByTestId("activation-checklist")).toBeNull();
   expect(screen.queryByTestId("soft-studio-tip")).toBeNull();
-  expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
-    "1",
-  );
-  expect(screen.getByTestId("app-home-path").getAttribute("data-open")).toBe(
-    "0",
-  );
+  expect(screen.queryByTestId("app-home-path")).toBeNull();
+  expect(screen.queryByTestId("app-home-keys-rail")).toBeNull();
+  expect(screen.getByRole("button", { name: "Settings" })).toBeDefined();
   expect(screen.getByTestId("app-home-cta-paper").textContent).toMatch(
     /Start with a free paper strategy/i,
   );
@@ -233,15 +230,14 @@ describe("wizard win mounts WorkstationShell and stays silent", () => {
 });
 
 describe("wizard skip before the win leaves the shell celebrate unused", () => {
-  it("mounts the shell with Advanced and does not mark the toast shown", () => {
+  it("mounts the shell cleanly and does not mark the toast shown", () => {
     render(<App />);
     fireEvent.click(screen.getByTestId("first-run-wizard-primary"));
     fireEvent.click(screen.getByTestId("first-run-wizard-skip"));
     expect(screen.queryByTestId("first-run-wizard")).toBeNull();
     expect(screen.getByTestId("kbot-shell")).toBeDefined();
-    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
-      "1",
-    );
+    expect(screen.getByRole("button", { name: "Settings" })).toBeDefined();
+    expect(screen.queryByTestId("app-home-path")).toBeNull();
     expect(screen.queryByTestId("first-run-coach")).toBeNull();
     expect(screen.queryByTestId("activation-checklist")).toBeNull();
     expect(screen.queryByTestId("first-win-celebrate")).toBeNull();

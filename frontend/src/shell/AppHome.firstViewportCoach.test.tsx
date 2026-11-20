@@ -1,14 +1,12 @@
 /**
- * Post-wizard home first viewport (M24 IA / M26.6).
+ * Post-wizard home first viewport (KRELL-SIGNAL-20261010).
  *
  * The shell only mounts after the wizard is done. Home keeps one sage CTA
- * and a pack text link, with Advanced rails mounted and collapsed. No
- * hotspot coach and no activation checklist.
+ * and a pack text link without a squeezed settings sidebar, hotspot coach,
+ * or activation checklist.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { VersionClient } from "../api/version";
-import type { KeysClient } from "../features/keys/client";
+import { afterEach, describe, expect, it } from "vitest";
 import { AppHome } from "./AppHome";
 
 afterEach(() => {
@@ -16,45 +14,11 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-function absentKeysClient(): KeysClient {
-  return {
-    getStatus: vi.fn().mockResolvedValue({
-      schema_version: "1",
-      venue: "kraken",
-      present: false,
-      corrupt: false,
-      message: "no key stored",
-      backend_label: null,
-      balances: null,
-      balances_available: false,
-    }),
-    probeAndStore: vi.fn(),
-    remove: vi.fn(),
-  };
-}
-
-function previewVersionClient(): VersionClient {
-  return {
-    getVersion: vi.fn().mockResolvedValue({
-      schema_version: "1",
-      version: "0.9.7",
-      channel: "prerelease",
-      artifacts_signed: false,
-    }),
-  };
-}
-
 function renderHome(): void {
-  render(
-    <AppHome
-      onNavigate={() => {}}
-      keysClient={absentKeysClient()}
-      versionClient={previewVersionClient()}
-    />,
-  );
+  render(<AppHome onNavigate={() => {}} />);
 }
 
-describe("post-wizard home keeps M24 first viewport without coach chrome", () => {
+describe("post-wizard home keeps clean first viewport without coach chrome or settings rail", () => {
   it("keeps brand, one headline, one supporting sentence, and one sage CTA", () => {
     renderHome();
     const first = screen.getByTestId("app-home-first-viewport");
@@ -71,12 +35,9 @@ describe("post-wizard home keeps M24 first viewport without coach chrome", () =>
     expect(screen.getByTestId("app-home-cta-paper").textContent).toMatch(
       /Start with a free paper strategy/i,
     );
-    expect(screen.getByTestId("app-home-cta-paper").hasAttribute("data-coach-anchor")).toBe(
-      false,
-    );
-    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
-      "1",
-    );
+    expect(
+      screen.getByTestId("app-home-cta-paper").hasAttribute("data-coach-anchor"),
+    ).toBe(false);
     expect(screen.queryByTestId("first-run-coach")).toBeNull();
     expect(screen.queryByTestId("activation-checklist")).toBeNull();
     expect(screen.queryByTestId("app-home-works")).toBeNull();
@@ -92,15 +53,11 @@ describe("post-wizard home keeps M24 first viewport without coach chrome", () =>
     fireEvent.click(packs);
   });
 
-  it("mounts collapsed Advanced rails and does not mount the activation checklist", () => {
+  it("keeps Settings rails and duplicate destination cards off Workspace Home", () => {
     renderHome();
-    expect(screen.getByTestId("app-home-advanced-stack")).toBeTruthy();
-    expect(screen.getByTestId("app-home-path").getAttribute("data-open")).toBe(
-      "0",
-    );
-    expect(screen.getByTestId("app-home-keys-rail").getAttribute("data-open")).toBe(
-      "0",
-    );
+    expect(screen.queryByTestId("app-home-path")).toBeNull();
+    expect(screen.queryByTestId("app-home-keys-rail")).toBeNull();
+    expect(screen.queryByTestId("app-home-settings-trust")).toBeNull();
     expect(screen.queryByTestId("activation-checklist")).toBeNull();
     expect(screen.queryByTestId("app-home-works")).toBeNull();
     expect(document.querySelector("[data-coach-anchor]")).toBeNull();

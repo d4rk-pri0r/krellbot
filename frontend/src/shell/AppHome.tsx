@@ -1,99 +1,20 @@
 import { useRef, useState, type JSX } from "react";
-import type { VersionClient } from "../api/version";
 import { BrandMark } from "../components/brand/BrandMark";
-import { DisclosureSection } from "../components/disclosure/DisclosureSection";
-import { DemoFixturePanel } from "../features/demo/DemoFixturePanel";
-import { KeysOnboardingPanel } from "../features/keys/KeysOnboardingPanel";
-import {
-  createKeysHttpClient,
-  type KeysClient,
-} from "../features/keys/client";
-import { LiveWizardPanel } from "../features/onboarding/LiveWizardPanel";
-import {
-  createTrustHttpClient,
-  type TrustClient,
-} from "../features/onboarding/client";
-import { PaidDisclosuresPanel } from "../features/packs/PaidDisclosuresPanel";
-import { ReferralDisclosurePanel } from "../features/referral/ReferralDisclosurePanel";
-import {
-  createReferralHttpClient,
-  type ReferralClient,
-} from "../features/referral/client";
 import type { DeploymentRow } from "../features/operations/client";
-import type { ReconnectIssue } from "../session";
 import { PaperStarterChooser } from "../features/onboarding/PaperStarterChooser";
 import type { StrategyClient } from "../features/strategies/client";
 import { CONSUMER_STARTER_CARDS } from "../features/strategies/consumerStarterCopy";
 import type { StarterCatalogue } from "../features/strategies/StarterPicker.client";
-import { AboutPanel } from "./AboutPanel";
 import type { View } from "./Navigation";
-import { ReconnectQr } from "./ReconnectQr";
 import "./AppHome.signal.css";
 
 /**
  * Application Home — Signal workspace composition (KRELL-SIGNAL-20261010).
  *
- * Post-wizard M24 home (docs/ui-density.md): brand + one headline + one
- * supporting sentence + one sage CTA in the first viewport. Advanced rails
- * stay mounted and collapsed. First-run is the full-screen wizard; this
- * surface does not mount a hotspot overlay or an activation checklist.
- * A quiet “Take setup tour” replay sits in the session rail when the
- * shell asks for one; it does not cover the hero.
+ * Single focused job: start or open a paper run. Settings, exchange keys,
+ * disclosures, local reconnect, and demo fixtures live in the dedicated
+ * Settings destination (`?view=settings`).
  */
-
-type HomePath = {
-  view: View;
-  action: string;
-  detail: string;
-  testid: string;
-  meta: string;
-};
-
-/** Demoted peer destinations — Advanced “All areas”, not first viewport. */
-const HOME_PATH: ReadonlyArray<HomePath> = [
-  {
-    view: "workstation",
-    action: "Open Run",
-    detail: "Paper status, last runs, and pause / stop controls.",
-    testid: "app-home-card-workstation",
-    meta: "Paper · local",
-  },
-  {
-    view: "strategies",
-    action: "Edit strategies",
-    detail: "Write or paste a pack, save, and reopen from the library.",
-    testid: "app-home-card-strategies",
-    meta: "Author · library",
-  },
-  {
-    view: "packs",
-    action: "Browse packs",
-    detail: "Install free or catalogue strategies on this machine.",
-    testid: "app-home-card-packs",
-    meta: "Catalogue · install",
-  },
-  {
-    view: "studio",
-    action: "Open Studio",
-    detail: "Inspect a saved strategy as a graph when you want depth.",
-    testid: "app-home-card-studio",
-    meta: "Graph · edit",
-  },
-  {
-    view: "research",
-    action: "Explore research",
-    detail: "Backtest your own dataset and read recorded evidence.",
-    testid: "app-home-card-research",
-    meta: "Backtest · evidence",
-  },
-  {
-    view: "operations",
-    action: "Operations",
-    detail: "Alerts and the kill switch for this machine.",
-    testid: "app-home-card-operations",
-    meta: "Alerts · controls",
-  },
-];
 
 type AppHomeProps = {
   onNavigate: (view: View) => void;
@@ -106,23 +27,12 @@ type AppHomeProps = {
   sessionFailed?: boolean;
   /** Offered only on failure; re-reads the CSRF for the existing session. */
   onRecoverSession?: () => Promise<{ ok: boolean; error?: string }>;
-  /** Injectable keys client; defaults to the loopback HTTP client. */
-  keysClient?: KeysClient;
-  /** Injectable trust / live-wizard honesty client. */
-  trustClient?: TrustClient;
-  /** Injectable referral client; defaults to the loopback HTTP client. */
-  referralClient?: ReferralClient;
-  /** Injectable version/about client; defaults to the loopback HTTP client. */
-  versionClient?: VersionClient;
-  /**
-   * Primary session: mint a short-lived reconnect token/QR for a second
-   * browser. Absent when the local session is not ready.
-   */
-  onIssueReconnect?: () => Promise<ReconnectIssue>;
   /**
    * Second browser / failed session: redeem a pasted reconnect token.
    */
-  onRedeemReconnect?: (token: string) => Promise<{ ok: boolean; error?: string }>;
+  onRedeemReconnect?: (
+    token: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
   /** Injectable strategy client for the home starter chooser. */
   strategyClient?: StrategyClient;
   /** Starter catalogue loader override (tests). */
@@ -131,8 +41,6 @@ type AppHomeProps = {
   onStarterReady?: (ready: { revisionId: string; label: string }) => void;
   /** Real armed paper runs reported by /api/v1/operations (empty when none). */
   armedPaperRuns?: ReadonlyArray<DeploymentRow>;
-  /** Open the Exchange keys rail while the setup tour is on that step. */
-  exchangeKeysForceOpen?: boolean;
   /** Replay the post-wizard setup tour. Absent in tests that render home alone. */
   onReplaySetupTour?: () => void;
 };
@@ -146,40 +54,16 @@ export function AppHome({
   sessionPending = false,
   sessionFailed = false,
   onRecoverSession,
-  keysClient,
-  trustClient,
-  referralClient,
-  versionClient,
-  onIssueReconnect,
   onRedeemReconnect,
   strategyClient,
   loadStarters,
   onStarterReady,
   armedPaperRuns = [],
-  exchangeKeysForceOpen = false,
   onReplaySetupTour,
 }: AppHomeProps): JSX.Element {
   const [chooserOpen, setChooserOpen] = useState(false);
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const recoveryAttempt = useRef(0);
-  const fallbackKeysRef = useRef<KeysClient | null>(null);
-  if (fallbackKeysRef.current === null && keysClient === undefined) {
-    fallbackKeysRef.current = createKeysHttpClient();
-  }
-  const keys = keysClient ?? fallbackKeysRef.current!;
-  const fallbackTrustRef = useRef<TrustClient | null>(null);
-  if (fallbackTrustRef.current === null && trustClient === undefined) {
-    fallbackTrustRef.current = createTrustHttpClient();
-  }
-  const trust = trustClient ?? fallbackTrustRef.current!;
-  const fallbackReferralRef = useRef<ReferralClient | null>(null);
-  if (fallbackReferralRef.current === null && referralClient === undefined) {
-    fallbackReferralRef.current = createReferralHttpClient();
-  }
-  const referral = referralClient ?? fallbackReferralRef.current!;
-  const [reconnectOffer, setReconnectOffer] = useState<ReconnectIssue | null>(null);
-  const [reconnectBusy, setReconnectBusy] = useState(false);
-  const [reconnectError, setReconnectError] = useState<string | null>(null);
   const [pasteToken, setPasteToken] = useState("");
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [pasteBusy, setPasteBusy] = useState(false);
@@ -196,21 +80,6 @@ export function AppHome({
       if (attempt === recoveryAttempt.current) {
         setRecoverError(error instanceof Error ? error.message : String(error));
       }
-    }
-  }
-
-  async function issueReconnect(): Promise<void> {
-    if (!onIssueReconnect || reconnectBusy) return;
-    setReconnectBusy(true);
-    setReconnectError(null);
-    try {
-      const offer = await onIssueReconnect();
-      setReconnectOffer(offer);
-    } catch (error) {
-      setReconnectOffer(null);
-      setReconnectError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setReconnectBusy(false);
     }
   }
 
@@ -235,11 +104,6 @@ export function AppHome({
     }
   }
 
-  const sessionLabel = sessionFailed
-    ? "Local session failed"
-    : sessionPending
-      ? "Starting the local session"
-      : "Local session ready";
   const primaryPaperRun = armedPaperRuns[0] ?? null;
   const hasPaperRun = primaryPaperRun !== null;
   const primaryPaperTitle = primaryPaperRun
@@ -252,7 +116,6 @@ export function AppHome({
     <section
       className="app-home"
       data-testid="app-home"
-      data-home-advanced="1"
       aria-labelledby="app-home-title"
     >
       <header
@@ -449,6 +312,16 @@ export function AppHome({
             >
               I already have a pack
             </button>
+            {onReplaySetupTour ? (
+              <button
+                type="button"
+                className="app-home__cta-link app-home__cta-tour"
+                data-testid="workspace-setup-tour-replay"
+                onClick={onReplaySetupTour}
+              >
+                Take setup tour
+              </button>
+            ) : null}
           </div>
         )}
       </header>
@@ -474,301 +347,6 @@ export function AppHome({
           }}
         />
       ) : null}
-
-      <div className="app-home__layout" data-testid="app-home-advanced-stack">
-        <div className="app-home__main">
-          <DisclosureSection
-            title="All areas"
-            summary="Every destination in this app"
-            badge="Advanced"
-            badgeTone="advanced"
-            storageKey="krellbot.disclosure.home.all-areas"
-            data-testid="app-home-path"
-          >
-            <ul className="app-home__cards">
-              {HOME_PATH.map((card) => (
-                <li key={card.view} className="app-home__card-item">
-                  <button
-                    type="button"
-                    className="app-home__card"
-                    data-testid={card.testid}
-                    onClick={() => {
-                      onNavigate(card.view);
-                    }}
-                  >
-                    <span className="app-home__card-body">
-                      <span className="app-home__card-action">{card.action}</span>
-                      <span className="app-home__card-detail">{card.detail}</span>
-                      <span className="app-home__card-footer">
-                        <span className="app-home__card-meta">{card.meta}</span>
-                        <span className="app-home__card-link">Open →</span>
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </DisclosureSection>
-        </div>
-
-        <aside className="app-home__aside" aria-label="Workspace context">
-          <section
-            className="app-home__rail"
-            aria-labelledby="app-home-session-rail-title"
-          >
-            <h2
-              className="app-home__rail-title"
-              id="app-home-session-rail-title"
-            >
-              Local session
-            </h2>
-            <p className="app-home__rail-lead" data-testid="app-home-rail-session">
-              <span
-                className={
-                  sessionFailed
-                    ? "app-home__rail-dot app-home__rail-dot--caution"
-                    : "app-home__rail-dot"
-                }
-                aria-hidden="true"
-              />
-              {sessionLabel}
-            </p>
-            <p className="app-home__rail-copy">
-              Live trading stays unavailable in this paper-only release.
-            </p>
-            <div className="app-home__rail-links">
-              <button
-                type="button"
-                className="app-home__rail-link"
-                data-testid="app-home-rail-packs"
-                onClick={() => {
-                  onNavigate("packs");
-                }}
-              >
-                Browse packs →
-              </button>
-              <button
-                type="button"
-                className="app-home__rail-link"
-                data-testid="app-home-rail-ops"
-                onClick={() => {
-                  onNavigate("operations");
-                }}
-              >
-                Open operations →
-              </button>
-              {onReplaySetupTour ? (
-                <button
-                  type="button"
-                  className="app-home__rail-link"
-                  data-testid="workspace-setup-tour-replay"
-                  onClick={onReplaySetupTour}
-                >
-                  Take setup tour
-                </button>
-              ) : null}
-            </div>
-          </section>
-
-          <DisclosureSection
-            title="Settings & trust"
-            summary="Paid disclosures, referral, telemetry consent, and About — on this computer only. No separate Settings view."
-            badge="Advanced"
-            badgeTone="advanced"
-            defaultOpen={false}
-            storageKey="krellbot.disclosure.home.settings-trust"
-            bare
-            data-testid="app-home-settings-trust"
-          >
-            <div className="app-home__rail app-home__rail--nested">
-              <DisclosureSection
-                title="Paid disclosures"
-                summary="Fee share / referral when shown; packs not personalized advice; refund window pointer; telemetry opt-in. Does not promise gains."
-                badge="Settings"
-                badgeTone="advanced"
-                defaultOpen={false}
-                storageKey="krellbot.disclosure.home.paid-disclosures"
-                bare
-                data-testid="app-home-paid-disclosures-rail"
-              >
-                <div className="app-home__rail app-home__rail--nested">
-                  <PaidDisclosuresPanel variant="settings" />
-                </div>
-              </DisclosureSection>
-
-              <DisclosureSection
-                title="Exchange fee share / referral"
-                summary="Disclosed attribution when an operator creates or links an exchange account through a Krellbot referral path."
-                badge="Settings"
-                badgeTone="advanced"
-                defaultOpen={false}
-                storageKey="krellbot.disclosure.home.referral"
-                bare
-                data-testid="app-home-referral-rail"
-              >
-                <div className="app-home__rail app-home__rail--nested">
-                  <ReferralDisclosurePanel
-                    client={referral}
-                    enabled={!sessionPending && !sessionFailed}
-                  />
-                </div>
-              </DisclosureSection>
-
-              <DisclosureSection
-                title="About this build"
-                summary="Version, digest/signing posture honesty, and how to reproduce a starter pack."
-                badge="Settings"
-                badgeTone="advanced"
-                defaultOpen={false}
-                storageKey="krellbot.disclosure.home.about"
-                bare
-                data-testid="app-home-about-rail"
-              >
-                <div className="app-home__rail app-home__rail--nested">
-                  <AboutPanel
-                    client={versionClient}
-                    enabled={!sessionPending}
-                  />
-                </div>
-              </DisclosureSection>
-            </div>
-          </DisclosureSection>
-
-          <DisclosureSection
-            title="Live-ready path"
-            summary="Welcome, trust snapshot, trade-only Exchange probe, and paper-only release vs live grant — no license ask."
-            badge="Advanced"
-            badgeTone="advanced"
-            defaultOpen={false}
-            storageKey="krellbot.disclosure.home.live-wizard"
-            bare
-            data-testid="app-home-live-wizard-rail"
-          >
-            <div className="app-home__rail app-home__rail--emphasis app-home__rail--nested">
-              <LiveWizardPanel
-                trustClient={trust}
-                keysClient={keys}
-                enabled={!sessionPending && !sessionFailed}
-              />
-            </div>
-          </DisclosureSection>
-
-          <DisclosureSection
-            title="Exchange keys"
-            summary="Optional trade-only key material for later live work. Storing a key does not enable live trading."
-            badge="Advanced"
-            badgeTone="advanced"
-            defaultOpen={false}
-            forceOpen={exchangeKeysForceOpen}
-            storageKey="krellbot.disclosure.home.keys"
-            bare
-            data-testid="app-home-keys-rail"
-          >
-            <div className="app-home__rail app-home__rail--emphasis app-home__rail--nested">
-              <KeysOnboardingPanel
-                client={keys}
-                venue="kraken"
-                enabled={!sessionPending && !sessionFailed}
-              />
-              <KeysOnboardingPanel
-                client={keys}
-                venue="coinbase"
-                enabled={!sessionPending && !sessionFailed}
-              />
-            </div>
-          </DisclosureSection>
-
-          <DisclosureSection
-            title="Demo fixture seed"
-            summary="Opt-in labeled fixture/demo rows for local preview — never live P&L or soak proof."
-            badge="Advanced"
-            badgeTone="advanced"
-            defaultOpen={false}
-            storageKey="krellbot.disclosure.home.demo-fixture"
-            bare
-            data-testid="app-home-demo-fixture"
-          >
-            <div className="app-home__rail app-home__rail--nested">
-              <DemoFixturePanel
-                enabled={!sessionPending && !sessionFailed}
-              />
-            </div>
-          </DisclosureSection>
-
-          {!sessionPending && !sessionFailed && onIssueReconnect ? (
-            <DisclosureSection
-              title="Reconnect another browser"
-              summary="Short-lived token or QR for a second browser on this machine."
-              badge="Advanced"
-              badgeTone="advanced"
-              defaultOpen={false}
-              storageKey="krellbot.disclosure.home.reconnect"
-              bare
-              data-testid="app-home-reconnect"
-            >
-              <div className="app-home__rail app-home__rail--nested">
-                <p className="app-home__rail-copy">
-                  Invite another browser on this machine. The one-time bootstrap
-                  stays spent.
-                </p>
-                <button
-                  type="button"
-                  className="app-home__rail-link"
-                  data-testid="app-home-reconnect-issue"
-                  disabled={reconnectBusy}
-                  onClick={() => {
-                    void issueReconnect();
-                  }}
-                >
-                  {reconnectBusy
-                    ? "Creating reconnect code…"
-                    : "Show reconnect code →"}
-                </button>
-                {reconnectError !== null ? (
-                  <p
-                    className="app-home__rail-copy"
-                    data-testid="app-home-reconnect-error"
-                    role="alert"
-                  >
-                    {reconnectError}
-                  </p>
-                ) : null}
-                {reconnectOffer !== null ? (
-                  <div
-                    className="app-home__reconnect-offer"
-                    data-testid="app-home-reconnect-offer"
-                  >
-                    <ReconnectQr
-                      payload={reconnectOffer.token}
-                      label="Reconnect token QR code"
-                    />
-                    <p className="app-home__reconnect-token-label">Token</p>
-                    <code
-                      className="app-home__reconnect-token"
-                      data-testid="app-home-reconnect-token"
-                    >
-                      {reconnectOffer.token}
-                    </code>
-                    <p className="app-home__rail-copy">
-                      Open in the other browser, or paste the token there:
-                    </p>
-                    <code
-                      className="app-home__reconnect-url"
-                      data-testid="app-home-reconnect-url"
-                    >
-                      {reconnectOffer.qrPayload}
-                    </code>
-                    <p className="app-home__rail-copy">
-                      Expires in {reconnectOffer.expiresIn}s.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </DisclosureSection>
-          ) : null}
-
-        </aside>
-      </div>
     </section>
   );
 }

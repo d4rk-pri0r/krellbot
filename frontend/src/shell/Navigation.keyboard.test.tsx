@@ -32,11 +32,11 @@ function viewTabIndexes(): number[] {
 describe("Navigation — roving tabindex", () => {
   it("keeps only the active view button in the tab order among view items", () => {
     const { rerender } = render(<Navigation active="home" onChange={() => {}} />);
-    // More destinations stay mounted while collapsed (`hidden`), so eight
+    // More destinations stay mounted while collapsed (`hidden`), so nine
     // view buttons remain in the tree; only the active page is tabbable.
-    expect(viewTabIndexes()).toEqual([0, -1, -1, -1, -1, -1, -1, -1]);
+    expect(viewTabIndexes()).toEqual([0, -1, -1, -1, -1, -1, -1, -1, -1]);
     rerender(<Navigation active="deployments" onChange={() => {}} />);
-    expect(viewTabIndexes()).toEqual([-1, -1, -1, -1, -1, -1, -1, 0]);
+    expect(viewTabIndexes()).toEqual([-1, -1, -1, -1, -1, -1, -1, -1, 0]);
   });
 });
 
@@ -53,21 +53,21 @@ describe("Navigation — arrow key navigation", () => {
     expect(focusedLabel()).toBe("Run");
 
     fireEvent.keyDown(tab("Run"), { key: "ArrowRight" });
-    expect(onChange).toHaveBeenCalledWith("packs");
-    rerender(<Navigation active="packs" onChange={onChange} />);
-    expect(focusedLabel()).toBe("Packs");
+    expect(onChange).toHaveBeenCalledWith("strategies");
+    rerender(<Navigation active="strategies" onChange={onChange} />);
+    expect(focusedLabel()).toBe("Strategies");
   });
 
   it("opens More from the last primary tab and continues into Research", () => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <Navigation active="strategies" onChange={onChange} />,
+      <Navigation active="settings" onChange={onChange} />,
     );
-    tab("Strategies").focus();
-    fireEvent.keyDown(tab("Strategies"), { key: "ArrowRight" });
+    tab("Settings").focus();
+    fireEvent.keyDown(tab("Settings"), { key: "ArrowRight" });
     expect(onChange).not.toHaveBeenCalled();
     expect(focusedLabel()).toBe("More");
-    rerender(<Navigation active="strategies" onChange={onChange} />);
+    rerender(<Navigation active="settings" onChange={onChange} />);
     fireEvent.keyDown(tab("More"), { key: "ArrowRight" });
     expect(onChange).toHaveBeenCalledWith("research");
     rerender(<Navigation active="research" onChange={onChange} />);
@@ -85,9 +85,9 @@ describe("Navigation — arrow key navigation", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(focusedLabel()).toBe("More");
     fireEvent.keyDown(tab("More"), { key: "ArrowLeft" });
-    expect(onChange).toHaveBeenCalledWith("strategies");
-    rerender(<Navigation active="strategies" onChange={onChange} />);
-    expect(focusedLabel()).toBe("Strategies");
+    expect(onChange).toHaveBeenCalledWith("settings");
+    rerender(<Navigation active="settings" onChange={onChange} />);
+    expect(focusedLabel()).toBe("Settings");
   });
 
   it("clamps instead of wrapping at the row ends", () => {
@@ -134,12 +134,12 @@ describe("Navigation — arrow key navigation", () => {
       <Navigation active={active} onChange={controller} />,
     );
     tab("Workspace").focus();
-    for (const step of ["Run", "Packs", "Strategies"]) {
+    for (const step of ["Run", "Strategies", "Packs", "Settings"]) {
       fireEvent.keyDown(tab(focusedLabel() as string), { key: "ArrowRight" });
       rerender(<Navigation active={active} onChange={controller} />);
       expect(focusedLabel()).toBe(step);
     }
-    fireEvent.keyDown(tab("Strategies"), { key: "ArrowRight" });
+    fireEvent.keyDown(tab("Settings"), { key: "ArrowRight" });
     rerender(<Navigation active={active} onChange={controller} />);
     expect(focusedLabel()).toBe("More");
     fireEvent.keyDown(tab("More"), { key: "ArrowRight" });

@@ -123,9 +123,7 @@ function fakeStrategy(over: Partial<StrategyClient> = {}): StrategyClient {
 
 describe("home paper CTA opens the starter chooser without a spotlight anchor", () => {
   it("does not mark the home CTA as a coach spotlight target", () => {
-    render(
-      <AppHome onNavigate={vi.fn()} keysClient={fakeKeys()} trustClient={fakeTrust()} />,
-    );
+    render(<AppHome onNavigate={vi.fn()} />);
     expect(
       screen.getByTestId("app-home-cta-paper").hasAttribute("data-coach-anchor"),
     ).toBe(false);
@@ -139,8 +137,6 @@ describe("home paper CTA opens the starter chooser without a spotlight anchor", 
         onNavigate={vi.fn()}
         strategyClient={fakeStrategy()}
         loadStarters={async () => catalogue}
-        keysClient={fakeKeys()}
-        trustClient={fakeTrust()}
       />,
     );
     expect(screen.queryByTestId("paper-starter-chooser")).toBeNull();

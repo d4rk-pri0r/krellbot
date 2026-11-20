@@ -134,10 +134,8 @@ async function walkArmedTour(
     "data-setup-step",
     "keys",
   );
-  await expect(page.getByTestId("app-home-keys-rail")).toHaveAttribute(
-    "data-open",
-    "1",
-  );
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await expect(page.getByTestId("settings-section-keys")).toBeVisible();
   await expect(page.getByTestId("keys-onboarding-kraken")).toBeVisible();
   await expect
     .poll(async () => page.getByTestId("workspace-setup-tour").getAttribute("data-anchor"))
@@ -150,7 +148,9 @@ async function walkArmedTour(
     "data-setup-step",
     "strategy",
   );
-  await expect(page.getByTestId("app-home")).toBeVisible();
+  await expect(page.getByTestId("paper-status-panel")).toBeVisible({
+    timeout: 20_000,
+  });
   await expectCalloutInside(page, viewport);
   await shot(page, `${prefix}-step-3-strategy.png`);
 

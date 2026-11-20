@@ -168,17 +168,9 @@ test("capture Krell first-run wizard demo frames", async ({ journey }) => {
   await expect(page.getByTestId("first-run-wizard")).toHaveCount(0);
   await expect(page.getByTestId("kbot-shell")).toBeVisible();
   await expect(page.getByTestId("app-home")).toBeVisible();
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "1",
-  );
   await expect(page.getByTestId("first-win-celebrate")).toHaveCount(0);
   await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
   await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
-  const advanced = page.getByTestId("app-home-path");
-  await expect(advanced).toBeVisible();
-  await expect(advanced).toContainText(/Advanced/i);
-  await advanced.scrollIntoViewIfNeeded();
   await settle(page);
   await shot(page, "06-post-wizard-shell.png");
 

@@ -101,7 +101,7 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     renderShell();
     const nav = screen.getByTestId("kbot-nav");
     expect(nav).toBeDefined();
-    for (const label of ["Workspace", "Run", "Packs", "Strategies"]) {
+    for (const label of ["Workspace", "Run", "Strategies", "Packs", "Settings"]) {
       expect(
         screen.getByRole("button", { name: label }).getAttribute(
           "aria-current",
@@ -145,44 +145,30 @@ describe("WorkstationShell — Signal shell composition (KRELL-SIGNAL-20261010)"
     ).toBe("page");
   });
 
-  it("drives the whole user journey from the Home cards", async () => {
-    function openHomeAllAreas(): void {
-      const toggle = screen.getByTestId("app-home-path-toggle");
-      if (toggle.getAttribute("aria-expanded") !== "true") {
-        fireEvent.click(toggle);
-      }
-    }
-
+  it("keeps Home clean and opens Settings directly from primary navigation", async () => {
     renderShell();
-    // Post-wizard M24: All-areas cards are mounted under collapsed Advanced.
-    expect(screen.getByTestId("app-home").getAttribute("data-home-advanced")).toBe(
-      "1",
-    );
     expect(screen.queryByTestId("first-run-coach")).toBeNull();
     expect(screen.queryByTestId("activation-checklist")).toBeNull();
-    openHomeAllAreas();
-    fireEvent.click(screen.getByTestId("app-home-card-strategies"));
+    expect(screen.queryByTestId("app-home-path")).toBeNull();
+    expect(screen.queryByTestId("app-home-settings-trust")).toBeNull();
+
+    clickShellNav("Settings");
+    expect(screen.getByTestId("settings-view")).toBeDefined();
+    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeDefined();
+
+    clickShellNav("Strategies");
     expect(screen.getByTestId("library-toggle")).toBeDefined();
 
-    clickShellNav("Workspace");
-    openHomeAllAreas();
-    fireEvent.click(screen.getByTestId("app-home-card-research"));
+    clickShellNav("Research");
     expect(screen.getByTestId("research-host")).toBeDefined();
 
-    clickShellNav("Workspace");
-    openHomeAllAreas();
-    fireEvent.click(screen.getByTestId("app-home-card-studio"));
+    clickShellNav("Strategy studio");
     expect(screen.getByTestId("studio-node-count").textContent).toBe("3");
 
-    clickShellNav("Workspace");
-    openHomeAllAreas();
-    fireEvent.click(screen.getByTestId("app-home-card-workstation"));
+    clickShellNav("Run");
     expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
 
-    clickShellNav("Workspace");
-    openHomeAllAreas();
-    fireEvent.click(screen.getByTestId("app-home-card-operations"));
-    // Operations mounts after bootstrap resolves; wait for its view.
+    clickShellNav("Operations");
     await waitFor(() =>
       expect(screen.getByTestId("operations-view")).toBeDefined(),
     );

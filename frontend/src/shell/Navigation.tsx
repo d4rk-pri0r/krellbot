@@ -6,6 +6,7 @@ export type View =
   | "workstation"
   | "strategies"
   | "packs"
+  | "settings"
   | "research"
   | "studio"
   | "operations"
@@ -13,12 +14,13 @@ export type View =
 
 type NavItem = { id: View; label: string };
 
-/** Primary strip — beginner-default front door (M24). */
+/** Primary strip — core destinations plus Settings. */
 export const PRIMARY_VIEWS: ReadonlyArray<NavItem> = [
   { id: "home", label: "Workspace" },
   { id: "workstation", label: "Run" },
-  { id: "packs", label: "Packs" },
   { id: "strategies", label: "Strategies" },
+  { id: "packs", label: "Packs" },
+  { id: "settings", label: "Settings" },
 ];
 
 /** Overflow under More — power destinations; route ids unchanged. */

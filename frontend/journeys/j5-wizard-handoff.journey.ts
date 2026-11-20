@@ -23,15 +23,17 @@ test("a fresh install finishes the wizard paper path and opens a quiet shell wit
 
   await expect(page.getByTestId("first-run-wizard")).toHaveCount(0);
   await expect(page.getByTestId("kbot-shell")).toBeVisible();
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "1",
-  );
-  await expect(page.getByTestId("app-home-path")).toHaveAttribute("data-open", "0");
+  await expect(page.getByTestId("app-home")).toBeVisible();
+  await expect(page.getByTestId("app-home-path")).toHaveCount(0);
+  await expect(page.getByTestId("app-home-keys-rail")).toHaveCount(0);
   await expect(page.getByTestId("first-win-celebrate")).toHaveCount(0);
   await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
   await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
   await expect(page.locator("[data-testid='soft-studio-tip']")).toHaveCount(0);
+
+  await clickNav(page, "Settings");
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await expect(page.getByTestId("settings-section-keys")).toBeVisible();
 
   await clickNav(page, "Run");
   await expect(page.getByTestId("paper-status-entries")).toContainText(/active/i, {
@@ -52,10 +54,7 @@ test("a fresh install finishes the wizard paper path and opens a quiet shell wit
   await expect(page.getByTestId("kbot-shell")).toBeVisible();
   await expect(page.getByTestId("first-win-celebrate")).toHaveCount(0);
   await clickNav(page, "Workspace");
-  await expect(page.getByTestId("app-home")).toHaveAttribute(
-    "data-home-advanced",
-    "1",
-  );
+  await expect(page.getByTestId("app-home")).toBeVisible();
   await expect(page.getByTestId("first-run-coach")).toHaveCount(0);
   await expect(page.getByTestId("activation-checklist")).toHaveCount(0);
 });

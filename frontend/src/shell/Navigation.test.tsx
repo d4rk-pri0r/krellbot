@@ -42,7 +42,7 @@ describe("Navigation — workstation views", () => {
     expect(
       screen.getByRole("button", { name: "Workspace" }).getAttribute("aria-current"),
     ).toBe("page");
-    for (const label of ["Run", "Packs", "Strategies"]) {
+    for (const label of ["Run", "Strategies", "Packs", "Settings"]) {
       expect(
         screen.getByRole("button", { name: label }).getAttribute("aria-current"),
       ).toBeNull();
@@ -56,9 +56,9 @@ describe("Navigation — workstation views", () => {
     expect(onChange).toHaveBeenCalledWith("home");
   });
 
-  it("renders primary nav labels including Run for the workstation route", () => {
+  it("renders primary nav labels including Run and Settings", () => {
     render(<Navigation active="workstation" onChange={() => {}} />);
-    for (const label of ["Run", "Packs", "Strategies", "More"]) {
+    for (const label of ["Run", "Strategies", "Packs", "Settings", "More"]) {
       expect(screen.getByRole("button", { name: label })).toBeDefined();
     }
   });
@@ -78,7 +78,7 @@ describe("Navigation — workstation views", () => {
       name: "Run",
     });
     expect(activeButton.getAttribute("aria-current")).toBe("page");
-    for (const label of ["Packs", "Strategies", "Workspace"]) {
+    for (const label of ["Strategies", "Packs", "Settings", "Workspace"]) {
       expect(
         screen.getByRole("button", { name: label }).getAttribute("aria-current"),
       ).toBeNull();

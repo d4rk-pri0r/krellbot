@@ -48,7 +48,7 @@ const COPY: Record<WorkspaceSetupTourStepId, Copy> = {
   },
   keys: {
     title: "Exchange keys, if you want them",
-    body: "Trade-only keys connect here and stay in the local keyring on this computer. Paper simulation does not need keys.",
+    body: "Trade-only keys live in Settings and stay in the local keyring on this computer. Paper simulation does not need keys.",
   },
   strategy: {
     title: "Strategy and pretend balance",
@@ -60,6 +60,11 @@ const COPY: Record<WorkspaceSetupTourStepId, Copy> = {
   },
 };
 
+const RUNNING_STRATEGY_COPY: Copy = {
+  title: "Active strategy and pretend balance",
+  body: "Your paper strategy and pretend balance sit here in Run. That cash never leaves this computer.",
+};
+
 const RUNNING_COPY: Copy = {
   title: "Your paper simulation is running",
   body: "This active paper run is simulating on your computer. Free pretend cash sits with the position. Pause new buys or stop the run from here.",
@@ -67,7 +72,12 @@ const RUNNING_COPY: Copy = {
 
 function targetIds(stepId: WorkspaceSetupTourStepId): readonly string[] {
   if (stepId === "workspace") {
-    return ["app-home-active-paper", "app-home-availability", "nav-local-preview"];
+    return [
+      "app-home-active-paper",
+      "app-home-availability",
+      "app-home-first-viewport",
+      "kbot-status-strip",
+    ];
   }
   if (stepId === "keys") {
     return ["keys-public-kraken", "keys-form-kraken", "keys-onboarding-kraken"];
@@ -78,21 +88,19 @@ function targetIds(stepId: WorkspaceSetupTourStepId): readonly string[] {
       "paper-arm-revision",
       "paper-arm-empty",
       "paper-status-empty",
-      "app-home-cta-try-another",
-      "app-home-cta-paper",
       "paper-status-pack",
+      "paper-position",
       "paper-arm-form",
     ];
   }
   return [
-    "paper-position",
     "paper-status-entries",
+    "paper-position",
     "paper-arm-submit",
     "paper-arm-balance",
     "paper-arm-empty",
     "paper-status-empty",
     "paper-arm-form",
-    "app-home-active-paper",
   ];
 }
 
@@ -347,8 +355,13 @@ export function WorkspaceSetupTour({
   }, [stepId, paperArmed, launchBusy, launchError]);
 
   const stepIndex = WORKSPACE_SETUP_TOUR_STEPS.indexOf(stepId);
+  const isRunning = running || paperArmed;
   const copy =
-    stepId === "run" && (running || paperArmed) ? RUNNING_COPY : COPY[stepId];
+    stepId === "run" && isRunning
+      ? RUNNING_COPY
+      : stepId === "strategy" && isRunning
+        ? RUNNING_STRATEGY_COPY
+        : COPY[stepId];
   const onFirst = stepIndex <= 0;
   const onLast = stepId === "run";
   const showDone = onLast && (running || paperArmed);
