@@ -402,6 +402,20 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
   }
 }
 
+const SHORT_REVISION_MAX = 16;
+
+function formatRevisionOptionLabel(row: PaperArmDraftSummary): string {
+  const shortId =
+    row.revision_id.length > SHORT_REVISION_MAX
+      ? `${row.revision_id.slice(0, 12)}…`
+      : row.revision_id;
+  const pairSuffix = row.pair !== "" ? ` (${row.pair})` : "";
+  if (row.label !== "") {
+    return `${row.label}${pairSuffix} — ${shortId}`;
+  }
+  return `${shortId}${pairSuffix}`;
+}
+
 /**
  * The paper arm form: pick an existing owned, runnable revision, enter a
  * paper balance and arm it through the authenticated ``paper.arm``
@@ -501,6 +515,8 @@ function ArmForm({
 
   const balanceValid = isValidPaperBalance(balance);
   const armDisabled = pending || !balanceValid || revisionId === "";
+  const selectedDraft =
+    drafts?.find((row) => row.revision_id === revisionId) ?? null;
 
   const handleArm = async (): Promise<void> => {
     const arm = client.arm;
@@ -609,12 +625,13 @@ function ArmForm({
             className="kbot-paper-status__field"
             htmlFor="paper-arm-revision"
           >
-            Saved revision
+            <span className="kbot-paper-status__field-label">Saved revision</span>
             <select
               id="paper-arm-revision"
               className="kbot-paper-status__select"
               data-testid="paper-arm-revision"
               value={revisionId}
+              title={selectedDraft?.revision_id}
               onChange={(event) => {
                 setRevisionId(event.target.value);
               }}
@@ -622,56 +639,65 @@ function ArmForm({
             >
               {drafts.map((row) => (
                 <option key={row.revision_id} value={row.revision_id}>
-                  {row.revision_id}
-                  {row.label !== "" ? ` — ${row.label}` : ""}
-                  {row.pair !== "" ? ` (${row.pair})` : ""}
+                  {formatRevisionOptionLabel(row)}
                 </option>
               ))}
             </select>
+            {selectedDraft && selectedDraft.revision_id.length > SHORT_REVISION_MAX ? (
+              <span
+                className="kbot-paper-status__revision-detail"
+                data-testid="paper-arm-revision-id"
+                title={selectedDraft.revision_id}
+              >
+                Revision {selectedDraft.revision_id}
+              </span>
+            ) : null}
           </label>
-          <label className="kbot-paper-status__field" htmlFor="paper-arm-venue">
-            Venue
-            <select
-              id="paper-arm-venue"
-              className="kbot-paper-status__select"
-              data-testid="paper-arm-venue"
-              value={venue}
-              onChange={(event) => {
-                setVenue(event.target.value);
-              }}
-              disabled={pending}
+          <div className="kbot-paper-status__arm-row">
+            <label className="kbot-paper-status__field" htmlFor="paper-arm-venue">
+              <span className="kbot-paper-status__field-label">Venue</span>
+              <select
+                id="paper-arm-venue"
+                className="kbot-paper-status__select"
+                data-testid="paper-arm-venue"
+                value={venue}
+                onChange={(event) => {
+                  setVenue(event.target.value);
+                }}
+                disabled={pending}
+              >
+                {ARM_VENUES.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label
+              className="kbot-paper-status__field"
+              htmlFor="paper-arm-balance"
             >
-              {ARM_VENUES.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label
-            className="kbot-paper-status__field"
-            htmlFor="paper-arm-balance"
-          >
-            Paper balance
-            <input
-              id="paper-arm-balance"
-              className="kbot-paper-status__input"
-              data-testid="paper-arm-balance"
-              type="text"
-              inputMode="decimal"
-              value={balance}
-              onChange={(event) => {
-                const next = event.target.value;
-                if (next === "") {
-                  // An explicit clear is remembered: never silently refill
-                  // the field with a stale balance next time.
-                  writeLastArmedBalance("");
-                }
-                setBalance(next);
-              }}
-              disabled={pending}
-            />
-          </label>
+              <span className="kbot-paper-status__field-label">Paper balance</span>
+              <input
+                id="paper-arm-balance"
+                className="kbot-paper-status__input"
+                data-testid="paper-arm-balance"
+                type="text"
+                inputMode="decimal"
+                value={balance}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  if (next === "") {
+                    // An explicit clear is remembered: never silently refill
+                    // the field with a stale balance next time.
+                    writeLastArmedBalance("");
+                  }
+                  setBalance(next);
+                }}
+                disabled={pending}
+              />
+            </label>
+          </div>
           {!balanceValid ? (
             <p
               className="kbot-paper-status__error"

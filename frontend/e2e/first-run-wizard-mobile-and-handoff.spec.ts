@@ -188,11 +188,14 @@ test("mobile 390×844 keeps choose Skip setup inside viewport and renders clean 
   await settle(page);
 
   const mobileShell = await page.evaluate(() => {
+    const header = document
+      .querySelector<HTMLElement>(".kbot-shell__header")
+      ?.getBoundingClientRect();
     const navRoot = document
       .querySelector<HTMLElement>(".kbot-shell__nav-root")
       ?.getBoundingClientRect();
-    const pill = document
-      .querySelector<HTMLElement>('[data-testid="app-home-availability"]')
+    const statusPill = document
+      .querySelector<HTMLElement>('[data-testid="kbot-status-strip"]')
       ?.getBoundingClientRect();
     const activePaper = document
       .querySelector<HTMLElement>('[data-testid="app-home-active-paper"]')
@@ -201,20 +204,25 @@ test("mobile 390×844 keeps choose Skip setup inside viewport and renders clean 
       overflowX:
         document.documentElement.scrollWidth -
         document.documentElement.clientWidth,
+      headerHeight: header?.height ?? 9999,
       navRootHeight: navRoot?.height ?? 9999,
-      pillHeight: pill?.height ?? 9999,
+      statusPillHeight: statusPill?.height ?? 9999,
       activePaperBottom: activePaper?.bottom ?? 9999,
     };
   });
   expect(mobileShell.overflowX).toBeLessThanOrEqual(1);
   expect(
-    mobileShell.navRootHeight,
-    "mobile nav root has no 280px flex-basis void",
-  ).toBeLessThanOrEqual(160);
+    mobileShell.headerHeight,
+    "compact mobile header stays well under 180px",
+  ).toBeLessThanOrEqual(180);
   expect(
-    mobileShell.pillHeight,
-    "mobile availability pill stays compact on one line",
-  ).toBeLessThanOrEqual(40);
+    mobileShell.navRootHeight,
+    "mobile nav root stays on a single compact row",
+  ).toBeLessThanOrEqual(64);
+  expect(
+    mobileShell.statusPillHeight,
+    "single shell status pill stays compact",
+  ).toBeLessThanOrEqual(48);
   expect(
     mobileShell.activePaperBottom,
     "running paper strategy status is visible above the fold on phone",

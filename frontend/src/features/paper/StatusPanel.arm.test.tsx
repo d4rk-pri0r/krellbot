@@ -196,6 +196,23 @@ describe("StatusPanel paper arm tracer (primary user-action path)", () => {
       expect(client.arm).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("formats long SHA-256 revision hashes concisely in the selector and keeps full hash in detail", async () => {
+    const longHash = "7f3c8e910a2b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d";
+    const client = makeClient({
+      listOwnedDrafts: vi.fn().mockResolvedValue([
+        runnableDraft(longHash, { label: "Dual moving average", pair: "SUIUSD" }),
+      ]),
+    });
+    render(<StatusPanel client={client} />);
+    const select = await screen.findByTestId("paper-arm-revision");
+    const option = select.querySelector("option");
+    expect(option?.textContent).toBe("Dual moving average (SUIUSD) — 7f3c8e910a2b…");
+    expect(option?.value).toBe(longHash);
+    const detail = screen.getByTestId("paper-arm-revision-id");
+    expect(detail.getAttribute("title")).toBe(longHash);
+    expect(detail.textContent).toContain(longHash);
+  });
 });
 
 

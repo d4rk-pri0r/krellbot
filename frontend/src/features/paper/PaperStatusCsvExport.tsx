@@ -73,14 +73,6 @@ export function PaperStatusCsvExport({
 
   return (
     <div className="kbot-feature__paper-csv-root">
-      <p className="kbot-feature__paper-csv-root__meta">
-        <span
-          className="kbot-feature__paper-csv-root__badge"
-          data-testid="paper-status-csv-local-preview"
-        >
-          Local preview
-        </span>
-      </p>
       <button
         type="button"
         id="paper-status-csv-export"

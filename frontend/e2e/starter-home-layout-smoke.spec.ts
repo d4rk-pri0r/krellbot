@@ -161,9 +161,8 @@ test("home first-viewport and starter picker stay readable at 1440×900", async 
   await expect(page.getByTestId("app-home-cta-paper")).toContainText(
     /Start with a free paper strategy/i,
   );
-  await expect(page.getByTestId("app-home-availability")).toContainText(
-    /Live trading unavailable/i,
-  );
+  await expect(page.getByTestId("kbot-status-strip")).toContainText(/Paper/i);
+  await expect(page.getByTestId("app-home-availability")).toHaveCount(0);
 
   const hero = await boxFor(page, "app-home-first-viewport");
   expect(hero.top, "home hero starts near the top").toBeGreaterThanOrEqual(0);

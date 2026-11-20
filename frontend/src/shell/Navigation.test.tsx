@@ -151,17 +151,29 @@ describe("Navigation — scoped Signal presentation", () => {
     expect(onChange).toHaveBeenCalledWith("studio");
   });
 
-  it("renders the seafoam Local preview badge below the tab row", () => {
+  it("collapses More when a primary tab is clicked or becomes active", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <Navigation active="research" onChange={onChange} />,
+    );
+    expect(screen.getByTestId("kbot-nav-more").getAttribute("data-open")).toBe(
+      "1",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(onChange).toHaveBeenCalledWith("workstation");
+    rerender(<Navigation active="workstation" onChange={onChange} />);
+    expect(screen.getByTestId("kbot-nav-more").getAttribute("data-open")).toBe(
+      "0",
+    );
+    expect(
+      screen.getByTestId("kbot-nav-more-toggle").getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+
+  it("omits duplicate Local preview badges from the nav strip (StatusStrip is the single status pill)", () => {
     render(<Navigation active="home" onChange={() => {}} />);
-    const badge = screen.getByTestId("nav-local-preview");
-    expect(badge.textContent?.trim()).toBe("Local preview");
-    expect(badge.className).toContain("kbot-shell__nav-preview");
-    const caption = screen.getByTestId("nav-local-preview-note");
-    expect(caption.textContent).toContain("Live trading unavailable");
-    const root = screen.getByTestId("kbot-nav");
-    expect(root.contains(badge)).toBe(true);
-    const note = caption.closest(".kbot-shell__nav-note");
-    expect(note).toBe(root.lastElementChild);
+    expect(screen.queryByTestId("nav-local-preview")).toBeNull();
+    expect(screen.queryByTestId("nav-local-preview-note")).toBeNull();
   });
 });
 
@@ -305,12 +317,13 @@ describe("Navigation — scoped Signal stylesheet", () => {
     expect(hoverRule?.declarations).toContain("var(--text");
   });
 
-  it("colors the Local preview badge seafoam", () => {
+  it("scrolls primary tabs horizontally on narrow viewports without wrapping into tall rows", () => {
     const css = stripComments(readStylesheet());
-    const badge = blocksFor(css, ".kbot-shell__nav-preview");
-    expect(badge.length).toBeGreaterThanOrEqual(1);
-    const declarations = badge.map((block) => block.declarations).join(";");
-    expect(declarations).toContain("var(--seafoam");
+    const { media } = splitMedia(css);
+    const narrow = media.find((block) => block.query.includes("max-width"));
+    expect(narrow).toBeDefined();
+    expect(narrow?.body).toContain("flex-wrap: nowrap");
+    expect(narrow?.body).toContain("overflow-x: auto");
   });
 
   it("keeps a >=44px tap target on small viewports", () => {

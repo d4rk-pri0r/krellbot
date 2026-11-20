@@ -314,19 +314,11 @@ export function CommandPalette({
       data-testid="command-palette"
     >
       <div className="kbot-palette__box kbot-shell__palette-box">
-        <p className="kbot-shell__palette-meta">
-          <span
-            className="kbot-shell__palette-badge"
-            data-testid="command-palette-badge"
-          >
-            Local preview
-          </span>
-        </p>
         <label
           className="kbot-palette__label kbot-shell__palette-label"
           htmlFor="kbot-palette-input"
         >
-          Find an action, strategy, or view — local preview only.
+          Find an action, strategy, or view
         </label>
         <input
           id="kbot-palette-input"
