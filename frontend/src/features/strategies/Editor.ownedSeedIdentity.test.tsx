@@ -105,7 +105,7 @@ function validateButton(): HTMLButtonElement {
 }
 
 function armButton(): HTMLButtonElement {
-  return screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
+  return screen.getByTestId("editor-open-in-run") as HTMLButtonElement;
 }
 
 function rawJson(): HTMLTextAreaElement {
@@ -162,18 +162,15 @@ describe("Editor fresh-owned seed after a reopened saved revision", () => {
     expect(armButton().disabled).toBe(true);
   });
 
-  it("seeding clears the prior draft's save outcome, validate error and arm error surfaces without further actions", async () => {
+  it("seeding clears the prior draft's save outcome and validate error surfaces without further actions", async () => {
     const client = makeClient({
       validate: vi.fn().mockRejectedValue(new Error("stale revision gone")),
-      arm: vi.fn().mockRejectedValue(new Error("arm refused")),
     });
     render(<Editor client={client} initial={loadedParent("validated")} />);
 
     // Produce real stale surfaces from the loaded revision first.
     fireEvent.click(validateButton());
     expect(await screen.findByTestId("editor-validate-error")).toBeDefined();
-    fireEvent.click(armButton());
-    expect(await screen.findByTestId("editor-arm-error")).toBeDefined();
     fireEvent.click(saveButton());
     expect(await screen.findByTestId("editor-save-outcome")).toBeDefined();
 
@@ -181,14 +178,12 @@ describe("Editor fresh-owned seed after a reopened saved revision", () => {
 
     expect(screen.queryByTestId("editor-save-outcome")).toBeNull();
     expect(screen.queryByTestId("editor-validate-error")).toBeNull();
-    expect(screen.queryByTestId("editor-arm-error")).toBeNull();
     expect(screen.queryByTestId("editor-save-error")).toBeNull();
     expect(screen.queryByTestId("editor-revision-id")).toBeNull();
     // Nothing saves, validates or arms by itself after the seed.
     expect(callsOf(client.create)).toHaveLength(0);
     expect(callsOf(client.edit)).toHaveLength(1);
     expect(callsOf(client.validate)).toHaveLength(1);
-    expect(callsOf(client.arm)).toHaveLength(1);
   });
 });
 

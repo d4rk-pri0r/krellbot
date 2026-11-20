@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEv
 import "./Editor.signal.css";
 import "./Editor.saveKeyboard.signal.css";
 import { EditorCsvExport } from "./EditorCsvExport";
-import { EditorInlineStopControl, type PaperClient } from "./EditorInlineStopControl";
 import { summarizeDraftState } from "./draftStateLabel";
 import type {
   DraftState,
@@ -43,12 +42,12 @@ export type CopiedDraft = {
 
 export type EditorProps = {
   client: StrategyClient;
-  /** Paper command surface for the inline stop control; optional so hosts without one render unchanged. */
-  paperClient?: PaperClient;
   initial?: LoadedRevision;
   /** Mount-only: seed a fresh draft from copied owned bytes (create path). */
   copiedDraft?: CopiedDraft;
   onRevision?: (summary: DraftSummary, bytes: string) => void;
+  /** Handoff a validated revision to Run (paper arming lives exclusively in Run). */
+  onOpenInRun?: (revisionId: string) => void;
 };
 
 /** A visible import refusal. `fromFile` marks refusals produced by a
@@ -91,7 +90,7 @@ function readLabel(pack: Pack | null): string {
   return typeof value === "string" ? value : "";
 }
 
-export function Editor({ client, paperClient, initial, copiedDraft, onRevision }: EditorProps): JSX.Element {
+export function Editor({ client, initial, copiedDraft, onRevision, onOpenInRun }: EditorProps): JSX.Element {
   const initialRawJson = initial?.bytes ?? copiedDraft?.bytes ?? "";
   const [rawJson, setRawJson] = useState<string>(initialRawJson);
   const [ownedForm, setOwnedForm] = useState<OwnedStrategyFormState | null>(() =>
@@ -111,8 +110,6 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       errors: [],
     };
   });
-  const [venue, setVenue] = useState("kraken");
-  const [paperBalance, setPaperBalance] = useState("1000");
   const [importError, setImportError] = useState<ImportRefusal | null>(null);
   // True after a starter example seeded the draft: the next Save must
   // create a fresh revision even when an `initial` revision was
@@ -159,11 +156,6 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     fileReadToken.current += 1;
   };
   const [validateError, setValidateError] = useState<string | null>(null);
-  const [armError, setArmError] = useState<string | null>(null);
-  const [arming, setArming] = useState(false);
-  // Bumped only after a confirmed arm success: drives the inline stop
-  // control's refreshSignal so it reconciles status without a manual refresh.
-  const [armCounter, setArmCounter] = useState(0);
 
   const currentPack = useMemo(() => parsePack(rawJson), [rawJson]);
   const labelValue = readLabel(currentPack);
@@ -195,7 +187,6 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     setSaveOutcome(null);
     setSaveError(null);
     setValidateError(null);
-    setArmError(null);
     setRawJson(JSON.stringify(pack, null, 2));
   };
 
@@ -438,7 +429,6 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
       setSaveOutcome(null);
       setSaveError(null);
       setValidateError(null);
-      setArmError(null);
       setRawJson(text);
     };
     reader.onerror = () => {
@@ -470,29 +460,15 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
     document.body.removeChild(anchor);
   };
 
-  const handleArm = async (): Promise<void> => {
-    if (arming || !lastSummary || lastSummary.state !== "validated") {
+  const canOpenInRun =
+    lastSummary !== null && lastSummary.state === "validated";
+
+  const handleOpenInRun = (): void => {
+    if (!canOpenInRun || !lastSummary) {
       return;
     }
-    setArmError(null);
-    setArming(true);
-    try {
-      await client.arm(lastSummary.revision_id, venue, paperBalance);
-      // Arm confirmed by the backend: nudge the inline stop control to
-      // re-read paper status so its Disarm/Pause/Resume reflect the new
-      // armed state without a manual "Refresh status" click.
-      setArmCounter((c) => c + 1);
-    } catch (err) {
-      // Keep the validated revision; never imply a deployment from stale local state.
-      setArmError(
-        `Arm failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      setArming(false);
-    }
+    onOpenInRun?.(lastSummary.revision_id);
   };
-
-  const armDisabled = !lastSummary || lastSummary.state !== "validated" || arming;
 
   // Progressive disclosure: the technical JSON section stays collapsed while
   // the readable form covers the pack. It opens itself exactly when the user
@@ -811,79 +787,29 @@ export function Editor({ client, paperClient, initial, copiedDraft, onRevision }
                 <span className="kbot-strategy-editor__step" aria-hidden="true">
                   4
                 </span>
-                Paper run and risk reduction
+                Run this strategy
               </h3>
               <span className="kbot-strategy-editor__group-note">
-                Arm needs a validated revision
+                Needs a validated revision
               </span>
             </header>
             <div className="kbot-strategy-editor__group-body">
-              <div className="kbot-strategy-editor__run-fields">
-                <label
-                  className="kbot-strategy-editor__field"
-                  htmlFor="kbot-strategy-editor-venue"
-                >
-                  <span className="kbot-strategy-editor__field-label">Venue</span>
-                  <input
-                    id="kbot-strategy-editor-venue"
-                    className="kbot-strategy-editor__input"
-                    type="text"
-                    value={venue}
-                    onChange={(event) => setVenue(event.target.value)}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </label>
-                <label
-                  className="kbot-strategy-editor__field"
-                  htmlFor="kbot-strategy-editor-balance"
-                >
-                  <span className="kbot-strategy-editor__field-label">
-                    Paper balance
-                  </span>
-                  <input
-                    id="kbot-strategy-editor-balance"
-                    className="kbot-strategy-editor__input"
-                    type="text"
-                    value={paperBalance}
-                    onChange={(event) => setPaperBalance(event.target.value)}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </label>
-              </div>
               <p className="kbot-strategy-editor__hint">
-                The paper balance is a starting input for this draft, not a read
-                of any account. Arm is a deliberate action and never runs by
-                itself.
+                Paper arming, pause, and stop controls live in Run. Validate a
+                saved revision first, then open it in Run to pick a venue and
+                paper balance.
               </p>
               <div className="kbot-strategy-editor__actions">
                 <button
                   type="button"
                   className="kbot-strategy-editor__action kbot-strategy-editor__action--arm"
-                  onClick={() => {
-                    void handleArm();
-                  }}
-                  disabled={armDisabled}
+                  data-testid="editor-open-in-run"
+                  onClick={handleOpenInRun}
+                  disabled={!canOpenInRun}
                 >
-                  Arm
+                  Open in Run →
                 </button>
               </div>
-              {armError !== null ? (
-                <p
-                  className="kbot-strategy-editor__error"
-                  role="alert"
-                  data-testid="editor-arm-error"
-                >
-                  {armError}
-                </p>
-              ) : null}
-              {paperClient ? (
-                <EditorInlineStopControl
-                  paperClient={paperClient}
-                  refreshSignal={armCounter}
-                />
-              ) : null}
             </div>
           </section>
         </aside>

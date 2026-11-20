@@ -173,7 +173,7 @@ function validateButton(): HTMLButtonElement {
 }
 
 function armButton(): HTMLButtonElement {
-  return screen.getByRole("button", { name: /^arm$/i }) as HTMLButtonElement;
+  return screen.getByTestId("editor-open-in-run") as HTMLButtonElement;
 }
 
 function statusText(): string {

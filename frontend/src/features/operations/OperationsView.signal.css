@@ -652,6 +652,31 @@
 
 /* ============ narrow / mobile composition (390px) ============ */
 
+.kbot-ops .kbot-ops__deploy-handoff {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted, #abc4d8);
+}
+
+.kbot-ops .kbot-ops__deploy-link {
+  display: inline;
+  padding: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--seafoam, #a8d8d1);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.kbot-ops .kbot-ops__deploy-link:hover {
+  color: var(--text, #e9f0f5);
+}
+
 @media (max-width: 640px) {
   .kbot-ops {
     gap: 12px;

@@ -104,16 +104,15 @@ describe("Editor keyboard Save", () => {
     expect(client.edit).not.toHaveBeenCalled();
   });
 
-  it.each(["Label", "Venue", "Paper balance"])("saves from the editor's %s input after an edit", async (label) => {
+  it("saves from the editor's Label input after an edit", async () => {
     const client = makeClient();
     render(<Editor client={client} />);
     seedJson();
-    const input = screen.getByLabelText(label);
-    const value = label === "Label" ? "Renamed" : label === "Venue" ? "coinbase" : "2500";
-    fireEvent.change(input, { target: { value } });
+    const input = screen.getByLabelText("Label");
+    fireEvent.change(input, { target: { value: "Renamed" } });
     expect(shortcut(input)).toBe(false);
     await screen.findByTestId("editor-save-outcome");
-    expect(client.create).toHaveBeenCalledExactlyOnceWith(label === "Label" ? { ...pack, label: value } : pack);
+    expect(client.create).toHaveBeenCalledExactlyOnceWith({ ...pack, label: "Renamed" });
     expect(client.arm).not.toHaveBeenCalled();
   });
 

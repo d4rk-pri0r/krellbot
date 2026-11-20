@@ -1,20 +1,17 @@
 /**
  * Installed pack library — shell integration.
  *
- * The WorkstationShell Strategies tab mounts <PackLibrary client={packs}/>.
- * These tests pin the real-consumer wiring:
+ * PackLibrary lives exclusively on the Packs destination (no duplicate
+ * Packs toggle on Strategies). These tests pin the real-consumer wiring:
  *
- *  - the panel appears on the Strategies tab behind the Packs toggle and
- *    reads through the exact client the shell was given (or the one it
- *    builds via createPacksHttpClient);
- *  - the pack library never fetches while it is closed, and never mounts
- *    on any other tab;
- *  - the strategies Editor mount is unchanged by the toggle;
+ *  - Strategies has no strategies-packs-toggle and never mounts PackLibrary;
+ *  - PackLibrary mounts on the Packs tab and reads through the exact client
+ *    the shell was given (or createPacksHttpClient by default);
+ *  - PackLibrary never mounts on Run, Research, Strategy studio, or Operations;
  *  - a refused list (403) surfaces truthfully inside the shell.
  */
 
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -127,10 +124,6 @@ function makePackClient(): PackLibraryClient & {
   };
 }
 
-function goToStrategies(): void {
-  fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
-}
-
 afterEach(() => {
   cleanup();
   document.head.innerHTML = "";
@@ -138,7 +131,7 @@ afterEach(() => {
 });
 
 describe("WorkstationShell — installed pack library mount", () => {
-  it("renders the pack library panel on Strategies after the Packs toggle", async () => {
+  it("mounts the pack library on Packs (and omits the duplicate Packs toggle from Strategies)", async () => {
     const packs = makePackClient();
     render(
       <WorkstationShell
@@ -149,13 +142,12 @@ describe("WorkstationShell — installed pack library mount", () => {
       />,
     );
 
-    goToStrategies();
-    expect(screen.getByTestId("strategies-packs-toggle")).toBeDefined();
-    // Closed by default: no panel, no fetch.
+    fireEvent.click(screen.getByRole("button", { name: "Strategies" }));
+    expect(screen.queryByTestId("strategies-packs-toggle")).toBeNull();
     expect(screen.queryByTestId("pack-library-panel")).toBeNull();
     expect(packs.listInstalled).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("strategies-packs-toggle"));
+    clickShellNav("Packs");
     const panel = await screen.findByTestId("pack-library-panel");
     expect(panel).toBeDefined();
     await waitFor(() => {
@@ -163,14 +155,9 @@ describe("WorkstationShell — installed pack library mount", () => {
     });
     expect(screen.getByTestId("pack-library-row-alpha")).toBeDefined();
     expect(screen.getByTestId("pack-library-row-bravo")).toBeDefined();
-
-    // The toggle closes the panel without touching other mounts.
-    fireEvent.click(screen.getByTestId("strategies-packs-toggle"));
-    expect(screen.queryByTestId("pack-library-panel")).toBeNull();
-    expect(packs.listInstalled).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the strategies Editor mounted and unchanged while the pack library toggles", async () => {
+  it("mounts the pack library on no tab other than Packs", () => {
     render(
       <WorkstationShell
         paperClient={makePaperClient()}
@@ -180,50 +167,47 @@ describe("WorkstationShell — installed pack library mount", () => {
       />,
     );
 
-    goToStrategies();
-    const editor = screen.getByRole("region", { name: "Strategy editor" });
-    expect(editor).toBeDefined();
-    fireEvent.click(screen.getByTestId("strategies-packs-toggle"));
-    await screen.findByTestId("pack-library-panel");
-    expect(screen.getByRole("region", { name: "Strategy editor" })).toBe(editor);
-
-    // Navigating away unmounts both, as before.
-    clickShellNav("Run");
-    expect(screen.queryByRole("region", { name: "Strategy editor" })).toBeNull();
-    expect(screen.queryByTestId("pack-library-panel")).toBeNull();
-  });
-
-  it("mounts the pack library on no tab other than Strategies", async () => {
-    render(
-      <WorkstationShell
-        paperClient={makePaperClient()}
-        researchClient={makeResearchClient()}
-        strategyClient={makeStrategyClient()}
-        packClient={makePackClient()}
-      />,
-    );
-
-    for (const label of ["Run", "Research", "Strategy studio", "Operations"]) {
+    for (const label of ["Run", "Strategies", "Research", "Strategy studio", "Operations"]) {
       clickShellNav(label);
       expect(screen.queryByTestId("strategies-packs-toggle")).toBeNull();
       expect(screen.queryByTestId("pack-library-panel")).toBeNull();
     }
   });
 
-  it("falls back to createPacksHttpClient when no packClient prop is given", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => [
-        {
-          bucket: "installed",
-          pack_id: "alpha",
-          version: "1.0.0",
-          permissions: [],
-          rollback_ref: null,
-        },
-      ],
-    } as Response);
+  it("falls back to createPacksHttpClient on Packs when no packClient prop is given", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/packs") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              bucket: "installed",
+              pack_id: "alpha",
+              version: "1.0.0",
+              permissions: [],
+              rollback_ref: null,
+            },
+          ],
+        } as Response;
+      }
+      if (url === "/api/v1/packs/catalogue") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ schema_version: "1", catalogue_version: "1", updated: null, packs: [] }),
+        } as Response;
+      }
+      if (url === "/api/v1/packs/community") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ schema_version: "1", packs: [] }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(
@@ -234,9 +218,7 @@ describe("WorkstationShell — installed pack library mount", () => {
       />,
     );
 
-    goToStrategies();
-    expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("strategies-packs-toggle"));
+    clickShellNav("Packs");
     await screen.findByTestId("pack-library-row-alpha");
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/packs",
@@ -244,7 +226,7 @@ describe("WorkstationShell — installed pack library mount", () => {
     );
   });
 
-  it("surfaces a session refusal (403) truthfully inside the shell", async () => {
+  it("surfaces a session refusal (403) truthfully inside Packs", async () => {
     const packs = makePackClient();
     packs.listInstalled = vi.fn(async () => {
       throw new PackLibraryHttpError(403, "pack library failed: 403");
@@ -258,10 +240,7 @@ describe("WorkstationShell — installed pack library mount", () => {
       />,
     );
 
-    goToStrategies();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("strategies-packs-toggle"));
-    });
+    clickShellNav("Packs");
     const error = await screen.findByTestId("pack-library-error");
     expect(error.textContent ?? "").toMatch(/403/);
     expect(screen.queryByTestId("pack-library-empty")).toBeNull();

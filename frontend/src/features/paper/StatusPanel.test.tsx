@@ -788,8 +788,9 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
     expect(screen.getByRole("button", { name: /resume new buys/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /^stop paper run$/i })).toBeDefined();
 
-    // …and the honest isolated synthetic rehearsal surface with real status
-    // stays accessible alongside it.
+    // …and the honest isolated synthetic rehearsal surface stays collapsed
+    // behind Advanced until the operator explicitly expands it.
+    fireEvent.click(screen.getByTestId("paper-rehearsal-disclosure-toggle"));
     const panel = await screen.findByTestId("rehearsal-panel");
     await waitFor(() => {
       expect(panel.getAttribute("data-rehearsal-status")).toBe("idle");
@@ -930,6 +931,7 @@ describe("StatusPanel rehearsal surface access while a paper pack state is armed
       createRehearsalClient: () => rehearsal,
     });
     render(<StatusPanel client={client} />);
+    fireEvent.click(screen.getByTestId("paper-rehearsal-disclosure-toggle"));
     const panel = await screen.findByTestId("rehearsal-panel");
 
     fireEvent.click(

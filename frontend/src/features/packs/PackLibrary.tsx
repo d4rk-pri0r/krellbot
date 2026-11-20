@@ -5,16 +5,15 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type JSX,
 } from "react";
 import type {
-  ActivationRedeemResult,
   PackLibraryClient,
   PackRow,
   RefundResult,
 } from "./client";
 import { PackLibraryHttpError } from "./client";
+import { PackBillingForms } from "./PackBillingForms";
 import "./PackLibrary.signal.css";
 
 export type {
@@ -27,15 +26,16 @@ export type {
 } from "./client";
 
 export type PackLibraryProps = {
-  /** Library client; refund form appears when ``requestRefund`` is present. */
+  /** Library client; refund form appears when billing forms are shown and ``requestRefund`` is present. */
   client: PackLibraryClient & {
     requestRefund?(sku: string): Promise<RefundResult>;
   };
+  /**
+   * Show inline activation redeem and refund forms inside PackLibrary.
+   * Defaults to ``false`` because billing forms live under Settings → Trust & billing.
+   */
+  showBillingForms?: boolean;
 };
-
-function isRedeemSuccess(result: ActivationRedeemResult): boolean {
-  return result.status === "paid" || result.status === "grace";
-}
 
 const BUCKET_LABELS: Record<PackRow["bucket"], string> = {
   deployed: "Deployed",
@@ -76,7 +76,10 @@ function rowMatchesQuery(row: PackRow, query: string): boolean {
   return haystacks.some((value) => value.toLowerCase().includes(query));
 }
 
-export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
+export function PackLibrary({
+  client,
+  showBillingForms = false,
+}: PackLibraryProps): JSX.Element {
   const [rows, setRows] = useState<PackRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,21 +88,8 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
   const copySeq = useRef(0);
   const [query, setQuery] = useState("");
   const [bucketFilter, setBucketFilter] = useState<string>(ALL_BUCKETS);
-  const [activationKey, setActivationKey] = useState("");
-  const [redeemPending, setRedeemPending] = useState(false);
-  const [redeemFeedback, setRedeemFeedback] = useState<string | null>(null);
-  const [redeemError, setRedeemError] = useState<string | null>(null);
-  const [refundSku, setRefundSku] = useState("");
-  const [refundPending, setRefundPending] = useState(false);
-  const [refundFeedback, setRefundFeedback] = useState<string | null>(null);
-  const [refundError, setRefundError] = useState<string | null>(null);
   const requestSeq = useRef(0);
-  const redeemInFlight = useRef(false);
-  const refundInFlight = useRef(false);
   const copyTimer = useRef<number | null>(null);
-  const redeemKeyId = useId();
-  const refundSkuId = useId();
-  const canRequestRefund = typeof client.requestRefund === "function";
 
   useEffect(() => {
     const seq = (requestSeq.current += 1);
@@ -153,117 +143,9 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
       });
   }, [client]);
 
-  const refreshLibraryAfterRedeem = useCallback(async (): Promise<void> => {
-    const seq = (requestSeq.current += 1);
-    setRefreshing(true);
-    setError(null);
-    try {
-      const next = await client.listInstalled();
-      if (seq !== requestSeq.current) return;
-      setRows(next);
-      setError(null);
-    } catch (err: unknown) {
-      if (seq !== requestSeq.current) return;
-      setError(failureMessage(err));
-    } finally {
-      if (seq === requestSeq.current) {
-        setRefreshing(false);
-      }
-    }
-  }, [client]);
-
-  const handleRedeem = useCallback(
-    async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-      event.preventDefault();
-      if (redeemInFlight.current) {
-        return;
-      }
-      const trimmed = activationKey.trim();
-      if (trimmed === "") {
-        setRedeemFeedback(null);
-        setRedeemError("Enter an activation key to redeem.");
-        return;
-      }
-      redeemInFlight.current = true;
-      setRedeemPending(true);
-      setRedeemFeedback(null);
-      setRedeemError(null);
-      try {
-        const result = await client.redeemActivation(trimmed);
-        // Never surface the submitted key; only the closed server message.
-        if (isRedeemSuccess(result)) {
-          setActivationKey("");
-          setRedeemFeedback(result.message);
-          await refreshLibraryAfterRedeem();
-        } else {
-          setRedeemError(result.message);
-        }
-      } catch (err: unknown) {
-        if (err instanceof PackLibraryHttpError) {
-          setRedeemError(`Activation redeem failed (HTTP ${err.status})`);
-        } else {
-          setRedeemError("Activation redeem failed");
-        }
-      } finally {
-        redeemInFlight.current = false;
-        setRedeemPending(false);
-      }
-    },
-    [activationKey, client, refreshLibraryAfterRedeem],
-  );
-
-  const handleRefund = useCallback(
-    async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-      event.preventDefault();
-      if (!canRequestRefund || refundInFlight.current) {
-        return;
-      }
-      const trimmed = refundSku.trim();
-      if (trimmed === "") {
-        setRefundFeedback(null);
-        setRefundError("Enter a catalogue SKU to request a refund.");
-        return;
-      }
-      refundInFlight.current = true;
-      setRefundPending(true);
-      setRefundFeedback(null);
-      setRefundError(null);
-      try {
-        const result = await client.requestRefund!(trimmed);
-        if (result.status === "refunded") {
-          setRefundSku("");
-          setRefundFeedback(
-            "Entitlement revoked · refund recorded. Trading and export stay available.",
-          );
-          await refreshLibraryAfterRedeem();
-        } else if (result.status === "failed") {
-          setRefundError(
-            "Refund refused. Entitlement unchanged; trading and export stay available.",
-          );
-        } else if (result.status === "refused") {
-          setRefundError(
-            result.message === "sku not entitled"
-              ? "That SKU is not entitled on this machine."
-              : "Refund refused.",
-          );
-        } else {
-          setRefundError(
-            "Refund unreachable. Entitlement unchanged; trading and export stay available.",
-          );
-        }
-      } catch (err: unknown) {
-        if (err instanceof PackLibraryHttpError) {
-          setRefundError(`Refund request failed (HTTP ${err.status})`);
-        } else {
-          setRefundError("Refund request failed");
-        }
-      } finally {
-        refundInFlight.current = false;
-        setRefundPending(false);
-      }
-    },
-    [canRequestRefund, client, refundSku, refreshLibraryAfterRedeem],
-  );
+  const refreshLibraryAfterBilling = useCallback((): void => {
+    handleRefresh();
+  }, [handleRefresh]);
 
   const handleCopy = useCallback((pack_id: string): void => {
     const seq = (copySeq.current += 1);
@@ -377,127 +259,11 @@ export function PackLibrary({ client }: PackLibraryProps): JSX.Element {
         </p>
       </header>
 
-      <form
-        className="kbot-pack-library__redeem"
-        data-testid="pack-library-redeem"
-        onSubmit={(event) => {
-          void handleRedeem(event);
-        }}
-      >
-        <div className="kbot-pack-library__redeem-copy">
-          <h3 className="kbot-pack-library__redeem-title">Redeem activation key</h3>
-          <p className="kbot-pack-library__redeem-helper">
-            Redeem a signed activation key to refresh entitlements and the pack
-            library on this machine. The key is never stored or echoed.
-          </p>
-        </div>
-        <label className="kbot-pack-library__redeem-label" htmlFor={redeemKeyId}>
-          <span className="kbot-pack-library__redeem-caption">Activation key</span>
-          <input
-            id={redeemKeyId}
-            type="password"
-            className="kbot-pack-library__redeem-input"
-            data-testid="pack-library-redeem-input"
-            autoComplete="off"
-            spellCheck={false}
-            value={activationKey}
-            disabled={redeemPending}
-            onChange={(event) => {
-              setActivationKey(event.target.value);
-            }}
-          />
-        </label>
-        <button
-          type="submit"
-          className="kbot-pack-library__redeem-submit"
-          data-testid="pack-library-redeem-submit"
-          disabled={redeemPending}
-          aria-disabled={redeemPending}
-          aria-busy={redeemPending}
-        >
-          {redeemPending ? "Redeeming…" : "Redeem"}
-        </button>
-        {redeemFeedback !== null ? (
-          <p
-            className="kbot-pack-library__redeem-feedback"
-            role="status"
-            data-testid="pack-library-redeem-feedback"
-          >
-            {redeemFeedback}
-          </p>
-        ) : null}
-        {redeemError !== null ? (
-          <p
-            className="kbot-pack-library__redeem-error"
-            role="alert"
-            data-testid="pack-library-redeem-error"
-          >
-            {redeemError}
-          </p>
-        ) : null}
-      </form>
-
-      {canRequestRefund ? (
-        <form
-          className="kbot-pack-library__refund"
-          data-testid="pack-library-refund"
-          onSubmit={(event) => {
-            void handleRefund(event);
-          }}
-        >
-          <div className="kbot-pack-library__refund-copy">
-            <h3 className="kbot-pack-library__refund-title">Request pack refund</h3>
-            <p className="kbot-pack-library__refund-helper">
-              Request a refund for a paid catalogue SKU. On success the local
-              entitlement is revoked and journaled. Billing failure cannot block
-              exits or export. See docs/refunds.md.
-            </p>
-          </div>
-          <label className="kbot-pack-library__refund-label" htmlFor={refundSkuId}>
-            <span className="kbot-pack-library__refund-caption">Catalogue SKU</span>
-            <input
-              id={refundSkuId}
-              type="text"
-              className="kbot-pack-library__refund-input"
-              data-testid="pack-library-refund-input"
-              autoComplete="off"
-              spellCheck={false}
-              value={refundSku}
-              disabled={refundPending}
-              onChange={(event) => {
-                setRefundSku(event.target.value);
-              }}
-            />
-          </label>
-          <button
-            type="submit"
-            className="kbot-pack-library__refund-submit"
-            data-testid="pack-library-refund-submit"
-            disabled={refundPending}
-            aria-disabled={refundPending}
-            aria-busy={refundPending}
-          >
-            {refundPending ? "Requesting…" : "Request refund"}
-          </button>
-          {refundFeedback !== null ? (
-            <p
-              className="kbot-pack-library__refund-feedback"
-              role="status"
-              data-testid="pack-library-refund-feedback"
-            >
-              {refundFeedback}
-            </p>
-          ) : null}
-          {refundError !== null ? (
-            <p
-              className="kbot-pack-library__refund-error"
-              role="alert"
-              data-testid="pack-library-refund-error"
-            >
-              {refundError}
-            </p>
-          ) : null}
-        </form>
+      {showBillingForms ? (
+        <PackBillingForms
+          client={client}
+          onUpdated={refreshLibraryAfterBilling}
+        />
       ) : null}
 
       {rows !== null && rows.length > 0 ? (
