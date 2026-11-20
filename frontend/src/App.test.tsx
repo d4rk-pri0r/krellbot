@@ -264,11 +264,10 @@ describe("App navigation", () => {
 });
 
 describe("App inspector", () => {
-  it("renders an inspector region whose empty state reads 'Nothing selected'", () => {
+  it("omits the idle inspector aside on Run until a deployment, position, or alert is selected", () => {
     render(<App />);
     clickShellNav("Run");
-    const inspector = screen.getByTestId("inspector-root");
-    expect(inspector.textContent).toMatch(/Nothing selected/);
+    expect(screen.queryByTestId("inspector-root")).toBeNull();
   });
 });
 
@@ -327,12 +326,12 @@ describe("App command palette", () => {
 });
 
 describe("App view routing", () => {
-  it("starts on Home and opens Workstation with its inspector", () => {
+  it("starts on Home and opens Workstation cleanly without an idle inspector", () => {
     render(<App />);
     expect(screen.getByTestId("app-home")).toBeDefined();
     clickShellNav("Run");
     expect(screen.getByRole("heading", { name: "Run" })).toBeDefined();
-    expect(screen.getByTestId("inspector-root")).toBeDefined();
+    expect(screen.queryByTestId("inspector-root")).toBeNull();
   });
 
   it("does not render the strategy editor before Strategies is selected", () => {
