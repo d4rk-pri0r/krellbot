@@ -2,9 +2,10 @@
 
 This module is the metadata layer the paper venue consults to load trading
 rules for one (venue, pair). It reaches public, unauthenticated endpoints
-only — Kraken `AssetPairs`, the Coinbase Advanced public product, and
-Binance spot `exchangeInfo`. It never POSTs, never hits a private/order
-endpoint, and never imports a venue-specific auth path. A `None`
+only — Kraken `AssetPairs`, the Coinbase Advanced public product,
+Binance spot `exchangeInfo`, and Gate spot currency pairs. It never
+POSTs, never hits a private/order endpoint, and never imports a
+venue-specific auth path. A `None`
 transport refuses to operate instead of silently falling through to
 `urllib`.
 
@@ -24,9 +25,10 @@ labeled cache, not production truth.
 
 Production paper ticks call `ensure_instrument_rules` before evaluating
 entries so armed pairs (including the wave Kraken BTC/USD spelling
-``XXBTZUSD``, the wave Coinbase BTC/USD product ``BTC-USD``, and the
-wave Binance BTC/USDT symbol ``BTCUSDT``) are fetched from public
-AssetPairs / product / exchangeInfo metadata and written into that
+``XXBTZUSD``, the wave Coinbase BTC/USD product ``BTC-USD``, the wave
+Binance BTC/USDT symbol ``BTCUSDT``, and the wave Gate pack pair
+``BTC-USDT``) are fetched from public AssetPairs / product /
+exchangeInfo / currency-pair metadata and written into that
 snapshot. Without that write, a non-SUI paper arm journals
 ``metadata_refusal`` for missing rules forever.
 
@@ -64,6 +66,9 @@ PAPER_WAVE_COINBASE_BTC_USD = "BTC-USD"
 # Spot exchangeInfo uses this exact concatenated ``symbol`` spelling.
 PAPER_WAVE_BINANCE_BTC_USDT = "BTCUSDT"
 
+# Wave Gate BTC/USDT pack pair. Gate's currency pair is ``BTC_USDT``.
+PAPER_WAVE_GATE_BTC_USDT = "BTC-USDT"
+
 SCHEMA_VERSION = "1"
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h
 
@@ -88,6 +93,7 @@ REFUSAL_CODES = frozenset(
 KRAKEN_ASSET_PAIRS_URL = "https://api.kraken.com/0/public/AssetPairs"
 COINBASE_PRODUCT_URL = "https://api.coinbase.com/api/v3/brokerage/market/products"
 BINANCE_EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
+GATE_CURRENCY_PAIR_URL = "https://api.gateio.ws/api/v4/spot/currency_pairs"
 
 SNAPSHOT_FILENAME = "instrument-rules.json"
 
@@ -167,7 +173,7 @@ class InstrumentRulesV1:
             raise ValueError("instrument: canonical_pair must be a non-empty string")
         if not isinstance(self.venue_symbol, str) or not self.venue_symbol:
             raise ValueError("instrument: venue_symbol must be a non-empty string")
-        if self.venue not in ("kraken", "coinbase", "binance"):
+        if self.venue not in ("kraken", "coinbase", "binance", "gate"):
             raise ValueError(f"instrument: unsupported venue {self.venue!r}")
 
 
@@ -225,6 +231,8 @@ class InstrumentMetadataClient:
             return self._fetch_coinbase(canonical_pair)
         if venue == "binance":
             return self._fetch_binance(canonical_pair)
+        if venue == "gate":
+            return self._fetch_gate(canonical_pair)
         raise InstrumentMetadataError(
             METADATA_UNAVAILABLE,
             venue,
@@ -509,6 +517,93 @@ class InstrumentMetadataClient:
             price_increment=price_increment,
             source={
                 "endpoint": BINANCE_EXCHANGE_INFO_URL,
+                "retrieved_at": retrieved_at,
+                "source_version": payload_sha256[:16],
+                "payload_sha256": payload_sha256,
+            },
+            usable_until=usable_until,
+        )
+
+    # ---- internal: Gate ------------------------------------------------
+
+    def _fetch_gate(self, canonical_pair: str) -> InstrumentRulesV1:
+        symbol = canonical_pair.replace("-", "_") if "_" not in canonical_pair else canonical_pair
+        url = f"{GATE_CURRENCY_PAIR_URL}/{urllib.parse.quote(symbol)}"
+        payload = self._transport.get(url, {}) or {}
+        if not isinstance(payload, dict):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "gate",
+                canonical_pair,
+                "instrument: gate currency pair body is not a JSON object",
+            )
+        if payload.get("label"):
+            raise InstrumentMetadataError(
+                METADATA_UNAVAILABLE,
+                "gate",
+                canonical_pair,
+                "instrument: gate currency pair refused the request",
+            )
+        venue_symbol = str(payload.get("id") or "")
+        if venue_symbol != symbol:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                "gate",
+                canonical_pair,
+                "instrument: gate currency pair returned a different id than requested",
+            )
+        try:
+            min_quantity = _required_decimal_string(payload, "min_base_amount")
+            min_notional = _required_decimal_string(payload, "min_quote_amount")
+            amount_precision = int(payload["amount_precision"])
+            price_precision = int(payload["precision"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "gate",
+                canonical_pair,
+                "instrument: gate currency pair payload missing required fields",
+            ) from exc
+        quantity_increment = _decimals_to_increment(amount_precision)
+        price_increment = _decimals_to_increment(price_precision)
+        if (
+            Decimal(min_quantity) <= 0
+            or Decimal(min_notional) <= 0
+            or Decimal(quantity_increment) <= 0
+            or Decimal(price_increment) <= 0
+        ):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "gate",
+                canonical_pair,
+                "instrument: gate minima and increments must be positive",
+            )
+        base_asset = str(payload.get("base") or "")
+        quote_asset = str(payload.get("quote") or "")
+        if not base_asset or not quote_asset:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "gate",
+                canonical_pair,
+                "instrument: gate currency pair missing base or quote",
+            )
+        retrieved_at = _unix_to_iso(self._clock())
+        usable_until = _unix_to_iso(self._clock() + self._ttl_seconds)
+        payload_bytes = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
+        return InstrumentRulesV1(
+            schema_version=SCHEMA_VERSION,
+            venue="gate",
+            canonical_pair=canonical_pair,
+            venue_symbol=venue_symbol,
+            base_asset=base_asset,
+            quote_asset=quote_asset,
+            min_quantity=min_quantity,
+            min_notional=min_notional,
+            quantity_increment=quantity_increment,
+            price_increment=price_increment,
+            source={
+                "endpoint": GATE_CURRENCY_PAIR_URL,
                 "retrieved_at": retrieved_at,
                 "source_version": payload_sha256[:16],
                 "payload_sha256": payload_sha256,

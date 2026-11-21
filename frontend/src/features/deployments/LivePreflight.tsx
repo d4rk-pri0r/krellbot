@@ -165,7 +165,8 @@ export function LivePreflight(): JSX.Element {
           Qualified live venues are kraken and coinbase (BTC-USD wave), still
           behind live gates and this paper-only release. Binance is paper-only —
           use paper arm for binance / BTCUSDT; do not claim qualified Binance
-          live.
+          live. Gate is paper-only — use paper arm for gate / BTC-USDT; do not
+          claim qualified Gate live.
         </p>
         <label
           className="kbot-feature__live-preflight-root__field"

@@ -28,7 +28,7 @@ Required keys: `schema_version`, `id`, `version`, `label`, `author`, `timeframe`
   nest with `{all: [...]}` or `{any: [...]}` up to depth 3.
 - `risk.max_account_pct` is an integer 1 to 100. `risk.stop` is either
   `{type: pct, pct: number}` or `{type: atr, len: int, mult: number}`.
-- `markets` is 1 to 4 items of `{venue: kraken|coinbase|binance, pair: ...}`.
+- `markets` is 1 to 4 items of `{venue: kraken|coinbase|binance|gate, pair: ...}`.
 
 ### Markets venue allow-list
 
@@ -41,6 +41,7 @@ enum). Do not admit a new id in the schema without updating this section.
 | `kraken`   | Kraken spot       | Venue asset-pair alt/name | `SUIUSD`, `XXBTZUSD` |
 | `coinbase` | Coinbase Advanced | `BASE-QUOTE` product id   | `BTC-USD` |
 | `binance`  | Binance-class spot| Concatenated `BASEQUOTE` (no hyphen); uppercase alphanumerics | `BTCUSDT` |
+| `gate`     | Gate spot         | Pack `BASE-QUOTE`; venue `BASE_QUOTE` | `BTC-USDT` |
 
 `binance` is the first Binance-class spot venue id. Pack pairs for Binance use
 the exchange symbol spelling (e.g. `BTCUSDT`), not `BTC-USDT` or `BTC/USDT`.
@@ -64,8 +65,8 @@ paper+preflight path relies on:
 - `check_key() -> KeyPerms`
 
 Adapters live under `src/krellbot/venues/` (`kraken.py`, `coinbase.py`,
-`binance.py`). Qualified live venues for the distribution product path are
-`kraken` and `coinbase` (see `docs/live.md`); `binance` stays paper-only.
+`binance.py`, `gate.py`). Qualified live venues for the distribution product path are
+`kraken` and `coinbase` (see `docs/live.md`); `binance` and `gate` stay paper-only.
 Qualified live remains owner-gated behind `PAPER_ONLY_RELEASE`; agents keep
 that flag True.
 

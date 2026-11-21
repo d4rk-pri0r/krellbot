@@ -18,6 +18,7 @@ describe("LivePreflight Binance honesty", () => {
     );
     expect(values).toEqual(["kraken", "coinbase"]);
     expect(values).not.toContain("binance");
+    expect(values).not.toContain("gate");
     const note = screen.getByTestId("live-preflight-paper-only-venues");
     expect(note.textContent).toMatch(/paper-only/i);
     expect(note.textContent).toMatch(/do not claim qualified Binance live/i);
