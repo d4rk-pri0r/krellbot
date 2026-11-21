@@ -94,8 +94,10 @@ def canonical_json(body: dict) -> str:
 def sign_bybit(secret: str, timestamp: str, api_key: str, recv_window: str, payload: str) -> str:
     """Lowercase hex HMAC-SHA256 of the Bybit v5 prehash string."""
     prehash = f"{timestamp}{api_key}{recv_window}{payload}"
-    # codeql[py/weak-sensitive-data-hashing] Bybit v5 requires HMAC-SHA256 of this prehash. It is a request signature, not a password hash.
-    return hmac.new(secret.encode("utf-8"), prehash.encode("utf-8"), hashlib.sha256).hexdigest()
+    key = secret.encode("utf-8")
+    msg = prehash.encode("utf-8")
+    # Bybit v5 requires this HMAC-SHA256. It signs the request; it is not a password hash.
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()  # lgtm[py/weak-sensitive-data-hashing]
 
 
 def _quantize_qty(value: Decimal, decimals: int) -> Decimal:
