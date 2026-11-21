@@ -3,7 +3,8 @@
 This module is the metadata layer the paper venue consults to load trading
 rules for one (venue, pair). It reaches public, unauthenticated endpoints
 only — Kraken `AssetPairs`, the Coinbase Advanced public product,
-Binance spot `exchangeInfo`, and Gate spot currency pairs. It never
+Binance spot `exchangeInfo`, Gate spot currency pairs, and Pionex spot
+symbols. It never
 POSTs, never hits a private/order endpoint, and never imports a
 venue-specific auth path. A `None`
 transport refuses to operate instead of silently falling through to
@@ -68,6 +69,7 @@ PAPER_WAVE_BINANCE_BTC_USDT = "BTCUSDT"
 
 # Wave Gate BTC/USDT pack pair. Gate's currency pair is ``BTC_USDT``.
 PAPER_WAVE_GATE_BTC_USDT = "BTC-USDT"
+PAPER_WAVE_PIONEX_BTC_USDT = "BTC-USDT"
 
 SCHEMA_VERSION = "1"
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h
@@ -94,6 +96,7 @@ KRAKEN_ASSET_PAIRS_URL = "https://api.kraken.com/0/public/AssetPairs"
 COINBASE_PRODUCT_URL = "https://api.coinbase.com/api/v3/brokerage/market/products"
 BINANCE_EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
 GATE_CURRENCY_PAIR_URL = "https://api.gateio.ws/api/v4/spot/currency_pairs"
+PIONEX_SYMBOLS_URL = "https://api.pionex.com/api/v1/common/symbols"
 
 SNAPSHOT_FILENAME = "instrument-rules.json"
 
@@ -173,7 +176,7 @@ class InstrumentRulesV1:
             raise ValueError("instrument: canonical_pair must be a non-empty string")
         if not isinstance(self.venue_symbol, str) or not self.venue_symbol:
             raise ValueError("instrument: venue_symbol must be a non-empty string")
-        if self.venue not in ("kraken", "coinbase", "binance", "gate"):
+        if self.venue not in ("kraken", "coinbase", "binance", "gate", "pionex"):
             raise ValueError(f"instrument: unsupported venue {self.venue!r}")
 
 
@@ -233,6 +236,8 @@ class InstrumentMetadataClient:
             return self._fetch_binance(canonical_pair)
         if venue == "gate":
             return self._fetch_gate(canonical_pair)
+        if venue == "pionex":
+            return self._fetch_pionex(canonical_pair)
         raise InstrumentMetadataError(
             METADATA_UNAVAILABLE,
             venue,
@@ -604,6 +609,109 @@ class InstrumentMetadataClient:
             price_increment=price_increment,
             source={
                 "endpoint": GATE_CURRENCY_PAIR_URL,
+                "retrieved_at": retrieved_at,
+                "source_version": payload_sha256[:16],
+                "payload_sha256": payload_sha256,
+            },
+            usable_until=usable_until,
+        )
+
+    # ---- internal: Pionex ---------------------------------------------
+
+    def _fetch_pionex(self, canonical_pair: str) -> InstrumentRulesV1:
+        symbol = canonical_pair.replace("-", "_") if "_" not in canonical_pair else canonical_pair
+        query = urllib.parse.urlencode({"symbols": symbol, "type": "SPOT"})
+        url = f"{PIONEX_SYMBOLS_URL}?{query}"
+        payload = self._transport.get(url, {}) or {}
+        if not isinstance(payload, dict):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "pionex",
+                canonical_pair,
+                "instrument: pionex symbols body is not a JSON object",
+            )
+        if payload.get("result") is False or payload.get("code"):
+            raise InstrumentMetadataError(
+                METADATA_UNAVAILABLE,
+                "pionex",
+                canonical_pair,
+                "instrument: pionex symbols refused the request",
+            )
+        data = payload.get("data")
+        rows = data.get("symbols") if isinstance(data, dict) else None
+        row = None
+        if isinstance(rows, list):
+            for item in rows:
+                if isinstance(item, dict) and str(item.get("symbol") or "") == symbol:
+                    row = item
+                    break
+        if row is None:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                "pionex",
+                canonical_pair,
+                "instrument: pionex symbols returned a different symbol than requested",
+            )
+        if row.get("enable") is False:
+            raise InstrumentMetadataError(
+                METADATA_UNAVAILABLE,
+                "pionex",
+                canonical_pair,
+                "instrument: pionex symbol is not enabled for spot",
+            )
+        try:
+            min_quantity = _required_decimal_string(row, "minTradeSize")
+            min_notional = _required_decimal_string(row, "minAmount")
+            price_precision = int(row["quotePrecision"])
+            exponent = Decimal(min_quantity).normalize().as_tuple().exponent
+            lot_places = -exponent if isinstance(exponent, int) and exponent < 0 else 0
+        except (KeyError, TypeError, ValueError) as exc:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "pionex",
+                canonical_pair,
+                "instrument: pionex symbol payload missing required fields",
+            ) from exc
+        quantity_increment = _decimals_to_increment(lot_places)
+        price_increment = _decimals_to_increment(price_precision)
+        if (
+            Decimal(min_quantity) <= 0
+            or Decimal(min_notional) <= 0
+            or Decimal(quantity_increment) <= 0
+            or Decimal(price_increment) <= 0
+        ):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "pionex",
+                canonical_pair,
+                "instrument: pionex minima and increments must be positive",
+            )
+        base_asset = str(row.get("baseCurrency") or "")
+        quote_asset = str(row.get("quoteCurrency") or "")
+        if not base_asset or not quote_asset:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "pionex",
+                canonical_pair,
+                "instrument: pionex symbol missing base or quote",
+            )
+        retrieved_at = _unix_to_iso(self._clock())
+        usable_until = _unix_to_iso(self._clock() + self._ttl_seconds)
+        payload_bytes = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
+        return InstrumentRulesV1(
+            schema_version=SCHEMA_VERSION,
+            venue="pionex",
+            canonical_pair=canonical_pair,
+            venue_symbol=symbol,
+            base_asset=base_asset,
+            quote_asset=quote_asset,
+            min_quantity=min_quantity,
+            min_notional=min_notional,
+            quantity_increment=quantity_increment,
+            price_increment=price_increment,
+            source={
+                "endpoint": PIONEX_SYMBOLS_URL,
                 "retrieved_at": retrieved_at,
                 "source_version": payload_sha256[:16],
                 "payload_sha256": payload_sha256,

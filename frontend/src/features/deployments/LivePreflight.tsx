@@ -166,7 +166,8 @@ export function LivePreflight(): JSX.Element {
           behind live gates and this paper-only release. Binance is paper-only —
           use paper arm for binance / BTCUSDT; do not claim qualified Binance
           live. Gate is paper-only — use paper arm for gate / BTC-USDT; do not
-          claim qualified Gate live.
+          claim qualified Gate live. Pionex is paper-only — use paper arm for
+          pionex / BTC-USDT; do not claim qualified Pionex live.
         </p>
         <label
           className="kbot-feature__live-preflight-root__field"

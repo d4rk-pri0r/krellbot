@@ -21,6 +21,7 @@ REMOTE_MODULES = {
     "krellbot.venues.coinbase",
     "krellbot.venues.binance",
     "krellbot.venues.gate",
+    "krellbot.venues.pionex",
 }
 PUBLIC_NAMES = [
     "Balance",
@@ -33,6 +34,7 @@ PUBLIC_NAMES = [
     "OpenOrder",
     "OrderRef",
     "PairRules",
+    "PionexVenue",
     "Truth",
     "Venue",
     "WithdrawCapableError",
@@ -136,7 +138,13 @@ def test_offline_import_does_not_load_remote_adapters(tmp_path, source, expected
 
 @pytest.mark.parametrize(
     ("module", "name"),
-    [("kraken", "KrakenVenue"), ("coinbase", "CoinbaseVenue"), ("binance", "BinanceVenue"), ("gate", "GateVenue")],
+    [
+        ("kraken", "KrakenVenue"),
+        ("coinbase", "CoinbaseVenue"),
+        ("binance", "BinanceVenue"),
+        ("gate", "GateVenue"),
+        ("pionex", "PionexVenue"),
+    ],
 )
 @pytest.mark.parametrize("direct_first", [False, True], ids=["reexport-first", "direct-first"])
 def test_explicit_adapter_reexport_is_the_cached_underlying_class(tmp_path, module, name, direct_first):
@@ -171,14 +179,17 @@ def test_import_star_preserves_public_names_and_class_identity(tmp_path):
         from krellbot.venues.coinbase import CoinbaseVenue
         from krellbot.venues.binance import BinanceVenue
         from krellbot.venues.gate import GateVenue
+        from krellbot.venues.pionex import PionexVenue
         assert namespace['KrakenVenue'] is KrakenVenue
         assert namespace['CoinbaseVenue'] is CoinbaseVenue
         assert namespace['BinanceVenue'] is BinanceVenue
         assert namespace['GateVenue'] is GateVenue
+        assert namespace['PionexVenue'] is PionexVenue
         assert vars(venues)['KrakenVenue'] is KrakenVenue
         assert vars(venues)['CoinbaseVenue'] is CoinbaseVenue
         assert vars(venues)['BinanceVenue'] is BinanceVenue
         assert vars(venues)['GateVenue'] is GateVenue
+        assert vars(venues)['PionexVenue'] is PionexVenue
         for name in venues.__all__:
             assert namespace[name] is getattr(venues, name)
         """,
@@ -217,7 +228,10 @@ def test_all_is_preserved_without_resolving_lazy_names(tmp_path):
     assert REMOTE_MODULES.isdisjoint(observed["modules"]), observed["modules"]
 
 
-@pytest.mark.parametrize("resolved_name", [None, "KrakenVenue", "CoinbaseVenue", "BinanceVenue", "GateVenue"])
+@pytest.mark.parametrize(
+    "resolved_name",
+    [None, "KrakenVenue", "CoinbaseVenue", "BinanceVenue", "GateVenue", "PionexVenue"],
+)
 def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, resolved_name):
     observed = run_import(
         tmp_path,
@@ -228,6 +242,7 @@ def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, re
             'krellbot.venues.coinbase',
             'krellbot.venues.binance',
             'krellbot.venues.gate',
+            'krellbot.venues.pionex',
         }}
         assert remote_modules.isdisjoint(sys.modules)
         names = dir(venues)
@@ -239,6 +254,7 @@ def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, re
         assert 'CoinbaseVenue' not in vars(venues)
         assert 'BinanceVenue' not in vars(venues)
         assert 'GateVenue' not in vars(venues)
+        assert 'PionexVenue' not in vars(venues)
         resolved_name = {resolved_name!r}
         if resolved_name is not None:
             resolved = getattr(venues, resolved_name)
@@ -257,13 +273,20 @@ def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, re
         "CoinbaseVenue": {"krellbot.venues.coinbase"},
         "BinanceVenue": {"krellbot.venues.binance"},
         "GateVenue": {"krellbot.venues.gate"},
+        "PionexVenue": {"krellbot.venues.pionex"},
     }
     assert set(observed["modules"]) & REMOTE_MODULES == expected_remote[resolved_name]
 
 
 @pytest.mark.parametrize(
     ("module", "name"),
-    [("kraken", "KrakenVenue"), ("coinbase", "CoinbaseVenue"), ("binance", "BinanceVenue"), ("gate", "GateVenue")],
+    [
+        ("kraken", "KrakenVenue"),
+        ("coinbase", "CoinbaseVenue"),
+        ("binance", "BinanceVenue"),
+        ("gate", "GateVenue"),
+        ("pionex", "PionexVenue"),
+    ],
 )
 def test_adapter_import_errors_propagate_without_caching_a_placeholder(tmp_path, module, name):
     observed = run_import(

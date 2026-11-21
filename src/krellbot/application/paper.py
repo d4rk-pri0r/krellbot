@@ -214,7 +214,7 @@ PAPER_CHART_MAX_POINTS = 256
 # Taker fees match ``krellbot.venues.paper`` Phase-3 costs so fill replay
 # for the P&L series uses the same bps the paper venue applied. Duplicated
 # here so the chart projection never imports the venue risk path.
-_PAPER_TAKER_BPS = {"kraken": 40, "coinbase": 120, "binance": 10, "gate": 20}
+_PAPER_TAKER_BPS = {"kraken": 40, "coinbase": 120, "binance": 10, "gate": 20, "pionex": 5}
 
 
 def _chart_decimal(value: object) -> str | None:

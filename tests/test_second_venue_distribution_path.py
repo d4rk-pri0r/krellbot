@@ -202,16 +202,19 @@ def test_distribution_qualified_live_venues_are_kraken_and_coinbase():
     assert is_qualified_live_venue("kraken")
     assert is_qualified_live_venue("coinbase")
     assert not is_qualified_live_venue("binance")
-    assert PAPER_ONLY_VENUES == frozenset({"binance", "gate"})
+    assert PAPER_ONLY_VENUES == frozenset({"binance", "gate", "pionex"})
     assert is_paper_only_venue("binance")
     assert is_paper_only_venue("gate")
+    assert is_paper_only_venue("pionex")
     assert not is_qualified_live_venue("gate")
+    assert not is_qualified_live_venue("pionex")
     assert not is_paper_only_venue("coinbase")
 
 
 def test_preflight_supported_venues_match_distribution_registry():
     assert SUPPORTED_PREFLIGHT_VENUES == QUALIFIED_LIVE_VENUES
     assert "binance" not in SUPPORTED_PREFLIGHT_VENUES
+    assert "pionex" not in SUPPORTED_PREFLIGHT_VENUES
 
 
 # ---------------------------------------------------------------------------
