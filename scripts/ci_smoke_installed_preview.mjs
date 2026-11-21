@@ -117,6 +117,18 @@ try {
   // Readiness/meta/bootstrap/CSRF/Host/origin are never mocked or bypassed.
   const response = await page.goto(url);
   check('Installed shell serves HTML, not shell_not_built', response.status() === 200);
+  // A fresh install mounts only the first-run wizard. Skip it, then require home.
+  const wizard = page.getByTestId('first-run-wizard');
+  if (await wizard.count()) {
+    const skip = page.getByTestId('first-run-wizard-skip');
+    const primary = page.getByTestId('first-run-wizard-primary');
+    if ((await skip.count()) === 0 && (await primary.count()) > 0) {
+      await primary.click();
+      await expect(skip).toBeVisible();
+    }
+    await skip.click();
+    await expect(wizard).toHaveCount(0);
+  }
   await expect(page.getByTestId('app-home')).toBeVisible();
   await expect(page.getByTestId('app-home-card-strategies')).toBeVisible();
   check('Home clearly labels local preview and disabled live', (await page.getByTestId('app-home-availability').innerText()).includes('Live trading unavailable'));
