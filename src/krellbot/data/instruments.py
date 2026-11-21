@@ -3,8 +3,8 @@
 This module is the metadata layer the paper venue consults to load trading
 rules for one (venue, pair). It reaches public, unauthenticated endpoints
 only — Kraken `AssetPairs`, the Coinbase Advanced public product,
-Binance spot `exchangeInfo`, Gate spot currency pairs, and Pionex spot
-symbols. It never
+Binance spot `exchangeInfo`, Gate spot currency pairs, Pionex spot
+symbols, and OKX public instruments. It never
 POSTs, never hits a private/order endpoint, and never imports a
 venue-specific auth path. A `None`
 transport refuses to operate instead of silently falling through to
@@ -70,6 +70,9 @@ PAPER_WAVE_BINANCE_BTC_USDT = "BTCUSDT"
 # Wave Gate BTC/USDT pack pair. Gate's currency pair is ``BTC_USDT``.
 PAPER_WAVE_GATE_BTC_USDT = "BTC-USDT"
 PAPER_WAVE_PIONEX_BTC_USDT = "BTC-USDT"
+# Wave OKX BTC/USDT instId for the OKX paper-arm path.
+# Public instruments use this exact ``instId`` spelling.
+PAPER_WAVE_OKX_BTC_USDT = "BTC-USDT"
 
 SCHEMA_VERSION = "1"
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h
@@ -97,6 +100,9 @@ COINBASE_PRODUCT_URL = "https://api.coinbase.com/api/v3/brokerage/market/product
 BINANCE_EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
 GATE_CURRENCY_PAIR_URL = "https://api.gateio.ws/api/v4/spot/currency_pairs"
 PIONEX_SYMBOLS_URL = "https://api.pionex.com/api/v1/common/symbols"
+OKX_INSTRUMENTS_URL = "https://www.okx.com/api/v5/public/instruments"
+# OKX public instruments omit a quote minimum. Paper pins 1 quote unit.
+OKX_PAPER_MIN_NOTIONAL = "1"
 
 SNAPSHOT_FILENAME = "instrument-rules.json"
 
@@ -176,7 +182,7 @@ class InstrumentRulesV1:
             raise ValueError("instrument: canonical_pair must be a non-empty string")
         if not isinstance(self.venue_symbol, str) or not self.venue_symbol:
             raise ValueError("instrument: venue_symbol must be a non-empty string")
-        if self.venue not in ("kraken", "coinbase", "binance", "gate", "pionex"):
+        if self.venue not in ("kraken", "coinbase", "binance", "gate", "pionex", "okx"):
             raise ValueError(f"instrument: unsupported venue {self.venue!r}")
 
 
@@ -238,6 +244,8 @@ class InstrumentMetadataClient:
             return self._fetch_gate(canonical_pair)
         if venue == "pionex":
             return self._fetch_pionex(canonical_pair)
+        if venue == "okx":
+            return self._fetch_okx(canonical_pair)
         raise InstrumentMetadataError(
             METADATA_UNAVAILABLE,
             venue,
@@ -719,6 +727,84 @@ class InstrumentMetadataClient:
             usable_until=usable_until,
         )
 
+    # ---- internal: OKX -------------------------------------------------
+
+    def _fetch_okx(self, canonical_pair: str) -> InstrumentRulesV1:
+        query = urllib.parse.urlencode({"instType": "SPOT", "instId": canonical_pair})
+        url = f"{OKX_INSTRUMENTS_URL}?{query}"
+        payload = self._transport.get(url, {}) or {}
+        if not isinstance(payload, dict):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "okx",
+                canonical_pair,
+                "instrument: okx instruments body is not a JSON object",
+            )
+        if str(payload.get("code") or "") not in {"", "0"}:
+            raise InstrumentMetadataError(
+                METADATA_UNAVAILABLE,
+                "okx",
+                canonical_pair,
+                "instrument: okx instruments refused the request",
+            )
+        row = _find_okx_instrument(payload, canonical_pair)
+        if row is None:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                "okx",
+                canonical_pair,
+                "instrument: okx instruments response did not contain the requested instId",
+            )
+        venue_symbol = str(row.get("instId") or "")
+        if venue_symbol != canonical_pair:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                "okx",
+                canonical_pair,
+                "instrument: okx instruments returned a different instId than requested",
+            )
+        try:
+            min_quantity = _required_decimal_string(row, "minSz")
+            quantity_increment = _required_decimal_string(row, "lotSz")
+            price_increment = _required_decimal_string(row, "tickSz")
+        except (KeyError, ValueError) as exc:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "okx",
+                canonical_pair,
+                "instrument: okx instruments payload missing required fields",
+            ) from exc
+        if Decimal(min_quantity) <= 0 or Decimal(quantity_increment) <= 0 or Decimal(price_increment) <= 0:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "okx",
+                canonical_pair,
+                "instrument: okx minima and increments must be positive",
+            )
+        retrieved_at = _unix_to_iso(self._clock())
+        usable_until = _unix_to_iso(self._clock() + self._ttl_seconds)
+        payload_bytes = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
+        return InstrumentRulesV1(
+            schema_version=SCHEMA_VERSION,
+            venue="okx",
+            canonical_pair=canonical_pair,
+            venue_symbol=venue_symbol,
+            base_asset=str(row.get("baseCcy") or ""),
+            quote_asset=str(row.get("quoteCcy") or ""),
+            min_quantity=min_quantity,
+            min_notional=OKX_PAPER_MIN_NOTIONAL,
+            quantity_increment=quantity_increment,
+            price_increment=price_increment,
+            source={
+                "endpoint": OKX_INSTRUMENTS_URL,
+                "retrieved_at": retrieved_at,
+                "source_version": payload_sha256[:16],
+                "payload_sha256": payload_sha256,
+            },
+            usable_until=usable_until,
+        )
+
 
 # ---- snapshot ----------------------------------------------------------
 
@@ -953,6 +1039,18 @@ def _decimals_to_increment(decimals: int) -> str:
     if decimals <= 0:
         return "1"
     return "0." + "0" * (decimals - 1) + "1"
+
+
+def _find_okx_instrument(payload: dict, canonical_pair: str) -> dict | None:
+    """Return the instruments row whose ``instId`` is ``canonical_pair``."""
+    data = payload.get("data")
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict) and str(item.get("instId") or "") == canonical_pair:
+                return item
+    if str(payload.get("instId") or "") == canonical_pair:
+        return payload
+    return None
 
 
 def _find_binance_symbol(payload: dict, canonical_pair: str) -> dict | None:
