@@ -129,17 +129,17 @@ try {
     await skip.click();
     await expect(wizard).toHaveCount(0);
   }
-  const home = page.getByTestId('app-home');
-  await expect(home).toBeVisible();
+  const workspace = page.getByTestId('app-home');
+  await expect(workspace).toBeVisible();
   // Skipping the wizard arms the setup tour. Dismiss it, then require home.
   const tourSkip = page.getByTestId('workspace-setup-tour-skip');
   if (await tourSkip.count()) {
     await tourSkip.click();
     await expect(page.getByTestId('workspace-setup-tour')).toHaveCount(0);
   }
-  await expect(home.getByTestId('app-home-cta-paper')).toBeVisible();
-  await expect(home.getByTestId('app-home-cta-packs')).toBeVisible();
-  check('Home clearly labels paper-only and disabled live', (await home.innerText()).includes('Live trading stays off'));
+  await expect(workspace.getByTestId('app-home-cta-paper')).toBeVisible();
+  await expect(workspace.getByTestId('app-home-cta-packs')).toBeVisible();
+  check('Home clearly labels paper-only and disabled live', (await workspace.innerText()).includes('Live trading stays off'));
   // Labels match frontend/src/shell/Navigation.tsx PRIMARY_VIEWS and MORE_VIEWS.
   const homeTab = 'Workspace';
   const navigation = page.getByTestId('kbot-nav');
