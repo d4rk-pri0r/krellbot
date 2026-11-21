@@ -51,6 +51,8 @@ BINANCE_TAKER_BPS = 10
 GATE_TAKER_BPS = 20
 # Pionex's published regular spot taker is 0.05%. Pinned at 5 bps.
 PIONEX_TAKER_BPS = 5
+# Bybit publishes a 0.10% non-VIP spot taker. Pinned like Binance.
+BYBIT_TAKER_BPS = 10
 SLIPPAGE_BPS = 5
 
 
@@ -67,17 +69,19 @@ def _fee_bps_for(venue: str) -> int:
         return GATE_TAKER_BPS
     if venue == "pionex":
         return PIONEX_TAKER_BPS
+    if venue == "bybit":
+        return BYBIT_TAKER_BPS
     return COINBASE_TAKER_BPS
 
 
 def _seed_quote_asset(venue: str) -> str:
     """Quote asset used when seeding paper starting cash for a venue.
 
-    Binance wave paper markets are USDT-quoted (``BTCUSDT``). Gate and
-    Pionex wave paper markets are USDT-quoted (``BTC-USDT``). Kraken and
-    Coinbase wave paper markets seed ``USD``.
+    Binance and Bybit wave paper markets are USDT-quoted (``BTCUSDT``).
+    Gate and Pionex wave paper markets are USDT-quoted (``BTC-USDT``).
+    Kraken and Coinbase wave paper markets seed ``USD``.
     """
-    if venue in {"binance", "gate", "pionex"}:
+    if venue in {"binance", "gate", "pionex", "bybit"}:
         return "USDT"
     return "USD"
 

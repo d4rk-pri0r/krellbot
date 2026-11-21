@@ -236,7 +236,7 @@
       "additionalProperties": false,
       "required": ["venue", "pair"],
       "properties": {
-        "venue": { "enum": ["kraken", "coinbase", "binance", "gate", "pionex"] },
+        "venue": { "enum": ["kraken", "coinbase", "binance", "gate", "pionex", "bybit"] },
         "pair": {
           "type": "string",
           "pattern": "^[A-Z0-9]{2,16}(-[A-Z0-9]{2,16})?$"

@@ -33,8 +33,8 @@ gates and paper-only rail:
 | `kraken`   | e.g. `XXBTZUSD`    | First live venue |
 | `coinbase` | `BTC-USD`          | Second distribution venue (Coinbase Advanced) |
 
-`binance` is paper-only breadth (M14). `gate` and `pionex` are paper-only
-breadth on the same rail. Do not claim qualified Binance, Gate, or Pionex live.
+`binance` is paper-only breadth (M14). `gate`, `pionex`, and `bybit` are paper-only
+breadth on the same rail. Do not claim qualified Binance, Gate, Pionex, or Bybit live.
 Live preflight and Ops live authorization offer only the two qualified ids.
 Store a trade-only key with `krellbot keys add <venue> --file <key-file>`
 (or the workstation Keys panel) for the venue you grant.
