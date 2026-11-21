@@ -20,7 +20,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PACK_FORMAT = _REPO_ROOT / "docs" / "pack-format.md"
 
 # Documented allow-list for pack markets (must match docs/pack-format.md).
-DOCUMENTED_PACK_MARKET_VENUES = frozenset({"kraken", "coinbase", "binance", "gate", "pionex"})
+DOCUMENTED_PACK_MARKET_VENUES = frozenset({"kraken", "coinbase", "binance", "gate", "pionex", "kucoin"})
 
 _MINIMAL_PACK = {
     "schema_version": 1,

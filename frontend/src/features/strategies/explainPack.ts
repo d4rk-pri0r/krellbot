@@ -81,7 +81,7 @@ const KNOWN_FNS = [
   ...KNOWN_OPTIONAL_SOURCE_FNS,
   "roofing_filter",
 ] as const;
-const KNOWN_VENUES = ["kraken", "coinbase", "binance", "gate", "pionex"] as const;
+const KNOWN_VENUES = ["kraken", "coinbase", "binance", "gate", "pionex", "kucoin"] as const;
 const KNOWN_TIMEFRAMES = ["1h", "4h", "1d"] as const;
 
 const OPERATOR_TEXT: Record<(typeof KNOWN_OPERATORS)[number], string> = {
