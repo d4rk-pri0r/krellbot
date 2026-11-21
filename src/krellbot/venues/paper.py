@@ -47,6 +47,8 @@ STATE_FILENAME_TEMPLATE = "paper-{venue}.json"
 KRAKEN_TAKER_BPS = 40
 COINBASE_TAKER_BPS = 120
 BINANCE_TAKER_BPS = 10
+# Gate's published base spot taker is 0.20%. Pinned at 20 bps.
+GATE_TAKER_BPS = 20
 SLIPPAGE_BPS = 5
 
 
@@ -59,16 +61,19 @@ def _fee_bps_for(venue: str) -> int:
         return KRAKEN_TAKER_BPS
     if venue == "binance":
         return BINANCE_TAKER_BPS
+    if venue == "gate":
+        return GATE_TAKER_BPS
     return COINBASE_TAKER_BPS
 
 
 def _seed_quote_asset(venue: str) -> str:
     """Quote asset used when seeding paper starting cash for a venue.
 
-    Binance wave paper markets are USDT-quoted (``BTCUSDT``). Kraken and
-    Coinbase wave paper markets seed ``USD``.
+    Binance wave paper markets are USDT-quoted (``BTCUSDT``). Gate wave
+    paper markets are USDT-quoted (``BTC-USDT``). Kraken and Coinbase
+    wave paper markets seed ``USD``.
     """
-    if venue == "binance":
+    if venue in {"binance", "gate"}:
         return "USDT"
     return "USD"
 

@@ -20,12 +20,14 @@ REMOTE_MODULES = {
     "krellbot.venues.kraken",
     "krellbot.venues.coinbase",
     "krellbot.venues.binance",
+    "krellbot.venues.gate",
 }
 PUBLIC_NAMES = [
     "Balance",
     "BinanceVenue",
     "CoinbaseVenue",
     "Fill",
+    "GateVenue",
     "KeyPerms",
     "KrakenVenue",
     "OpenOrder",
@@ -134,7 +136,7 @@ def test_offline_import_does_not_load_remote_adapters(tmp_path, source, expected
 
 @pytest.mark.parametrize(
     ("module", "name"),
-    [("kraken", "KrakenVenue"), ("coinbase", "CoinbaseVenue"), ("binance", "BinanceVenue")],
+    [("kraken", "KrakenVenue"), ("coinbase", "CoinbaseVenue"), ("binance", "BinanceVenue"), ("gate", "GateVenue")],
 )
 @pytest.mark.parametrize("direct_first", [False, True], ids=["reexport-first", "direct-first"])
 def test_explicit_adapter_reexport_is_the_cached_underlying_class(tmp_path, module, name, direct_first):
@@ -168,12 +170,15 @@ def test_import_star_preserves_public_names_and_class_identity(tmp_path):
         from krellbot.venues.kraken import KrakenVenue
         from krellbot.venues.coinbase import CoinbaseVenue
         from krellbot.venues.binance import BinanceVenue
+        from krellbot.venues.gate import GateVenue
         assert namespace['KrakenVenue'] is KrakenVenue
         assert namespace['CoinbaseVenue'] is CoinbaseVenue
         assert namespace['BinanceVenue'] is BinanceVenue
+        assert namespace['GateVenue'] is GateVenue
         assert vars(venues)['KrakenVenue'] is KrakenVenue
         assert vars(venues)['CoinbaseVenue'] is CoinbaseVenue
         assert vars(venues)['BinanceVenue'] is BinanceVenue
+        assert vars(venues)['GateVenue'] is GateVenue
         for name in venues.__all__:
             assert namespace[name] is getattr(venues, name)
         """,
@@ -212,7 +217,7 @@ def test_all_is_preserved_without_resolving_lazy_names(tmp_path):
     assert REMOTE_MODULES.isdisjoint(observed["modules"]), observed["modules"]
 
 
-@pytest.mark.parametrize("resolved_name", [None, "KrakenVenue", "CoinbaseVenue", "BinanceVenue"])
+@pytest.mark.parametrize("resolved_name", [None, "KrakenVenue", "CoinbaseVenue", "BinanceVenue", "GateVenue"])
 def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, resolved_name):
     observed = run_import(
         tmp_path,
@@ -222,6 +227,7 @@ def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, re
             'krellbot.venues.kraken',
             'krellbot.venues.coinbase',
             'krellbot.venues.binance',
+            'krellbot.venues.gate',
         }}
         assert remote_modules.isdisjoint(sys.modules)
         names = dir(venues)
@@ -232,6 +238,7 @@ def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, re
         assert 'KrakenVenue' not in vars(venues)
         assert 'CoinbaseVenue' not in vars(venues)
         assert 'BinanceVenue' not in vars(venues)
+        assert 'GateVenue' not in vars(venues)
         resolved_name = {resolved_name!r}
         if resolved_name is not None:
             resolved = getattr(venues, resolved_name)
@@ -249,13 +256,14 @@ def test_dir_discovers_public_names_without_loading_remote_adapters(tmp_path, re
         "KrakenVenue": {"krellbot.venues.kraken"},
         "CoinbaseVenue": {"krellbot.venues.coinbase"},
         "BinanceVenue": {"krellbot.venues.binance"},
+        "GateVenue": {"krellbot.venues.gate"},
     }
     assert set(observed["modules"]) & REMOTE_MODULES == expected_remote[resolved_name]
 
 
 @pytest.mark.parametrize(
     ("module", "name"),
-    [("kraken", "KrakenVenue"), ("coinbase", "CoinbaseVenue"), ("binance", "BinanceVenue")],
+    [("kraken", "KrakenVenue"), ("coinbase", "CoinbaseVenue"), ("binance", "BinanceVenue"), ("gate", "GateVenue")],
 )
 def test_adapter_import_errors_propagate_without_caching_a_placeholder(tmp_path, module, name):
     observed = run_import(

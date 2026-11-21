@@ -92,7 +92,7 @@ describe("paper venue picker includes binance", () => {
     const values = Array.from(select.querySelectorAll("option")).map(
       (option) => (option as HTMLOptionElement).value,
     );
-    expect(values).toEqual(["kraken", "coinbase", "binance"]);
+    expect(values).toEqual(["kraken", "coinbase", "binance", "gate"]);
     expect(VENUES).toContain("binance");
   });
 
