@@ -25,7 +25,7 @@ WAVE_PAIR = "BTCUSDT"
 
 def _venue(transport: FakeBybitTransport, **kwargs) -> BybitVenue:
     return BybitVenue(
-        api_key="test-key",
+        key_id="test-key",
         api_secret="test-secret",
         transport=transport,
         now_fn=lambda: 1_658_384_314_791,
@@ -36,7 +36,7 @@ def _venue(transport: FakeBybitTransport, **kwargs) -> BybitVenue:
 def test_bybit_venue_refuses_none_transport() -> None:
     """No silent HttpTransport default — tests must inject a fake."""
     with pytest.raises(ValueError, match="transport is required"):
-        BybitVenue(api_key="k", api_secret="s", transport=None)  # type: ignore[arg-type]
+        BybitVenue(key_id="k", api_secret="s", transport=None)  # type: ignore[arg-type]
 
 
 def test_bybit_http_transport_is_not_used_by_adapter_default() -> None:
@@ -178,7 +178,7 @@ def test_bybit_place_entry_blocked_when_paper_only_release(monkeypatch) -> None:
     transport = FakeBybitTransport()
     with pytest.raises(PaperOnlyReleaseError):
         BybitVenue(
-            api_key="k",
+            key_id="k",
             api_secret="s",
             transport=transport,
             now_fn=lambda: 1,
