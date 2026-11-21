@@ -1032,6 +1032,8 @@ def _fee_bps_for_venue(venue: str) -> int:
         return 20
     if venue == "pionex":
         return 5
+    if venue == "bybit":
+        return 10
     return 0
 
 

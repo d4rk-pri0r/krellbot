@@ -3,8 +3,8 @@
 This module is the metadata layer the paper venue consults to load trading
 rules for one (venue, pair). It reaches public, unauthenticated endpoints
 only — Kraken `AssetPairs`, the Coinbase Advanced public product,
-Binance spot `exchangeInfo`, Gate spot currency pairs, and Pionex spot
-symbols. It never
+Binance spot `exchangeInfo`, Gate spot currency pairs, Pionex spot
+symbols, and Bybit spot instruments. It never
 POSTs, never hits a private/order endpoint, and never imports a
 venue-specific auth path. A `None`
 transport refuses to operate instead of silently falling through to
@@ -70,6 +70,8 @@ PAPER_WAVE_BINANCE_BTC_USDT = "BTCUSDT"
 # Wave Gate BTC/USDT pack pair. Gate's currency pair is ``BTC_USDT``.
 PAPER_WAVE_GATE_BTC_USDT = "BTC-USDT"
 PAPER_WAVE_PIONEX_BTC_USDT = "BTC-USDT"
+# Wave Bybit BTC/USDT symbol for the Bybit paper-arm path.
+PAPER_WAVE_BYBIT_BTC_USDT = "BTCUSDT"
 
 SCHEMA_VERSION = "1"
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h
@@ -97,6 +99,7 @@ COINBASE_PRODUCT_URL = "https://api.coinbase.com/api/v3/brokerage/market/product
 BINANCE_EXCHANGE_INFO_URL = "https://api.binance.com/api/v3/exchangeInfo"
 GATE_CURRENCY_PAIR_URL = "https://api.gateio.ws/api/v4/spot/currency_pairs"
 PIONEX_SYMBOLS_URL = "https://api.pionex.com/api/v1/common/symbols"
+BYBIT_INSTRUMENTS_URL = "https://api.bybit.com/v5/market/instruments-info"
 
 SNAPSHOT_FILENAME = "instrument-rules.json"
 
@@ -176,7 +179,7 @@ class InstrumentRulesV1:
             raise ValueError("instrument: canonical_pair must be a non-empty string")
         if not isinstance(self.venue_symbol, str) or not self.venue_symbol:
             raise ValueError("instrument: venue_symbol must be a non-empty string")
-        if self.venue not in ("kraken", "coinbase", "binance", "gate", "pionex"):
+        if self.venue not in ("kraken", "coinbase", "binance", "gate", "pionex", "bybit"):
             raise ValueError(f"instrument: unsupported venue {self.venue!r}")
 
 
@@ -238,6 +241,8 @@ class InstrumentMetadataClient:
             return self._fetch_gate(canonical_pair)
         if venue == "pionex":
             return self._fetch_pionex(canonical_pair)
+        if venue == "bybit":
+            return self._fetch_bybit(canonical_pair)
         raise InstrumentMetadataError(
             METADATA_UNAVAILABLE,
             venue,
@@ -719,6 +724,102 @@ class InstrumentMetadataClient:
             usable_until=usable_until,
         )
 
+    # ---- internal: Bybit -----------------------------------------------
+
+    def _fetch_bybit(self, canonical_pair: str) -> InstrumentRulesV1:
+        query = urllib.parse.urlencode({"category": "spot", "symbol": canonical_pair})
+        url = f"{BYBIT_INSTRUMENTS_URL}?{query}"
+        payload = self._transport.get(url, {}) or {}
+        if not isinstance(payload, dict):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "bybit",
+                canonical_pair,
+                "instrument: bybit instruments-info body is not a JSON object",
+            )
+        if str(payload.get("retCode", 0)) not in {"0", "0.0"}:
+            raise InstrumentMetadataError(
+                METADATA_UNAVAILABLE,
+                "bybit",
+                canonical_pair,
+                "instrument: bybit instruments-info refused the request",
+            )
+        row = _find_bybit_instrument(payload, canonical_pair)
+        if row is None:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                "bybit",
+                canonical_pair,
+                "instrument: bybit instruments-info response did not contain the requested symbol",
+            )
+        venue_symbol = str(row.get("symbol") or "")
+        if venue_symbol != canonical_pair:
+            raise InstrumentMetadataError(
+                METADATA_SYMBOL_MISMATCH,
+                "bybit",
+                canonical_pair,
+                "instrument: bybit instruments-info returned a different symbol than requested",
+            )
+        lot = row.get("lotSizeFilter") if isinstance(row.get("lotSizeFilter"), dict) else {}
+        price = row.get("priceFilter") if isinstance(row.get("priceFilter"), dict) else {}
+        step = lot.get("basePrecision") or lot.get("qtyStep")
+        try:
+            min_quantity = _required_decimal_string(lot, "minOrderQty")
+            quantity_increment = _required_decimal_string({"step": step}, "step")
+            price_increment = _required_decimal_string(price, "tickSize")
+            min_notional = _required_decimal_string(lot, "minOrderAmt")
+        except (KeyError, ValueError) as exc:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "bybit",
+                canonical_pair,
+                "instrument: bybit instruments-info payload missing required fields",
+            ) from exc
+        if (
+            Decimal(min_quantity) <= 0
+            or Decimal(min_notional) <= 0
+            or Decimal(quantity_increment) <= 0
+            or Decimal(price_increment) <= 0
+        ):
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "bybit",
+                canonical_pair,
+                "instrument: bybit minima and increments must be positive",
+            )
+        base_asset = str(row.get("baseCoin") or "")
+        quote_asset = str(row.get("quoteCoin") or "")
+        if not base_asset or not quote_asset:
+            raise InstrumentMetadataError(
+                METADATA_INVALID,
+                "bybit",
+                canonical_pair,
+                "instrument: bybit instruments-info missing base or quote coin",
+            )
+        retrieved_at = _unix_to_iso(self._clock())
+        usable_until = _unix_to_iso(self._clock() + self._ttl_seconds)
+        payload_bytes = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
+        return InstrumentRulesV1(
+            schema_version=SCHEMA_VERSION,
+            venue="bybit",
+            canonical_pair=canonical_pair,
+            venue_symbol=venue_symbol,
+            base_asset=base_asset,
+            quote_asset=quote_asset,
+            min_quantity=min_quantity,
+            min_notional=min_notional,
+            quantity_increment=quantity_increment,
+            price_increment=price_increment,
+            source={
+                "endpoint": BYBIT_INSTRUMENTS_URL,
+                "retrieved_at": retrieved_at,
+                "source_version": payload_sha256[:16],
+                "payload_sha256": payload_sha256,
+            },
+            usable_until=usable_until,
+        )
+
 
 # ---- snapshot ----------------------------------------------------------
 
@@ -978,6 +1079,20 @@ def _binance_filter(filters: list, name: str) -> dict | None:
     for item in filters:
         if isinstance(item, dict) and item.get("filterType") == name:
             return item
+    return None
+
+
+def _find_bybit_instrument(payload: dict, canonical_pair: str) -> dict | None:
+    """Return the spot instruments-info row whose ``symbol`` matches."""
+    result = payload.get("result")
+    rows = result.get("list") if isinstance(result, dict) else None
+    if isinstance(rows, list):
+        matches = [item for item in rows if isinstance(item, dict) and str(item.get("symbol") or "") == canonical_pair]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+    if str(payload.get("symbol") or "") == canonical_pair:
+        return payload
     return None
 
 
