@@ -129,37 +129,42 @@ try {
     await skip.click();
     await expect(wizard).toHaveCount(0);
   }
-  await expect(page.getByTestId('app-home')).toBeVisible();
-  await expect(page.getByTestId('app-home-card-strategies')).toBeVisible();
-  check('Home clearly labels local preview and disabled live', (await page.getByTestId('app-home-availability').innerText()).includes('Live trading unavailable'));
-  // Labels must match frontend/src/shell/Navigation.tsx VIEWS (Signal rename:
-  // home tab is "Workspace", studio tab is "Strategy studio").
+  const home = page.getByTestId('app-home');
+  await expect(home).toBeVisible();
+  // Skipping the wizard arms the setup tour. Dismiss it, then require home.
+  const tourSkip = page.getByTestId('workspace-setup-tour-skip');
+  if (await tourSkip.count()) {
+    await tourSkip.click();
+    await expect(page.getByTestId('workspace-setup-tour')).toHaveCount(0);
+  }
+  await expect(home.getByTestId('app-home-cta-paper')).toBeVisible();
+  await expect(home.getByTestId('app-home-cta-packs')).toBeVisible();
+  check('Home clearly labels paper-only and disabled live', (await home.innerText()).includes('Live trading stays off'));
+  // Labels match frontend/src/shell/Navigation.tsx PRIMARY_VIEWS and MORE_VIEWS.
   const homeTab = 'Workspace';
   const navigation = page.getByTestId('kbot-nav');
   await expect(navigation.getByRole('button', {name: homeTab, exact: true})).toBeVisible();
-  for (const [view, label] of [
-    ['strategies', 'Strategies'],
-    ['research', 'Research'],
-    ['studio', 'Strategy studio'],
-    ['workstation', 'Workstation'],
-    ['operations', 'Operations'],
-  ]) {
-    await navigation.getByRole('button', {name: homeTab, exact: true}).click();
-    await page.getByTestId(`app-home-card-${view}`).click();
+  for (const label of ['Run', 'Strategies', 'Packs', 'Settings']) {
+    await navigation.getByRole('button', {name: label, exact: true}).click();
     await expect(navigation.getByRole('button', {name: label, exact: true})).toHaveAttribute('aria-pressed', 'true');
-    check(`Home card opens ${label}`, true);
+    check(`${label} navigation reachable`, true);
   }
-  await navigation.getByRole('button', {name: 'Deploy', exact: true}).click();
-  await expect(navigation.getByRole('button', {name: 'Deploy', exact: true})).toHaveAttribute('aria-pressed', 'true');
-  check('Deploy navigation reachable', true);
+  await navigation.getByTestId('kbot-nav-more-toggle').click();
+  await expect(navigation.getByTestId('kbot-nav-more')).toBeVisible();
+  for (const label of ['Research', 'Strategy studio', 'Operations', 'Deploy']) {
+    await navigation.getByRole('button', {name: label, exact: true}).click();
+    await expect(navigation.getByRole('button', {name: label, exact: true})).toHaveAttribute('aria-pressed', 'true');
+    check(`${label} navigation reachable`, true);
+  }
   await navigation.getByRole('button', {name: homeTab, exact: true}).click();
   await page.screenshot({path: path.join(evidence, 'installed-home-desktop.png'), fullPage: true});
   report.screenshots.push('installed-home-desktop.png');
   await page.setViewportSize({width: 390, height: 844});
-  await expect(page.getByTestId('app-home-card-strategies')).toBeVisible();
-  await page.getByTestId('app-home-card-strategies').focus();
+  const packs = page.getByTestId('app-home-cta-packs');
+  await expect(packs).toBeVisible();
+  await packs.focus();
   await page.keyboard.press('Enter');
-  await expect(navigation.getByRole('button', {name: 'Strategies', exact: true})).toHaveAttribute('aria-pressed', 'true');
+  await expect(navigation.getByRole('button', {name: 'Packs', exact: true})).toHaveAttribute('aria-pressed', 'true');
   check('Mobile keyboard navigation works', true);
   await navigation.getByRole('button', {name: homeTab, exact: true}).click();
   await page.screenshot({path: path.join(evidence, 'installed-home-mobile.png'), fullPage: true});
