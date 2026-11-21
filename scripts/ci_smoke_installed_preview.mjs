@@ -151,9 +151,15 @@ try {
   }
   await navigation.getByTestId('kbot-nav-more-toggle').click();
   await expect(navigation.getByTestId('kbot-nav-more')).toBeVisible();
-  for (const label of ['Research', 'Strategy studio', 'Operations', 'Deploy']) {
-    await navigation.getByRole('button', {name: label, exact: true}).click();
-    await expect(navigation.getByRole('button', {name: label, exact: true})).toHaveAttribute('aria-pressed', 'true');
+  for (const [view, label] of [
+    ['research', 'Research'],
+    ['studio', 'Strategy studio'],
+    ['operations', 'Operations'],
+    ['deployments', 'Deploy'],
+  ]) {
+    const button = navigation.locator(`[data-view="${view}"]`);
+    await button.click();
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
     check(`${label} navigation reachable`, true);
   }
   await navigation.getByRole('button', {name: homeTab, exact: true}).click();
